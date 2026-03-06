@@ -12,20 +12,9 @@ To begin working with the Graphite codebase, you will need to set up the project
 ## Dependencies
 
 Graphite is built with Rust and web technologies, which means you will need to install:
-- [Node.js](https://nodejs.org/) (the latest LTS version)
 - [Rust](https://www.rust-lang.org/) (the latest stable release)
+- [Node.js](https://nodejs.org/) (the latest LTS version)
 - [Git](https://git-scm.com/) (any recent version)
-
-Next, install the dependencies required for development builds:
-
-```sh
-cargo install -f wasm-bindgen-cli@0.2.100
-cargo install wasm-pack
-cargo install cargo-watch
-cargo install cargo-about
-```
-
-Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
 
 ## Repository
 
@@ -61,19 +50,6 @@ To run the dev server without debug symbols, using the same release optimization
 ```sh
 cargo run release
 ```
-
-</details>
-
-<details>
-<summary>Production build instructions: click here</summary>
-
-You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by running:
-
-```sh
-cargo run web build
-```
-
-This produces the `/frontend/dist` directory containing the static site files that must be served by your own web server.
 
 </details>
 

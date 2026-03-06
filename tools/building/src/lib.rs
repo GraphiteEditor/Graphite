@@ -3,15 +3,15 @@ use std::process;
 
 pub mod deps;
 
+pub enum Action {
+	Run,
+	Build,
+}
+
 pub enum Target {
 	Web,
 	Desktop,
 	Cli,
-}
-
-pub enum Action {
-	Run,
-	Build,
 }
 
 pub enum Profile {
@@ -22,8 +22,8 @@ pub enum Profile {
 }
 
 pub struct Task {
-	pub target: Target,
 	pub action: Action,
+	pub target: Target,
 	pub profile: Profile,
 	pub args: Vec<String>,
 }
@@ -34,23 +34,21 @@ impl Task {
 		let passthru_args = args[split..].iter().skip(1).map(|s| s.to_string()).collect();
 		let args = &args[..split];
 
-		let (target, rest) = match args.first() {
+		let (action, args) = match args.first() {
+			Some(&"build") => (Action::Build, &args[1..]),
+			Some(&"run") => (Action::Run, &args[1..]),
+			Some(&"help") => return None,
+			_ => (Action::Run, args),
+		};
+
+		let (target, args) = match args.first() {
 			Some(&"desktop") => (Target::Desktop, &args[1..]),
 			Some(&"web") => (Target::Web, &args[1..]),
 			Some(&"cli") => (Target::Cli, &args[1..]),
-			Some(&"help") => return None,
-			None => (Target::Web, args),
-			_ => return None,
+			_ => (Target::Web, args),
 		};
 
-		let (action, rest) = match rest.first() {
-			Some(&"build") => (Action::Build, &rest[1..]),
-			Some(&"run") => (Action::Run, &rest[1..]),
-			None => (Action::Run, rest),
-			_ => return None,
-		};
-
-		let profile = match rest.first() {
+		let profile = match args.first() {
 			Some(&"release") => Profile::Release,
 			Some(&"debug") => Profile::Debug,
 			Some(&"profiling") => Profile::Profiling,

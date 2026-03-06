@@ -73,7 +73,7 @@ jobs:
         shell: bash # `cargo-about` refuses to run in powershell
         env:
           CARGO_TERM_COLOR: always
-        run: cargo run desktop build
+        run: cargo run build desktop
 
       - name: Stage Artifacts
         shell: bash

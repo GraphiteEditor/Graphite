@@ -52,7 +52,7 @@ jobs:
       - name: 🌐 Build Graphite web code
         env:
           NODE_ENV: production
-        run: mold -run cargo run web build
+        run: mold -run cargo run build web
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare

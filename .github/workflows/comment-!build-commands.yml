@@ -83,11 +83,11 @@ jobs:
         id: build_command
         run: |
           if [[ "${{ github.event.comment.body }}" == "!build-debug" ]]; then
-            echo "command=build debug" >> $GITHUB_OUTPUT
+            echo "command=build web debug" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
-            echo "command=build profiling" >> $GITHUB_OUTPUT
+            echo "command=build web profiling" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build" ]]; then
-            echo "command=build" >> $GITHUB_OUTPUT
+            echo "command=build web" >> $GITHUB_OUTPUT
           else
             echo "Failed to detect if the build command written in the comment should have been '!build-debug', '!build-profiling', or '!build'" >> $GITHUB_OUTPUT
           fi
@@ -108,7 +108,7 @@ jobs:
         env:
           NODE_ENV: production
         if: ${{ success() || failure()}}
-        run: mold -run cargo run web ${{ steps.build_command.outputs.command }}
+        run: mold -run cargo run ${{ steps.build_command.outputs.command }}
 
       - name: ❗ Warn on build failure
         if: ${{ failure() }}
