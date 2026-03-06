@@ -825,8 +825,20 @@ impl Render for Table<Vector> {
 				(id, mask_type, vector_row)
 			});
 
-			if vector.is_branching() {
-				for mut face_path in vector.construct_faces().filter(|face| !(face.area() < 0.0)) {
+			if !vector.region_domain.is_empty() || vector.is_branching() {
+				let regions = vector.region_manipulator_groups();
+				let region_count = regions.count();
+				if region_count > 0 {
+					log::trace!("Rendering {} mesh regions", region_count);
+				}
+
+				let faces: Box<dyn Iterator<Item = kurbo::BezPath>> = if region_count > 0 {
+					Box::new(vector.region_manipulator_groups().map(|(_, face)| graphic_types::vector_types::vector::misc::bezpath_from_manipulator_groups(&face, true)))
+				} else {
+					Box::new(vector.construct_faces().filter(|face| !(face.area() < 0.0)))
+				};
+
+				for mut face_path in faces {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 
 					let face_d = face_path.to_svg();
@@ -1059,9 +1071,20 @@ impl Render for Table<Vector> {
 			};
 
 			let do_fill = |scene: &mut Scene| {
-				if row.element.is_branching() {
-					// For branching paths, fill each face separately
-					for mut face_path in row.element.construct_faces().filter(|face| !(face.area() < 0.0)) {
+				if !row.element.region_domain.is_empty() || row.element.is_branching() {
+					let regions = row.element.region_manipulator_groups();
+					let region_count = regions.count();
+					if region_count > 0 {
+						log::trace!("Rendering {} mesh regions (Vello)", region_count);
+					}
+
+					let faces: Box<dyn Iterator<Item = kurbo::BezPath>> = if region_count > 0 {
+						Box::new(row.element.region_manipulator_groups().map(|(_, face)| graphic_types::vector_types::vector::misc::bezpath_from_manipulator_groups(&face, true)))
+					} else {
+						Box::new(row.element.construct_faces().filter(|face| !(face.area() < 0.0)))
+					};
+
+					for mut face_path in faces {
 						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 						let mut kurbo_path = kurbo::BezPath::new();
 						for element in face_path {

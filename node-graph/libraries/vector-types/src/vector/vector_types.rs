@@ -564,4 +564,18 @@ mod tests {
 		let generated = vector.stroke_bezier_paths().collect::<Vec<_>>();
 		assert_subpath_eq(&generated, &[curve, circle]);
 	}
+
+	#[test]
+	fn construct_disconnected_regions() {
+		let mut vector: Vector<()> = Vector::default();
+		// First region (square)
+		vector.append_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::splat(10.)), false);
+		// Second region (offset square)
+		vector.append_subpath(Subpath::new_rect(DVec2::splat(20.), DVec2::splat(30.)), false);
+		
+		assert_eq!(vector.region_domain.ids().len(), 2, "Should have 2 regions");
+		
+		let regions = vector.region_manipulator_groups().collect::<Vec<_>>();
+		assert_eq!(regions.len(), 2, "Should extract 2 independent region manipulator groups");
+	}
 }
