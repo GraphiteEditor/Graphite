@@ -669,11 +669,11 @@ export type WidgetDiff = {
 };
 
 export type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
-export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
+export type LayoutGroup = WidgetColumn | WidgetRow | WidgetTable | WidgetSection;
 export type Layout = LayoutGroup[];
 
-export type WidgetSpanColumn = { columnWidgets: WidgetInstance[] };
-export type WidgetSpanRow = { rowWidgets: WidgetInstance[] };
+export type WidgetColumn = { columnWidgets: WidgetInstance[] };
+export type WidgetRow = { rowWidgets: WidgetInstance[] };
 export type WidgetTable = { tableWidgets: WidgetInstance[][]; unstyled: boolean };
 export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: Layout };
 

@@ -4,7 +4,7 @@
 	import type { Editor } from "@graphite/editor";
 	import type { LayoutTarget } from "@graphite/messages";
 	import type { WidgetSection as WidgetSectionData } from "@graphite/utility-functions/widgets";
-	import { isWidgetSpanRow, isWidgetSection } from "@graphite/utility-functions/widgets";
+	import { isWidgetRow, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -63,7 +63,7 @@
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.section.layout as layoutGroup}
-				{#if isWidgetSpanRow(layoutGroup)}
+				{#if isWidgetRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />

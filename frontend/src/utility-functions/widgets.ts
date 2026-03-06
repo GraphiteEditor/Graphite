@@ -1,18 +1,18 @@
 import type { Layout, LayoutGroup, Widget, WidgetDiff, WidgetInstance } from "@graphite/messages";
 
 type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
-export type WidgetSpanColumn = Extract<LayoutGroup, { column: unknown }>;
-export type WidgetSpanRow = Extract<LayoutGroup, { row: unknown }>;
+export type WidgetColumn = Extract<LayoutGroup, { column: unknown }>;
+export type WidgetRow = Extract<LayoutGroup, { row: unknown }>;
 export type WidgetTable = Extract<LayoutGroup, { table: unknown }>;
 export type WidgetSection = Extract<LayoutGroup, { section: unknown }>;
 type ExtractWidgetKind<T> = T extends Record<infer K, unknown> ? K & string : never;
 export type WidgetKind = ExtractWidgetKind<Widget>;
 
-export function isWidgetSpanColumn(layoutGroup: LayoutGroup): layoutGroup is WidgetSpanColumn {
+export function isWidgetColumn(layoutGroup: LayoutGroup): layoutGroup is WidgetColumn {
 	return "column" in layoutGroup;
 }
 
-export function isWidgetSpanRow(layoutGroup: LayoutGroup): layoutGroup is WidgetSpanRow {
+export function isWidgetRow(layoutGroup: LayoutGroup): layoutGroup is WidgetRow {
 	return "row" in layoutGroup;
 }
 

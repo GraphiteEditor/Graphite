@@ -5,8 +5,8 @@
 	import type { LayoutTarget, WidgetInstance } from "@graphite/messages";
 	import { parseFillChoice } from "@graphite/utility-functions/colors";
 	import { debouncer } from "@graphite/utility-functions/debounce";
-	import type { WidgetSpanColumn, WidgetSpanRow, WidgetKind } from "@graphite/utility-functions/widgets";
-	import { isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/utility-functions/widgets";
+	import type { WidgetColumn, WidgetRow, WidgetKind } from "@graphite/utility-functions/widgets";
+	import { isWidgetColumn, isWidgetRow } from "@graphite/utility-functions/widgets";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
@@ -33,7 +33,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
+	export let widgetData: WidgetRow | WidgetColumn;
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";
@@ -49,15 +49,15 @@
 	$: direction = watchDirection(widgetData);
 	$: widgets = watchWidgets(widgetData);
 
-	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
-		if (isWidgetSpanRow(widgetData)) return "row";
-		if (isWidgetSpanColumn(widgetData)) return "column";
+	function watchDirection(widgetData: WidgetRow | WidgetColumn): "row" | "column" | undefined {
+		if (isWidgetRow(widgetData)) return "row";
+		if (isWidgetColumn(widgetData)) return "column";
 	}
 
-	function watchWidgets(widgetData: WidgetSpanRow | WidgetSpanColumn): WidgetInstance[] {
+	function watchWidgets(widgetData: WidgetRow | WidgetColumn): WidgetInstance[] {
 		let widgets: WidgetInstance[] = [];
-		if (isWidgetSpanRow(widgetData)) widgets = widgetData.row.rowWidgets;
-		else if (isWidgetSpanColumn(widgetData)) widgets = widgetData.column.columnWidgets;
+		if (isWidgetRow(widgetData)) widgets = widgetData.row.rowWidgets;
+		else if (isWidgetColumn(widgetData)) widgets = widgetData.column.columnWidgets;
 		return widgets;
 	}
 
