@@ -29,6 +29,19 @@ fn return_true() -> bool {
 	true
 }
 
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct HiddenNodeInput {
+	pub node_id: NodeId,
+	pub input_index: usize,
+	pub tagged_value: TaggedValue,
+}
+
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum Hidden {
+	Passthrough,
+	TaggedValues(Vec<HiddenNodeInput>),
+}
+
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
@@ -50,8 +63,8 @@ pub struct DocumentNode {
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
-	#[serde(default = "return_true")]
-	pub visible: bool,
+	#[serde(default)]
+	pub visible: Option<Hidden>,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
@@ -94,7 +107,7 @@ impl Default for DocumentNode {
 			inputs: Default::default(),
 			call_argument: concrete!(Context),
 			implementation: Default::default(),
-			visible: true,
+			visible: None,
 			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
 			context_features: Default::default(),
@@ -785,16 +798,47 @@ impl NodeNetwork {
 			return;
 		};
 
-		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
-		if !node.visible && node.implementation != identity_node {
-			node.implementation = identity_node;
+		match node.visible.clone() {
+			None => {}
+			Some(Hidden::Passthrough) => {
+				node.implementation = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
+				if node.inputs.len() > 1 {
+					node.inputs.drain(1..);
+				}
+				node.call_argument = concrete!(());
+				self.nodes.insert(id, node);
+				return;
+			}
+			Some(Hidden::TaggedValues(tagged_values)) => {
+				let mut replaced_any_downstream = false;
+				let replacement_tagged = tagged_values.first().map(|hidden_input| hidden_input.tagged_value.clone()).unwrap_or(TaggedValue::None);
 
-			// Connect layer node to the group below
-			node.inputs.drain(1..);
-			node.call_argument = concrete!(());
-			self.nodes.insert(id, node);
-			return;
+				for hidden_input in &tagged_values {
+					let Some(downstream_node) = self.nodes.get_mut(&hidden_input.node_id) else {
+						continue;
+					};
+					let Some(downstream_input) = downstream_node.inputs.get_mut(hidden_input.input_index) else {
+						continue;
+					};
+					if matches!(downstream_input, NodeInput::Node { node_id, output_index } if *node_id == id && *output_index == 0) {
+						*downstream_input = NodeInput::value(hidden_input.tagged_value.clone(), false);
+						replaced_any_downstream = true;
+					}
+				}
+
+				if replaced_any_downstream {
+					self.replace_network_outputs(NodeInput::node(id, 0), NodeInput::value(replacement_tagged, false));
+					return;
+				}
+
+				node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode"));
+				node.call_argument = concrete!(());
+				node.inputs.clear();
+				node.inputs.push(NodeInput::value(replacement_tagged, false));
+
+				self.nodes.insert(id, node);
+				return;
+			}
 		}
 
 		let path = node.original_location.path.clone().unwrap_or_default();
@@ -878,21 +922,35 @@ impl NodeNetwork {
 
 		// Connect all nodes that were previously connected to this node to the nodes of the inner network
 		for (i, export) in inner_network.exports.into_iter().enumerate() {
-			if let NodeInput::Node { node_id, output_index, .. } = &export {
-				for deps in &node.original_location.dependants {
-					for dep in deps {
-						self.replace_node_inputs(*dep, (id, i), (*node_id, *output_index));
+			match export {
+				NodeInput::Node { node_id, output_index } => {
+					for deps in &node.original_location.dependants {
+						for dep in deps {
+							self.replace_node_inputs(*dep, (id, i), (node_id, output_index));
+						}
 					}
+
+					if let Some(new_output_node) = self.nodes.get_mut(&node_id) {
+						for dep in &node.original_location.dependants[i] {
+							new_output_node.original_location.dependants[output_index].push(*dep);
+						}
+					}
+
+					self.replace_network_outputs(NodeInput::node(id, i), NodeInput::node(node_id, output_index));
 				}
 
-				if let Some(new_output_node) = self.nodes.get_mut(node_id) {
-					for dep in &node.original_location.dependants[i] {
-						new_output_node.original_location.dependants[*output_index].push(*dep);
-					}
+				NodeInput::Import { import_index, .. } => {
+					let parent_input = node.inputs.get(import_index).expect("Import index must exist on parent");
+
+					self.replace_network_outputs(NodeInput::node(id, i), parent_input.clone());
 				}
+
+				NodeInput::Value { .. } => {
+					self.replace_network_outputs(NodeInput::node(id, i), export);
+				}
+
+				_ => {}
 			}
-
-			self.replace_network_outputs(NodeInput::node(id, i), export);
 		}
 
 		for node_id in new_nodes {
