@@ -23,7 +23,7 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"proc-macros",
-	"tools/building",
+	"tools/cargo-run",
 	"tools/crate-hierarchy-viz",
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
@@ -41,7 +41,7 @@ default-members = [
 	"node-graph/preprocessor",
 	# blocked by https://github.com/rust-lang/cargo/issues/16000
 #	"proc-macros",
-	"tools/building",
+	"tools/cargo-run",
 ]
 resolver = "2"
 

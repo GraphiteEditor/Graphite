@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use building::*;
+use cargo_run::*;
 
 fn usage() {
 	println!();

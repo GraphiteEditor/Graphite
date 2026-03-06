@@ -610,13 +610,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "building"
-version = "0.0.0"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "built"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -736,6 +729,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84982c6c0ae343635a3a4ee6dedef965513735c8b183caa7289fa6e27399ebd4"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "cargo-run"
+version = "0.0.0"
+dependencies = [
+ "thiserror 2.0.18",
 ]
 
 [[package]]

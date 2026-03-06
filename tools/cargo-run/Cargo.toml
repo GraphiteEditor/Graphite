@@ -1,11 +1,11 @@
 [package]
-name = "building"
+name = "cargo-run"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 authors.workspace = true
 
-default-run = "building"
+default-run = "cargo-run"
 
 [dependencies]
 thiserror = { workspace = true }
