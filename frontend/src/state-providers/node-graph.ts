@@ -1,9 +1,8 @@
 import { writable } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
-import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath, FrontendMessages } from "@graphite/messages";
-
-type UpdateImportsExports = FrontendMessages["UpdateImportsExports"];
+import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/messages";
+import type { MessageBody } from "@graphite/subscription-router";
 
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
@@ -14,7 +13,7 @@ export function createNodeGraphState(editor: Editor) {
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
 		hasLeftInputWire: new Map<bigint, boolean>(),
-		updateImportsExports: undefined as UpdateImportsExports | undefined,
+		updateImportsExports: undefined as MessageBody<"UpdateImportsExports"> | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.

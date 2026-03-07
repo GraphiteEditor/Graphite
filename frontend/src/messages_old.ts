@@ -677,7 +677,7 @@ export type WidgetRow = { rowWidgets: WidgetInstance[] };
 export type WidgetTable = { tableWidgets: WidgetInstance[][]; unstyled: boolean };
 export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: Layout };
 
-export type FrontendMessages = {
+export type FrontendMessage = {
 	ClearAllNodeGraphWires: Record<string, never>;
 	DisplayDialog: { title: string; icon: string };
 	DialogClose: Record<string, never>;

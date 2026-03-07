@@ -2,9 +2,10 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Color, FrontendMessages, MenuDirection, MouseCursorIcon } from "@graphite/messages";
+	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import type { MessageBody } from "@graphite/subscription-router";
 	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
@@ -19,8 +20,6 @@
 	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	type DisplayEditableTextbox = FrontendMessages["DisplayEditableTextbox"];
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
@@ -343,7 +342,7 @@
 		editor.handle.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
 		showTextInput = true;
 
 		await tick();
