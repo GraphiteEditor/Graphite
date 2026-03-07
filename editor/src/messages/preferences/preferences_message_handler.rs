@@ -16,21 +16,26 @@ pub struct PreferencesMessageContext<'a> {
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
-	pub use_vello: bool,
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
+	pub disable_ui_acceleration: bool,
+	pub max_render_region_size: u32,
 }
 
 impl PreferencesMessageHandler {
+	pub fn needs_restart(&self, other: &Self) -> bool {
+		self.disable_ui_acceleration != other.disable_ui_acceleration
+	}
+
 	pub fn get_selection_mode(&self) -> SelectionMode {
 		self.selection_mode
 	}
 
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
-			use_vello: self.use_vello && self.supports_wgpu(),
+			max_render_region_size: self.max_render_region_size,
 		}
 	}
 
@@ -44,11 +49,12 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
-			use_vello: EditorPreferences::default().use_vello,
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
+			disable_ui_acceleration: false,
+			max_render_region_size: EditorPreferences::default().max_render_region_size,
 		}
 	}
 }
@@ -61,30 +67,20 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
-				if let Some(preferences) = preferences {
-					*self = preferences;
-				}
+				*self = preferences;
 
 				responses.add(PortfolioMessage::EditorPreferences);
-				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 			PreferencesMessage::ResetToDefaults => {
-				refresh_dialog(responses);
-				responses.add(KeyMappingMessage::ModifyMapping { mapping: MappingVariant::Default });
-
-				*self = Self::default()
+				responses.add(PreferencesMessage::Load { preferences: Self::default() });
+				responses.add(DialogMessage::RequestPreferencesDialog);
 			}
 
 			// Per-preference messages
-			PreferencesMessage::UseVello { use_vello } => {
-				self.use_vello = use_vello;
-				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::EditorPreferences);
-			}
 			PreferencesMessage::BrushTool { enabled } => {
 				self.brush_tool = enabled;
 
@@ -115,6 +111,14 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
+			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
+				self.disable_ui_acceleration = disable_ui_acceleration;
+			}
+			PreferencesMessage::MaxRenderRegionSize { size } => {
+				self.max_render_region_size = size;
+				responses.add(PortfolioMessage::EditorPreferences);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 		}
 
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
@@ -122,10 +126,4 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 
 	advertise_actions!(PreferencesMessageDiscriminant;
 	);
-}
-
-fn refresh_dialog(responses: &mut VecDeque<Message>) {
-	responses.add(DialogMessage::CloseDialogAndThen {
-		followups: vec![DialogMessage::RequestPreferencesDialog.into()],
-	});
 }

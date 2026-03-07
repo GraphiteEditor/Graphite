@@ -14,19 +14,25 @@
 
 	let self: LayoutRow | undefined;
 
-	export let entries: MenuListEntry[][];
-	export let entriesHash: bigint | undefined = undefined;
+	// Content
 	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
 	export let drawIcon = false;
-	export let interactive = true;
 	export let disabled = false;
+	// Children
+	export let entries: MenuListEntry[][];
+	export let entriesHash: bigint | undefined = undefined;
+	// Styling
 	export let narrow = false;
+	// Behavior
 	export let virtualScrolling = false;
+	export let interactive = true;
+	// Sizing
+	export let minWidth = 0;
+	export let maxWidth = 0;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	export let minWidth = 0;
-	export let maxWidth = 0;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;

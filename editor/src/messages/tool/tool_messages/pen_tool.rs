@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -178,7 +178,7 @@ impl LayoutHolder for PenTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -205,11 +205,11 @@ impl LayoutHolder for PenTool {
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.push(
 			RadioInput::new(vec![
@@ -1282,14 +1282,14 @@ impl PenToolData {
 		}
 
 		// New path layer
-		let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+		let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 		let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+		tool_options.fill.apply_fill(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -1783,12 +1783,8 @@ impl Fsm for PenToolFsmState {
 								})
 								.collect();
 
-							let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-								.unwrap()
-								.with_alpha(0.05)
-								.to_rgba_hex_srgb();
-							fill_color.insert(0, '#');
-							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
+							let fill_color = COLOR_OVERLAY_BLUE_05;
+							overlay_context.fill_path(subpaths.iter(), transform, fill_color);
 						}
 					}
 				}

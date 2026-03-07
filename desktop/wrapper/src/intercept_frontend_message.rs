@@ -1,6 +1,7 @@
-use std::path::PathBuf;
-
+#[cfg(target_os = "macos")]
+use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use graphite_editor::messages::prelude::FrontendMessage;
+use std::path::PathBuf;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
@@ -10,29 +11,17 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::RenderOverlays { context } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
 		}
-		FrontendMessage::TriggerOpenDocument => {
+		FrontendMessage::TriggerOpen => {
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
-				filters: vec![FileFilter {
-					name: "Graphite".to_string(),
-					extensions: vec!["graphite".to_string()],
-				}],
-				context: OpenFileDialogContext::Document,
+				filters: vec![],
+				context: OpenFileDialogContext::Open,
 			});
 		}
 		FrontendMessage::TriggerImport => {
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Import File".to_string(),
-				filters: vec![
-					FileFilter {
-						name: "Svg".to_string(),
-						extensions: vec!["svg".to_string()],
-					},
-					FileFilter {
-						name: "Image".to_string(),
-						extensions: vec!["png".to_string(), "jpg".to_string(), "jpeg".to_string(), "bmp".to_string()],
-					},
-				],
+				filters: vec![],
 				context: OpenFileDialogContext::Import,
 			});
 		}
@@ -115,7 +104,10 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
 		#[cfg(target_os = "macos")]
-		FrontendMessage::UpdateMenuBarLayout { diff } => {
+		FrontendMessage::UpdateLayout {
+			layout_target: LayoutTarget::MenuBar,
+			diff,
+		} => {
 			use graphite_editor::messages::tool::tool_messages::tool_prelude::{DiffUpdate, WidgetDiff};
 			match diff.as_slice() {
 				[
@@ -136,6 +128,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardWrite { content } => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
 		}
+		FrontendMessage::WindowPointerLock => {
+			dispatcher.respond(DesktopFrontendMessage::PointerLock);
+		}
 		FrontendMessage::WindowClose => {
 			dispatcher.respond(DesktopFrontendMessage::WindowClose);
 		}
@@ -144,6 +139,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::WindowMaximize => {
 			dispatcher.respond(DesktopFrontendMessage::WindowMaximize);
+		}
+		FrontendMessage::WindowFullscreen => {
+			dispatcher.respond(DesktopFrontendMessage::WindowFullscreen);
 		}
 		FrontendMessage::WindowDrag => {
 			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
@@ -156,6 +154,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::WindowShowAll => {
 			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
+		}
+		FrontendMessage::WindowRestart => {
+			dispatcher.respond(DesktopFrontendMessage::Restart);
+		}
+		FrontendMessage::TriggerDisplayThirdPartyLicensesDialog => {
+			dispatcher.respond(DesktopFrontendMessage::LoadThirdPartyLicenses);
 		}
 		m => return Some(m),
 	}

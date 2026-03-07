@@ -9,7 +9,7 @@ use graphene_std::vector::style::FillChoice;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
-	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
+	let grid_color = document.snapping_state.grid.color.as_str();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
@@ -38,7 +38,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(grid_color), None);
 		}
 	}
 }
@@ -50,7 +50,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 // TODO: Implement this with a dashed line (`set_line_dash`), with integer spacing which is continuously adjusted to correct the accumulated error.
 fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
-	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
+	let grid_color = document.snapping_state.grid.color.as_str();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
@@ -80,13 +80,13 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 		let x_per_dot = (end.x - start.x) / total_dots;
 		for dot_index in 0..=total_dots as usize {
 			let exact_x = x_per_dot * dot_index as f64;
-			overlay_context.pixel(document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(), Some(&grid_color))
+			overlay_context.pixel(document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(), Some(grid_color))
 		}
 	}
 }
 
 fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
-	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
+	let grid_color = document.snapping_state.grid.color.as_str();
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document
@@ -111,7 +111,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
-		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(grid_color), None);
 	}
 
 	for (tan, multiply) in [(tan_a, -1.), (tan_b, 1.)] {
@@ -125,13 +125,13 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
 			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
 			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(grid_color), None);
 		}
 	}
 }
 
 fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
-	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
+	let grid_color = document.snapping_state.grid.color.as_str();
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document
@@ -173,7 +173,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 		overlay_context.dashed_line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
-			Some(&grid_color),
+			Some(grid_color),
 			None,
 			Some(1.),
 			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
@@ -220,13 +220,6 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			}
 		})
 	};
-	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
-		update_val::<ColorInput, _>(grid, move |grid, color| {
-			if let (Some(color), Some(update_color)) = (color.value.as_solid(), update(grid)) {
-				*update_color = color.to_linear_srgb();
-			}
-		})
-	};
 	let update_display = |grid, update: fn(&mut GridSnapping) -> Option<&mut bool>| {
 		update_val::<CheckboxInput, _>(grid, move |grid, checkbox| {
 			if let Some(update) = update(grid) {
@@ -242,7 +235,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Type").table_align(true).widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(vec![
 				RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
 					if let GridType::Isometric { y_axis_spacing, angle_a, angle_b } = grid.grid_type {
@@ -274,7 +267,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 
 	let mut color_widgets = vec![
 		TextLabel::new("Display").table_align(true).widget_instance(),
-		Separator::new(SeparatorType::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 	];
 	color_widgets.extend([
 		CheckboxInput::new(grid.dot_display)
@@ -282,13 +275,17 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			.tooltip_label("Display as Dotted Grid")
 			.on_update(update_display(grid, |grid| Some(&mut grid.dot_display)))
 			.widget_instance(),
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 	]);
 	color_widgets.push(
-		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
+		ColorInput::new(FillChoice::Solid(Color::from_hex_str(&grid.color).unwrap_or(Color::BLACK)))
 			.tooltip_label("Grid Display Color")
 			.allow_none(false)
-			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
+			.on_update(update_val::<ColorInput, _>(grid, |grid, color| {
+				if let Some(color) = color.value.as_solid() {
+					grid.color = format!("#{}", color.to_rgba_hex_srgb_from_gamma());
+				}
+			}))
 			.widget_instance(),
 	);
 	widgets.push(LayoutGroup::Row { widgets: color_widgets });
@@ -296,14 +293,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Origin").table_align(true).widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(grid.origin.x))
 				.label("X")
 				.unit(" px")
 				.min_width(98)
 				.on_update(update_origin(grid, |grid| Some(&mut grid.origin.x)))
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(grid.origin.y))
 				.label("Y")
 				.unit(" px")
@@ -317,7 +314,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::Row {
 			widgets: vec![
 				TextLabel::new("Spacing").table_align(true).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(spacing.x))
 					.label("X")
 					.unit(" px")
@@ -325,7 +322,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.min_width(98)
 					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
 					.widget_instance(),
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				NumberInput::new(Some(spacing.y))
 					.label("Y")
 					.unit(" px")
@@ -339,7 +336,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Y Spacing").table_align(true).widget_instance(),
-					Separator::new(SeparatorType::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(y_axis_spacing))
 						.unit(" px")
 						.min(0.)
@@ -351,13 +348,13 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
 					TextLabel::new("Angles").table_align(true).widget_instance(),
-					Separator::new(SeparatorType::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(angle_a))
 						.unit("°")
 						.min_width(98)
 						.on_update(update_origin(grid, |grid| grid.grid_type.angle_a()))
 						.widget_instance(),
-					Separator::new(SeparatorType::Related).widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
 					NumberInput::new(Some(angle_b))
 						.unit("°")
 						.min_width(98)

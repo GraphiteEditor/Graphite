@@ -1,8 +1,7 @@
-use glam::{DVec2, IVec2};
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
-use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -36,7 +35,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
 			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
 			_ => Self::General,
 		}
@@ -82,6 +81,8 @@ pub struct FrontendNode {
 	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
 	#[serde(rename = "primaryInput")]
 	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]
@@ -102,29 +103,13 @@ pub struct FrontendNode {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
-	pub name: Cow<'static, str>,
-	pub category: Cow<'static, str>,
+	pub identifier: String,
+	pub name: String,
+	pub category: String,
 	#[serde(rename = "inputTypes")]
-	pub input_types: Option<Vec<Cow<'static, str>>>,
+	pub input_types: Vec<String>,
 }
 
-impl FrontendNodeType {
-	pub fn new(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>) -> Self {
-		Self {
-			name: name.into(),
-			category: category.into(),
-			input_types: None,
-		}
-	}
-
-	pub fn with_input_types(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>, input_types: Vec<Cow<'static, str>>) -> Self {
-		Self {
-			name: name.into(),
-			category: category.into(),
-			input_types: Some(input_types),
-		}
-	}
-}
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DragStart {
 	pub start_x: f64,
@@ -162,6 +147,10 @@ pub enum ContextMenuData {
 		can_be_layer: bool,
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
+		#[serde(rename = "hasSelectedLayers")]
+		has_selected_layers: bool,
+		#[serde(rename = "allSelectedLayersLocked")]
+		all_selected_layers_locked: bool,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]
@@ -173,14 +162,14 @@ pub enum ContextMenuData {
 pub struct ContextMenuInformation {
 	// Stores whether the context menu is open and its position in graph coordinates
 	#[serde(rename = "contextMenuCoordinates")]
-	pub context_menu_coordinates: FrontendXY,
+	pub context_menu_coordinates: IVec2,
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
 }
 
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct NodeGraphErrorDiagnostic {
-	pub position: FrontendXY,
+	pub position: IVec2,
 	pub error: String,
 }
 
@@ -206,23 +195,4 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
-}
-
-/// Stores node graph coordinates which are then transformed in Svelte based on the node graph transform
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendXY {
-	pub x: i32,
-	pub y: i32,
-}
-
-impl From<DVec2> for FrontendXY {
-	fn from(v: DVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
-	}
-}
-
-impl From<IVec2> for FrontendXY {
-	fn from(v: IVec2) -> Self {
-		FrontendXY { x: v.x, y: v.y }
-	}
 }

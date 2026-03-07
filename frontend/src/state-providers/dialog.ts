@@ -1,9 +1,9 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { type IconName } from "@graphite/icons";
-import { DisplayDialog, DisplayDialogDismiss, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchLayout, TriggerDisplayThirdPartyLicensesDialog } from "@graphite/messages";
+import type { Editor } from "@graphite/editor";
+import type { IconName } from "@graphite/icons";
 import type { Layout } from "@graphite/messages";
+import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDialogState(editor: Editor) {
 	const { subscribe, update } = writable({
@@ -45,7 +45,7 @@ export function createDialogState(editor: Editor) {
 	}
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(DisplayDialog, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
 			state.visible = true;
 
@@ -55,33 +55,32 @@ export function createDialogState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogButtons, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", (data) => {
 		update((state) => {
 			patchLayout(state.buttons, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn1, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", (data) => {
 		update((state) => {
 			patchLayout(state.column1, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn2, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", (data) => {
 		update((state) => {
 			patchLayout(state.column2, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
+	editor.subscriptions.subscribeFrontendMessage("DialogClose", dismissDialog);
 
-	editor.subscriptions.subscribeJsMessage(TriggerDisplayThirdPartyLicensesDialog, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
 		let licenseText = `Content was not able to load. Please check your network connection and try again.\n\nOr visit ${BACKUP_URL} for the license notices.`;
-		if (editor.handle.inDevelopmentMode()) licenseText = `Third-party licenses are not available in development builds.\n\nVisit ${BACKUP_URL} for the license notices.`;
 
 		const response = await fetch("/third-party-licenses.txt");
 		if (response.ok && response.headers.get("Content-Type")?.includes("text/plain")) licenseText = await response.text();

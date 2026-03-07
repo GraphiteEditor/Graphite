@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { type LayoutTarget, type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
+	import type { LayoutTarget, WidgetTable as WidgetTableData } from "@graphite/messages";
 
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
-	export let widgetData: WidgetTableFromJsMessages;
+	export let widgetData: WidgetTableData;
 	export let layoutTarget: LayoutTarget;
 	export let unstyled = false;
 
@@ -24,7 +24,7 @@
 	</tbody>
 </table>
 
-<style lang="scss">
+<style lang="scss" global>
 	table:not(.unstyled) {
 		background: var(--color-3-darkgray);
 		border: none;

@@ -12,26 +12,10 @@ members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/libraries/application-io",
-	"node-graph/libraries/core-types",
-	"node-graph/libraries/no-std-types",
-	"node-graph/libraries/raster-types",
-	"node-graph/libraries/vector-types",
-	"node-graph/libraries/graphic-types",
-	"node-graph/libraries/rendering",
-	"node-graph/libraries/wgpu-executor",
-	"node-graph/nodes/blending",
-	"node-graph/nodes/brush",
-	"node-graph/nodes/gcore",
-	"node-graph/nodes/graphic",
-	"node-graph/nodes/math",
-	"node-graph/nodes/path-bool",
-	"node-graph/nodes/raster",
+	"node-graph/libraries/*",
+	"node-graph/nodes/*",
 	"node-graph/nodes/raster/shaders",
 	"node-graph/nodes/raster/shaders/entrypoint",
-	"node-graph/nodes/text",
-	"node-graph/nodes/transform",
-	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/nodes/gstd",
@@ -39,7 +23,11 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"proc-macros",
-	"tools/crate-hierarchy-viz"
+	"tools/cargo-run",
+	"tools/crate-hierarchy-viz",
+	"tools/third-party-licenses",
+	"tools/editor-message-tree",
+	"tools/node-docs",
 ]
 default-members = [
 	"editor",
@@ -47,33 +35,13 @@ default-members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/libraries/application-io",
-	"node-graph/libraries/core-types",
-	"node-graph/libraries/no-std-types",
-	"node-graph/libraries/raster-types",
-	"node-graph/libraries/vector-types",
-	"node-graph/libraries/graphic-types",
-	"node-graph/libraries/rendering",
-	"node-graph/libraries/wgpu-executor",
-	"node-graph/nodes/blending",
-	"node-graph/nodes/brush",
-	"node-graph/nodes/gcore",
-	"node-graph/nodes/graphic",
-	"node-graph/nodes/math",
-	"node-graph/nodes/path-bool",
-	"node-graph/nodes/raster",
-	"node-graph/nodes/raster/shaders",
-	"node-graph/nodes/text",
-	"node-graph/nodes/transform",
-	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
-	"node-graph/graphene-cli",
-	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
-	# blocked by https://github.com/rust-lang/cargo/issues/15890
+	# blocked by https://github.com/rust-lang/cargo/issues/16000
 #	"proc-macros",
+	"tools/cargo-run",
 ]
 resolver = "2"
 
@@ -114,6 +82,7 @@ graphic-nodes = { path = "node-graph/nodes/graphic" }
 text-nodes = { path = "node-graph/nodes/text" }
 transform-nodes = { path = "node-graph/nodes/transform" }
 vector-nodes = { path = "node-graph/nodes/vector" }
+repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
@@ -130,20 +99,21 @@ bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
-reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
+reqwest = { version = "0.13", features = ["blocking", "json"] }
 futures = "0.3"
 env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
 convert_case = "0.8"
+indoc = "2.0.5"
 derivative = "2.2"
 thiserror = "2"
 anyhow = "1.0"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
 chrono = "0.4"
-ron = "0.11"
+ron = "0.12"
 fastnoise-lite = "1.1"
 wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
@@ -151,7 +121,7 @@ wgpu = { version = "27.0", features = [
 	"spirv",
 	"strict_asserts",
 ] }
-once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
+once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
 wasm-bindgen = "=0.2.100" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/project-setup/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.77"
@@ -176,11 +146,17 @@ web-sys = { version = "=0.3.77", features = [
 winit = { git = "https://github.com/rust-windowing/winit.git" }
 keyboard-types = "0.8"
 url = "2.5"
-tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello" }
-vello_encoding = { git = "https://github.com/linebender/vello" }
-resvg = "0.45"
-usvg = "0.45"
+tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
+# Linebender ecosystem (BEGIN)
+kurbo = { version = "0.13", features = ["serde"] }
+vello = "0.7"
+vello_encoding = "0.7"
+resvg = "0.47"
+usvg = "0.47"
+parley = "0.6"
+skrifa = "0.40"
+polycool = "0.4"
+# Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
 glam = { version = "0.29", default-features = false, features = [
@@ -194,8 +170,6 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 ] }
-parley = "0.6"
-skrifa = "0.36"
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
@@ -217,7 +191,6 @@ syn = { version = "2.0", default-features = false, features = [
 	"extra-traits",
 	"proc-macro",
 ] }
-kurbo = { version = "0.12", features = ["serde"] }
 lyon_geom = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
@@ -234,11 +207,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 rfd = "0.15"
 open = "5.3"
-polycool = "0.4"
 spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
 cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
+qrcodegen = "1.8"
+lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+scraper = "0.25"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
@@ -262,10 +237,7 @@ node-macro = { opt-level = 2 }
 lto = "thin"
 debug = true
 
-[profile.profiling]
-inherits = "release"
-debug = true
-
 [patch.crates-io]
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
+download-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }

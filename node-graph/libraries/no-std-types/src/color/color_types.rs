@@ -216,7 +216,7 @@ impl Pixel for Luma {}
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
+#[derive(Debug, Default, Clone, Copy, Pod, Zeroable, BufferStruct)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub struct Color {
 	red: f32,
@@ -224,6 +224,14 @@ pub struct Color {
 	blue: f32,
 	alpha: f32,
 }
+
+impl PartialEq for Color {
+	fn eq(&self, other: &Self) -> bool {
+		self.red == other.red && self.green == other.green && self.blue == other.blue && self.alpha == other.alpha
+	}
+}
+
+impl Eq for Color {}
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Color {
@@ -418,16 +426,14 @@ impl Color {
 	/// ```
 	#[inline(always)]
 	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
-		let map_range = |int_color| int_color as f32 / 255.;
-
-		let red = map_range(red);
-		let green = map_range(green);
-		let blue = map_range(blue);
-		let alpha = map_range(alpha);
+		let red = red as f32 / 255.;
+		let green = green as f32 / 255.;
+		let blue = blue as f32 / 255.;
+		let alpha = alpha as f32 / 255.;
 		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
-	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
+	/// Create a [Color] from a hue, saturation, lightness, and alpha (all between 0 and 1)
 	///
 	/// # Examples
 	/// ```
@@ -466,6 +472,25 @@ impl Color {
 		map_channel(&mut green, temp2, temp1);
 		map_channel(&mut blue, temp2, temp1);
 
+		Color { red, green, blue, alpha }
+	}
+
+	/// Create a [Color] from hue, saturation, value, and alpha (all between 0 and 1).
+	pub fn from_hsva(hue: f32, saturation: f32, value: f32, alpha: f32) -> Color {
+		let h_prime = (hue * 6.) % 6.;
+		let i = h_prime as i32;
+		let f = h_prime - i as f32;
+		let p = value * (1. - saturation);
+		let q = value * (1. - f * saturation);
+		let t = value * (1. - (1. - f) * saturation);
+		let (red, green, blue) = match i % 6 {
+			0 => (value, t, p),
+			1 => (q, value, p),
+			2 => (p, value, t),
+			3 => (p, q, value),
+			4 => (t, p, value),
+			_ => (value, p, q),
+		};
 		Color { red, green, blue, alpha }
 	}
 
@@ -839,6 +864,18 @@ impl Color {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
 
+	/// Return an 8-character RGBA hex string (without a # prefix). Use this if the [`Color`] is in gamma space.
+	#[cfg(feature = "std")]
+	pub fn to_rgba_hex_srgb_from_gamma(&self) -> String {
+		format!(
+			"{:02x?}{:02x?}{:02x?}{:02x?}",
+			(self.r() * 255.) as u8,
+			(self.g() * 255.) as u8,
+			(self.b() * 255.) as u8,
+			(self.a() * 255.) as u8,
+		)
+	}
+
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
@@ -902,42 +939,19 @@ impl Color {
 		[hue, saturation, lightness, self.alpha]
 	}
 
-	// TODO: Readd formatting
-
-	/// Creates a color from a 8-character RGBA hex string (without a # prefix).
-	///
-	/// # Examples
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
-	/// ```
-	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
-		if color_str.len() != 8 {
+	/// Creates a color from a hex color code string with an optional `#` prefix, such as `#RRGGBB`, `RRGGBB`, `#RRGGBBAA`, or `RRGGBBAA`.
+	/// Returns `None` for invalid or unrecognized strings.
+	#[cfg(feature = "std")]
+	pub fn from_hex_str(hex: &str) -> Option<Color> {
+		let hex = hex.trim().trim_start_matches('#');
+		if hex.len() != 6 && hex.len() != 8 {
 			return None;
 		}
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
-		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
-
-		Some(Color::from_rgba8_srgb(r, g, b, a))
-	}
-
-	/// Creates a color from a 6-character RGB hex string (without a # prefix).
-	///
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgb_str("7C67FA").unwrap();
-	/// ```
-	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
-		if color_str.len() != 6 {
-			return None;
-		}
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
-
-		Some(Color::from_rgb8_srgb(r, g, b))
+		let red = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
+		let green = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
+		let blue = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
+		let alpha = if hex.len() == 8 { u8::from_str_radix(&hex[6..8], 16).ok()? as f32 / 255. } else { 1. };
+		Some(Color { red, green, blue, alpha })
 	}
 
 	/// Linearly interpolates between two colors based on t.

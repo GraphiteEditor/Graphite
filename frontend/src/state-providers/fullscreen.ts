@@ -1,8 +1,8 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
-export function createFullscreenState(_: Editor) {
+export function createFullscreenState(editor: Editor) {
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && (navigator as any).keyboard && "lock" in (navigator as any).keyboard;
@@ -49,6 +49,10 @@ export function createFullscreenState(_: Editor) {
 			});
 		});
 	}
+
+	editor.subscriptions.subscribeFrontendMessage("WindowFullscreen", () => {
+		toggleFullscreen();
+	});
 
 	return {
 		subscribe,

@@ -102,7 +102,7 @@ impl DataPanelMessageHandler {
 				} else {
 					IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance()
 				},
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				TextInput::new(network_interface.display_name(&node_id, &[]))
 					.tooltip_description(if is_layer { "Name of the selected layer." } else { "Name of the selected node." })
 					.on_update(move |text_input| {
@@ -115,7 +115,7 @@ impl DataPanelMessageHandler {
 					})
 					.max_width(200)
 					.widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			]);
 		}
 
@@ -166,11 +166,12 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		Vec<String>,
+		GradientStops,
 		f64,
 		u32,
 		u64,
 		bool,
+		Vec<String>,
 		String,
 		Option<f64>,
 		DVec2,
@@ -432,10 +433,6 @@ impl TableRowLayout for Vector {
 						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_instance(),
-						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
 						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
 						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
 					]);
@@ -564,7 +561,7 @@ impl TableRowLayout for GradientStops {
 		"Gradient"
 	}
 	fn identifier(&self) -> String {
-		format!("Gradient ({} stops)", self.0.len())
+		format!("Gradient ({} stops)", self.len())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetInstance {
 		ColorInput::new(FillChoice::Gradient(self.clone()))
@@ -717,7 +714,23 @@ impl TableRowLayout for Affine2 {
 }
 
 fn format_transform_matrix(transform: &DAffine2) -> String {
-	let (scale, angle, translation) = transform.to_scale_angle_translation();
+	let (scale, angle, translation) = if transform.matrix2.determinant().abs() <= f64::EPSILON {
+		let [col_0, col_1] = transform.matrix2.to_cols_array_2d().map(|[x, y]| DVec2::new(x, y));
+
+		let scale = DVec2::new(col_0.length(), col_1.length());
+
+		let rotation = if scale.x > f64::EPSILON {
+			col_0.y.atan2(col_0.x)
+		} else if scale.y > f64::EPSILON {
+			col_1.y.atan2(col_1.x) - std::f64::consts::FRAC_PI_2
+		} else {
+			0.
+		};
+
+		(scale, rotation, transform.translation)
+	} else {
+		transform.to_scale_angle_translation()
+	};
 	let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 	let round = |x: f64| (x * 1e3).round() / 1e3;
 

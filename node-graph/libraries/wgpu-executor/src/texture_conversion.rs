@@ -100,12 +100,15 @@ impl RasterGpuToRasterCpuConverter {
 		}
 	}
 
-	async fn convert(self) -> Result<Raster<CPU>, wgpu::BufferAsyncError> {
+	async fn convert(self, device: &std::sync::Arc<wgpu::Device>) -> Result<Raster<CPU>, wgpu::BufferAsyncError> {
 		let buffer_slice = self.buffer.slice(..);
 		let (sender, receiver) = futures::channel::oneshot::channel();
 		buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
 			let _ = sender.send(result);
 		});
+
+		let _ = device.poll(wgpu::wgt::PollType::wait_indefinitely());
+
 		receiver.await.expect("Failed to receive map result")?;
 
 		let view = buffer_slice.get_mapped_range();
@@ -215,7 +218,7 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 
 		let mut map_futures = Vec::new();
 		for converter in converters {
-			map_futures.push(converter.convert());
+			map_futures.push(converter.convert(device));
 		}
 
 		let map_results = futures::future::try_join_all(map_futures)
@@ -250,11 +253,11 @@ impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 
 		queue.submit([encoder.finish()]);
 
-		converter.convert().await.expect("Failed to download texture data")
+		converter.convert(device).await.expect("Failed to download texture data")
 	}
 }
 
-/// Uploads an raster texture from the CPU to the GPU. This Is now deprecated and the Convert node should be used in the future.
+/// Uploads an raster texture from the CPU to the GPU. This is now deprecated and the Convert node should be used in the future.
 ///
 /// Accepts either individual raster data or a table of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
 #[node_macro::node(category(""))]

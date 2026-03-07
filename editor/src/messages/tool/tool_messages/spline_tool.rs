@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -129,7 +129,7 @@ impl LayoutHolder for SplineTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -155,7 +155,7 @@ impl LayoutHolder for SplineTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
 		Layout(vec![LayoutGroup::Row { widgets }])
@@ -388,15 +388,15 @@ impl Fsm for SplineToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+				let path_node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
-				let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
+				let spline_node_type = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER).expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.fill.apply_fill(layer, responses);
 				tool_data.current_layer = Some(layer);
 
 				SplineToolFsmState::Drawing
@@ -468,9 +468,13 @@ impl Fsm for SplineToolFsmState {
 				state
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm) => {
-				if tool_data.points.len() >= 2 {
-					delete_preview(tool_data, responses);
+				if tool_data.points.len() <= 1 {
+					responses.add(DocumentMessage::AbortTransaction);
+					return SplineToolFsmState::Ready;
 				}
+
+				delete_preview(tool_data, responses);
+
 				responses.add(SplineToolMessage::MergeEndpoints);
 				SplineToolFsmState::MergingEndpoints
 			}

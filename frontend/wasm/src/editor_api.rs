@@ -5,23 +5,25 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use graphene_std::vector::GradientStops;
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -31,7 +33,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
 #[cfg(not(feature = "native"))]
-use editor::application::Editor;
+use editor::application::{Editor, Environment, Host, Platform};
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
@@ -43,14 +45,7 @@ fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 	hasher.finish()
 }
 
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
-#[wasm_bindgen(js_name = setRandomSeed)]
-pub fn set_random_seed(seed: u64) {
-	editor::application::set_uuid_seed(seed);
-}
-
-/// Provides a handle to access the raw WASM memory.
+/// Provides a handle to access the raw Wasm memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
@@ -84,32 +79,45 @@ impl EditorHandle {
 	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
 		self.send_frontend_message_to_js(message);
 	}
+
+	fn initialize_handle(frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let panic_callback = frontend_message_handler_callback.clone();
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
+		editor_handle
+	}
 }
 
 #[wasm_bindgen]
 impl EditorHandle {
 	#[cfg(not(feature = "native"))]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor = Editor::new();
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
+	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor = Editor::new(
+			Environment {
+				platform: Platform::Web,
+				host: match platform.as_str() {
+					"Linux" => Host::Linux,
+					"Mac" => Host::Mac,
+					"Windows" => Host::Windows,
+					_ => unreachable!(),
+				},
+			},
+			uuid_random_seed,
+		);
+
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
+
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	#[cfg(feature = "native")]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
+	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
@@ -150,7 +158,7 @@ impl EditorHandle {
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
+	fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(image_data);
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
@@ -160,10 +168,6 @@ impl EditorHandle {
 				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
 			}
 			return;
-		}
-
-		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
-			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}
 
 		let message_type = message.to_discriminant().local_name();
@@ -184,18 +188,10 @@ impl EditorHandle {
 	// ========================================================================
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
-	pub fn init_after_frontend_ready(&self, platform: String) {
+	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
 		crate::native_communcation::initialize_native_communication();
 
-		// Send initialization messages
-		let platform = match platform.as_str() {
-			"Windows" => Platform::Windows,
-			"Mac" => Platform::Mac,
-			"Linux" => Platform::Linux,
-			_ => Platform::Unknown,
-		};
-		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
@@ -210,20 +206,20 @@ impl EditorHandle {
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
 						// Process all messages that have been queued up
-						let messages = MESSAGE_BUFFER.take();
-
-						for message in messages {
-							handle.dispatch(message);
-						}
-
-						handle.dispatch(InputPreprocessorMessage::CurrentTime {
-							timestamp: js_sys::Date::now() as u64,
-						});
-						handle.dispatch(AnimationMessage::IncrementFrameCounter);
+						let mut messages = MESSAGE_BUFFER.take();
+						messages.push(
+							InputPreprocessorMessage::CurrentTime {
+								timestamp: js_sys::Date::now() as u64,
+							}
+							.into(),
+						);
+						messages.push(AnimationMessage::IncrementFrameCounter.into());
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
+						messages.push(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into());
+
+						handle.dispatch(Message::Batched { messages: messages.into() });
 					});
 				}
 
@@ -274,6 +270,13 @@ impl EditorHandle {
 		self.dispatch(NodeGraphMessage::AddSecondaryExport);
 	}
 
+	/// Start Pointer Lock
+	#[wasm_bindgen(js_name = appWindowPointerLock)]
+	pub fn app_window_pointer_lock(&self) {
+		let message = AppWindowMessage::PointerLock;
+		self.dispatch(message);
+	}
+
 	/// Minimizes the application window to the taskbar or dock
 	#[wasm_bindgen(js_name = appWindowMinimize)]
 	pub fn app_window_minimize(&self) {
@@ -285,6 +288,12 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
 		let message = AppWindowMessage::Maximize;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = appWindowFullscreen)]
+	pub fn app_window_fullscreen(&self) {
+		let message = AppWindowMessage::Fullscreen;
 		self.dispatch(message);
 	}
 
@@ -379,18 +388,14 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: Option<String>) {
-		let preferences = if let Some(preferences) = preferences {
+		if let Some(preferences) = preferences {
 			let Ok(preferences) = serde_json::from_str(&preferences) else {
 				log::error!("Failed to deserialize preferences");
 				return;
 			};
-			Some(preferences)
-		} else {
-			None
-		};
-
-		let message = PreferencesMessage::Load { preferences };
-		self.dispatch(message);
+			let message = PreferencesMessage::Load { preferences };
+			self.dispatch(message);
+		}
 	}
 
 	#[wasm_bindgen(js_name = selectDocument)]
@@ -406,13 +411,15 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocumentFile)]
-	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
-		let message = PortfolioMessage::OpenDocumentFile {
-			document_name: Some(document_name),
-			document_path: None,
-			document_serialized_content,
-		};
+	#[wasm_bindgen(js_name = openFile)]
+	pub fn open_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::OpenFile { path: PathBuf::from(path), content };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = importFile)]
+	pub fn import_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::ImportFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 
@@ -595,6 +602,13 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Dialog got dismissed
+	#[wasm_bindgen(js_name = onDialogDismiss)]
+	pub fn on_dialog_dismiss(&self) {
+		let message = DialogMessage::Dismiss;
+		self.dispatch(message);
+	}
+
 	/// A text box was changed
 	#[wasm_bindgen(js_name = updateBounds)]
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
@@ -634,6 +648,34 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		Ok(())
+	}
+
+	/// Update the color of the currently-edited gradient stop
+	#[wasm_bindgen(js_name = updateGradientStopColor)]
+	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
+		Ok(())
+	}
+
+	/// Start a new undo transaction for gradient stop color editing
+	#[wasm_bindgen(js_name = startGradientStopColorTransaction)]
+	pub fn start_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::StartTransactionForColorStop);
+	}
+
+	/// Commit the current gradient stop color transaction (called on pointer-up after each drag/click)
+	#[wasm_bindgen(js_name = commitGradientStopColorTransaction)]
+	pub fn commit_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::CommitTransactionForColorStop);
+	}
+
+	/// Close the gradient stop color picker and commit any pending transaction
+	#[wasm_bindgen(js_name = closeGradientStopColorPicker)]
+	pub fn close_gradient_stop_color_picker(&self) {
+		self.dispatch(GradientToolMessage::CloseStopColorPicker);
 	}
 
 	#[wasm_bindgen(js_name = clipLayer)]
@@ -719,13 +761,22 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Toggle lock state of all selected layers
+	#[wasm_bindgen(js_name = toggleSelectedLocked)]
+	pub fn toggle_selected_locked(&self) {
+		let message = NodeGraphMessage::ToggleSelectedLocked;
+		self.dispatch(message);
+	}
+
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {
+		let value: serde_json::Value = serde_wasm_bindgen::from_value(node_type).unwrap();
+
 		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type,
+			node_type: value.into(),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		};
@@ -888,6 +939,34 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	Some(real)
 }
 
+#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
+pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	GradientStops { position, midpoint, color }
+		.interpolated_samples()
+		.into_iter()
+		.map(|(position, color, _)| {
+			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
+			let percent = ((position * 100.) * 1e2).round() / 1e2;
+			format!("#{hex} {percent}%")
+		})
+		.collect::<Vec<_>>()
+		.join(", ")
+}
+
+#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
+pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> Object {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	let color = GradientStops { position, midpoint, color }.evaluate(t);
+
+	let obj = Object::new();
+	Reflect::set(&obj, &JsValue::from_str("red"), &JsValue::from_f64(color.r() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("green"), &JsValue::from_f64(color.g() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("blue"), &JsValue::from_f64(color.b() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("alpha"), &JsValue::from_f64(color.a() as f64)).unwrap();
+	obj
+}
+
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure
 fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
 	web_sys::window()
@@ -952,7 +1031,7 @@ async fn poll_node_graph_evaluation() {
 
 	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
-	};
+	}
 
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();

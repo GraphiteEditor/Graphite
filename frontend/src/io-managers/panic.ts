@@ -1,12 +1,11 @@
-import { type Editor } from "@graphite/editor";
-import { DisplayDialogPanic } from "@graphite/messages";
-import { type DialogState } from "@graphite/state-providers/dialog";
+import type { Editor } from "@graphite/editor";
+import type { DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState) {
 	// Code panic dialog and console error
-	editor.subscriptions.subscribeJsMessage(DisplayDialogPanic, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;
@@ -40,7 +39,7 @@ export function githubUrl(panicDetails: string): string {
 			Provide any further information or context that you think would be helpful in fixing the issue. Screenshots or video can be linked or attached to this issue.
 
 			**Browser and OS**
-			${browserVersion()}, ${operatingSystem().replace("Unknown", "YOUR OPERATING SYSTEM")}
+			${browserVersion()}, ${operatingSystem()}
 
 			**Stack Trace**
 			Copied from the crash dialog in the Graphite editor:
@@ -68,7 +67,7 @@ export function githubUrl(panicDetails: string): string {
 			if (value) url.searchParams.set(field, value);
 		});
 
-		return url.toString();
+		return String(url);
 	};
 
 	let urlString = buildUrl(true);

@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -122,7 +122,7 @@ impl LayoutHolder for FreehandTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -148,7 +148,7 @@ impl LayoutHolder for FreehandTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
 		Layout(vec![LayoutGroup::Row { widgets }])
@@ -285,13 +285,13 @@ impl Fsm for FreehandToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+				let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.fill.apply_fill(layer, responses);
 				tool_data.layer = Some(layer);
 
 				FreehandToolFsmState::Drawing
@@ -402,7 +402,7 @@ mod test_freehand {
 			.filter_map(|layer| {
 				let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				// Only get layers with path nodes
-				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")?;
+				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
 
 				let vector = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_viewport(layer);

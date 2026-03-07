@@ -1,25 +1,21 @@
 use graph_craft::wasm_application_io::WasmApplicationIo;
-use graphite_editor::application::Editor;
+use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
+use message_dispatcher::DesktopWrapperMessageDispatcher;
+use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
-// TODO: Remove usage of this reexport in desktop create and remove this line
-pub use graphene_std::Color;
-
+pub use graphite_editor::consts::FILE_EXTENSION;
+pub use wgpu_executor::TargetTexture;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
 pub use wgpu_executor::WgpuExecutor;
 pub use wgpu_executor::WgpuFeatures;
 
-pub mod messages;
-use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
-
-mod message_dispatcher;
-use message_dispatcher::DesktopWrapperMessageDispatcher;
-
 mod handle_desktop_wrapper_message;
 mod intercept_editor_message;
 mod intercept_frontend_message;
-
+mod message_dispatcher;
+pub mod messages;
 pub(crate) mod utils;
 
 pub struct DesktopWrapper {
@@ -27,8 +23,18 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new() -> Self {
-		Self { editor: Editor::new() }
+	pub fn new(uuid_random_seed: u64) -> Self {
+		#[cfg(target_os = "windows")]
+		let host = Host::Windows;
+		#[cfg(target_os = "macos")]
+		let host = Host::Mac;
+		#[cfg(target_os = "linux")]
+		let host = Host::Linux;
+		let env = Environment { platform: Platform::Desktop, host };
+
+		Self {
+			editor: Editor::new(env, uuid_random_seed),
+		}
 	}
 
 	pub fn init(&self, wgpu_context: WgpuContext) {
@@ -48,12 +54,6 @@ impl DesktopWrapper {
 			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
-	}
-}
-
-impl Default for DesktopWrapper {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 

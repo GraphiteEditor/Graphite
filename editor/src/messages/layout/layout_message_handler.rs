@@ -2,7 +2,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, GradientStops};
+use graphene_std::vector::style::{FillChoice, GradientStop, GradientStops};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -71,7 +71,7 @@ impl LayoutMessageHandler {
 							return Some((widget, widget_path));
 						}
 
-						if let Widget::PopoverButton(popover) = &widget.widget {
+						if let Widget::PopoverButton(popover) = &*widget.widget {
 							stack.extend(
 								popover
 									.popover_layout
@@ -97,7 +97,7 @@ impl LayoutMessageHandler {
 								return Some((cell, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &cell.widget {
+							if let Widget::PopoverButton(popover) = &*cell.widget {
 								stack.extend(
 									popover
 										.popover_layout
@@ -126,7 +126,7 @@ impl LayoutMessageHandler {
 			return;
 		};
 
-		match &mut widget_instance.widget {
+		match &mut *widget_instance.widget {
 			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),
@@ -193,18 +193,17 @@ impl LayoutMessageHandler {
 							}
 
 							// Gradient
-							let gradient = update_value.get("stops").and_then(|x| x.as_array());
-							if let Some(stops) = gradient {
-								let gradient_stops = stops
-									.iter()
-									.filter_map(|stop| {
-										stop.as_object().and_then(|stop| {
-											let position = stop.get("position").and_then(|x| x.as_f64());
-											let color = stop.get("color").and_then(|x| x.as_object()).and_then(decode_color);
-											if let (Some(position), Some(color)) = (position, color) { Some((position, color)) } else { None }
-										})
-									})
-									.collect::<Vec<_>>();
+							let positions = update_value.get("position").and_then(|x| x.as_array());
+							let midpoints = update_value.get("midpoint").and_then(|x| x.as_array());
+							let colors = update_value.get("color").and_then(|x| x.as_array());
+
+							if let (Some(positions), Some(midpoints), Some(colors)) = (positions, midpoints, colors) {
+								let gradient_stops = positions.iter().zip(midpoints.iter()).zip(colors.iter()).filter_map(|((pos, mid), col)| {
+									let position = pos.as_f64()?;
+									let midpoint = mid.as_f64()?;
+									let color = col.as_object().and_then(decode_color)?;
+									Some(GradientStop { position, midpoint, color })
+								});
 
 								color_button.value = FillChoice::Gradient(GradientStops::new(gradient_stops));
 								return (color_button.on_update.callback)(color_button);
@@ -287,11 +286,7 @@ impl LayoutMessageHandler {
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let Some(value) = value.as_str().map(|s| s.to_string()) else {
-						error!("NodeCatalog update was not of type String");
-						return;
-					};
-					let callback_message = (node_type_input.on_update.callback)(&value);
+					let callback_message = (node_type_input.on_update.callback)(&value.into());
 					responses.add(callback_message);
 				}
 			},
@@ -468,29 +463,11 @@ impl LayoutMessageHandler {
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
-		let message = match layout_target {
-			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { diff },
-			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { diff },
-			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { diff },
-			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { diff },
-			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { diff },
-			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { diff },
-			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { diff },
-			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { diff },
-			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { diff },
-			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { diff },
-			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { diff },
-			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { diff },
-			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { diff },
-			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { diff },
-			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },
-			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { diff },
+		if matches!(layout_target, LayoutTarget::_LayoutTargetLength) {
+			panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing");
+		}
 
-			// KEEP THIS ENUM LAST
-			LayoutTarget::_LayoutTargetLength => panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing"),
-		};
-
-		responses.add(message);
+		responses.add(FrontendMessage::UpdateLayout { layout_target, diff });
 	}
 }
 

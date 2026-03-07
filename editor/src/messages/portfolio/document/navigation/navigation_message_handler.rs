@@ -1,3 +1,4 @@
+use crate::application::Editor;
 use crate::consts::{
 	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
 	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
@@ -8,7 +9,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2};
@@ -176,9 +176,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
 				// On Mac, the OS already converts Shift+scroll into horizontal scrolling
-				let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-
-				let delta = if use_y_as_x && keyboard_platform == KeyboardPlatformLayout::Standard {
+				let delta = if use_y_as_x && !Editor::environment().is_mac() {
 					(ipp.mouse.scroll_delta.y, 0.).into()
 				} else {
 					ipp.mouse.scroll_delta.as_dvec2()
@@ -241,7 +239,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 				let document_bounds = if !graph_view_overlay_open {
 					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-					network_interface.document_metadata().document_bounds_viewport_space()
+					network_interface.document_bounds_viewport_space(true)
 				} else {
 					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 				};
@@ -259,7 +257,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::CanvasZoomSet { zoom_factor } => {
 				let document_bounds = if !graph_view_overlay_open {
 					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-					network_interface.document_metadata().document_bounds_viewport_space()
+					network_interface.document_bounds_viewport_space(true)
 				} else {
 					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 				};
@@ -456,7 +454,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 							let document_bounds = if !graph_view_overlay_open {
 								// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-								network_interface.document_metadata().document_bounds_viewport_space()
+								network_interface.document_bounds_viewport_space(true)
 							} else {
 								network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 							};

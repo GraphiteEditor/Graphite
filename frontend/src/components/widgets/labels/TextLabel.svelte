@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onMount, onDestroy } from "svelte";
+
 	import type { ActionShortcut } from "@graphite/messages";
 
 	let className = "";
@@ -7,19 +9,28 @@
 	let styleName = "";
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
+
+	// Content
+	// `value` is passed via slot
 	export let disabled = false;
+	export let forCheckbox: bigint | undefined = undefined;
+	// Styling
 	export let narrow = false;
 	export let bold = false;
 	export let italic = false;
 	export let monospace = false;
+	export let multiline = false;
 	export let centerAlign = false;
 	export let tableAlign = false;
-	export let minWidth = "";
-	export let multiline = false;
+	// Sizing
+	export let minWidth = 0;
+	export let minWidthCharacters = 0;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	export let forCheckbox: bigint | undefined = undefined;
+
+	let self: HTMLLabelElement | undefined;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -27,6 +38,31 @@
 	$: extraStyles = Object.entries(styles)
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
+
+	$: watchForCheckbox(forCheckbox);
+
+	function watchForCheckbox(forCheckbox: bigint | undefined) {
+		if (!self) return;
+
+		self.removeEventListener("pointerenter", handlePointerEnter);
+		self.removeEventListener("pointerleave", handlePointerLeave);
+
+		if (forCheckbox !== undefined) {
+			self.addEventListener("pointerenter", handlePointerEnter);
+			self.addEventListener("pointerleave", handlePointerLeave);
+		}
+	}
+
+	function handlePointerEnter() {
+		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.add("label-is-hovered");
+	}
+
+	function handlePointerLeave() {
+		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.remove("label-is-hovered");
+	}
+
+	onMount(() => watchForCheckbox(forCheckbox));
+	onDestroy(() => watchForCheckbox(undefined));
 </script>
 
 <label
@@ -39,12 +75,13 @@
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidth || undefined}
+	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
+	bind:this={self}
 >
 	<slot />
 </label>

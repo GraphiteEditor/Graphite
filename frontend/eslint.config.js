@@ -32,9 +32,6 @@ export default defineConfig([
 			"import/resolver": { typescript: true, node: true },
 		},
 		languageOptions: {
-			parserOptions: {
-				project: "./tsconfig.json",
-			},
 			globals: {
 				...globals.browser,
 				...globals.node,
@@ -90,6 +87,7 @@ export default defineConfig([
 			"svelte/require-each-key": "off", // TODO: Remove this rule and fix the places where it's violated
 
 			// Import plugin config (for intelligently validating module import statements)
+			"import/consistent-type-specifier-style": ["error", "prefer-top-level"],
 			"import/no-unresolved": "error",
 			// `no-duplicates` disabled due to <https://github.com/import-js/eslint-plugin-import/issues/1479#issuecomment-1789527447>. Reenable if that issue gets fixed.
 			"import/no-duplicates": "off",

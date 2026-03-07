@@ -12,19 +12,9 @@ To begin working with the Graphite codebase, you will need to set up the project
 ## Dependencies
 
 Graphite is built with Rust and web technologies, which means you will need to install:
-- [Node.js](https://nodejs.org/) (the latest LTS version)
 - [Rust](https://www.rust-lang.org/) (the latest stable release)
+- [Node.js](https://nodejs.org/) (the latest LTS version)
 - [Git](https://git-scm.com/) (any recent version)
-
-Next, install the dependencies required for development builds:
-
-```sh
-cargo install cargo-watch
-cargo install wasm-pack
-cargo install -f wasm-bindgen-cli@0.2.100
-```
-
-Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
 
 ## Repository
 
@@ -32,7 +22,6 @@ Clone the project to a convenient location:
 
 ```sh
 git clone https://github.com/GraphiteEditor/Graphite.git
-cd Graphite
 ```
 
 ## Development builds
@@ -40,39 +29,21 @@ cd Graphite
 From either the `/` (root) or `/frontend` directories, you can run the project by executing:
 
 ```sh
-npm start
+cargo run
 ```
 
-This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. You sometimes may need to reload the browser's page if hot reloading didn't behave right— always refresh when Rust recompiles.
+This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. TypeScript and HTML changes require a manual page reload to fix broken state.
 
 This method compiles Graphite code in debug mode which includes debug symbols for viewing function names in stack traces. But be aware, it runs slower and the Wasm binary is much larger. (Having your browser's developer tools open will also significantly impact performance in both debug and release builds, so it's best to close that when not in use.)
 
-To run the dev server in optimized mode, which is faster and produces a smaller Wasm binary:
-
-```sh
-# Includes debug symbols
-npm run profiling
-
-# Excludes (most) debug symbols, used in release builds
-npm run production
-```
-
 <details>
-<summary>Production build instructions: click here</summary>
+<summary>Dev server optimized build instructions: click here</summary>
 
-You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by first installing the additional `cargo-about` dev dependency:
-
-```sh
-cargo install cargo-about
-```
-
-And then running:
+On rare occasions (like while running advanced performance profiles or proxying the dev server connection over a slow network where the >100 MB unoptimized binary size would pose an issue), you may need to run the dev server with release optimizations. To do that while keeping debug symbols:
 
 ```sh
-npm run build
+cargo run release
 ```
-
-This produces the `/frontend/dist` directory containing the static site files that must be served by your own web server.
 
 </details>
 

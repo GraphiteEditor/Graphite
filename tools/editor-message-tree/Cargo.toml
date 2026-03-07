@@ -1,0 +1,11 @@
+[package]
+name = "editor-message-tree"
+description = "Tool to generate developer documentation for the editor message system structure"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Local dependencies
+editor = { path = "../../editor", package = "graphite-editor" }

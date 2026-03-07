@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type RadioEntries, type RadioEntryData } from "@graphite/messages";
+	import type { RadioEntryData } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -9,11 +9,15 @@
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
-	export let entries: RadioEntries;
+	// Content
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
-	export let minWidth = 0;
+	// Children
+	export let entries: RadioEntryData[];
+	// Styling
 	export let narrow = false;
+	// Sizing
+	export let minWidth = 0;
 
 	$: mixed = selectedIndex === undefined && !disabled;
 
@@ -75,15 +79,6 @@
 				margin-right: 2px;
 			}
 
-			&:hover {
-				background: var(--color-6-lowergray);
-				color: var(--color-f-white);
-
-				svg {
-					fill: var(--color-f-white);
-				}
-			}
-
 			&.active {
 				background: var(--color-e-nearwhite);
 				color: var(--color-2-mildblack);
@@ -108,19 +103,12 @@
 			}
 		}
 
-		&.narrow.narrow {
-			--widget-height: 20px;
-			height: var(--widget-height);
+		&:not(.disabled) button:not(.active):hover {
+			background: var(--color-6-lowergray);
+			color: var(--color-f-white);
 
-			button {
-				height: 16px;
-			}
-		}
-
-		&.mixed {
-			button:not(:hover),
-			&.disabled button:hover {
-				background: var(--color-5-dullgray);
+			svg {
+				fill: var(--color-f-white);
 			}
 		}
 
@@ -138,6 +126,22 @@
 				svg {
 					fill: var(--color-2-mildblack);
 				}
+			}
+		}
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+			height: var(--widget-height);
+
+			button {
+				height: 16px;
+			}
+		}
+
+		&.mixed {
+			button:not(:hover),
+			&.disabled button:hover {
+				background: var(--color-5-dullgray);
 			}
 		}
 	}

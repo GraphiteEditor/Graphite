@@ -1,8 +1,7 @@
+use crate::transform::Footprint;
 use std::any::TypeId;
-
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 
 #[macro_export]
 macro_rules! concrete {
@@ -77,6 +76,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
+// TODO: Rename to NodeSignatureMonomorphization
 #[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
@@ -118,29 +118,16 @@ impl NodeIOTypes {
 
 impl std::fmt::Debug for NodeIOTypes {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_fmt(format_args!(
-			"node({}) → {}",
-			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
-			self.return_value
-		))
+		let inputs = self.inputs.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+		let return_value = &self.return_value;
+		let call_argument = &self.call_argument;
+		f.write_fmt(format_args!("({inputs}) → {return_value} called with {call_argument}"))
 	}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
-	pub name: Cow<'static, str>,
-}
-
-impl From<String> for ProtoNodeIdentifier {
-	fn from(value: String) -> Self {
-		Self { name: Cow::Owned(value) }
-	}
-}
-
-impl From<&'static str> for ProtoNodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
-	}
+	name: Cow<'static, str>,
 }
 
 impl ProtoNodeIdentifier {
@@ -151,12 +138,8 @@ impl ProtoNodeIdentifier {
 	pub const fn with_owned_string(name: String) -> Self {
 		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
-}
 
-impl Deref for ProtoNodeIdentifier {
-	type Target = str;
-
-	fn deref(&self) -> &Self::Target {
+	pub fn as_str(&self) -> &str {
 		self.name.as_ref()
 	}
 }
@@ -213,6 +196,13 @@ pub struct TypeDescriptor {
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);
+	}
+}
+
+impl std::fmt::Display for TypeDescriptor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let text = make_type_user_readable(&simplify_identifier_name(&self.name));
+		write!(f, "{text}")
 	}
 }
 
@@ -346,46 +336,52 @@ impl Type {
 		}
 	}
 
-	pub fn to_cow_string(&self) -> Cow<'static, str> {
+	pub fn identifier_name(&self) -> String {
 		match self {
-			Type::Generic(name) => name.clone(),
-			_ => Cow::Owned(self.to_string()),
+			Type::Generic(name) => name.to_string(),
+			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
+			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
+			Type::Future(ty) => ty.identifier_name(),
 		}
 	}
 }
 
-pub fn format_type(ty: &str) -> String {
+pub fn simplify_identifier_name(ty: &str) -> String {
 	ty.split('<')
 		.map(|path| path.split(',').map(|path| path.split("::").last().unwrap_or(path)).collect::<Vec<_>>().join(","))
 		.collect::<Vec<_>>()
 		.join("<")
 }
 
+pub fn make_type_user_readable(ty: &str) -> String {
+	ty.replace("Option<Arc<OwnedContextImpl>>", "Context")
+		.replace("Vector<Option<Table<Graphic>>>", "Vector")
+		.replace("Raster<CPU>", "Raster")
+		.replace("Raster<GPU>", "Raster")
+}
+
 impl std::fmt::Debug for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let result = match self {
-			Self::Generic(name) => name.to_string(),
-			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
-			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(ty) => format_type(&ty.name),
-			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
-			Self::Future(ty) => format!("{ty:?}"),
-		};
-		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{result}")
+		write!(f, "{self}")
 	}
 }
 
+// Display
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let result = match self {
-			Type::Generic(name) => name.to_string(),
-			Type::Concrete(ty) => format_type(&ty.name),
-			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
-			Type::Future(ty) => ty.to_string(),
-		};
-		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{result}")
+		use glam::*;
+
+		match self {
+			Type::Generic(name) => write!(f, "{}", make_type_user_readable(name)),
+			Type::Concrete(ty) => match () {
+				() if self == &concrete!(DVec2) || self == &concrete!(Vec2) || self == &concrete!(IVec2) || self == &concrete!(UVec2) => write!(f, "Vec2"),
+				() if self == &concrete!(glam::DAffine2) => write!(f, "Transform"),
+				() if self == &concrete!(Footprint) => write!(f, "Footprint"),
+				() if self == &concrete!(&str) || self == &concrete!(String) => write!(f, "String"),
+				_ => write!(f, "{}", make_type_user_readable(&simplify_identifier_name(&ty.name))),
+			},
+			Type::Fn(call_arg, return_value) => write!(f, "{return_value} called with {call_arg}"),
+			Type::Future(ty) => write!(f, "{ty}"),
+		}
 	}
 }

@@ -1,6 +1,8 @@
 branding/
 target/
+third-party-licenses.txt*
 result/
+.flatpak-builder/
 *.spv
 *.exrc
 perf.data*
@@ -10,5 +12,3 @@ flamegraph.svg
 .idea/
 .direnv
 .DS_Store
-hierarchical_message_system_tree.txt
-hierarchical_message_system_tree.html

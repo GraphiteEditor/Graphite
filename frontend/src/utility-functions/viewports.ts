@@ -1,4 +1,4 @@
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
 let resizeObserver: ResizeObserver | undefined;
 
@@ -41,6 +41,10 @@ export function setupViewportResizeObserver(editor: Editor) {
 
 			// TODO: Consider passing physical sizes as well to eliminate pixel inaccuracies since width and height could be rounded differently
 			const scale = physicalWidth / logicalWidth;
+
+			if (!scale || scale <= 0) {
+				continue;
+			}
 
 			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 		}

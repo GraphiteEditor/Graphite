@@ -3,7 +3,7 @@ use cef::sys::cef_event_flags_t;
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
-use winit::keyboard::{KeyLocation, ModifiersState};
+use winit::keyboard::{Key, KeyLocation, ModifiersState, NamedKey};
 
 use crate::cef::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT};
 
@@ -17,6 +17,18 @@ pub(crate) struct InputState {
 impl InputState {
 	pub(crate) fn modifiers_changed(&mut self, modifiers: &ModifiersState) {
 		self.modifiers = *modifiers;
+	}
+
+	pub(crate) fn modifiers_apply_key_event(&mut self, key: &Key, state: &ElementState) {
+		let bits = match key {
+			Key::Named(NamedKey::Shift) => ModifiersState::SHIFT,
+			Key::Named(NamedKey::Control) => ModifiersState::CONTROL,
+			Key::Named(NamedKey::Alt) => ModifiersState::ALT,
+			Key::Named(NamedKey::Meta) => ModifiersState::META,
+			_ => return,
+		};
+		let is_pressed = matches!(state, ElementState::Pressed);
+		self.modifiers.set(bits, is_pressed);
 	}
 
 	pub(crate) fn cursor_move(&mut self, position: &PhysicalPosition<f64>) -> bool {
@@ -127,25 +139,26 @@ impl ClickTracker {
 
 		let prev_time = record.time;
 		let prev_position = record.position;
+		let prev_count: ClickCount = record.down_count;
 
 		let now = Instant::now();
 		record.time = now;
 		record.position = position;
 
 		match state {
-			ElementState::Pressed if record.down_count == ClickCount::Double => {
+			ElementState::Pressed if record.down_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					down_count: ClickCount::Single,
+					down_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
-			ElementState::Released if record.up_count == ClickCount::Double => {
+			ElementState::Released if record.up_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					up_count: ClickCount::Single,
+					up_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
 			_ => {}
 		}
@@ -155,7 +168,11 @@ impl ClickTracker {
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
 
-		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
+		let count = match (prev_count, within_time, within_dist) {
+			(ClickCount::Double, true, true) => ClickCount::Triple,
+			(_, true, true) => ClickCount::Double,
+			_ => ClickCount::Single,
+		};
 
 		*record = match state {
 			ElementState::Pressed => ClickRecord { down_count: count, ..*record },
@@ -170,12 +187,14 @@ pub(crate) enum ClickCount {
 	#[default]
 	Single,
 	Double,
+	Triple,
 }
 impl From<ClickCount> for i32 {
 	fn from(count: ClickCount) -> i32 {
 		match count {
 			ClickCount::Single => 1,
 			ClickCount::Double => 2,
+			ClickCount::Triple => 3,
 		}
 	}
 }
