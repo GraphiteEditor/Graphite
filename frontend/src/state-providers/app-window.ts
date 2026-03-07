@@ -4,8 +4,14 @@ import type { AppWindowPlatform } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 
 export function createAppWindowState(editor: Editor) {
-	const { subscribe, update } = writable({
-		platform: "Web" as AppWindowPlatform,
+	const { subscribe, update } = writable<{
+		platform: AppWindowPlatform;
+		maximized: boolean;
+		fullscreen: boolean;
+		viewportHolePunch: boolean;
+		uiScale: number;
+	}>({
+		platform: "Web",
 		maximized: false,
 		fullscreen: false,
 		viewportHolePunch: false,
