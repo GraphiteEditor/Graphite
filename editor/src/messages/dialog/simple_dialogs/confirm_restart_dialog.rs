@@ -35,21 +35,21 @@ impl LayoutHolder for ConfirmRestartDialog {
 		Layout(vec![
 			LayoutGroup::row(vec![TextLabel::new("Restart to apply changes?").bold(true).multiline(true).widget_instance()]),
 			LayoutGroup::row(vec![
-					TextLabel::new(
-						format!(
-							"
+				TextLabel::new(
+					format!(
+						"
 							Settings that only take effect on next launch:\n\
 							{changed_settings}\n\
 							\n\
 							This only takes a few seconds. Open documents,\n\
 							even unsaved ones, will be automatically restored.
 							"
-						)
-						.trim(),
 					)
-					.multiline(true)
-					.widget_instance(),
-				]),
+					.trim(),
+				)
+				.multiline(true)
+				.widget_instance(),
+			]),
 		])
 	}
 }
