@@ -25,7 +25,13 @@ std = [
 	"dep:serde",
 	"dep:kurbo",
 ]
-wasm = ["tsify", "wasm-bindgen"]
+wasm = [
+	"core-types/wasm",
+	"raster-types/wasm",
+	"vector-types/wasm",
+	"tsify",
+	"wasm-bindgen",
+]
 
 [dependencies]
 # Local dependencies
