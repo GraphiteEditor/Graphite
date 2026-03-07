@@ -2192,7 +2192,10 @@ fn static_input_properties() -> InputProperties {
 					true
 				});
 
-			Ok(vec![LayoutGroup::row(node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input))])
+			Ok(vec![LayoutGroup::row(node_properties::number_widget(
+				ParameterWidgetsInfo::new(node_id, index, blank_assist, context),
+				number_input,
+			))])
 		}),
 	);
 	map.insert(
@@ -2227,7 +2230,11 @@ fn static_input_properties() -> InputProperties {
 				}
 			};
 			// NOTE: The bool input MUST be at the input index directly before the f64 input!
-			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input))])
+			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
+				ParameterWidgetsInfo::new(node_id, index, false, context),
+				index - 1,
+				number_input,
+			))])
 		}),
 	);
 	map.insert(
@@ -2550,9 +2557,7 @@ fn static_input_properties() -> InputProperties {
 	);
 	map.insert(
 		"text_area".to_string(),
-		Box::new(|node_id, index, context| {
-			Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)))])
-		}),
+		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)))])),
 	);
 	map.insert(
 		"text_font".to_string(),

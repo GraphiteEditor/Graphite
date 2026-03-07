@@ -128,19 +128,21 @@ pub struct DocumentToolData {
 impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = Layout(vec![
-			LayoutGroup::row(vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance()]),
 			LayoutGroup::row(vec![
-					IconButton::new("SwapVertical", 16)
-						.tooltip_label("Swap Working Colors")
-						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
-						.on_update(|_| ToolMessage::SwapColors.into())
-						.widget_instance(),
-					IconButton::new("WorkingColors", 16)
-						.tooltip_label("Reset Working Colors")
-						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
-						.on_update(|_| ToolMessage::ResetColors.into())
-						.widget_instance(),
-				]),
+				WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance(),
+			]),
+			LayoutGroup::row(vec![
+				IconButton::new("SwapVertical", 16)
+					.tooltip_label("Swap Working Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
+					.on_update(|_| ToolMessage::SwapColors.into())
+					.widget_instance(),
+				IconButton::new("WorkingColors", 16)
+					.tooltip_label("Reset Working Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
+					.on_update(|_| ToolMessage::ResetColors.into())
+					.widget_instance(),
+			]),
 		]);
 
 		responses.add(LayoutMessage::SendLayout {

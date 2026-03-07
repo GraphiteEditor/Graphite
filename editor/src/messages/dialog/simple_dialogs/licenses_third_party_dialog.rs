@@ -32,11 +32,11 @@ impl LayoutHolder for LicensesThirdPartyDialog {
 		let non_wrapping_column_width = license_text.split('\n').map(|line| line.chars().filter(|&c| c == '_').count() as u32).max().unwrap_or(0) + 2 + 1;
 
 		Layout(vec![LayoutGroup::row(vec![
-				TextLabel::new(license_text)
-					.monospace(true)
-					.multiline(true)
-					.min_width_characters(non_wrapping_column_width)
-					.widget_instance(),
-			])])
+			TextLabel::new(license_text)
+				.monospace(true)
+				.multiline(true)
+				.min_width_characters(non_wrapping_column_width)
+				.widget_instance(),
+		])])
 	}
 }
