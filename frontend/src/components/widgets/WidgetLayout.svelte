@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Layout, LayoutTarget } from "@graphite/messages";
+	import type { Layout, LayoutTarget } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";

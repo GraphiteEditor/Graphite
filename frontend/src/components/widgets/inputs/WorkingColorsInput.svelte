@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Color } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Color } from "@graphite/messages";
 	import { fillChoiceColor, colorToRgbaCSS } from "@graphite/utility-functions/colors";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";

@@ -1,8 +1,8 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
 
+import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { Layout } from "@graphite/messages";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDocumentState(editor: Editor) {

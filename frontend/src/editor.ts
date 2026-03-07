@@ -1,8 +1,7 @@
 // import { panicProxy } from "@graphite/utility-functions/panic-proxy";
 
-import { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import init, { wasmMemory, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { FrontendMessage } from "@graphite/messages";
+import init, { EditorHandle, wasmMemory, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { FrontendMessage } from "@graphite/../wasm/pkg/graphite_wasm";
 import { createSubscriptionRouter } from "@graphite/subscription-router";
 import type { MessageName, SubscriptionRouter } from "@graphite/subscription-router";
 import { operatingSystem } from "@graphite/utility-functions/platform";

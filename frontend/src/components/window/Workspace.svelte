@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { OpenDocument } from "@graphite/messages";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

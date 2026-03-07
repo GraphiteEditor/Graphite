@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
 
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages";
+	import type { MenuListEntry, MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";

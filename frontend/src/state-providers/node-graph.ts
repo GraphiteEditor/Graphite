@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
+import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/messages";
 import type { MessageBody } from "@graphite/subscription-router";
 
 export function createNodeGraphState(editor: Editor) {

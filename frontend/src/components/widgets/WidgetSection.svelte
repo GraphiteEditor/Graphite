@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";

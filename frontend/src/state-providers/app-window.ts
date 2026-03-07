@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
+import type { AppWindowPlatform } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { AppWindowPlatform } from "@graphite/messages";
 
 export function createAppWindowState(editor: Editor) {
 	const { subscribe, update } = writable({

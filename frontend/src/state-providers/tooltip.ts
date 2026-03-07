@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
+import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { ActionShortcut } from "@graphite/messages";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
 const SHOW_TOOLTIP_DELAY_MS = 500;

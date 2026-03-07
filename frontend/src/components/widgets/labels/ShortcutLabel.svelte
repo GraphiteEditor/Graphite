@@ -1,6 +1,6 @@
 <script lang="ts">
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { IconName } from "@graphite/icons";
-	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

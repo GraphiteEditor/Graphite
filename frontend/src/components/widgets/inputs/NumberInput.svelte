@@ -2,9 +2,9 @@
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
 	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
 	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";

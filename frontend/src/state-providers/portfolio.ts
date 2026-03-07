@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
+import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { OpenDocument } from "@graphite/messages";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
