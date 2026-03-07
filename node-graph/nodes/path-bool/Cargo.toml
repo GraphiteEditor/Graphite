@@ -7,7 +7,7 @@ authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies

@@ -11,7 +11,7 @@ default = ["serde"]
 nightly = []
 type_id_logging = []
 dealloc_nodes = []
-wasm = ["tsify", "wasm-bindgen", "no-std-types/wasm"]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies

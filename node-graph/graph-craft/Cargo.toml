@@ -11,13 +11,7 @@ dealloc_nodes = ["core-types/dealloc_nodes"]
 wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
 loading = ["serde_json"]
-wasm = [
-	"core-types/wasm",
-	"graphic-types/wasm",
-	"text-nodes/wasm",
-	"tsify",
-	"wasm-bindgen",
-]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
