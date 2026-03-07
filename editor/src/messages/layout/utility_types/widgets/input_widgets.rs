@@ -248,10 +248,15 @@ impl NumberInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq)]
 pub enum NumberInputIncrementBehavior {
+	/// The value is added by `step`.
 	#[default]
 	Add,
+	/// The value is multiplied by `step`.
 	Multiply,
+	/// The functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
 	Callback,
+	/// The increment arrows are not shown.
+	None,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

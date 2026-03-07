@@ -375,7 +375,7 @@ const LOCALE_SPECIFIC_KEY_CODES = LOCALE_SPECIFIC_KEY_CODES_INFO.map((info) => i
 const WRITING_SYSTEM_SPECIAL_CHARS = Object.values(KEY_CODES)
 	.filter((info) => info.category === "writing-system")
 	.flatMap((info) => info.keys?.us?.split(" "))
-	.filter((character) => character && !/[a-zA-Z0-9]/.test(character)) as string[];
+	.filter((character): character is string => (!character ? false : !/[a-zA-Z0-9]/.test(character)));
 
 const KEY_ATTRIBUTE_VALUES_INVOLVING_HANDEDNESS = ["Control", "Meta", "Shift"];
 const KEY_ATTRIBUTE_VALUES = new Set([

@@ -33,7 +33,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	app?.focus();
 
 	let viewportPointerInteractionOngoing = false;
-	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
+	let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
 	let canvasFocused = true;
 	let inPointerLock = false;
 	const shakeSamples: { x: number; y: number; time: number }[] = [];
@@ -398,8 +398,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			// Attempt to check if the clipboard permission is denied, and throw an error if that is the case
 			// In Firefox, the `clipboard-read` permission isn't supported, so attempting to query it throws an error
 			// In Safari, the entire Permissions API isn't supported, so the query never occurs and this block is skipped without an error and we assume we might have permission
-			const clipboardRead = "clipboard-read" as PermissionName;
-			const permission = await navigator.permissions?.query({ name: clipboardRead });
+			const permission = await navigator.permissions?.query({ name: "clipboard-read" });
 			if (permission?.state === "denied") throw new Error("Permission denied");
 
 			// Read the clipboard contents if the Clipboard API is available

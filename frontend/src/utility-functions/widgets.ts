@@ -13,7 +13,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 		else throw new Error("DiffUpdate invalid");
 
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: bigint): UIItem | undefined => {
+		const diffObject = update.widgetPath.reduce((targetLayout, index: bigint): UIItem | undefined => {
 			const i = Number(index);
 
 			if (targetLayout && "Column" in targetLayout) return targetLayout.Column.columnWidgets[i];
@@ -30,7 +30,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 			}
 
 			return targetLayout?.[i];
-		}, layout as UIItem);
+		}, layout);
 
 		// Exit if we failed to produce a valid patch for the existing layout.
 		// This means that the backend assumed an existing layout that doesn't exist in the frontend. This can happen, for
@@ -47,7 +47,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 			diffObject.length = 0;
 		}
 		// Remove all of the keys from the old object
-		Object.keys(diffObject).forEach((key) => delete (diffObject as Record<string, unknown>)[key]);
+		Object.keys(diffObject).forEach((key) => Reflect.deleteProperty(diffObject, key));
 
 		// Assign keys to the new object
 		// `Object.assign` works but `diffObject = update.newValue;` doesn't.

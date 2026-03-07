@@ -8,7 +8,7 @@
 
 	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Color, GradientStops } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { createColor, colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
+	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -21,7 +21,7 @@
 
 	export let gradient: GradientStops;
 	export let disabled = false;
-	export let activeMarkerIndex = 0 as number | undefined;
+	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
 	// export let disabled = false;
 	// export let tooltipLabel: string | undefined = undefined;
@@ -114,9 +114,7 @@
 		if (index === -1) index = gradient.position.length;
 
 		// Determine the color of the new stop by evaluating the gradient at the position of the new stop
-		type ReturnedColor = { red: number; green: number; blue: number; alpha: number };
-		const evaluated = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color) as ReturnedColor;
-		const color = createColor(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
+		const color: Color = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color);
 
 		// Insert the new stop into the gradient
 		gradient.position.splice(index, 0, position);

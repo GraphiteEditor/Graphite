@@ -43,8 +43,8 @@
 	export let isInteger = false;
 	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
 	/// "Add"/"Multiply": The value is added or multiplied by `step`.
-	/// "None": the increment arrows are not shown.
 	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+	/// "None": the increment arrows are not shown.
 	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
@@ -427,11 +427,11 @@
 			}
 			ignoredFirstMovement = true;
 		};
-		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// On desktop we don't get `pointermove` events while in pointer lock (CEF doesn't support pointer lock).
 		// We have to listen for our custom `pointerlockmove` events instead.
-		const pointerLockMove = (e: Event) => {
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
-				const delta = (e.detail as { x: number }).x;
+		const pointerLockMove = ({ detail }: WindowEventMap["pointerlockmove"]) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
+				const delta = detail.x;
 				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;

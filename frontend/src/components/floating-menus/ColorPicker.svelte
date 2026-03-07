@@ -34,20 +34,20 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
+	type PresetColors = "None" | "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
 
 	const PURE_COLORS: Record<PresetColors, [number, number, number]> = {
-		none: [0, 0, 0],
-		black: [0, 0, 0],
-		white: [1, 1, 1],
-		red: [1, 0, 0],
-		yellow: [1, 1, 0],
-		green: [0, 1, 0],
-		cyan: [0, 1, 1],
-		blue: [0, 0, 1],
-		magenta: [1, 0, 1],
+		None: [0, 0, 0],
+		Black: [0, 0, 0],
+		White: [1, 1, 1],
+		Red: [1, 0, 0],
+		Yellow: [1, 1, 0],
+		Green: [0, 1, 0],
+		Cyan: [0, 1, 1],
+		Blue: [0, 0, 1],
+		Magenta: [1, 0, 1],
 	};
-	const PURE_COLORS_GRAYABLE = [
+	const PURE_COLORS_GRAYABLE: [PresetColors, string, string][] = [
 		["Red", "#ff0000", "#4c4c4c"],
 		["Yellow", "#ffff00", "#e3e3e3"],
 		["Green", "#00ff00", "#969696"],
@@ -75,7 +75,7 @@
 
 	// Gradient color stops
 	$: gradient = fillChoiceGradientStops(colorOrGradient);
-	let activeIndex = 0 as number | undefined;
+	let activeIndex: number | undefined = 0;
 	let activeIndexIsMidpoint = false;
 	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || colorFromCSS("black") || createColor(0, 0, 0, 1);
 	// Currently viewed color
@@ -372,17 +372,10 @@
 		setColor();
 	}
 
-	function setColorPresetSubtile(e: MouseEvent) {
-		const clickedTile = e.target as HTMLDivElement | undefined;
-		const tileColor = clickedTile?.getAttribute("data-pure-tile") || undefined;
-
-		if (tileColor) setColorPreset(tileColor as PresetColors);
-	}
-
 	function setColorPreset(preset: PresetColors) {
 		dispatch("startHistoryTransaction");
 
-		if (preset === "none") {
+		if (preset === "None") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor("None");
 		} else {
@@ -694,7 +687,7 @@
 					<button
 						class="preset-color none"
 						{disabled}
-						on:click={() => setColorPreset("none")}
+						on:click={() => setColorPreset("None")}
 						data-tooltip-label="Set to No Color"
 						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						tabindex="0"
@@ -704,7 +697,7 @@
 				<button
 					class="preset-color black"
 					{disabled}
-					on:click={() => setColorPreset("black")}
+					on:click={() => setColorPreset("Black")}
 					data-tooltip-label="Set to Black"
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
@@ -713,19 +706,19 @@
 				<button
 					class="preset-color white"
 					{disabled}
-					on:click={() => setColorPreset("white")}
+					on:click={() => setColorPreset("White")}
 					data-tooltip-label="Set to White"
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
 				<Separator style="Related" />
-				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
-					{#each PURE_COLORS_GRAYABLE as [name, color, gray]}
+				<button class="preset-color pure" {disabled} tabindex="-1">
+					{#each PURE_COLORS_GRAYABLE as [preset, color, gray]}
 						<div
-							data-pure-tile={name.toLowerCase()}
+							on:click={() => setColorPreset(preset)}
 							style:--pure-color={color}
 							style:--pure-color-gray={gray}
-							data-tooltip-label={`Set to ${name}`}
+							data-tooltip-label={`Set to ${preset}`}
 							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						></div>
 					{/each}
