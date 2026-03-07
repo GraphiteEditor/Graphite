@@ -154,7 +154,7 @@
 
 	function onScroll(e: Event) {
 		if (!virtualScrollingEntryHeight) return;
-		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+		virtualScrollingEntriesStart = e.target instanceof HTMLElement ? e.target.scrollTop : 0;
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {

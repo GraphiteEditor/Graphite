@@ -34,7 +34,7 @@ impl DialogLayoutHolder for LicensesDialog {
 		];
 		let widgets = button_definitions
 			.iter()
-			.map(|&(icon, label, message_factory)| TextButton::new(label).icon(Some((icon).into())).flush(true).on_update(move |_| message_factory()).widget_instance())
+			.map(|&(icon, label, message_factory)| TextButton::new(label).icon(icon).flush(true).on_update(move |_| message_factory()).widget_instance())
 			.collect();
 
 		Layout(vec![LayoutGroup::column(widgets)])

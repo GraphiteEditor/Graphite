@@ -80,7 +80,8 @@
 
 	function setEditingImportName(event: Event) {
 		if (editingNameImportIndex !== undefined) {
-			let text = (event.target as HTMLInputElement)?.value;
+			if (!(event.target instanceof HTMLInputElement)) return;
+			let text = event.target.value;
 			editor.handle.setImportName(editingNameImportIndex, text);
 			editingNameImportIndex = undefined;
 		}
@@ -88,7 +89,8 @@
 
 	function setEditingExportName(event: Event) {
 		if (editingNameExportIndex !== undefined) {
-			let text = (event.target as HTMLInputElement)?.value;
+			if (!(event.target instanceof HTMLInputElement)) return;
+			let text = event.target.value;
 			editor.handle.setExportName(editingNameExportIndex, text);
 			editingNameExportIndex = undefined;
 		}

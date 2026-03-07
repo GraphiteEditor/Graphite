@@ -12,7 +12,7 @@
 
 	// Content
 	export let checked = false;
-	export let icon: IconName = "Checkmark";
+	export let icon: IconName | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
 	export let disabled = false;
 	// Tooltips
@@ -23,7 +23,7 @@
 	let inputElement: HTMLInputElement | undefined;
 
 	$: id = forLabel !== undefined ? String(forLabel) : backupId;
-	$: displayIcon = !checked && icon === "Checkmark" ? "Empty12px" : icon;
+	$: displayIcon = !checked && (!icon || icon === "Checkmark") ? "Empty12px" : icon || "Checkmark";
 
 	export function isChecked() {
 		return checked;
@@ -34,8 +34,8 @@
 	}
 
 	function toggleCheckboxFromLabel(e: KeyboardEvent) {
-		const target = (e.target || undefined) as HTMLLabelElement | undefined;
-		const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
+		const target = e.target instanceof HTMLLabelElement ? e.target : undefined;
+		const previousSibling = target?.previousSibling instanceof HTMLInputElement ? target.previousSibling : undefined;
 		previousSibling?.click();
 	}
 </script>

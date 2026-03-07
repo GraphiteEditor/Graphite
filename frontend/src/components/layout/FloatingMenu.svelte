@@ -307,7 +307,7 @@
 
 	function pointerMoveHandler(e: PointerEvent) {
 		// This element and the element being hovered over
-		const target = e.target as HTMLElement | undefined;
+		const target = e.target instanceof HTMLElement ? e.target : undefined;
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
@@ -396,9 +396,9 @@
 			else {
 				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
 				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
-				if (foundTarget) {
+				if (foundTarget instanceof HTMLElement) {
 					dispatch("open", false);
-					(foundTarget as HTMLElement).click();
+					foundTarget.click();
 				}
 
 				// In either case, we are done searching

@@ -1,5 +1,5 @@
 use super::input_widgets::CheckboxId;
-use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
+use crate::messages::{frontend::IconName, input_mapper::utility_types::misc::ActionShortcut};
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 
@@ -8,7 +8,8 @@ use graphite_proc_macros::WidgetBuilder;
 pub struct IconLabel {
 	// Content
 	#[widget_builder(constructor)]
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: IconName,
 	pub disabled: bool,
 
 	// Tooltips

@@ -16,7 +16,7 @@
 			if (typeof labeledKeyOrMouseMotion === "string") return { mouseMotion: labeledKeyOrMouseMotion };
 
 			// `key` is the name of the `Key` enum in Rust, while `label` is the localized string to display (if it doesn't become an icon)
-			let key = labeledKeyOrMouseMotion.key;
+			let key: Key | "Option" = labeledKeyOrMouseMotion.key;
 			const label = labeledKeyOrMouseMotion.label;
 
 			// Replace Alt and Accel keys with their Mac-specific equivalents
@@ -57,7 +57,7 @@
 		return consolidatedList;
 	}
 
-	function keyboardHintIcon(input: Key): IconName | undefined {
+	function keyboardHintIcon(input: Key | "Option"): IconName | undefined {
 		switch (input) {
 			case "ArrowDown":
 				return "KeyboardArrowDown";
