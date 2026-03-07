@@ -2408,22 +2408,22 @@ impl NodeGraphMessageHandler {
 
 					if let [node_id] = *nodes.as_slice() {
 						properties.push(LayoutGroup::row(vec![
-								Separator::new(SeparatorStyle::Related).widget_instance(),
-								IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
-								Separator::new(SeparatorStyle::Related).widget_instance(),
-								TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
-									.tooltip_description("Name of the selected node.")
-									.on_update(move |text_input| {
-										NodeGraphMessage::SetDisplayName {
-											node_id,
-											alias: text_input.value.clone(),
-											skip_adding_history_step: false,
-										}
-										.into()
-									})
-									.widget_instance(),
-								Separator::new(SeparatorStyle::Related).widget_instance(),
-							]));
+							Separator::new(SeparatorStyle::Related).widget_instance(),
+							IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
+							Separator::new(SeparatorStyle::Related).widget_instance(),
+							TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
+								.tooltip_description("Name of the selected node.")
+								.on_update(move |text_input| {
+									NodeGraphMessage::SetDisplayName {
+										node_id,
+										alias: text_input.value.clone(),
+										skip_adding_history_step: false,
+									}
+									.into()
+								})
+								.widget_instance(),
+							Separator::new(SeparatorStyle::Related).widget_instance(),
+						]));
 					}
 
 					properties.extend(selected_nodes);
@@ -2434,15 +2434,15 @@ impl NodeGraphMessageHandler {
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
 				// This may require store a separate path for the properties panel
 				let mut properties = vec![LayoutGroup::row(vec![
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-						IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-						TextInput::new(context.document_name)
-							.tooltip_description("Name of the current document.")
-							.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
-							.widget_instance(),
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-					])];
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+					IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+					TextInput::new(context.document_name)
+						.tooltip_description("Name of the current document.")
+						.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+				])];
 
 				let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
 					warn!("No network in collate_properties");
@@ -2479,47 +2479,47 @@ impl NodeGraphMessageHandler {
 				}
 
 				let mut layer_properties = vec![LayoutGroup::row(vec![
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-						IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-						TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
-							.tooltip_description("Name of the selected layer.")
-							.on_update(move |text_input| {
-								NodeGraphMessage::SetDisplayName {
-									node_id: layer,
-									alias: text_input.value.clone(),
-									skip_adding_history_step: false,
-								}
-								.into()
-							})
-							.widget_instance(),
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-						PopoverButton::new()
-							.icon(Some("Node".to_string()))
-							.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
-							.popover_layout({
-								let compatible_type = context
-									.network_interface
-									.upstream_output_connector(&InputConnector::node(layer, 1), &[])
-									.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+					TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
+						.tooltip_description("Name of the selected layer.")
+						.on_update(move |text_input| {
+							NodeGraphMessage::SetDisplayName {
+								node_id: layer,
+								alias: text_input.value.clone(),
+								skip_adding_history_step: false,
+							}
+							.into()
+						})
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+					PopoverButton::new()
+						.icon(Some("Node".to_string()))
+						.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
+						.popover_layout({
+							let compatible_type = context
+								.network_interface
+								.upstream_output_connector(&InputConnector::node(layer, 1), &[])
+								.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
 
-								let mut node_chooser = NodeCatalog::new();
-								node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+							let mut node_chooser = NodeCatalog::new();
+							node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
 
-								let node_chooser = node_chooser
-									.on_update(move |node_type| {
-										NodeGraphMessage::CreateNodeInLayerWithTransaction {
-											node_type: node_type.clone(),
-											layer: LayerNodeIdentifier::new_unchecked(layer),
-										}
-										.into()
-									})
-									.widget_instance();
-								Layout(vec![LayoutGroup::row(vec![node_chooser])])
-							})
-							.widget_instance(),
-						Separator::new(SeparatorStyle::Related).widget_instance(),
-					])];
+							let node_chooser = node_chooser
+								.on_update(move |node_type| {
+									NodeGraphMessage::CreateNodeInLayerWithTransaction {
+										node_type: node_type.clone(),
+										layer: LayerNodeIdentifier::new_unchecked(layer),
+									}
+									.into()
+								})
+								.widget_instance();
+							Layout(vec![LayoutGroup::row(vec![node_chooser])])
+						})
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
+				])];
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
 				let node_properties = context

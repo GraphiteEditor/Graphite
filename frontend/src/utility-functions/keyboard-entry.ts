@@ -94,10 +94,8 @@ export async function getLocalizedScanCode(e: KeyboardEvent): Promise<string> {
 		// It is likely a weird symbol that isn't in the A-Z range even with accents removed.
 		// It might be a symbol from an Option key combination on a Mac. Or it might be from a non-Latin alphabet like Cyrillic.
 		if (!KEY_ATTRIBUTE_VALUES.has(keyText)) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			if (navigator && "keyboard" in navigator && "getLayoutMap" in (navigator as any).keyboard) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const layout = await (navigator as any).keyboard.getLayoutMap();
+			if (navigator.keyboard && "getLayoutMap" in navigator.keyboard) {
+				const layout = await navigator.keyboard.getLayoutMap();
 
 				type KeyCode = string;
 				type KeySymbol = string;

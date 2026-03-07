@@ -23,7 +23,7 @@
 	let inputElement: HTMLInputElement | undefined;
 
 	$: id = forLabel !== undefined ? String(forLabel) : backupId;
-	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
+	$: displayIcon = !checked && icon === "Checkmark" ? "Empty12px" : icon;
 
 	export function isChecked() {
 		return checked;

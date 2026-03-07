@@ -414,8 +414,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const blob = await item.getType("text/plain");
 						const reader = new FileReader();
 						reader.onload = () => {
-							const text = reader.result as string;
-							editor.handle.pasteText(text);
+							if (typeof reader.result === "string") editor.handle.pasteText(reader.result);
 						};
 						reader.readAsText(blob);
 						return true;
@@ -429,8 +428,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const blob = await item.getType("text/plain");
 						const reader = new FileReader();
 						reader.onload = () => {
-							const text = reader.result as string;
-							editor.handle.pasteSvg(undefined, text);
+							if (typeof reader.result === "string") editor.handle.pasteSvg(undefined, reader.result);
 						};
 						reader.readAsText(blob);
 						return true;

@@ -174,8 +174,7 @@
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let canvas = (window as any).imageCanvases[canvasName];
+			let canvas = window.imageCanvases[canvasName];
 
 			// Get logical dimensions from foreignObject parent (set by backend)
 			const foreignObject = placeholder.parentElement;

@@ -1,3 +1,4 @@
+use super::IconName;
 use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::frontend::utility_types::EyedropperPreviewImage;
@@ -27,7 +28,7 @@ pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
 		title: String,
-		icon: String,
+		icon: IconName,
 	},
 	DialogClose,
 	DisplayDialogPanic {
