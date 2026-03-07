@@ -16,10 +16,10 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: bigint): UIItem | undefined => {
 			const i = Number(index);
 
-			if (targetLayout && "column" in targetLayout) return targetLayout.column.columnWidgets[i];
-			if (targetLayout && "row" in targetLayout) return targetLayout.row.rowWidgets[i];
-			if (targetLayout && "table" in targetLayout) return targetLayout.table.tableWidgets[i];
-			if (targetLayout && "section" in targetLayout) return targetLayout.section.layout[i];
+			if (targetLayout && "Column" in targetLayout) return targetLayout.Column.columnWidgets[i];
+			if (targetLayout && "Row" in targetLayout) return targetLayout.Row.rowWidgets[i];
+			if (targetLayout && "Table" in targetLayout) return targetLayout.Table.tableWidgets[i];
+			if (targetLayout && "Section" in targetLayout) return targetLayout.Section.layout[i];
 			if (targetLayout && "widget" in targetLayout && "widgetId" in targetLayout) {
 				if ("PopoverButton" in targetLayout.widget && targetLayout.widget.PopoverButton.popoverLayout) {
 					return targetLayout.widget.PopoverButton.popoverLayout[i];

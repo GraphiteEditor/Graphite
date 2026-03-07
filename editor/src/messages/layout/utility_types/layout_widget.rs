@@ -324,13 +324,9 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LayoutGroup {
-	#[serde(rename = "column")]
 	Column(WidgetColumn),
-	#[serde(rename = "row")]
 	Row(WidgetRow),
-	#[serde(rename = "table")]
 	Table(WidgetTable),
-	#[serde(rename = "section")]
 	Section(WidgetSection),
 }
 
