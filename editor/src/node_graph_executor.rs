@@ -547,7 +547,7 @@ mod test {
 				let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
 				for input in &mut node.inputs {
 					let node_id = NodeId::new();
-					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+					let old_input = std::mem::replace(input, NodeInput::node(node_id, NodeInput::PRIMARY_OUTPUT_INDEX));
 					monitor_nodes.push((old_input, node_id));
 					path.push(node_id);
 					monitor_node_ids.push(path.clone());

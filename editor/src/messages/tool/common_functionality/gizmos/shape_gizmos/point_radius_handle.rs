@@ -14,6 +14,8 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::star::*;
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
@@ -337,13 +339,13 @@ impl PointRadiusHandle {
 			return snap_radii;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[Radius1Input::INDEX].as_value(), node_inputs[Radius2Input::INDEX].as_value()) else {
 			return snap_radii;
 		};
 
 		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
 
-		let Some(&TaggedValue::U32(sides)) = node_inputs[1].as_value() else {
+		let Some(&TaggedValue::U32(sides)) = node_inputs[SidesInput::<u32>::INDEX].as_value() else {
 			return snap_radii;
 		};
 
@@ -456,7 +458,7 @@ impl PointRadiusHandle {
 			return;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[Radius1Input::INDEX].as_value(), node_inputs[Radius2Input::INDEX].as_value()) else {
 			return;
 		};
 

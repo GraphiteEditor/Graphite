@@ -9,6 +9,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::arrow::*;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -58,11 +60,11 @@ impl Arrow {
 
 		// Update Arrow node start and end points with document space coordinates
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, StartInput::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(start_document), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
+			input_connector: InputConnector::node(node_id, EndInput::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(end_document), false),
 		});
 

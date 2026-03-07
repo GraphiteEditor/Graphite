@@ -52,7 +52,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let inputs: Vec<_> = node_inputs(fields, first_node_io);
 		let input_count = inputs.len();
-		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
+		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), NodeInput::PRIMARY_OUTPUT_INDEX)).collect();
 
 		let identity_node = ops::identity::IDENTIFIER;
 
@@ -125,7 +125,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::Node {
 					node_id: NodeId(input_count as u64),
-					output_index: 0,
+					output_index: NodeInput::PRIMARY_OUTPUT_INDEX,
 				}],
 				nodes,
 				scope_injections: Default::default(),

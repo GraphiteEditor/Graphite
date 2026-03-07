@@ -12,6 +12,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::line::*;
 use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq, Debug, Default)]
@@ -73,11 +75,11 @@ impl Line {
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, StartInput::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
+			input_connector: InputConnector::node(node_id, EndInput::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -92,7 +94,7 @@ impl Line {
 				let node_inputs =
 					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
-				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[StartInput::INDEX].as_value(), node_inputs[EndInput::INDEX].as_value()) else {
 					return None;
 				};
 
@@ -177,7 +179,7 @@ pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &Document
 		return false;
 	};
 
-	let (Some(&TaggedValue::DVec2(document_start)), Some(&TaggedValue::DVec2(document_end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+	let (Some(&TaggedValue::DVec2(document_start)), Some(&TaggedValue::DVec2(document_end))) = (node_inputs[StartInput::INDEX].as_value(), node_inputs[EndInput::INDEX].as_value()) else {
 		return false;
 	};
 
@@ -219,7 +221,7 @@ mod test_line_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
 				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
-				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[StartInput::INDEX].as_value(), node_inputs[EndInput::INDEX].as_value()) else {
 					return None;
 				};
 				Some((start, end))

@@ -22,13 +22,13 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	// TODO: Replace with "Output" definition?
 	// let render_node = resolve_document_node_type("Output")
 	// 	.expect("Output node type not found")
-	// 	.node_template_input_override(vec![Some(NodeInput::node(NodeId(1), 0)), Some(NodeInput::node(NodeId(0), 1))])
+	// 	.node_template_input_override(vec![Some(NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)), Some(NodeInput::node(NodeId(0), 1))])
 	// 	.document_node;
 
 	let render_node = DocumentNode {
-		inputs: vec![NodeInput::node(NodeId(0), 0)],
+		inputs: vec![NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(3), 0)],
+			exports: vec![NodeInput::node(NodeId(3), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				DocumentNode {
 					call_argument: concrete!(Context),
@@ -43,7 +43,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				// Keep this in sync with the protonode in valid_input_types
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), 0)],
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -53,7 +53,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(1), 0)],
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -63,7 +63,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				},
 				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
-					inputs: vec![NodeInput::node(NodeId(2), 0)],
+					inputs: vec![NodeInput::node(NodeId(2), NodeInput::PRIMARY_OUTPUT_INDEX)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
@@ -97,14 +97,14 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	if cfg!(feature = "gpu") {
 		nodes.push(DocumentNode {
 			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
-			inputs: vec![NodeInput::node(NodeId(2), 0)],
+			inputs: vec![NodeInput::node(NodeId(2), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			..Default::default()
 		});
 		scope_injections.push(("wgpu-executor".to_string(), (NodeId(3), concrete!(&WgpuExecutor))));
 	}
 
 	NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(1), 0)],
+		exports: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: scope_injections.into_iter().collect(),
 		// TODO(TrueDoctor): check if it makes sense to set `generated` to `true`
