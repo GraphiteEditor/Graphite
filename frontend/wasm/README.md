@@ -8,7 +8,7 @@ Provides bindings for JS to call functions defined in this file, and for `Fronte
 
 Assorted function and struct definitions used in the Wasm wrapper.
 
-## Native communication: `src/native_communcation.rs`
+## Native communication: `src/native_communication.rs`
 
 Handles receiving serialized `FrontendMessage`s from the native desktop app via an `ArrayBuffer` and forwarding them to JS through the editor handle.
 

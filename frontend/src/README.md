@@ -2,7 +2,7 @@
 
 ## Svelte components: `components/`
 
-Svelte components that build the Graphite editor GUI. These each contain a a TypeScript section, a Svelte-templated HTML template section, and an SCSS stylesheet section. The aim is to avoid implementing much editor business logic here, just enough to make things interactive and communicate to the backend where the real business logic should occur.
+Svelte components that build the Graphite editor GUI. These each contain a TypeScript section, a Svelte-templated HTML template section, and an SCSS stylesheet section. The aim is to avoid implementing much editor business logic here, just enough to make things interactive and communicate to the backend where the real business logic should occur.
 
 ## I/O managers: `io-managers/`
 
