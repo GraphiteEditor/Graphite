@@ -9,7 +9,7 @@ pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;
 
-use ::convex_hull::{HullSegment, MonotoneArc, convex_hull as compute_convex_hull, split_at_inflections};
+use ::convex_hull::{HullSegment, MonotoneArc, convex_hull as compute_convex_hull, split_into_arcs};
 use kurbo::{CubicBez, Line as KurboLine, ParamCurve, PathSeg as KurboPathSeg, Point as KurboPoint};
 
 // ─── Graham's Scan Convex Hull ───
@@ -280,7 +280,7 @@ async fn convex_hull(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 	log::debug!("path: {:?}", cubic_segments);
 
 	// Step 8: Run the curved convex hull algorithm
-	let arcs = split_at_inflections(&cubic_segments);
+	let arcs = split_into_arcs(&cubic_segments);
 	log::debug!("arcs: {:?}", arcs);
 	let hull_segments = compute_convex_hull(&cubic_segments);
 	log::debug!("segments: {:?}", hull_segments);
