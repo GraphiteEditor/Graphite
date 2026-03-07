@@ -154,7 +154,7 @@ impl EditorHandle {
 			log::error!("Failed to serialize message");
 			return;
 		};
-		crate::native_communcation::send_message_to_cef(serialized_message)
+		crate::native_communication::send_message_to_cef(serialized_message)
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -190,7 +190,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
-		crate::native_communcation::initialize_native_communication();
+		crate::native_communication::initialize_native_communication();
 
 		self.dispatch(PortfolioMessage::Init);
 
