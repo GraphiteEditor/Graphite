@@ -39,7 +39,7 @@ fn main() -> ExitCode {
 		Some(run) => run,
 		None => {
 			usage();
-			return ExitCode::FAILURE;
+			return ExitCode::SUCCESS;
 		}
 	};
 
