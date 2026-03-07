@@ -45,7 +45,7 @@
 	let openChildValue: string | undefined = undefined;
 	let search = "";
 	let reactiveEntries = entries;
-	let highlighted = activeEntry as MenuListEntry | undefined;
+	let highlighted: MenuListEntry | undefined = activeEntry;
 	let virtualScrollingEntriesStart = 0;
 
 	// `watchOpen` is called only when `open` is changed from outside this component

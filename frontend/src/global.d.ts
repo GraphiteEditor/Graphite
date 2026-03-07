@@ -6,6 +6,11 @@ interface Window {
 	receiveNativeMessage?: (buffer: ArrayBuffer) => void;
 }
 
+// Graphite's custom "pointerlockmove" event dispatched by input.ts for pointer lock in the CEF desktop app
+interface WindowEventMap {
+	pointerlockmove: CustomEvent<{ x: number; y: number }>;
+}
+
 // Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Keyboard
 interface Navigator {
 	keyboard?: Keyboard;
@@ -29,6 +34,11 @@ interface Window {
 declare class EyeDropper {
 	constructor();
 	open(options?: { signal?: AbortSignal }): Promise<{ sRGBHex: string }>;
+}
+
+// Experimental "clipboard-read" Permission: https://developer.mozilla.org/en-US/docs/Web/API/Permissions
+interface Permissions {
+	query(permissionDesc: { name: "clipboard-read" }): Promise<PermissionStatus>;
 }
 
 // Non-standard Stack Trace Limit API: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error/stackTraceLimit

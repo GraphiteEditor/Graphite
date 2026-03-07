@@ -18,9 +18,9 @@
 		/*   └─ */ details: 20,
 		/*         ├─ */ properties: 45,
 		/*         └─ */ layers: 55,
-	};
+	} as const;
 
-	let panelSizes = PANEL_SIZES;
+	let panelSizes: Record<string, number> = PANEL_SIZES;
 	let documentPanel: Panel | undefined;
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
@@ -45,10 +45,10 @@
 		const prevSibling = (gutter?.previousElementSibling || undefined) as HTMLDivElement | undefined;
 		const parentElement = (gutter?.parentElement || undefined) as HTMLDivElement | undefined;
 
-		const nextSiblingName = (nextSibling?.getAttribute("data-subdivision-name") || undefined) as keyof typeof PANEL_SIZES;
-		const prevSiblingName = (prevSibling?.getAttribute("data-subdivision-name") || undefined) as keyof typeof PANEL_SIZES;
+		const nextSiblingName = nextSibling?.getAttribute("data-subdivision-name") || undefined;
+		const prevSiblingName = prevSibling?.getAttribute("data-subdivision-name") || undefined;
 
-		if (!gutter || !nextSibling || !prevSibling || !parentElement || !nextSiblingName || !prevSiblingName) return;
+		if (!gutter || !nextSibling || !prevSibling || !parentElement || !nextSiblingName || !prevSiblingName || !(nextSiblingName in PANEL_SIZES) || !(prevSiblingName in PANEL_SIZES)) return;
 
 		// Are we resizing horizontally?
 		const isHorizontal = gutter.getAttribute("data-gutter-horizontal") !== null;

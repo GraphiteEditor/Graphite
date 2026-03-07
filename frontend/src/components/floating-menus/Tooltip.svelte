@@ -21,10 +21,10 @@
 	$: shortcut = ((shortcutJSON) => {
 		if (!shortcutJSON) return undefined;
 		try {
-			const parsed: unknown = JSON.parse(shortcutJSON);
+			const parsed: LabeledShortcut = JSON.parse(shortcutJSON);
 			if (!Array.isArray(parsed)) return undefined;
 
-			return parsed as LabeledShortcut;
+			return parsed;
 		} catch {
 			return undefined;
 		}
