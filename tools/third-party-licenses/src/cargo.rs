@@ -1,9 +1,9 @@
-use crate::{LicenceSource, LicenseEntry, Package};
+use crate::{Error, LicenceSource, LicenseEntry, Package};
 use serde::Deserialize;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process::Command;
 
 pub struct CargoLicenseSource {}
 
@@ -14,8 +14,8 @@ impl CargoLicenseSource {
 }
 
 impl LicenceSource for CargoLicenseSource {
-	fn licenses(&self) -> Vec<LicenseEntry> {
-		parse(run())
+	fn licenses(&self) -> Result<Vec<LicenseEntry>, Error> {
+		Ok(parse(run()?))
 	}
 }
 
@@ -84,23 +84,18 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 		.collect()
 }
 
-fn run() -> Output {
+fn run() -> Result<Output, Error> {
 	let output = Command::new("cargo")
 		.args(["about", "generate", "--format", "json", "--frozen"])
 		.current_dir(env!("CARGO_WORKSPACE_DIR"))
 		.output()
-		.unwrap_or_else(|e| {
-			eprintln!("Failed to run cargo about generate: {e}");
-			process::exit(1)
-		});
+		.map_err(|e| Error::Io(e, "Failed to run cargo about generate".into()))?;
 
 	if !output.status.success() {
-		eprintln!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr));
-		process::exit(1)
+		return Err(Error::Command(format!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr))));
 	}
 
-	serde_json::from_str(&String::from_utf8(output.stdout).expect("cargo about generate should return valid UTF-8")).unwrap_or_else(|e| {
-		eprintln!("Failed to parse cargo about generate JSON: {e}");
-		process::exit(1)
-	})
+	let stdout = String::from_utf8(output.stdout).map_err(|e| Error::Utf8(e, "cargo about generate returned invalid UTF-8".into()))?;
+
+	serde_json::from_str(&stdout).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON".into()))
 }

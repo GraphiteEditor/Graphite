@@ -14,4 +14,4 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build Nix Package Dev
-        run: nix build .nix#graphite-dev --print-build-logs
+        run: nix build .#graphite-dev --print-build-logs

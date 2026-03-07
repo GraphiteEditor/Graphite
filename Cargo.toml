@@ -23,6 +23,7 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"proc-macros",
+	"tools/cargo-run",
 	"tools/crate-hierarchy-viz",
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
@@ -35,12 +36,12 @@ default-members = [
 	"libraries/path-bool",
 	"libraries/math-parser",
 	"node-graph/graph-craft",
-	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	# blocked by https://github.com/rust-lang/cargo/issues/16000
 #	"proc-macros",
+	"tools/cargo-run",
 ]
 resolver = "2"
 
@@ -234,10 +235,6 @@ node-macro = { opt-level = 2 }
 
 [profile.release]
 lto = "thin"
-debug = true
-
-[profile.profiling]
-inherits = "release"
 debug = true
 
 [patch.crates-io]
