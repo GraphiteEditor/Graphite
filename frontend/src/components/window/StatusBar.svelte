@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
+	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Layout } from "@graphite/messages";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

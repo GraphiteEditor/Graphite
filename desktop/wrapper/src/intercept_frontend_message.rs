@@ -26,6 +26,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			});
 		}
 		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
+			let content = content.into_vec();
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			} else {
@@ -42,6 +43,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			}
 		}
 		FrontendMessage::TriggerSaveFile { name, content } => {
+			let content = content.into_vec();
 			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 				title: "Save File".to_string(),
 				default_filename: name,

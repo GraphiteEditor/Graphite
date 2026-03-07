@@ -11,14 +11,12 @@ pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;
 
-// Import specta so derive macros can find it
-use core_types::specta;
-
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum BooleanOperation {
 	#[default]

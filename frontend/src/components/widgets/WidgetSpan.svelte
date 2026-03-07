@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget, WidgetInstance, WidgetPropsNames, WidgetPropsSet, WidgetTypes, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
 	import { parseFillChoice } from "@graphite/utility-functions/colors";
 	import { debouncer } from "@graphite/utility-functions/debounce";
-	import { isWidgetSpanColumn, isWidgetSpanRow, createLayoutGroup } from "@graphite/utility-functions/widgets";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
@@ -30,9 +29,17 @@
 	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
+	// Extract the discriminant key names from the Widget tagged enum union (e.g. "TextButton" | "CheckboxInput" | ...)
+	type WidgetKind = Widget extends infer T ? (T extends Record<infer K, unknown> ? K & string : never) : never;
+	// Extract the props type for a specific widget kind (e.g. WidgetProps<"TextButton"> gives the Wasm-generated TextButton interface)
+	type WidgetProps<K extends WidgetKind> = Extract<Widget, Record<K, unknown>>[K];
+	// A Widget tagged enum unwrapped into a correlated [kind, props] tuple
+	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
+
 	const editor = getContext<Editor>("editor");
 
-	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
+	export let widgets: WidgetInstance[];
+	export let direction: "row" | "column";
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";
@@ -44,21 +51,6 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
-
-	$: direction = watchDirection(widgetData);
-	$: widgets = watchWidgets(widgetData);
-
-	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
-		if (isWidgetSpanRow(widgetData)) return "row";
-		if (isWidgetSpanColumn(widgetData)) return "column";
-	}
-
-	function watchWidgets(widgetData: WidgetSpanRow | WidgetSpanColumn): WidgetInstance[] {
-		let widgets: WidgetInstance[] = [];
-		if (isWidgetSpanRow(widgetData)) widgets = widgetData.rowWidgets;
-		else if (isWidgetSpanColumn(widgetData)) widgets = widgetData.columnWidgets;
-		return widgets;
-	}
 
 	function widgetValueCommit(widgetIndex: number, value: unknown) {
 		editor.handle.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
@@ -72,32 +64,66 @@
 		editor.handle.widgetValueCommitAndUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function exclude(props: WidgetPropsSet, additional?: string[]): Record<string, any> {
-		const exclusions = new Set(["kind", ...(additional || [])]);
-		return Object.fromEntries(Object.entries(props).filter(([key]) => !exclusions.has(key)));
+	// Extracts the kind and props from a Widget tagged enum, validated against the widget registry.
+	// The overload declares the precise correlated return type while the implementation uses broader types.
+	function unwrapWidget(widgetInstance: WidgetInstance): UnwrappedWidget | undefined;
+	function unwrapWidget(widgetInstance: WidgetInstance) {
+		const entry = Object.entries(widgetInstance.widget)[0];
+		if (!entry || !(entry[0] in widgetResolvers)) return undefined;
+		return entry;
 	}
 
-	type WidgetConfig = {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		component: any;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		getProps(props: WidgetPropsSet, widgetIndex: number): Record<string, any> | undefined;
-		getSlotContent?(props: WidgetPropsSet): string;
+	// Resolves the unwrapped widget through the registry to get its Svelte component and computed props.
+	function resolveWidget([kind, widgetProps]: UnwrappedWidget, widgetIndex: number) {
+		const config = widgetResolvers[kind];
+		return {
+			component: config.component,
+			props: config.getProps(widgetProps, widgetIndex),
+			slot: config.getSlotContent?.(widgetProps),
+		};
+	}
+
+	// Svelte has no variance-safe base type for component constructors
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	type SvelteComponentAny = any;
+
+	type WidgetConfig<K extends WidgetKind> = {
+		component: SvelteComponentAny;
+		getProps(props: WidgetProps<K>, widgetIndex: number): Record<string, unknown> | undefined;
+		getSlotContent?(props: WidgetProps<K>): string;
 	};
 
-	const widgetRegistry: Record<WidgetPropsNames, WidgetConfig> = {
+	// The union of all individual widget props types (distributed across each WidgetKind member)
+	type AnyWidgetProps = { [K in WidgetKind]: WidgetProps<K> }[WidgetKind];
+
+	// Uniform view for runtime lookup — widens the per-kind config types to a single type that
+	// accepts any widget props, avoiding the correlated unions problem at the call site
+	type WidgetResolver = {
+		component: SvelteComponentAny;
+		getProps(props: AnyWidgetProps, widgetIndex: number): Record<string, unknown> | undefined;
+		getSlotContent?(props: AnyWidgetProps): string;
+	};
+
+	// Overload: callers provide the precise mapped type (preserving per-entry type inference).
+	// Implementation: receives/returns the widened uniform type (no cast needed).
+	// Method syntax bivariance makes WidgetConfig<K> assignable to WidgetResolver in the overload check.
+	function createWidgetResolvers(registry: { [K in WidgetKind]: WidgetConfig<K> }): Record<WidgetKind, WidgetResolver>;
+	function createWidgetResolvers(registry: Record<WidgetKind, WidgetResolver>): Record<WidgetKind, WidgetResolver> {
+		return registry;
+	}
+
+	const widgetResolvers = createWidgetResolvers({
 		CheckboxInput: {
 			component: CheckboxInput,
-			getProps: (props: WidgetTypes["CheckboxInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: { checked: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		ColorInput: {
 			component: ColorInput,
-			getProps: (props: WidgetTypes["ColorInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				value: parseFillChoice(props.value),
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
@@ -108,8 +134,8 @@
 		CurveInput: {
 			// TODO: CurvesInput is currently unused
 			component: CurveInput,
-			getProps: (props: WidgetTypes["CurveInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: {
 					value: (e: CustomEvent) => debouncer((value: unknown) => widgetValueCommitAndUpdate(index, value, false), { debounceTime: 120 }).debounceUpdateValue(e.detail),
 				},
@@ -117,8 +143,8 @@
 		},
 		DropdownInput: {
 			component: DropdownInput,
-			getProps: (props: WidgetTypes["DropdownInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: {
 					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					hoverOutEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
@@ -128,51 +154,51 @@
 		},
 		ParameterExposeButton: {
 			component: ParameterExposeButton,
-			getProps: (props: WidgetTypes["ParameterExposeButton"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		IconButton: {
 			component: IconButton,
-			getProps: (props: WidgetTypes["IconButton"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		IconLabel: {
 			component: IconLabel,
-			getProps: (props: WidgetTypes["IconLabel"]) => exclude(props),
+			getProps: (props) => ({ ...props }),
 		},
 		ShortcutLabel: {
 			component: ShortcutLabel,
-			getProps: (props: WidgetTypes["ShortcutLabel"]) => {
+			getProps: (props) => {
 				if (!props.shortcut) return undefined;
-				return exclude(props);
+				return { ...props };
 			},
 		},
 		ImageLabel: {
 			component: ImageLabel,
-			getProps: (props: WidgetTypes["ImageLabel"]) => exclude(props),
+			getProps: (props) => ({ ...props }),
 		},
 		ImageButton: {
 			component: ImageButton,
-			getProps: (props: WidgetTypes["ImageButton"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		NodeCatalog: {
 			component: NodeCatalog,
-			getProps: (props: WidgetTypes["NodeCatalog"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: { selectNodeType: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
 			}),
 		},
 		NumberInput: {
 			component: NumberInput,
-			getProps: (props: WidgetTypes["NumberInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				incrementCallbackIncrease: () => widgetValueCommitAndUpdate(index, "Increment", false),
 				incrementCallbackDecrease: () => widgetValueCommitAndUpdate(index, "Decrement", false),
 				$$events: {
@@ -183,80 +209,80 @@
 		},
 		ReferencePointInput: {
 			component: ReferencePointInput,
-			getProps: (props: WidgetTypes["ReferencePointInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: { value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		PopoverButton: {
 			component: PopoverButton,
-			getProps: (props: WidgetTypes["PopoverButton"]) => ({
-				...exclude(props),
+			getProps: (props) => ({
+				...props,
 				layoutTarget,
-				popoverLayout: props.popoverLayout.map(createLayoutGroup),
 			}),
 		},
 		RadioInput: {
 			component: RadioInput,
-			getProps: (props: WidgetTypes["RadioInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: { selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		Separator: {
 			component: Separator,
-			getProps: (props: WidgetTypes["Separator"]) => exclude(props),
+			getProps: (props) => ({ ...props }),
 		},
 		WorkingColorsInput: {
 			component: WorkingColorsInput,
-			getProps: (props: WidgetTypes["WorkingColorsInput"]) => exclude(props),
+			getProps: (props) => ({ ...props }),
 		},
 		TextAreaInput: {
 			component: TextAreaInput,
-			getProps: (props: WidgetTypes["TextAreaInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: { commitText: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
 			}),
 		},
 		TextButton: {
 			component: TextButton,
-			getProps: (props: WidgetTypes["TextButton"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				action: () => widgetValueCommitAndUpdate(index, [], true),
 				$$events: { selectedEntryValuePath: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
 			}),
 		},
 		BreadcrumbTrailButtons: {
 			component: BreadcrumbTrailButtons,
-			getProps: (props: WidgetTypes["BreadcrumbTrailButtons"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				action: (breadcrumbIndex: number) => widgetValueCommitAndUpdate(index, breadcrumbIndex, true),
 			}),
 		},
 		TextInput: {
 			component: TextInput,
-			getProps: (props: WidgetTypes["TextInput"], index) => ({
-				...exclude(props),
+			getProps: (props, index) => ({
+				...props,
 				$$events: { commitText: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		TextLabel: {
 			component: TextLabel,
-			getProps: (props: WidgetTypes["TextLabel"]) => exclude(props, ["value"]),
-			getSlotContent: (props: WidgetTypes["TextLabel"]) => props.value,
+			getProps: ({ value: _, ...rest }) => rest,
+			getSlotContent: (props) => props.value,
 		},
-	};
+	});
 </script>
 
 <div class={`widget-span ${className} ${extraClasses}`.trim()} class:narrow class:row={direction === "row"} class:column={direction === "column"}>
 	{#each widgets as widget, widgetIndex}
-		{@const config = widgetRegistry[widget.props.kind]}
-		{@const props = config?.getProps(widget.props, widgetIndex)}
-		{@const slot = config?.getSlotContent?.(widget.props)}
-		{#if props !== undefined && slot !== undefined}
-			<svelte:component this={config.component} {...props}>{slot}</svelte:component>
-		{:else if props !== undefined}
-			<svelte:component this={config.component} {...props} />
+		{@const unwrapped = unwrapWidget(widget)}
+		{#if unwrapped}
+			{@const { component, props, slot } = resolveWidget(unwrapped, widgetIndex)}
+			{#if props !== undefined && slot !== undefined}
+				<svelte:component this={component} {...props}>{slot}</svelte:component>
+			{:else if props !== undefined}
+				<svelte:component this={component} {...props} />
+			{/if}
 		{/if}
 	{/each}
 </div>

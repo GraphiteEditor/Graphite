@@ -67,7 +67,8 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type, num_enum::TryFromPrimitive)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum Key {
 	// Writing system keys
@@ -379,7 +380,8 @@ impl fmt::Display for KeysGroup {
 // LabeledKey
 // ==========
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LabeledKey {
 	key: Key,
 	label: String,
@@ -395,7 +397,8 @@ impl LabeledKey {
 // MouseMotion
 // ===========
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MouseMotion {
 	None,
 	Lmb,
@@ -415,7 +418,8 @@ pub enum MouseMotion {
 // LabeledKeyOrMouseMotion
 // =======================
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LabeledKeyOrMouseMotion {
 	Key(LabeledKey),
@@ -437,7 +441,8 @@ impl From<Key> for LabeledKeyOrMouseMotion {
 // LabeledShortcut
 // ===============
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LabeledShortcut(pub Vec<LabeledKeyOrMouseMotion>);
 
 impl From<KeysGroup> for LabeledShortcut {

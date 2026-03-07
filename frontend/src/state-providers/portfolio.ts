@@ -1,14 +1,21 @@
 import { writable } from "svelte/store";
 
+import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { OpenDocument } from "@graphite/messages";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
 export function createPortfolioState(editor: Editor) {
-	const { subscribe, update } = writable({
+	const { subscribe, update } = writable<{
+		unsaved: boolean;
+		documents: OpenDocument[];
+		activeDocumentIndex: number;
+		dataPanelOpen: boolean;
+		propertiesPanelOpen: boolean;
+		layersPanelOpen: boolean;
+	}>({
 		unsaved: false,
-		documents: [] as OpenDocument[],
+		documents: [],
 		activeDocumentIndex: 0,
 		dataPanelOpen: false,
 		propertiesPanelOpen: true,

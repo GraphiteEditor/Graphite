@@ -53,6 +53,6 @@ We provide default configurations for VS Code users. When you open the project, 
 
 ### Checking, linting, and formatting
 
-While developing Rust code, `cargo check`, `cargo clippy`, and `cargo fmt` terminal commands may be run from the root directory. For web code, formatting issues can be linted using `npm run lint` (to view) and `npm run lint-fix` (to fix) if run from the `/frontend` directory.
+While developing Rust code: `cargo check`, `cargo clippy`, and `cargo fmt` terminal commands may be run from the root directory. For web code: errors, code quality lints, and formatting issues can be checked using `npm run check` (to view them) and `npm run fix` (to fix them) if run from the `/frontend` directory.
 
-If you don't use VS Code and its format-on-save feature, please remember to format before committing or [set up a `pre-commit` hook](https://githooks.com/) to do that automatically. Disabling VS Code's *Auto Save* files feature is recommended to ensure you actually save (and thus format) file changes.
+If you don't use VS Code and its format-on-save feature, please remember to format before committing or [set up a `pre-commit` hook](https://githooks.com/) to do that automatically. Disabling VS Code's *Auto Save* files feature is recommended to ensure you actually save (and thus format) file changes. CI will enforce that everything passes these checks before your PR can be merged.

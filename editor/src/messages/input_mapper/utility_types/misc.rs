@@ -106,8 +106,10 @@ pub struct MappingEntry {
 	pub disabled: bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ActionShortcut {
+	#[serde(skip)]
 	Action(MessageDiscriminant),
 	#[serde(rename = "shortcut")]
 	Shortcut(LabeledShortcut),

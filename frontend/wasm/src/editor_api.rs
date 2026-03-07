@@ -69,7 +69,7 @@ pub fn is_platform_native() -> bool {
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct EditorHandle {
-	/// This callback is called by the editor's dispatcher when directing FrontendMessages from Rust to JS
+	/// This callback is called by the editor's dispatcher when directing `FrontendMessage`s from Rust to JS
 	frontend_message_handler_callback: js_sys::Function,
 }
 
@@ -154,7 +154,7 @@ impl EditorHandle {
 			log::error!("Failed to serialize message");
 			return;
 		};
-		crate::native_communcation::send_message_to_cef(serialized_message)
+		crate::native_communication::send_message_to_cef(serialized_message)
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -190,7 +190,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
-		crate::native_communcation::initialize_native_communication();
+		crate::native_communication::initialize_native_communication();
 
 		self.dispatch(PortfolioMessage::Init);
 
@@ -955,16 +955,11 @@ pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, colo
 }
 
 #[wasm_bindgen(js_name = evaluateGradientAtPosition)]
-pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> Object {
+pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> JsValue {
 	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
 	let color = GradientStops { position, midpoint, color }.evaluate(t);
 
-	let obj = Object::new();
-	Reflect::set(&obj, &JsValue::from_str("red"), &JsValue::from_f64(color.r() as f64)).unwrap();
-	Reflect::set(&obj, &JsValue::from_str("green"), &JsValue::from_f64(color.g() as f64)).unwrap();
-	Reflect::set(&obj, &JsValue::from_str("blue"), &JsValue::from_f64(color.b() as f64)).unwrap();
-	Reflect::set(&obj, &JsValue::from_str("alpha"), &JsValue::from_f64(color.a() as f64)).unwrap();
-	obj
+	serde_wasm_bindgen::to_value(&color).unwrap()
 }
 
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure

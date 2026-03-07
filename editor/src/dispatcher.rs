@@ -596,7 +596,7 @@ mod test {
 				} = response
 				{
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
-						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
+						if let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0] {
 							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}

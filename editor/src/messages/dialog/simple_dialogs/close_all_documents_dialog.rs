@@ -24,7 +24,7 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -33,12 +33,8 @@ impl LayoutHolder for CloseAllDocumentsDialog {
 		let unsaved_list = "• ".to_string() + &self.unsaved_document_names.join("\n• ");
 
 		Layout(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Save documents before closing them?").bold(true).multiline(true).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(format!("Documents with unsaved changes:\n{unsaved_list}")).multiline(true).widget_instance()],
-			},
+			LayoutGroup::row(vec![TextLabel::new("Save documents before closing them?").bold(true).multiline(true).widget_instance()]),
+			LayoutGroup::row(vec![TextLabel::new(format!("Documents with unsaved changes:\n{unsaved_list}")).multiline(true).widget_instance()]),
 		])
 	}
 }

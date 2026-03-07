@@ -18,16 +18,22 @@ export function downloadFileBlob(filename: string, blob: Blob) {
 	URL.revokeObjectURL(url);
 }
 
-export function downloadFile(filename: string, content: ArrayBuffer) {
+export function downloadFile(filename: string, content: Uint8Array) {
 	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "application/octet-stream";
 
-	const blob = new Blob([new Uint8Array(content)], { type });
-	downloadFileBlob(filename, blob);
+	if (content.length > 0 && content.buffer instanceof ArrayBuffer) {
+		const contentView = new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+		const blob = new Blob([contentView], { type });
+		downloadFileBlob(filename, blob);
+	}
 }
 
 // See https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#accept for the `accept` string format
-export async function upload<T extends "text" | "data" | "both">(accept: string, textOrData: T): Promise<UploadResult<T>> {
-	return new Promise<UploadResult<T>>((resolve, _) => {
+export async function upload(accept: string, textOrData: "text"): Promise<UploadResult<string>>;
+export async function upload(accept: string, textOrData: "data"): Promise<UploadResult<Uint8Array>>;
+export async function upload(accept: string, textOrData: "both"): Promise<UploadResult<{ text: string; data: Uint8Array }>>;
+export async function upload(accept: string, textOrData: "text" | "data" | "both"): Promise<UploadResult<string | Uint8Array | { text: string; data: Uint8Array }>> {
+	return new Promise((resolve) => {
 		const element = document.createElement("input");
 		element.type = "file";
 		element.accept = accept;
@@ -40,15 +46,12 @@ export async function upload<T extends "text" | "data" | "both">(accept: string,
 
 					const filename = file.name;
 					const type = file.type;
-					const content = (
+					const content =
 						textOrData === "text"
 							? await file.text()
 							: textOrData === "data"
 								? new Uint8Array(await file.arrayBuffer())
-								: textOrData === "both"
-									? { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) }
-									: undefined
-					) as UploadResultType<T>;
+								: { text: await file.text(), data: new Uint8Array(await file.arrayBuffer()) };
 
 					resolve({ filename, type, content });
 				}
@@ -61,8 +64,7 @@ export async function upload<T extends "text" | "data" | "both">(accept: string,
 		// Once `element` goes out of scope, it has no references so it gets garbage collected along with its event listener, so `removeEventListener` is not needed
 	});
 }
-export type UploadResult<T> = { filename: string; type: string; content: UploadResultType<T> };
-type UploadResultType<T> = T extends "text" ? string : T extends "data" ? Uint8Array : T extends "both" ? { text: string; data: Uint8Array } : never;
+export type UploadResult<T> = { filename: string; type: string; content: T };
 
 export async function pasteFile(item: DataTransferItem, editor: Editor, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
 	const file = item.getAsFile();

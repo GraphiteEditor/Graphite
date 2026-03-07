@@ -1,6 +1,6 @@
+use core_types::Ctx;
 use core_types::registry::types::{Angle, PixelSize};
 use core_types::table::Table;
-use core_types::{Ctx, specta};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
@@ -187,7 +187,8 @@ fn star<T: AsU64>(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum QRCodeErrorCorrectionLevel {
 	/// Allows recovery from up to 7% data loss.

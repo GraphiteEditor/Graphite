@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
 
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages";
+	import type { MenuListEntry, MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -45,7 +45,7 @@
 	let openChildValue: string | undefined = undefined;
 	let search = "";
 	let reactiveEntries = entries;
-	let highlighted = activeEntry as MenuListEntry | undefined;
+	let highlighted: MenuListEntry | undefined = activeEntry;
 	let virtualScrollingEntriesStart = 0;
 
 	// `watchOpen` is called only when `open` is changed from outside this component
@@ -154,7 +154,7 @@
 
 	function onScroll(e: Event) {
 		if (!virtualScrollingEntryHeight) return;
-		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+		virtualScrollingEntriesStart = e.target instanceof HTMLElement ? e.target.scrollTop : 0;
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {

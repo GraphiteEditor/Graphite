@@ -1,5 +1,5 @@
 import { sampleInterpolatedGradient } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Color, FillChoice, Gradient } from "@graphite/messages";
+import type { Color, FillChoice, GradientStops } from "@graphite/../wasm/pkg/graphite_wasm";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };
@@ -8,11 +8,7 @@ export type RGB = { r: number; g: number; b: number };
 // COLOR FACTORY FUNCTIONS
 
 export function createColor(red: number, green: number, blue: number, alpha: number): Color {
-	return { red, green, blue, alpha, none: false };
-}
-
-export function createNoneColor(): Color {
-	return { red: 0, green: 0, blue: 0, alpha: 1, none: true };
+	return { red, green, blue, alpha };
 }
 
 export function createColorFromHSVA(h: number, s: number, v: number, a: number): Color {
@@ -21,7 +17,7 @@ export function createColorFromHSVA(h: number, s: number, v: number, a: number):
 		return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
 	};
 
-	return { red: convert(5), green: convert(3), blue: convert(1), alpha: a, none: false };
+	return { red: convert(5), green: convert(3), blue: convert(1), alpha: a };
 }
 
 // COLOR UTILITY FUNCTIONS
@@ -67,15 +63,13 @@ export function colorFromCSS(colorCode: string): Color | undefined {
 	return createColor(r / 255, g / 255, b / 255, a / 255);
 }
 
-export function colorEquals(c1: Color, c2: Color): boolean {
-	if (c1.none !== c2.none) return false;
-	if (c1.none && c2.none) return true;
+export function colorEquals(c1: Color | undefined, c2: Color | undefined): boolean {
+	if (c1 === undefined && c2 === undefined) return true;
+	if (c1 === undefined || c2 === undefined) return false;
 	return Math.abs(c1.red - c2.red) < 1e-6 && Math.abs(c1.green - c2.green) < 1e-6 && Math.abs(c1.blue - c2.blue) < 1e-6 && Math.abs(c1.alpha - c2.alpha) < 1e-6;
 }
 
-export function colorToHexNoAlpha(color: Color): string | undefined {
-	if (color.none) return undefined;
-
+export function colorToHexNoAlpha(color: Color): string {
 	const r = Math.round(color.red * 255)
 		.toString(16)
 		.padStart(2, "0");
@@ -89,9 +83,7 @@ export function colorToHexNoAlpha(color: Color): string | undefined {
 	return `#${r}${g}${b}`;
 }
 
-export function colorToHexOptionalAlpha(color: Color): string | undefined {
-	if (color.none) return undefined;
-
+export function colorToHexOptionalAlpha(color: Color): string {
 	const hex = colorToHexNoAlpha(color);
 	const a = Math.round(color.alpha * 255)
 		.toString(16)
@@ -100,9 +92,7 @@ export function colorToHexOptionalAlpha(color: Color): string | undefined {
 	return a === "ff" ? hex : `${hex}${a}`;
 }
 
-export function colorToRgb255(color: Color): RGB | undefined {
-	if (color.none) return undefined;
-
+export function colorToRgb255(color: Color): RGB {
 	return {
 		r: Math.round(color.red * 255),
 		g: Math.round(color.green * 255),
@@ -110,23 +100,19 @@ export function colorToRgb255(color: Color): RGB | undefined {
 	};
 }
 
-export function colorToRgbCSS(color: Color): string | undefined {
+export function colorToRgbCSS(color: Color): string {
 	const rgb = colorToRgb255(color);
-	if (!rgb) return undefined;
 
 	return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 }
 
-export function colorToRgbaCSS(color: Color): string | undefined {
+export function colorToRgbaCSS(color: Color): string {
 	const rgb = colorToRgb255(color);
-	if (!rgb) return undefined;
 
 	return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${color.alpha})`;
 }
 
-export function colorToHSV(color: Color): HSV | undefined {
-	if (color.none) return undefined;
-
+export function colorToHSV(color: Color): HSV {
 	const { red: r, green: g, blue: b } = color;
 
 	const max = Math.max(r, g, b);
@@ -156,15 +142,11 @@ export function colorToHSV(color: Color): HSV | undefined {
 	return { h, s, v };
 }
 
-export function colorOpaque(color: Color): Color | undefined {
-	if (color.none) return undefined;
-
+export function colorOpaque(color: Color): Color {
 	return createColor(color.red, color.green, color.blue, 1);
 }
 
-export function colorLuminance(color: Color): number | undefined {
-	if (color.none) return undefined;
-
+export function colorLuminance(color: Color): number {
 	// Convert alpha into white
 	const r = color.red * color.alpha + (1 - color.alpha);
 	const g = color.green * color.alpha + (1 - color.alpha);
@@ -179,48 +161,51 @@ export function colorLuminance(color: Color): number | undefined {
 	return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
 }
 
-export function colorContrastingColor(color: Color): "black" | "white" {
-	if (color.none) return "black";
+export function colorContrastingColor(color: Color | undefined): "black" | "white" {
+	if (!color) return "black";
 
 	const luminance = colorLuminance(color);
 
-	return luminance && luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
+	return luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 }
 
 export function contrastingOutlineFactor(value: FillChoice, proximityColor: string | [string, string], proximityRange: number): number {
 	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
-	const [range1, range2] = pair.map((color) => colorFromCSS(window.getComputedStyle(document.body).getPropertyValue(color)) || createNoneColor());
+	const [range1, range2] = pair.map((color) => colorFromCSS(window.getComputedStyle(document.body).getPropertyValue(color)));
 
-	const contrast = (color: Color): number => {
-		const lum = colorLuminance(color) || 0;
-		let rangeLuminance1 = colorLuminance(range1) || 0;
-		let rangeLuminance2 = colorLuminance(range2) || 0;
+	const contrast = (color: Color | undefined): number => {
+		if (!color) return 0;
+
+		const lum = colorLuminance(color);
+		let rangeLuminance1 = range1 ? colorLuminance(range1) : 0;
+		let rangeLuminance2 = range2 ? colorLuminance(range2) : 0;
 		[rangeLuminance1, rangeLuminance2] = [Math.min(rangeLuminance1, rangeLuminance2), Math.max(rangeLuminance1, rangeLuminance2)];
 
 		const distance = Math.max(0, rangeLuminance1 - lum, lum - rangeLuminance2);
 
-		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (colorToHSV(color)?.s || 0));
+		return (1 - Math.min(distance / proximityRange, 1)) * (1 - colorToHSV(color).s);
 	};
 
-	if (isGradient(value)) {
-		if (value.color.length === 0) return 0;
+	const gradientStops = fillChoiceGradientStops(value);
+	if (gradientStops) {
+		if (gradientStops.color.length === 0) return 0;
 
-		const first = contrast(value.color[0]);
-		const last = contrast(value.color[value.color.length - 1]);
+		const first = contrast(gradientStops.color[0]);
+		const last = contrast(gradientStops.color[gradientStops.color.length - 1]);
 
 		return Math.min(first, last);
 	}
 
-	return contrast(value);
+	return contrast(fillChoiceColor(value));
 }
 
 // GRADIENT UTILITY FUNCTIONS
 
-export function isGradient(value: unknown): value is Gradient {
-	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value;
+export function isGradientStops(value: unknown): value is GradientStops {
+	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
 }
 
-export function gradientToLinearGradientCSS(gradient: Gradient): string {
+export function gradientToLinearGradientCSS(gradient: GradientStops): string {
 	if (gradient.position.length === 1) {
 		return `linear-gradient(to right, ${colorToHexOptionalAlpha(gradient.color[0])} 0%, ${colorToHexOptionalAlpha(gradient.color[0])} 100%)`;
 	}
@@ -229,29 +214,29 @@ export function gradientToLinearGradientCSS(gradient: Gradient): string {
 	return `linear-gradient(to right, ${pieces})`;
 }
 
-export function gradientFirstColor(gradient: Gradient): Color | undefined {
+export function gradientFirstColor(gradient: GradientStops): Color | undefined {
 	return gradient.color[0];
 }
 
-export function gradientLastColor(gradient: Gradient): Color | undefined {
+export function gradientLastColor(gradient: GradientStops): Color | undefined {
 	return gradient.color[gradient.color.length - 1];
 }
 
 // FILL CHOICE UTILITY FUNCTIONS
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function parseFillChoice(value: any): FillChoice {
-	if (isColor(value)) return value;
-	if (isGradient(value)) return value;
+export function fillChoiceColor(value: FillChoice): Color | undefined {
+	if (typeof value === "object" && "Solid" in value) return value.Solid;
+	return undefined;
+}
 
-	const gradient: Gradient | undefined = value["Gradient"];
-	if (gradient) {
-		const color = gradient.color.map((c) => createColor(c.red, c.green, c.blue, c.alpha));
-		return { ...gradient, color };
-	}
+export function fillChoiceGradientStops(value: FillChoice): GradientStops | undefined {
+	if (typeof value === "object" && "Gradient" in value) return value.Gradient;
+	return undefined;
+}
 
-	const solid = value["Solid"];
-	if (solid) return createColor(solid.red, solid.green, solid.blue, solid.alpha);
-
-	return createNoneColor();
+export function parseFillChoice(value: unknown): FillChoice {
+	if (value === "None" || value === undefined || value === null) return "None";
+	if (typeof value === "object" && value !== null && "Solid" in value && isColor(value.Solid)) return { Solid: value.Solid };
+	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientStops(value.Gradient)) return { Gradient: value.Gradient };
+	return "None";
 }

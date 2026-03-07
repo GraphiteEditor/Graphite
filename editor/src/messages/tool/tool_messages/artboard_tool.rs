@@ -22,7 +22,8 @@ pub struct ArtboardTool {
 }
 
 #[impl_message(Message, ToolMessage, Artboard)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ArtboardToolMessage {
 	// Standard messages
 	Abort,
