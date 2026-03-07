@@ -514,5 +514,16 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 }
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
-	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
+	if (!(target instanceof HTMLElement)) return false;
+
+	// Handle textarea and contenteditable elements
+	if (target.nodeName === "TEXTAREA" || target.isContentEditable) return true;
+
+	// For input elements, only treat text-like inputs as text fields (not checkboxes )
+	if (target instanceof HTMLInputElement) {
+		const textInputTypes = ["text", "password", "email", "number", "search", "tel", "url"];
+		return textInputTypes.includes(target.type);
+	}
+
+	return false;
 }
