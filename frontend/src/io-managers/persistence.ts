@@ -74,8 +74,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		// TODO: Eventually remove this document upgrade code
 		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if the browser is storing the old format as strings
 		if (previouslySavedDocuments) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			Object.values(previouslySavedDocuments).forEach((doc: any) => {
+			Object.values(previouslySavedDocuments).forEach((doc) => {
 				if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
 			});
 		}

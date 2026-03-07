@@ -1,5 +1,6 @@
 import { get } from "svelte/store";
 
+import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import type { DialogState } from "@graphite/state-providers/dialog";
 import type { DocumentState } from "@graphite/state-providers/document";
@@ -7,7 +8,7 @@ import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 import type { PortfolioState } from "@graphite/state-providers/portfolio";
 import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
+import { operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
@@ -40,8 +41,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Event listeners
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
+	const listeners: { target: EventListenerTarget; eventName: EventName; action(event: Event): void; options?: AddEventListenerOptions }[] = [
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -83,9 +83,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 
 		// Cut, copy, and paste is handled in the backend on desktop
-		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+		if (isPlatformNative() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
 		// But on web, we want to not redirect paste
-		if (!isDesktop() && key === "KeyV" && accelKey) return false;
+		if (!isPlatformNative() && key === "KeyV" && accelKey) return false;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
@@ -104,7 +104,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
 
 		// Web-only keyboard shortcuts
-		if (!isDesktop()) {
+		if (!isPlatformNative()) {
 			// Don't redirect a fullscreen request, but process it immediately instead
 			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
 				e.preventDefault();
