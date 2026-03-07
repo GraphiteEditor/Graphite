@@ -16,7 +16,7 @@ Wraps the editor backend codebase (`/editor`) and provides a JS-centric API for 
 
 ## ESLint configuration: `eslint.config.js`
 
-[ESLint](https://eslint.org/) is the tool which enforces style rules on the JS, TS, and Svelte files in our frontend codebase. As it is set up in this config file, ESLint will complain about bad practices and often help reformat code automatically when (in VS Code) the file is saved or `npm run lint` is executed. (If you don't use VS Code, remember to run this command before committing!) This config file for ESLint sets our style preferences and configures our usage of extensions/plugins for Svelte support and [Prettier](https://prettier.io/)'s role as a code formatter.
+When you use `npm run check`, it [ESLint](https://eslint.org/) checks the code in the frontend project for code quality. (The command also reports TS and Svelte errors.) The tool enforces style rules on the JS, TS, and Svelte (including its HTML and SCSS) files in our frontend codebase. As it is set up in this config file, ESLint will complain about bad practices and often help reformat code automatically when the file is saved in VS Code, or manually when `npm run fix` is executed. (If you don't use VS Code, remember to run this command before committing!) This config file for ESLint sets our style preferences and configures our usage of extensions/plugins for Svelte support and [Prettier](https://prettier.io/)'s role as a code formatter.
 
 ## Svelte configuration: `svelte.config.js`
 

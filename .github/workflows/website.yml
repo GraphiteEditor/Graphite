@@ -94,7 +94,7 @@ jobs:
         run: |
           cd website
           npm ci
-          npm run lint
+          npm run check
           zola --config config.toml build --minify
 
       - name: 📤 Publish to Cloudflare Pages
