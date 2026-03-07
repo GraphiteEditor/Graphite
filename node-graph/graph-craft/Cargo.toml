@@ -15,8 +15,8 @@ wasm = [
 	"core-types/wasm",
 	"graphic-types/wasm",
 	"text-nodes/wasm",
-	"dep:tsify",
-	"dep:wasm-bindgen",
+	"tsify",
+	"wasm-bindgen",
 ]
 
 [dependencies]

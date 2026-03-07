@@ -29,8 +29,8 @@ wasm = [
 	"core-types/wasm",
 	"raster-types/wasm",
 	"vector-types/wasm",
-	"dep:tsify",
-	"dep:wasm-bindgen",
+	"tsify",
+	"wasm-bindgen",
 ]
 
 [dependencies]

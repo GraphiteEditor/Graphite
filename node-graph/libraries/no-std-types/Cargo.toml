@@ -24,7 +24,7 @@ std = [
 	"num-traits/std",
 	"num_enum/std",
 ]
-wasm = ["dep:tsify", "dep:wasm-bindgen"]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
