@@ -8,13 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
-wasm = [
-	"core-types/wasm",
-	"raster-types/wasm",
-	"graphic-types/wasm",
-	"tsify",
-	"wasm-bindgen",
-]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
