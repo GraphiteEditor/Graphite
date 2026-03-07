@@ -2181,7 +2181,7 @@ impl NodeGraphMessageHandler {
 
 		let mut widgets = vec![
 			PopoverButton::new()
-				.icon(Some("Node".to_string()))
+				.icon("Node")
 				.tooltip_label("New Node")
 				.tooltip_description("To add a node at the pointer location, perform the shortcut in an open area of the graph.")
 				.tooltip_shortcut(action_shortcut_manual!(Key::MouseRight))
@@ -2252,14 +2252,14 @@ impl NodeGraphMessageHandler {
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			//
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
 				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
 				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection || !selection_includes_layers)
 				.widget_instance(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
 				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
@@ -2286,7 +2286,7 @@ impl NodeGraphMessageHandler {
 		// If only one node is selected then show the preview or stop previewing button
 		if let Some(node_id) = previewing {
 			let button = TextButton::new("End Preview")
-				.icon(Some("FrameAll".to_string()))
+				.icon("FrameAll")
 				.tooltip_description("Restore preview to the graph output.")
 				.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 				.widget_instance();
@@ -2298,7 +2298,7 @@ impl NodeGraphMessageHandler {
 				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
 			if selection_is_not_already_the_output && no_other_selections {
 				let button = TextButton::new("Preview")
-					.icon(Some("FrameAll".to_string()))
+					.icon("FrameAll")
 					.tooltip_label("Preview")
 					.tooltip_description("Temporarily set the graph output to the selected node or layer. Perform the shortcut on a node or layer for quick access.")
 					.tooltip_shortcut(action_shortcut_manual!(Key::Alt, Key::MouseLeft))
@@ -2357,8 +2357,8 @@ impl NodeGraphMessageHandler {
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
-				.icon(Some("GraphViewOpen".into()))
-				.hover_icon(Some("GraphViewClosed".into()))
+				.icon("GraphViewOpen")
+				.hover_icon("GraphViewClosed")
 				.tooltip_label("Hide Node Graph")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
@@ -2495,7 +2495,7 @@ impl NodeGraphMessageHandler {
 						.widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					PopoverButton::new()
-						.icon(Some("Node".to_string()))
+						.icon("Node")
 						.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
 						.popover_layout({
 							let compatible_type = context

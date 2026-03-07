@@ -170,7 +170,7 @@
 	function onPointerDown(e: PointerEvent) {
 		if (disabled) return;
 
-		const target = (e.target || undefined) as HTMLElement | undefined;
+		const target = e.target instanceof HTMLElement ? e.target : undefined;
 		draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
 
 		hueBeforeDrag = hue;

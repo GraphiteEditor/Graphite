@@ -1,3 +1,4 @@
+use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -12,7 +13,8 @@ use graphite_proc_macros::WidgetBuilder;
 pub struct IconButton {
 	// Content
 	#[widget_builder(constructor)]
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: IconName,
 	#[serde(rename = "hoverIcon")]
 	pub hover_icon: Option<String>,
 	#[widget_builder(constructor)]
@@ -45,7 +47,8 @@ pub struct IconButton {
 pub struct PopoverButton {
 	// Content
 	pub style: Option<String>,
-	pub icon: Option<String>,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 	pub disabled: bool,
 
 	// Children
@@ -113,7 +116,8 @@ pub struct TextButton {
 	// Content
 	#[widget_builder(constructor)]
 	pub label: String,
-	pub icon: Option<String>,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 	#[serde(rename = "hoverIcon")]
 	pub hover_icon: Option<String>,
 	pub disabled: bool,

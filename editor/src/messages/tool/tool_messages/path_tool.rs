@@ -329,7 +329,7 @@ impl LayoutHolder for PathTool {
 
 		// Works only if a single layer is selected and its type is Vector
 		let path_node_button = TextButton::new("Make Path Editable")
-			.icon(Some("NodeShape".into()))
+			.icon("NodeShape")
 			.tooltip_label("Make Path Editable")
 			.tooltip_description(
 				"Enables the Pen and Path tools to directly edit layer geometry resulting from nondestructive operations. This inserts a 'Path' node as the last operation of the selected layer.",

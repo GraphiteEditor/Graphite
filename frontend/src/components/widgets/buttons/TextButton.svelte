@@ -53,7 +53,7 @@
 		}
 
 		// Focus the target so that keyboard inputs are sent to the dropdown
-		(e.target as HTMLElement | undefined)?.focus();
+		if (e.target instanceof HTMLElement) e.target.focus();
 
 		// Open the menu list floating menu
 		if (self) self.open = true;

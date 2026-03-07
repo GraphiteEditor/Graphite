@@ -1,3 +1,4 @@
+use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -14,8 +15,8 @@ pub struct CheckboxInput {
 	// Content
 	#[widget_builder(constructor)]
 	pub checked: bool,
-	#[derivative(Default(value = "\"Checkmark\".to_string()"))]
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 	#[serde(rename = "forLabel")]
 	pub for_label: CheckboxId,
 	pub disabled: bool,
@@ -100,6 +101,7 @@ pub struct DropdownInput {
 pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[tsify(large_number_types_as_bigints)]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_instance)]
@@ -108,7 +110,8 @@ pub struct MenuListEntry {
 	#[widget_builder(constructor)]
 	pub value: String,
 	pub label: String,
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 	pub disabled: bool,
 
 	// Children
@@ -118,7 +121,7 @@ pub struct MenuListEntry {
 	pub children_hash: u64,
 
 	// Styling
-	pub font: String,
+	pub font: Option<String>,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -320,7 +323,8 @@ pub struct RadioEntryData {
 	#[widget_builder(constructor)]
 	pub value: String,
 	pub label: String,
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

@@ -46,7 +46,7 @@ impl LayoutHolder for DemoArtworkDialog {
 
 				let images = chunk
 					.iter()
-					.map(|(name, thumbnail, filename)| ImageButton::new(*thumbnail).width(Some("256px".into())).on_update(|_| make_dialog(name, filename)).widget_instance())
+					.map(|(name, thumbnail, filename)| ImageButton::new(*thumbnail).width("256px").on_update(|_| make_dialog(name, filename)).widget_instance())
 					.collect();
 
 				let buttons = chunk

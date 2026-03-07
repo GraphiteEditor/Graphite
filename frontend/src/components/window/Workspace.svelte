@@ -40,15 +40,19 @@
 	const portfolio = getContext<PortfolioState>("portfolio");
 
 	function resizePanel(e: PointerEvent) {
-		const gutter = (e.target || undefined) as HTMLDivElement | undefined;
-		const nextSibling = (gutter?.nextElementSibling || undefined) as HTMLDivElement | undefined;
-		const prevSibling = (gutter?.previousElementSibling || undefined) as HTMLDivElement | undefined;
-		const parentElement = (gutter?.parentElement || undefined) as HTMLDivElement | undefined;
+		const gutter = e.target;
+		if (!(gutter instanceof HTMLDivElement)) return;
 
-		const nextSiblingName = nextSibling?.getAttribute("data-subdivision-name") || undefined;
-		const prevSiblingName = prevSibling?.getAttribute("data-subdivision-name") || undefined;
+		const nextSibling = gutter.nextElementSibling;
+		const prevSibling = gutter.previousElementSibling;
 
-		if (!gutter || !nextSibling || !prevSibling || !parentElement || !nextSiblingName || !prevSiblingName || !(nextSiblingName in PANEL_SIZES) || !(prevSiblingName in PANEL_SIZES)) return;
+		const parentElement = gutter.parentElement;
+		if (!(nextSibling instanceof HTMLDivElement) || !(prevSibling instanceof HTMLDivElement) || !(parentElement instanceof HTMLDivElement)) return;
+
+		const nextSiblingName = nextSibling.getAttribute("data-subdivision-name") || undefined;
+		const prevSiblingName = prevSibling.getAttribute("data-subdivision-name") || undefined;
+
+		if (!nextSiblingName || !prevSiblingName || !(nextSiblingName in PANEL_SIZES) || !(prevSiblingName in PANEL_SIZES)) return;
 
 		// Are we resizing horizontally?
 		const isHorizontal = gutter.getAttribute("data-gutter-horizontal") !== null;

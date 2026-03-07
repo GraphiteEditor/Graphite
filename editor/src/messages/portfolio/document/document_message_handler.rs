@@ -2582,8 +2582,8 @@ impl DocumentMessageHandler {
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
-				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
-				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
+				.icon(if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" })
+				.hover_icon(if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" })
 				.tooltip_label(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
@@ -2733,14 +2733,14 @@ impl DocumentMessageHandler {
 
 		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
 				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection)
 				.widget_instance(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
@@ -2773,7 +2773,7 @@ impl DocumentMessageHandler {
 
 		let widgets = vec![
 			PopoverButton::new()
-				.icon(Some("Node".to_string()))
+				.icon("Node")
 				.menu_direction(Some(MenuDirection::Top))
 				.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
 				.disabled(!has_selection || has_multiple_selection)

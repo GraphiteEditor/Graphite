@@ -419,7 +419,8 @@
 	}
 
 	function gradientStopPickerDirection(position: { x: number; y: number } | undefined, viewport: HTMLDivElement | undefined): MenuDirection {
-		const picker = (gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]") || undefined) as HTMLElement | undefined;
+		const element = gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]");
+		const picker = element instanceof HTMLElement ? element : undefined;
 		if (!picker || !position || !viewport) return "Bottom";
 
 		const roomRight = position.x + picker.offsetWidth - viewport.clientWidth;

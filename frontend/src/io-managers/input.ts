@@ -29,7 +29,8 @@ type EventListenerTarget = {
 };
 
 export function createInputManager(editor: Editor, dialog: DialogState, portfolio: PortfolioState, document: DocumentState, fullscreen: FullscreenState): () => void {
-	const app = window.document.querySelector("[data-app-container]") as HTMLElement | undefined;
+	const appElement = window.document.querySelector("[data-app-container]");
+	const app = appElement instanceof HTMLElement ? appElement : null;
 	app?.focus();
 
 	let viewportPointerInteractionOngoing = false;
