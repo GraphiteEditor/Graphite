@@ -2,10 +2,8 @@ import { createStore, del, get, set, update } from "idb-keyval";
 import { get as getFromStore } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
-import type { FrontendMessages } from "@graphite/messages";
 import type { PortfolioState } from "@graphite/state-providers/portfolio";
-
-type TriggerPersistenceWriteDocument = FrontendMessages["TriggerPersistenceWriteDocument"];
+import type { MessageBody } from "@graphite/subscription-router";
 
 const graphiteStore = createStore("graphite", "store");
 
@@ -21,8 +19,8 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await set("current_document_id", String(documentId), graphiteStore);
 	}
 
-	async function storeDocument(autoSaveDocument: TriggerPersistenceWriteDocument) {
-		await update<Record<string, TriggerPersistenceWriteDocument>>(
+	async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersistenceWriteDocument">) {
+		await update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
 			"documents",
 			(old) => {
 				const documents = old || {};
@@ -37,7 +35,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	}
 
 	async function removeDocument(id: string) {
-		await update<Record<string, TriggerPersistenceWriteDocument>>(
+		await update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
 			"documents",
 			(old) => {
 				const documents = old || {};
@@ -71,10 +69,10 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	}
 
 	async function loadFirstDocument() {
-		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
+		const previouslySavedDocuments = await get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", graphiteStore);
 
 		// TODO: Eventually remove this document upgrade code
-		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
+		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if the browser is storing the old format as strings
 		if (previouslySavedDocuments) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			Object.values(previouslySavedDocuments).forEach((doc: any) => {
@@ -104,7 +102,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	}
 
 	async function loadRestDocuments() {
-		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
+		const previouslySavedDocuments = await get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", graphiteStore);
 
 		// TODO: Eventually remove this document upgrade code
 		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
@@ -188,7 +186,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	});
 	editor.subscriptions.subscribeFrontendMessage("TriggerSaveActiveDocument", async (data) => {
 		const documentId = String(data.documentId);
-		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
+		const previouslySavedDocuments = await get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", graphiteStore);
 
 		// TODO: Eventually remove this document upgrade code
 		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed

@@ -69,7 +69,7 @@ pub fn is_platform_native() -> bool {
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct EditorHandle {
-	/// This callback is called by the editor's dispatcher when directing FrontendMessages from Rust to JS
+	/// This callback is called by the editor's dispatcher when directing `FrontendMessage`s from Rust to JS
 	frontend_message_handler_callback: js_sys::Function,
 }
 
