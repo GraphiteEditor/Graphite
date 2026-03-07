@@ -91,7 +91,7 @@
 	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
-		if (!layoutGroup || !("row" in layoutGroup)) return undefined;
+		if (!layoutGroup || !("Row" in layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
 		let totalToolRowsFor1Columns = 0;
@@ -106,7 +106,7 @@
 		};
 
 		let toolsInCurrentGroup = 0;
-		layoutGroup.row.rowWidgets.forEach((widget) => {
+		layoutGroup.Row.rowWidgets.forEach((widget) => {
 			if ("Separator" in widget.widget) {
 				totalSeparators += 1;
 				tally();

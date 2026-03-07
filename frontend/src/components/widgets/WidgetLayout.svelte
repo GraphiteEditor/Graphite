@@ -13,14 +13,14 @@
 </script>
 
 {#each layout as layoutGroup}
-	{#if "row" in layoutGroup}
-		<WidgetSpan direction="row" widgets={layoutGroup.row.rowWidgets} {layoutTarget} class={className} {classes} />
-	{:else if "column" in layoutGroup}
-		<WidgetSpan direction="column" widgets={layoutGroup.column.columnWidgets} {layoutTarget} class={className} {classes} />
-	{:else if "section" in layoutGroup}
-		<WidgetSection widgetData={layoutGroup.section} {layoutTarget} class={className} {classes} />
-	{:else if "table" in layoutGroup}
-		<WidgetTable widgetData={layoutGroup.table} {layoutTarget} />
+	{#if "Row" in layoutGroup}
+		<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} class={className} {classes} />
+	{:else if "Column" in layoutGroup}
+		<WidgetSpan direction="column" widgets={layoutGroup.Column.columnWidgets} {layoutTarget} class={className} {classes} />
+	{:else if "Section" in layoutGroup}
+		<WidgetSection widgetData={layoutGroup.Section} {layoutTarget} class={className} {classes} />
+	{:else if "Table" in layoutGroup}
+		<WidgetTable widgetData={layoutGroup.Table} {layoutTarget} />
 	{/if}
 {/each}
 

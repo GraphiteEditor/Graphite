@@ -61,10 +61,10 @@
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.layout as layoutGroup}
-				{#if "row" in layoutGroup}
-					<WidgetSpan direction="row" widgets={layoutGroup.row.rowWidgets} {layoutTarget} />
-				{:else if "section" in layoutGroup}
-					<svelte:self widgetData={layoutGroup.section} {layoutTarget} />
+				{#if "Row" in layoutGroup}
+					<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
+				{:else if "Section" in layoutGroup}
+					<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
 				{/if}
 			{/each}
 		</LayoutCol>
