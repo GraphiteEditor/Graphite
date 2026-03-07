@@ -2314,7 +2314,7 @@ impl DocumentMessageHandler {
 					LayoutGroup::row({
 						let checkbox_id = CheckboxId::new();
 						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.pivot)
+							CheckboxInput::new(self.overlays_visibility_settings.origin)
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,

@@ -68,8 +68,7 @@ pub enum ExportBounds {
 	Artboard(LayerNodeIdentifier),
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[tsify(large_number_types_as_bigints)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EyedropperPreviewImage {
 	pub data: serde_bytes::ByteBuf,
