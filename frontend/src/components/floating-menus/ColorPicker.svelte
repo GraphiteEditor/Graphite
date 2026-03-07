@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
+	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { FillChoice, MenuDirection, Color } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import {
@@ -22,7 +23,6 @@
 	} from "@graphite/utility-functions/colors";
 	import type { HSV, RGB } from "@graphite/utility-functions/colors";
 	import { clamp } from "@graphite/utility-functions/math";
-	import { isDesktop } from "@graphite/utility-functions/platform";
 
 	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -414,7 +414,7 @@
 	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool
 	function eyedropperSupported(): boolean {
 		// TODO: Implement support in the desktop app for OS-level color picking
-		if (isDesktop()) return false;
+		if (isPlatformNative()) return false;
 
 		return window.EyeDropper !== undefined;
 	}

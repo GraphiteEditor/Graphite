@@ -1,6 +1,4 @@
 <script lang="ts" context="module">
-	export type MenuType = "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
-
 	/// Prevents the escape key from closing the parent floating menu of the given element.
 	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
 	/// After checking for the Escape key, it checks (in one `setTimeout`) for the attribute and ignores the key if it's present.
@@ -38,7 +36,7 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let open: boolean;
-	export let type: MenuType;
+	export let type: "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
 	export let direction: MenuDirection = "Bottom";
 	export let windowEdgeMargin = 6;
 	export let scrollableY = false;
