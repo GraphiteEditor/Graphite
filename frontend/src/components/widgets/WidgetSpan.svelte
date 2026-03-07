@@ -31,7 +31,7 @@
 
 	// Extract the discriminant key names from the Widget tagged enum union (e.g. "TextButton" | "CheckboxInput" | ...)
 	type WidgetKind = Widget extends infer T ? (T extends Record<infer K, unknown> ? K & string : never) : never;
-	// Extract the props type for a specific widget kind (e.g. WidgetProps<"TextButton"> gives the WASM-generated TextButton interface)
+	// Extract the props type for a specific widget kind (e.g. WidgetProps<"TextButton"> gives the Wasm-generated TextButton interface)
 	type WidgetProps<K extends WidgetKind> = Extract<Widget, Record<K, unknown>>[K];
 	// A Widget tagged enum unwrapped into a correlated [kind, props] tuple
 	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
