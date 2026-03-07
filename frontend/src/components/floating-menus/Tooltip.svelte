@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { LabeledShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { LabeledShortcut } from "@graphite/messages";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";

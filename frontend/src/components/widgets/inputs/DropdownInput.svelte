@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
+	import type { MenuListEntry, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

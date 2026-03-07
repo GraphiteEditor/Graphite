@@ -1,5 +1,5 @@
 import { sampleInterpolatedGradient } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Color, FillChoice, GradientStops } from "@graphite/messages";
+import type { Color, FillChoice, GradientStops } from "@graphite/../wasm/pkg/graphite_wasm";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };

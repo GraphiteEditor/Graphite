@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/messages";
 	import { parseFillChoice } from "@graphite/utility-functions/colors";
 	import { debouncer } from "@graphite/utility-functions/debounce";
 

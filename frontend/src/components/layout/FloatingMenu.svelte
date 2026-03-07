@@ -21,7 +21,7 @@
 <script lang="ts">
 	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
 
-	import type { MenuDirection } from "@graphite/messages";
+	import type { MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

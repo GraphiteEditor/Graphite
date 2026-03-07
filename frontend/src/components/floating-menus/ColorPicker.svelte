@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
-	import type { FillChoice, MenuDirection } from "@graphite/messages";
-	import type { Color } from "@graphite/messages";
+	import type { FillChoice, MenuDirection, Color } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import {
 		contrastingOutlineFactor,
@@ -25,8 +24,7 @@
 	import { clamp } from "@graphite/utility-functions/math";
 	import { isDesktop } from "@graphite/utility-functions/platform";
 
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
+	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";

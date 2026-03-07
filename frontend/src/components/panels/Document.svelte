@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
+	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import type { MessageBody } from "@graphite/subscription-router";

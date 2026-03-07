@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
+	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Layout } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
