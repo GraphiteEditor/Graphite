@@ -4,7 +4,6 @@
 
 	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { IconName } from "@graphite/icons";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
@@ -601,7 +600,7 @@
 						{/if}
 					</div>
 					{#if listing.entry.iconName}
-						<IconLabel icon={listing.entry.iconName as IconName} class="layer-type-icon" tooltipLabel="Artboard" />
+						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input

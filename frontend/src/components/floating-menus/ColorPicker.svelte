@@ -116,8 +116,21 @@
 
 	$: oldColor = oldIsNone ? undefined : createColorFromHSVA(oldHue, oldSaturation, oldValue, oldAlpha);
 	$: newColor = isNone ? undefined : createColorFromHSVA(hue, saturation, value, alpha);
-	$: rgbChannels = Object.entries(newColor ? colorToRgb255(newColor) : { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
-	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
+	$: rgbChannels = ((): [keyof RGB, number | undefined][] => {
+		const rgb = newColor ? colorToRgb255(newColor) : undefined;
+		return [
+			["r", rgb?.r],
+			["g", rgb?.g],
+			["b", rgb?.b],
+		];
+	})();
+	$: hsvChannels = ((): [keyof HSV, number | undefined][] => {
+		return [
+			["h", isNone ? undefined : hue * 360],
+			["s", isNone ? undefined : saturation * 100],
+			["v", isNone ? undefined : value * 100],
+		];
+	})();
 	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
 	$: outlineFactor = Math.max(
 		contrastingOutlineFactor(newColor ? { Solid: newColor } : ("None" as const), "--color-2-mildblack", 0.01),
@@ -403,16 +416,14 @@
 		// TODO: Implement support in the desktop app for OS-level color picking
 		if (isDesktop()) return false;
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return Boolean((window as any).EyeDropper);
+		return window.EyeDropper !== undefined;
 	}
 
 	async function activateEyedropperSample() {
 		if (!eyedropperSupported()) return;
 
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const result = await new (window as any).EyeDropper().open();
+			const result = await new EyeDropper().open();
 			dispatch("startHistoryTransaction");
 			setColorCode(result.sRGBHex);
 		} catch {

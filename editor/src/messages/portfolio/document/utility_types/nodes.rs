@@ -1,5 +1,6 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
+use crate::messages::frontend::IconName;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -21,7 +22,7 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "implementationName")]
 	pub implementation_name: String,
 	#[serde(rename = "iconName")]
-	pub icon_name: Option<String>,
+	pub icon_name: Option<IconName>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,

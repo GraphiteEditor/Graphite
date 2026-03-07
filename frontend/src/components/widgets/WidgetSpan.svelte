@@ -65,10 +65,10 @@
 		return Object.fromEntries(Object.entries(props).filter(([key]) => !exclusions.has(key)));
 	}
 
-	// Extracts the kind name and props from a Widget tagged enum (e.g. `{ TextButton: { label: "..." } }` -> `["TextButton", { label: "..." }]`)
-	function unwrapWidget(widgetInstance: WidgetInstance): [WidgetKind, Record<string, unknown>] {
-		const entries = Object.entries(widgetInstance.widget);
-		return entries[0] as [WidgetKind, Record<string, unknown>];
+	function unwrapWidget(widgetInstance: WidgetInstance): [WidgetKind, Record<string, unknown>] | undefined {
+		const entry = Object.entries(widgetInstance.widget)[0];
+		if (!entry || !(entry[0] in widgetRegistry)) return undefined;
+		return entry as [WidgetKind, Record<string, unknown>];
 	}
 
 	type WidgetConfig = {
@@ -242,14 +242,17 @@
 
 <div class={`widget-span ${className} ${extraClasses}`.trim()} class:narrow class:row={direction === "row"} class:column={direction === "column"}>
 	{#each widgets as widget, widgetIndex}
-		{@const [kind, widgetProps] = unwrapWidget(widget)}
-		{@const config = widgetRegistry[kind]}
-		{@const props = config?.getProps(widgetProps, widgetIndex)}
-		{@const slot = config?.getSlotContent?.(widgetProps)}
-		{#if props !== undefined && slot !== undefined}
-			<svelte:component this={config.component} {...props}>{slot}</svelte:component>
-		{:else if props !== undefined}
-			<svelte:component this={config.component} {...props} />
+		{@const unwrapped = unwrapWidget(widget)}
+		{#if unwrapped}
+			{@const [kind, widgetProps] = unwrapped}
+			{@const config = widgetRegistry[kind]}
+			{@const props = config?.getProps(widgetProps, widgetIndex)}
+			{@const slot = config?.getSlotContent?.(widgetProps)}
+			{#if props !== undefined && slot !== undefined}
+				<svelte:component this={config.component} {...props}>{slot}</svelte:component>
+			{:else if props !== undefined}
+				<svelte:component this={config.component} {...props} />
+			{/if}
 		{/if}
 	{/each}
 </div>

@@ -28,10 +28,8 @@ export async function initWasm() {
 	}
 
 	wasmImport = await wasmMemory();
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(window as any).imageCanvases = {};
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(window as any).receiveNativeMessage = receiveNativeMessage;
+	window.imageCanvases = {};
+	window.receiveNativeMessage = receiveNativeMessage;
 }
 
 // Should be called after running `initWasm()` and its promise resolving.

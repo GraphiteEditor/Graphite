@@ -89,7 +89,20 @@
 	}
 
 	function mouseHintIcon(input: MouseMotion): IconName {
-		return `MouseHint${input}` as IconName;
+		return {
+			None: "MouseHintNone" as const,
+			Lmb: "MouseHintLmb" as const,
+			Rmb: "MouseHintRmb" as const,
+			Mmb: "MouseHintMmb" as const,
+			ScrollUp: "MouseHintScrollUp" as const,
+			ScrollDown: "MouseHintScrollDown" as const,
+			Drag: "MouseHintDrag" as const,
+			LmbDouble: "MouseHintLmbDouble" as const,
+			LmbDrag: "MouseHintLmbDrag" as const,
+			RmbDrag: "MouseHintRmbDrag" as const,
+			RmbDouble: "MouseHintRmbDouble" as const,
+			MmbDrag: "MouseHintMmbDrag" as const,
+		}[input];
 	}
 </script>
 
