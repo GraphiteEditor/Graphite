@@ -6,14 +6,20 @@ import type { Editor } from "@graphite/editor";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDocumentState(editor: Editor) {
-	const state = writable({
-		// Layouts
-		toolOptionsLayout: [] as Layout,
-		documentBarLayout: [] as Layout,
-		toolShelfLayout: [] as Layout,
-		workingColorsLayout: [] as Layout,
-		nodeGraphControlBarLayout: [] as Layout,
-		// Graph view overlay
+	const state = writable<{
+		toolOptionsLayout: Layout;
+		documentBarLayout: Layout;
+		toolShelfLayout: Layout;
+		workingColorsLayout: Layout;
+		nodeGraphControlBarLayout: Layout;
+		graphViewOverlayOpen: boolean;
+		fadeArtwork: number;
+	}>({
+		toolOptionsLayout: [],
+		documentBarLayout: [],
+		toolShelfLayout: [],
+		workingColorsLayout: [],
+		nodeGraphControlBarLayout: [],
 		graphViewOverlayOpen: false,
 		fadeArtwork: 100,
 	});
