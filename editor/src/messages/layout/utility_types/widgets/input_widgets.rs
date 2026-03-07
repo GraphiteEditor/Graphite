@@ -100,8 +100,7 @@ pub struct DropdownInput {
 
 pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[tsify(large_number_types_as_bigints)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_instance)]

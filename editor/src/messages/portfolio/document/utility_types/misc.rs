@@ -3,8 +3,7 @@ use glam::DVec2;
 use std::fmt;
 
 #[repr(transparent)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[tsify(large_number_types_as_bigints)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct DocumentId(pub u64);
 

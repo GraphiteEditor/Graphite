@@ -10,8 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 #[repr(transparent)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[tsify(large_number_types_as_bigints)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct WidgetId(pub u64);
 
@@ -352,8 +351,7 @@ pub struct WidgetTable {
 	pub unstyled: bool,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[tsify(large_number_types_as_bigints)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetSection {
 	pub name: String,
@@ -768,8 +766,7 @@ pub enum Widget {
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[tsify(large_number_types_as_bigints)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WidgetDiff {
 	/// A path to the change
