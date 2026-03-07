@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["serde"]
 wgpu = ["dep:wgpu"]
-wasm = ["core-types/wasm", "dep:tsify", "dep:wasm-bindgen"]
+wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
