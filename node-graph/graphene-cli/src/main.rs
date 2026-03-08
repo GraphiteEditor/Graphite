@@ -46,12 +46,12 @@ enum Command {
 		/// Path to the .graphite document
 		document: PathBuf,
 	},
-	/// Export a .graphite document to a file (SVG, PNG, or JPG).
+	/// Export a .graphite document to a file (SVG, PNG, JPG, or GIF).
 	Export {
 		/// Path to the .graphite document
 		document: PathBuf,
 
-		/// Output file path (extension determines format: .svg, .png, .jpg)
+		/// Output file path (extension determines format: .svg, .png, .jpg, .gif)
 		#[clap(long, short = 'o')]
 		output: PathBuf,
 
@@ -74,6 +74,18 @@ enum Command {
 		/// Transparent background for PNG exports
 		#[clap(long)]
 		transparent: bool,
+
+		/// Frames per second for GIF animation (default: 30)
+		#[clap(long, default_value = "30")]
+		fps: f64,
+
+		/// Total number of frames for GIF animation
+		#[clap(long)]
+		frames: Option<u32>,
+
+		/// Animation duration in seconds for GIF (takes precedence over --frames)
+		#[clap(long)]
+		duration: Option<f64>,
 	},
 	ListNodeIdentifiers,
 }
@@ -149,6 +161,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			width,
 			height,
 			transparent,
+			fps,
+			frames,
+			duration,
 			..
 		} => {
 			// Spawn thread to poll GPU device
@@ -165,8 +180,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Create executor
 			let executor = create_executor(proto_graph)?;
 
-			// Perform export
-			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+			if fps <= 0. {
+				return Err("Fps number must be positive".into());
+			}
+
+			// Perform export based on file type
+			if file_type == export::FileType::Gif {
+				let animation = export::AnimationParams::new(fps, frames, duration);
+				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation).await?;
+			} else {
+				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}
