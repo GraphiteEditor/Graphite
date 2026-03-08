@@ -76,7 +76,9 @@ impl CacheKey {
 				bytes
 			})
 			.unwrap_or([0u8; 16]);
-		let quantized_rotation = (rotation * 10000.0).round() / 10000.0;
+		const ROTATION_QUANTIZATION_DIGITS: i32 = 5;
+		let quantization_amount = 10f64.powi(ROTATION_QUANTIZATION_DIGITS);
+		let quantized_rotation = (rotation * quantization_amount).round() * quantization_amount.recip();
 		Self {
 			render_mode_hash,
 			device_scale: device_scale.to_bits(),
