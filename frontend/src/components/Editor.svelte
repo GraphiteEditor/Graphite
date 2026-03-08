@@ -56,6 +56,8 @@
 	onDestroy(() => {
 		// Call the destructor for each manager
 		inputManagerDestructor();
+		// Clean up tooltip event listeners
+		tooltip.destroy();
 	});
 </script>
 

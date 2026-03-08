@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, onDestroy } from "svelte";
 
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "@graphite/io-managers/input";
 
@@ -186,6 +186,10 @@
 	function onKeyDown(e: KeyboardEvent) {
 		if (e.key === "Escape") abortInteraction();
 	}
+
+	onDestroy(() => {
+		removeEvents();
+	});
 
 	function addEvents() {
 		window.addEventListener("pointerup", onPointerUp);

@@ -26,7 +26,7 @@ export function createTooltipState(editor: Editor) {
 	let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
 	// Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip
-	document.addEventListener("mouseover", (e) => {
+	const onMouseOver = (e: MouseEvent) => {
 		const element = (e.target instanceof Element && e.target.closest("[data-tooltip-label], [data-tooltip-description], [data-tooltip-shortcut]")) || undefined;
 
 		update((state) => {
@@ -34,10 +34,10 @@ export function createTooltipState(editor: Editor) {
 			state.element = element;
 			return state;
 		});
-	});
+	};
 
 	// Listen for mouse movements to schedule and position the tooltip, or hide it immediately upon further movement
-	document.addEventListener("mousemove", (e) => {
+	const onMouseMove = (e: MouseEvent) => {
 		// Hide the tooltip now that the cursor has moved
 		update((state) => {
 			state.visible = false;
@@ -60,14 +60,36 @@ export function createTooltipState(editor: Editor) {
 				return state;
 			});
 		}, SHOW_TOOLTIP_DELAY_MS);
-	});
+	};
 
 	// Hide tooltip and cancel any pending timeout when the mouse leaves the application window
-	document.addEventListener("mouseleave", () => {
+	const onMouseLeave = () => {
 		if (tooltipTimeout) clearTimeout(tooltipTimeout);
 		closeTooltip();
-	});
+	};
 
+	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
+	function closeTooltip() {
+		update((state) => {
+			state.visible = false;
+			state.element = undefined;
+			return state;
+		});
+	}
+
+	function destroy() {
+		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+		document.removeEventListener("mouseover", onMouseOver);
+		document.removeEventListener("mousemove", onMouseMove);
+		document.removeEventListener("mouseleave", onMouseLeave);
+		document.removeEventListener("mousedown", closeTooltip);
+		document.removeEventListener("keydown", closeTooltip);
+		document.removeEventListener("wheel", closeTooltip);
+	}
+
+	document.addEventListener("mouseover", onMouseOver);
+	document.addEventListener("mousemove", onMouseMove);
+	document.addEventListener("mouseleave", onMouseLeave);
 	document.addEventListener("mousedown", closeTooltip);
 	document.addEventListener("keydown", closeTooltip);
 	document.addEventListener("wheel", closeTooltip);
@@ -91,17 +113,9 @@ export function createTooltipState(editor: Editor) {
 		});
 	});
 
-	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
-	function closeTooltip() {
-		update((state) => {
-			state.visible = false;
-			state.element = undefined;
-			return state;
-		});
-	}
-
 	return {
 		subscribe,
+		destroy,
 	};
 }
 export type TooltipState = ReturnType<typeof createTooltipState>;

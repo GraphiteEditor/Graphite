@@ -74,6 +74,8 @@
 	let canvasHeight: number | undefined = undefined;
 
 	let devicePixelRatio: number | undefined;
+	let removeUpdatePixelRatio: (() => void) | undefined;
+	let viewportResizeObserver: ResizeObserver | undefined;
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
@@ -436,7 +438,6 @@
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
 		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
-		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
 		const updatePixelRatio = () => {
 			removeUpdatePixelRatio?.();
 			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
@@ -528,15 +529,16 @@
 		setupViewportResizeObserver(editor);
 
 		// Also observe the inner viewport for canvas sizing and ruler updates
-		const viewportResizeObserver = new ResizeObserver(() => {
+		viewportResizeObserver = new ResizeObserver(() => {
 			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});
 
 	onDestroy(() => {
-		// Cleanup the viewport resize observer
 		cleanupViewportResizeObserver();
+		viewportResizeObserver?.disconnect();
+		removeUpdatePixelRatio?.();
 	});
 </script>
 
