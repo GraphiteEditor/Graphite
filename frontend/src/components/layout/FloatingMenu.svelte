@@ -81,16 +81,7 @@
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
-		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
-		// The bug is possibly related to <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
-		if (browserVersion().toLowerCase().includes("safari")) {
-			const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
-			if (scrollable instanceof HTMLElement) {
-				// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
-				// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
-				scrollable.style.overflow = isOpen ? "hidden" : "";
-			}
-		}
+		setSafariScrollableOverflow(isOpen);
 
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
@@ -131,6 +122,16 @@
 		wasOpen = isOpen;
 	}
 
+	// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container. The bug is possibly related to
+	// <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
+	// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
+	// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
+	function setSafariScrollableOverflow(hidden: boolean) {
+		if (!browserVersion().toLowerCase().includes("safari")) return;
+		const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
+		if (scrollable instanceof HTMLElement) scrollable.style.overflow = hidden ? "hidden" : "";
+	}
+
 	onMount(() => {
 		// Measure the content and round up its width and height to the nearest even integer.
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
@@ -166,6 +167,10 @@
 		window.removeEventListener("keydown", keyDownHandler);
 		window.removeEventListener("pointerdown", pointerDownHandler);
 		window.removeEventListener("pointerup", pointerUpHandler);
+		window.removeEventListener("click", clickHandlerCapture, true);
+
+		// Revert Safari overflow workaround if the menu was open when destroyed
+		if (open) setSafariScrollableOverflow(false);
 	});
 
 	afterUpdate(() => {

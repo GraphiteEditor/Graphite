@@ -119,6 +119,13 @@
 
 		activeDragCleanup?.();
 
+		// Exit pointer lock if active (non-Safari path)
+		if (document.pointerLockElement) document.exitPointerLock();
+
+		// Remove Safari cursor-hidden workaround class if present
+		const isSafari = browserVersion().toLowerCase().includes("safari");
+		if (isSafari) document.body.classList.remove("cursor-hidden");
+
 		// Clean up any listeners related to tracking the Shift and Ctrl keys
 		removeEventListener("keydown", trackShiftAndCtrl);
 		removeEventListener("keyup", trackShiftAndCtrl);
