@@ -10,7 +10,7 @@
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
+	import { setupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -76,6 +76,7 @@
 	let devicePixelRatio: number | undefined;
 	let removeUpdatePixelRatio: (() => void) | undefined;
 	let viewportResizeObserver: ResizeObserver | undefined;
+	let cleanupViewportResizeObserver: (() => void) | undefined;
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
@@ -526,7 +527,7 @@
 
 		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
 		// This must happen in onMount to ensure the viewport container element exists
-		setupViewportResizeObserver(editor);
+		cleanupViewportResizeObserver = setupViewportResizeObserver(editor);
 
 		// Also observe the inner viewport for canvas sizing and ruler updates
 		viewportResizeObserver = new ResizeObserver(() => {
@@ -536,9 +537,21 @@
 	});
 
 	onDestroy(() => {
-		cleanupViewportResizeObserver();
+		cleanupViewportResizeObserver?.();
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
+
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
 	});
 </script>
 

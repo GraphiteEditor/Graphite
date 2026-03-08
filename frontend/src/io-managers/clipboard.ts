@@ -1,6 +1,6 @@
 import type { Editor } from "@graphite/editor";
 
-export function createClipboardManager(editor: Editor) {
+export function createClipboardManager(editor: Editor): () => void {
 	// Subscribe to process backend event
 	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
@@ -12,6 +12,12 @@ export function createClipboardManager(editor: Editor) {
 	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
+
+	return () => {
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
+	};
 }
 
 function readAtCaret(cut: boolean): string | undefined {

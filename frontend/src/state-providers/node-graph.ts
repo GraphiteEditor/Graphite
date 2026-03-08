@@ -185,9 +185,31 @@ export function createNodeGraphState(editor: Editor) {
 		});
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("SendUIMetadata");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateBox");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateClickTargets");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateExportReorderIndex");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");
+		editor.subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphTransform");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnail");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
+	}
+
 	return {
 		subscribe,
 		closeContextMenu,
+		destroy,
 	};
 }
 export type NodeGraphState = ReturnType<typeof createNodeGraphState>;

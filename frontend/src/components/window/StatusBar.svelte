@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
@@ -23,6 +23,11 @@
 			patchLayout(statusBarInfoLayout, data);
 			statusBarInfoLayout = statusBarInfoLayout;
 		});
+	});
+
+	onDestroy(() => {
+		editor.subscriptions.unsubscribeLayoutUpdate("StatusBarHints");
+		editor.subscriptions.unsubscribeLayoutUpdate("StatusBarInfo");
 	});
 </script>
 

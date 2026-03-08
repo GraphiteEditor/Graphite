@@ -508,7 +508,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	bindListeners();
 
 	// Return the destructor
-	return unbindListeners;
+	return () => {
+		unbindListeners();
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
+		editor.subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
+	};
 }
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {

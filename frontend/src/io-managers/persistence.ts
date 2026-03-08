@@ -7,7 +7,7 @@ import type { MessageBody } from "@graphite/subscription-router";
 
 const graphiteStore = createStore("graphite", "store");
 
-export function createPersistenceManager(editor: Editor, portfolio: PortfolioState) {
+export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): () => void {
 	// DOCUMENTS
 
 	async function storeDocumentOrder() {
@@ -200,6 +200,17 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			await storeCurrentDocumentId(documentId);
 		}
 	});
+
+	return () => {
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
+	};
 }
 
 export async function wipeDocuments() {

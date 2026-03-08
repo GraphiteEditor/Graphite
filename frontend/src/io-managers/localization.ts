@@ -1,11 +1,15 @@
 import type { Editor } from "@graphite/editor";
 
-export function createLocalizationManager(editor: Editor) {
+export function createLocalizationManager(editor: Editor): () => void {
 	// Subscribe to process backend event
 	editor.subscriptions.subscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate", (data) => {
 		const localized = localizeTimestamp(data.commitDate);
 		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
 	});
+
+	return () => {
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate");
+	};
 }
 
 function localizeTimestamp(utc: string): { timestamp: string; year: string } {

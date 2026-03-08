@@ -89,6 +89,10 @@
 	let ctrlKeyDown = false;
 	// Cleanup function for active drag interactions, called on destroy to prevent leaked listeners
 	let activeDragCleanup: (() => void) | undefined;
+	// Track the slider abort state for cleanup on destroy
+	let sliderResetAbortHandler: (() => void) | undefined;
+	let sliderAbortTimeout1: ReturnType<typeof setTimeout> | undefined;
+	let sliderAbortTimeout2: ReturnType<typeof setTimeout> | undefined;
 
 	$: watchValue(value, unit);
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
@@ -110,6 +114,8 @@
 	});
 	onDestroy(() => {
 		clearTimeout(repeatTimeout);
+		clearTimeout(sliderAbortTimeout1);
+		clearTimeout(sliderAbortTimeout2);
 
 		activeDragCleanup?.();
 
@@ -124,6 +130,7 @@
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
 		removeEventListener("keydown", incrementPressAbort);
+		if (sliderResetAbortHandler) removeEventListener("pointerup", sliderResetAbortHandler);
 	});
 
 	// ===============================
@@ -310,7 +317,7 @@
 		pressingArrow = false;
 		clearTimeout(repeatTimeout);
 		updateValue(initialValueBeforeDragging);
-		removeEventListener("keydown", onIncrementPointerUp);
+		removeEventListener("keydown", incrementPressAbort);
 	}
 
 	// =======================================
@@ -677,7 +684,7 @@
 
 		// End the user's drag by instantaneously disabling and re-enabling the range input element
 		if (inputRangeElement) inputRangeElement.disabled = true;
-		setTimeout(() => {
+		sliderAbortTimeout1 = setTimeout(() => {
 			if (inputRangeElement) inputRangeElement.disabled = false;
 		}, 0);
 
@@ -700,11 +707,13 @@
 			// dragging the slider, hitting Escape, then releasing the mouse button. This results in being transferred by `onSliderInput()` to the
 			// "Deciding" state when we should remain in the "Ready" state as set here. (For debugging, this can be visualized in CSS by
 			// recoloring the fake slider handle, which is shown in the "Deciding" state.)
-			setTimeout(() => (rangeSliderClickDragState = "Ready"), 0);
+			sliderAbortTimeout2 = setTimeout(() => (rangeSliderClickDragState = "Ready"), 0);
 
 			// Clean up the event listener that was used to call this function.
 			removeEventListener("pointerup", sliderResetAbort);
+			sliderResetAbortHandler = undefined;
 		};
+		sliderResetAbortHandler = sliderResetAbort;
 		addEventListener("pointerup", sliderResetAbort);
 
 		// Clean up the event listeners that were for tracking an abort while dragging the slider, now that we're no longer dragging it.

@@ -52,12 +52,17 @@ export function createFullscreenState(editor: Editor) {
 		toggleFullscreen();
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("WindowFullscreen");
+	}
+
 	return {
 		subscribe,
 		fullscreenModeChanged,
 		enterFullscreen,
 		exitFullscreen,
 		toggleFullscreen,
+		destroy,
 	};
 }
 export type FullscreenState = ReturnType<typeof createFullscreenState>;

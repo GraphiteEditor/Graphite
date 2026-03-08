@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { getContext, onMount, onDestroy } from "svelte";
 
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
@@ -30,6 +30,10 @@
 			patchLayout(menuBarLayout, data);
 			menuBarLayout = menuBarLayout;
 		});
+	});
+
+	onDestroy(() => {
+		editor.subscriptions.unsubscribeLayoutUpdate("MenuBar");
 	});
 </script>
 
