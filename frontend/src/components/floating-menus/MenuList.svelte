@@ -48,6 +48,7 @@
 	let highlighted: MenuListEntry | undefined = activeEntry;
 	let virtualScrollingEntriesStart = 0;
 	let keydownListenerAdded = false;
+	let destroyed = false;
 
 	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
@@ -68,13 +69,15 @@
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
 	onMount(async () => {
 		await tick();
-		if (open && !inNestedMenuList() && !keydownListenerAdded) {
+		if (!destroyed && open && !inNestedMenuList() && !keydownListenerAdded) {
 			addEventListener("keydown", keydown);
 			keydownListenerAdded = true;
 		}
 	});
 	onDestroy(() => {
 		removeEventListener("keydown", keydown);
+		// Set the destroyed status in the closure kept by the awaited `tick()` in `onMount` in case that delayed run occurs after the component is destroyed
+		destroyed = true;
 	});
 
 	function inNestedMenuList(): boolean {

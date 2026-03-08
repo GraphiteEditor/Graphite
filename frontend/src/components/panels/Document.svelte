@@ -77,6 +77,7 @@
 	let removeUpdatePixelRatio: (() => void) | undefined;
 	let viewportResizeObserver: ResizeObserver | undefined;
 	let cleanupViewportResizeObserver: (() => void) | undefined;
+	let addedFontFaces: FontFace[] = [];
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
@@ -378,7 +379,9 @@
 
 		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
 			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
-			window.document.fonts.add(new FontFace("text-font", fontView));
+			const face = new FontFace("text-font", fontView);
+			window.document.fonts.add(face);
+			addedFontFaces.push(face);
 			textInput.style.fontFamily = "text-font";
 		}
 
@@ -512,7 +515,9 @@
 
 			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
 				const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
-				window.document.fonts.add(new FontFace("text-font", fontView));
+				const face = new FontFace("text-font", fontView);
+				window.document.fonts.add(face);
+				addedFontFaces.push(face);
 				textInput.style.fontFamily = "text-font";
 			}
 		});
@@ -540,6 +545,7 @@
 		cleanupViewportResizeObserver?.();
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
+		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
 
 		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
 		editor.subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");

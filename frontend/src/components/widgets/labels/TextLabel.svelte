@@ -62,7 +62,10 @@
 	}
 
 	onMount(() => watchForCheckbox(forCheckbox));
-	onDestroy(() => watchForCheckbox(undefined));
+	onDestroy(() => {
+		handlePointerLeave();
+		watchForCheckbox(undefined);
+	});
 </script>
 
 <label

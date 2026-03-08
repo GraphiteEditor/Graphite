@@ -11,6 +11,7 @@ export type Editor = {
 	raw: WebAssembly.Memory;
 	handle: EditorHandle;
 	subscriptions: SubscriptionRouter;
+	destroy: () => void;
 };
 
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
@@ -52,13 +53,14 @@ export function createEditor(): Editor {
 	const subscriptions = createSubscriptionRouter();
 
 	// Check if the URL hash fragment has any demo artwork to be loaded
+	const demoArtworkAbortController = new AbortController();
 	(async () => {
 		const demoArtwork = window.location.hash.trim().match(/#demo\/(.*)/)?.[1];
 		if (!demoArtwork) return;
 
 		try {
 			const url = new URL(`/demo-artwork/${demoArtwork}.${handle.fileExtension()}`, document.location.href);
-			const data = await fetch(url);
+			const data = await fetch(url, { signal: demoArtworkAbortController.signal });
 			if (!data.ok) throw new Error();
 
 			const filename = url.pathname.split("/").pop() || "Untitled";
@@ -72,5 +74,10 @@ export function createEditor(): Editor {
 		}
 	})();
 
-	return { raw, handle, subscriptions };
+	function destroy() {
+		handle.free();
+		demoArtworkAbortController.abort();
+	}
+
+	return { raw, handle, subscriptions, destroy };
 }
