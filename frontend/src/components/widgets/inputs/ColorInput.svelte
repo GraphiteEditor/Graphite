@@ -2,7 +2,8 @@
 	import { createEventDispatcher } from "svelte";
 
 	import type { FillChoice, MenuDirection, ActionShortcut } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+	import type { Color } from "@graphite/messages";
+	import { contrastingOutlineFactor, isColor, isGradient, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -26,9 +27,9 @@
 
 	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
 	$: outlined = outlineFactor > 0.0001;
-	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
-	$: none = value instanceof Color ? value.none : false;
-	$: transparency = value instanceof Gradient ? value.color.some((color) => color.alpha < 1) : value.alpha < 1;
+	$: chosenGradient = isGradient(value) ? gradientToLinearGradientCSS(value) : `linear-gradient(${colorToHexOptionalAlpha(value)}, ${colorToHexOptionalAlpha(value)})`;
+	$: none = isColor(value) ? value.none : false;
+	$: transparency = isGradient(value) ? value.color.some((color: Color) => color.alpha < 1) : value.alpha < 1;
 </script>
 
 <LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>

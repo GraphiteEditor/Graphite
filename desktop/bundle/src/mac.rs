@@ -22,9 +22,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 	let app_dir = bundle(&profile_path, &app_bin, &helper_bin);
 
 	// TODO: Consider adding more useful cli
-	if std::env::args().any(|a| a == "open") {
-		let executable_path = app_dir.join(EXEC_PATH).join(APP_NAME);
-		run_command(&executable_path.to_string_lossy(), &[]).expect("failed to open app");
+	let args: Vec<String> = std::env::args().collect();
+	if let Some(pos) = args.iter().position(|a| a == "open") {
+		let executable = app_dir.join(EXEC_PATH).join(APP_NAME);
+		let extra_args: Vec<&str> = args[pos + 1..].iter().map(|s| s.as_str()).collect();
+		run_command(&executable.to_string_lossy(), &extra_args).expect("failed to open app");
 	}
 
 	Ok(())

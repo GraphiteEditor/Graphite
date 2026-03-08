@@ -732,6 +732,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-run"
+version = "0.0.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "cargo-util-schemas"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6250,6 +6257,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -7,7 +7,8 @@
 	import { createEventDispatcher, onDestroy } from "svelte";
 
 	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { Color, type Gradient } from "@graphite/messages";
+	import type { Color, Gradient } from "@graphite/messages";
+	import { createColor, colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -115,7 +116,7 @@
 		// Determine the color of the new stop by evaluating the gradient at the position of the new stop
 		type ReturnedColor = { red: number; green: number; blue: number; alpha: number };
 		const evaluated = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color) as ReturnedColor;
-		const color = new Color(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
+		const color = createColor(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
 
 		// Insert the new stop into the gradient
 		gradient.position.splice(index, 0, position);
@@ -368,9 +369,9 @@
 	class="spectrum-input"
 	classes={{ disabled }}
 	styles={{
-		"--gradient-start": gradient.firstColor()?.toHexOptionalAlpha() || "black",
-		"--gradient-end": gradient.lastColor()?.toHexOptionalAlpha() || "black",
-		"--gradient-stops": gradient.toLinearGradientCSS(),
+		"--gradient-start": ((color) => (color ? colorToHexOptionalAlpha(color) : "black"))(gradientFirstColor(gradient)),
+		"--gradient-end": ((color) => (color ? colorToHexOptionalAlpha(color) : "black"))(gradientLastColor(gradient)),
+		"--gradient-stops": gradientToLinearGradientCSS(gradient),
 	}}
 >
 	<LayoutRow class="gradient-strip" on:pointerdown={insertStop}></LayoutRow>
@@ -396,7 +397,7 @@
 				class="marker"
 				class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
 				style:--marker-position={marker.position}
-				style:--marker-color={marker.color.toRgbCSS()}
+				style:--marker-color={colorToRgbCSS(marker.color)}
 				on:pointerdown={(e) => markerPointerDown(e, index)}
 				data-gradient-marker
 				xmlns="http://www.w3.org/2000/svg"

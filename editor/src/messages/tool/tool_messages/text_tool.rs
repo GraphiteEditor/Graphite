@@ -412,7 +412,7 @@ impl TextToolData {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
-				color: editing_text.color.unwrap_or(Color::BLACK),
+				color: editing_text.color.map_or("#000000".to_string(), |color| format!("#{}", color.to_rgba_hex_srgb())),
 				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
