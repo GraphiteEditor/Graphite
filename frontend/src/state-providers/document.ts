@@ -79,8 +79,19 @@ export function createDocumentState(editor: Editor) {
 		});
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
+		editor.subscriptions.unsubscribeLayoutUpdate("ToolOptions");
+		editor.subscriptions.unsubscribeLayoutUpdate("DocumentBar");
+		editor.subscriptions.unsubscribeLayoutUpdate("ToolShelf");
+		editor.subscriptions.unsubscribeLayoutUpdate("WorkingColors");
+		editor.subscriptions.unsubscribeLayoutUpdate("NodeGraphControlBar");
+	}
+
 	return {
 		subscribe,
+		destroy,
 	};
 }
 export type DocumentState = ReturnType<typeof createDocumentState>;

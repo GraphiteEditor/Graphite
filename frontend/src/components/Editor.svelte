@@ -40,13 +40,13 @@
 	setContext("appWindow", appWindow);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
-	createClipboardManager(editor);
-	createHyperlinkManager(editor);
-	createLocalizationManager(editor);
-	createPanicManager(editor, dialog);
-	createPersistenceManager(editor, portfolio);
-	createFontsManager(editor);
-	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
+	const clipboardManagerDestructor = createClipboardManager(editor);
+	const hyperlinkManagerDestructor = createHyperlinkManager(editor);
+	const localizationManagerDestructor = createLocalizationManager(editor);
+	const panicManagerDestructor = createPanicManager(editor, dialog);
+	const persistenceManagerDestructor = createPersistenceManager(editor, portfolio);
+	const fontsManagerDestructor = createFontsManager(editor);
+	const inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
@@ -55,9 +55,21 @@
 
 	onDestroy(() => {
 		// Call the destructor for each manager
+		clipboardManagerDestructor();
+		hyperlinkManagerDestructor();
+		localizationManagerDestructor();
+		panicManagerDestructor();
+		persistenceManagerDestructor();
+		fontsManagerDestructor();
 		inputManagerDestructor();
-		// Clean up tooltip event listeners
+		// Clean up state provider subscriptions and event listeners
+		dialog.destroy();
 		tooltip.destroy();
+		document.destroy();
+		fullscreen.destroy();
+		nodeGraph.destroy();
+		portfolio.destroy();
+		appWindow.destroy();
 	});
 </script>
 

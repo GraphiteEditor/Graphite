@@ -79,12 +79,17 @@ export function createTooltipState(editor: Editor) {
 
 	function destroy() {
 		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+
 		document.removeEventListener("mouseover", onMouseOver);
 		document.removeEventListener("mousemove", onMouseMove);
 		document.removeEventListener("mouseleave", onMouseLeave);
 		document.removeEventListener("mousedown", closeTooltip);
 		document.removeEventListener("keydown", closeTooltip);
 		document.removeEventListener("wheel", closeTooltip);
+
+		editor.subscriptions.unsubscribeFrontendMessage("SendShortcutShiftClick");
+		editor.subscriptions.unsubscribeFrontendMessage("SendShortcutAltClick");
+		editor.subscriptions.unsubscribeFrontendMessage("SendShortcutFullscreen");
 	}
 
 	document.addEventListener("mouseover", onMouseOver);

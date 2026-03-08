@@ -1,20 +1,13 @@
 import type { Editor } from "@graphite/editor";
 
-let resizeObserver: ResizeObserver | undefined;
-
-export function setupViewportResizeObserver(editor: Editor) {
-	// Clean up existing observer if any
-	if (resizeObserver) {
-		resizeObserver.disconnect();
-	}
-
+export function setupViewportResizeObserver(editor: Editor): () => void {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
-	if (viewports.length <= 0) return;
+	if (viewports.length <= 0) return () => {};
 
 	const viewport = viewports[0];
-	if (!(viewport instanceof HTMLElement)) return;
+	if (!(viewport instanceof HTMLElement)) return () => {};
 
-	resizeObserver = new ResizeObserver((entries) => {
+	const resizeObserver = new ResizeObserver((entries) => {
 		for (const entry of entries) {
 			const devicePixelRatio = window.devicePixelRatio || 1;
 
@@ -52,11 +45,8 @@ export function setupViewportResizeObserver(editor: Editor) {
 	});
 
 	resizeObserver.observe(viewport);
-}
 
-export function cleanupViewportResizeObserver() {
-	if (resizeObserver) {
+	return () => {
 		resizeObserver.disconnect();
-		resizeObserver = undefined;
-	}
+	};
 }

@@ -3,7 +3,7 @@ import type { DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
-export function createPanicManager(editor: Editor, dialogState: DialogState) {
+export function createPanicManager(editor: Editor, dialogState: DialogState): () => void {
 	// Code panic dialog and console error
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
@@ -16,6 +16,10 @@ export function createPanicManager(editor: Editor, dialogState: DialogState) {
 
 		dialogState.createCrashDialog(panicDetails);
 	});
+
+	return () => {
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayDialogPanic");
+	};
 }
 
 export function githubUrl(panicDetails: string): string {
@@ -28,7 +32,7 @@ export function githubUrl(panicDetails: string): string {
 
 			**Steps To Reproduce**
 			Describe precisely how the crash occurred, step by step, starting with a new editor window.
-			1. Open the Graphite editor at https://editor.graphite.art
+			1. Open the Graphite editor at https://dev.graphite.art — IMPORTANT! Confirm you have tested in this development version. It may have already been fixed since the last stable release.
 			2. 
 			3. 
 			4. 

@@ -50,8 +50,17 @@ export function createAppWindowState(editor: Editor) {
 		});
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("UpdatePlatform");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateMaximized");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateFullscreen");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateViewportHolePunch");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateUIScale");
+	}
+
 	return {
 		subscribe,
+		destroy,
 	};
 }
 export type AppWindowState = ReturnType<typeof createAppWindowState>;

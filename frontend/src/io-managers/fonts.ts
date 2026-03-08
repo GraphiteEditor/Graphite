@@ -4,7 +4,7 @@ type ApiResponse = { family: string; variants: string[]; files: Record<string, s
 
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
-export function createFontsManager(editor: Editor) {
+export function createFontsManager(editor: Editor): () => void {
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		const response = await fetch(FONT_LIST_API);
@@ -40,4 +40,9 @@ export function createFontsManager(editor: Editor) {
 			console.error("Failed to load font:", error);
 		}
 	});
+
+	return () => {
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
+	};
 }

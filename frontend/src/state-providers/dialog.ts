@@ -96,10 +96,20 @@ export function createDialogState(editor: Editor) {
 		editor.handle.requestLicensesThirdPartyDialogWithLicenseText(licenseText);
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayDialog");
+		editor.subscriptions.unsubscribeFrontendMessage("DialogClose");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog");
+		editor.subscriptions.unsubscribeLayoutUpdate("DialogButtons");
+		editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn1");
+		editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn2");
+	}
+
 	return {
 		subscribe,
 		dismissDialog,
 		createCrashDialog,
+		destroy,
 	};
 }
 export type DialogState = ReturnType<typeof createDialogState>;

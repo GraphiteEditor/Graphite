@@ -99,8 +99,23 @@ export function createPortfolioState(editor: Editor) {
 		});
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerOpen");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerImport");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDataPanelState");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdatePropertiesPanelState");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateLayersPanelState");
+	}
+
 	return {
 		subscribe,
+		destroy,
 	};
 }
 export type PortfolioState = ReturnType<typeof createPortfolioState>;
