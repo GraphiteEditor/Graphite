@@ -4,6 +4,7 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct CargoLicenseSource {}
 
@@ -84,6 +85,23 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 		.collect()
 }
 
+// Guard to ensure temp file cleanup even on early returns or panics
+struct TempFileGuard {
+	path: PathBuf,
+}
+
+impl TempFileGuard {
+	fn new(path: PathBuf) -> Self {
+		Self { path }
+	}
+}
+
+impl Drop for TempFileGuard {
+	fn drop(&mut self) {
+		let _ = fs::remove_file(&self.path);
+	}
+}
+
 fn run() -> Result<Output, Error> {
 	// Try normal stdout capture first
 	let output = Command::new("cargo")
@@ -99,7 +117,14 @@ fn run() -> Result<Output, Error> {
 	if !output.status.success() {
 		eprintln!("cargo-about failed with stdout capture, retrying with temporary file...");
 
-		let temp_file = PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join(".cargo-about-temp.json");
+		// Generate unique temp filename to avoid race conditions
+		let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+		let pid = std::process::id();
+		let temp_filename = format!(".cargo-about-temp-{}-{}.json", pid, timestamp);
+		let temp_file = PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join(&temp_filename);
+
+		// Ensure cleanup even if we return early or panic
+		let _guard = TempFileGuard::new(temp_file.clone());
 
 		let status = Command::new("cargo")
 			.args(["about", "generate", "--format", "json", "--frozen", "--output-file"])
@@ -116,9 +141,6 @@ fn run() -> Result<Output, Error> {
 		}
 
 		let json_content = fs::read_to_string(&temp_file).map_err(|e| Error::Io(e, format!("Failed to read cargo about output from {}", temp_file.display())))?;
-
-		// Clean up temp file
-		let _ = fs::remove_file(&temp_file);
 
 		return serde_json::from_str(&json_content).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON from temp file".into()));
 	}
