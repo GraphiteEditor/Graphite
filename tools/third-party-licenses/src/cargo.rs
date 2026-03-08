@@ -85,12 +85,45 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 }
 
 fn run() -> Result<Output, Error> {
+	// Try normal stdout capture first
 	let output = Command::new("cargo")
 		.args(["about", "generate", "--format", "json", "--frozen"])
 		.current_dir(env!("CARGO_WORKSPACE_DIR"))
 		.output()
 		.map_err(|e| Error::Io(e, "Failed to run cargo about generate".into()))?;
 
+	// On Windows, if cargo-about fails (often due to PowerShell detection in process ancestry),
+	// fall back to using a temporary file to work around the issue.
+	// TODO: Add an option to cargo-about to disable the PowerShell check (see issue: https://discord.com/channels/731730685944922173/731738914812854303/1479960786871779459)
+	#[cfg(target_os = "windows")]
+	if !output.status.success() {
+		eprintln!("cargo-about failed with stdout capture, retrying with temporary file...");
+
+		let temp_file = PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join(".cargo-about-temp.json");
+
+		let status = Command::new("cargo")
+			.args(["about", "generate", "--format", "json", "--frozen", "--output-file"])
+			.arg(&temp_file)
+			.current_dir(env!("CARGO_WORKSPACE_DIR"))
+			.status()
+			.map_err(|e| Error::Io(e, "Failed to run cargo about generate with temp file".into()))?;
+
+		if !status.success() {
+			return Err(Error::Command(format!(
+				"cargo about generate failed:\nOriginal error: {}\nTemp file error: command exited with non-zero status",
+				String::from_utf8_lossy(&output.stderr)
+			)));
+		}
+
+		let json_content = fs::read_to_string(&temp_file).map_err(|e| Error::Io(e, format!("Failed to read cargo about output from {}", temp_file.display())))?;
+
+		// Clean up temp file
+		let _ = fs::remove_file(&temp_file);
+
+		return serde_json::from_str(&json_content).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON from temp file".into()));
+	}
+
+	// Handle other error cases
 	if !output.status.success() {
 		return Err(Error::Command(format!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr))));
 	}
