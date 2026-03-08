@@ -19,6 +19,7 @@
 	const tooltip = getContext<TooltipState>("tooltip");
 
 	let menuBarLayout: Layout = [];
+	let lastMouseDown = 0;
 
 	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (isDesktop() && $appWindow.fullscreen);
 	$: isFullscreen = isDesktop() ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
@@ -41,7 +42,21 @@
 		{/if}
 	</LayoutRow>
 	<!-- Window frame -->
-	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.handle.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.handle.appWindowMaximize()} />
+	<LayoutRow
+		class="window-frame"
+		on:mousedown={() => {
+			if (isFullscreen) return;
+
+			const now = Date.now();
+			if (now - lastMouseDown < 500) {
+				lastMouseDown = 0;
+				editor.handle.appWindowMaximize();
+			} else {
+				lastMouseDown = now;
+				editor.handle.appWindowDrag();
+			}
+		}}
+	/>
 	<!-- Window buttons -->
 	<LayoutRow class="window-buttons" classes={{ fullscreen: showFullscreenButton, windows: $appWindow.platform === "Windows", linux: $appWindow.platform === "Linux" }}>
 		{#if $appWindow.platform !== "Mac"}
