@@ -28,7 +28,6 @@ pub struct TileCoord {
 pub struct CachedRegion {
 	pub texture: wgpu::Texture,
 	pub texture_size: UVec2,
-	pub scene_bounds: AxisAlignedBbox,
 	pub tiles: Vec<TileCoord>,
 	pub metadata: rendering::RenderMetadata,
 	last_access: u64,
@@ -38,7 +37,8 @@ pub struct CachedRegion {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct CacheKey {
 	pub render_mode_hash: u64,
-	pub scale: u64,
+	pub device_scale: u64,
+	pub zoom: u64,
 	pub rotation: u64,
 	pub hide_artboards: bool,
 	pub for_export: bool,
@@ -55,7 +55,8 @@ impl CacheKey {
 	#[expect(clippy::too_many_arguments)]
 	fn new(
 		render_mode_hash: u64,
-		scale: f64,
+		device_scale: f64,
+		zoom: f64,
 		rotation: f64,
 		hide_artboards: bool,
 		for_export: bool,
@@ -78,7 +79,8 @@ impl CacheKey {
 		let quantized_rotation = (rotation * 10000.0).round() / 10000.0;
 		Self {
 			render_mode_hash,
-			scale: scale.to_bits(),
+			device_scale: device_scale.to_bits(),
+			zoom: zoom.to_bits(),
 			rotation: quantized_rotation.to_bits(),
 			hide_artboards,
 			for_export,
@@ -99,7 +101,6 @@ struct TileCacheImpl {
 	timestamp: u64,
 	total_memory: usize,
 	cache_key: CacheKey,
-	current_scale: f64,
 }
 
 impl Default for TileCacheImpl {
@@ -109,7 +110,6 @@ impl Default for TileCacheImpl {
 			timestamp: 0,
 			total_memory: 0,
 			cache_key: CacheKey::default(),
-			current_scale: 0.0,
 		}
 	}
 }
@@ -119,9 +119,7 @@ pub struct TileCache(Arc<Mutex<TileCacheImpl>>);
 
 #[derive(Debug, Clone)]
 pub struct RenderRegion {
-	pub scene_bounds: AxisAlignedBbox,
 	pub tiles: Vec<TileCoord>,
-	pub scale: f64,
 }
 
 #[derive(Debug)]
@@ -130,13 +128,12 @@ pub struct CacheQuery {
 	pub missing_regions: Vec<RenderRegion>,
 }
 
-fn scene_bounds_to_tiles(bounds: &AxisAlignedBbox, scale: f64) -> Vec<TileCoord> {
-	let pixel_start = bounds.start * scale;
-	let pixel_end = bounds.end * scale;
-	let tile_start_x = (pixel_start.x / TILE_SIZE as f64).floor() as i32;
-	let tile_start_y = (pixel_start.y / TILE_SIZE as f64).floor() as i32;
-	let tile_end_x = (pixel_end.x / TILE_SIZE as f64).ceil() as i32;
-	let tile_end_y = (pixel_end.y / TILE_SIZE as f64).ceil() as i32;
+fn bounds_to_tiles(bounds: &AxisAlignedBbox) -> Vec<TileCoord> {
+	let tile_size = TILE_SIZE as f64;
+	let tile_start_x = (bounds.start.x / tile_size).floor() as i32;
+	let tile_start_y = (bounds.start.y / tile_size).floor() as i32;
+	let tile_end_x = (bounds.end.x / tile_size).ceil() as i32;
+	let tile_end_y = (bounds.end.y / tile_size).ceil() as i32;
 
 	let mut tiles = Vec::new();
 	for y in tile_start_y..tile_end_y {
@@ -147,39 +144,34 @@ fn scene_bounds_to_tiles(bounds: &AxisAlignedBbox, scale: f64) -> Vec<TileCoord>
 	tiles
 }
 
-fn tile_scene_start(tile: &TileCoord, scale: f64) -> DVec2 {
-	DVec2::new(tile.x as f64, tile.y as f64) * (TILE_SIZE as f64 / scale)
-}
-
-fn tile_to_scene_bounds(coord: &TileCoord, scale: f64) -> AxisAlignedBbox {
-	let tile_scene_size = TILE_SIZE as f64 / scale;
-	let start = tile_scene_start(coord, scale);
+fn tile_bounds(coord: &TileCoord) -> AxisAlignedBbox {
+	let tile_size = TILE_SIZE as f64;
+	let start = DVec2::new(coord.x as f64, coord.y as f64) * tile_size;
 	AxisAlignedBbox {
 		start,
-		end: start + DVec2::splat(tile_scene_size),
+		end: start + DVec2::splat(tile_size),
 	}
 }
 
-fn tiles_to_scene_bounds(tiles: &[TileCoord], scale: f64) -> AxisAlignedBbox {
+fn tiles_bounds(tiles: &[TileCoord]) -> AxisAlignedBbox {
 	if tiles.is_empty() {
 		return AxisAlignedBbox::ZERO;
 	}
-	let mut result = tile_to_scene_bounds(&tiles[0], scale);
+	let mut result = tile_bounds(&tiles[0]);
 	for tile in &tiles[1..] {
-		result = result.union(&tile_to_scene_bounds(tile, scale));
+		result = result.union(&tile_bounds(tile));
 	}
 	result
 }
 
 impl TileCacheImpl {
-	fn query(&mut self, viewport_bounds: &AxisAlignedBbox, scale: f64, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
-		if &self.cache_key != cache_key || (self.current_scale - scale).abs() > 0.001 {
+	fn query(&mut self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
+		if &self.cache_key != cache_key {
 			self.invalidate_all();
 			self.cache_key = cache_key.clone();
-			self.current_scale = scale;
 		}
 
-		let required_tiles = scene_bounds_to_tiles(viewport_bounds, scale);
+		let required_tiles = bounds_to_tiles(viewport_bounds);
 		let required_tile_set: HashSet<_> = required_tiles.iter().cloned().collect();
 		let mut cached_regions = Vec::new();
 		let mut covered_tiles = HashSet::new();
@@ -195,7 +187,7 @@ impl TileCacheImpl {
 		}
 
 		let missing_tiles: Vec<_> = required_tiles.into_iter().filter(|t| !covered_tiles.contains(t)).collect();
-		let missing_regions = group_into_regions(&missing_tiles, scale, max_region_area);
+		let missing_regions = group_into_regions(&missing_tiles, max_region_area);
 		CacheQuery { cached_regions, missing_regions }
 	}
 
@@ -231,8 +223,8 @@ impl TileCacheImpl {
 }
 
 impl TileCache {
-	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, scale: f64, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
-		self.0.lock().unwrap().query(viewport_bounds, scale, cache_key, max_region_area)
+	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
+		self.0.lock().unwrap().query(viewport_bounds, cache_key, max_region_area)
 	}
 
 	pub fn store_regions(&self, regions: Vec<CachedRegion>) {
@@ -240,7 +232,7 @@ impl TileCache {
 	}
 }
 
-fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_area: u32) -> Vec<RenderRegion> {
+fn group_into_regions(tiles: &[TileCoord], max_region_area: u32) -> Vec<RenderRegion> {
 	if tiles.is_empty() {
 		return Vec::new();
 	}
@@ -254,21 +246,16 @@ fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_area: u32) -> 
 			continue;
 		}
 		let region_tiles = flood_fill(&tile, &tile_set, &mut visited);
-		let scene_bounds = tiles_to_scene_bounds(&region_tiles, scale);
-		let region = RenderRegion {
-			scene_bounds,
-			tiles: region_tiles,
-			scale,
-		};
-		regions.extend(split_oversized_region(region, scale, max_region_area));
+		let region = RenderRegion { tiles: region_tiles };
+		regions.extend(split_oversized_region(region, max_region_area));
 	}
 	regions
 }
 
 /// Recursively subdivides a region until all sub-regions have area <= max_region_area.
 /// Uses axis-aligned splits on the longest dimension.
-fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32) -> Vec<RenderRegion> {
-	let pixel_size = region.scene_bounds.size() * scale;
+fn split_oversized_region(region: RenderRegion, max_region_area: u32) -> Vec<RenderRegion> {
+	let pixel_size = tiles_bounds(&region.tiles).size();
 	let area = (pixel_size.x * pixel_size.y) as u32;
 
 	// Base case: region is small enough
@@ -284,7 +271,6 @@ fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32
 	let mut group2 = Vec::new();
 
 	if split_horizontally {
-		// Find midpoint X in tile coordinates
 		let min_x = region.tiles.iter().map(|t| t.x).min().unwrap();
 		let max_x = region.tiles.iter().map(|t| t.x).max().unwrap();
 		let mid_x = (min_x + max_x) / 2;
@@ -297,7 +283,6 @@ fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32
 			}
 		}
 	} else {
-		// Split vertically - find midpoint Y
 		let min_y = region.tiles.iter().map(|t| t.y).min().unwrap();
 		let max_y = region.tiles.iter().map(|t| t.y).max().unwrap();
 		let mid_y = (min_y + max_y) / 2;
@@ -311,21 +296,15 @@ fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32
 		}
 	}
 
-	// Edge case: if split produces empty group, return as-is (can't split further)
 	if group1.is_empty() || group2.is_empty() {
 		return vec![region];
 	}
 
-	// Create sub-regions and recursively subdivide
 	let mut result = Vec::new();
 	for tiles in [group1, group2] {
 		if !tiles.is_empty() {
-			let sub_region = RenderRegion {
-				scene_bounds: tiles_to_scene_bounds(&tiles, scale),
-				tiles,
-				scale,
-			};
-			result.extend(split_oversized_region(sub_region, scale, max_region_area));
+			let sub_region = RenderRegion { tiles };
+			result.extend(split_oversized_region(sub_region, max_region_area));
 		}
 	}
 
@@ -379,6 +358,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let device_scale = render_params.scale;
+	let zoom = footprint.decompose_scale().x;
 	let rotation = footprint.decompose_rotation();
 
 	// Tile coordinates are global, anchored to the viewport pixel where the document origin maps to
@@ -391,7 +371,8 @@ pub async fn render_output_cache<'a: 'n>(
 
 	let cache_key = CacheKey::new(
 		render_params.render_mode as u64,
-		render_params.scale,
+		device_scale,
+		zoom,
 		rotation,
 		render_params.hide_artboards,
 		render_params.for_export,
@@ -404,15 +385,26 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_pointer_position(),
 	);
 
+	let physical_tile_size = (TILE_SIZE as f64 * device_scale).round() as u32;
+
 	let max_region_area = editor_api.editor_preferences.max_render_region_area();
-	let cache_query = tile_cache.query(&viewport_pixel_bounds, 1.0, &cache_key, max_region_area);
+	let cache_query = tile_cache.query(&viewport_pixel_bounds, &cache_key, max_region_area);
 
 	let mut new_regions = Vec::new();
 	for missing_region in &cache_query.missing_regions {
 		if missing_region.tiles.is_empty() {
 			continue;
 		}
-		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &viewport_origin_offset, device_scale).await;
+		let region = render_missing_region(
+			missing_region,
+			|ctx| data.eval(ctx),
+			ctx.clone(),
+			render_params,
+			&footprint.transform,
+			&viewport_origin_offset,
+			physical_tile_size,
+		)
+		.await;
 		new_regions.push(region);
 	}
 
@@ -427,7 +419,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, device_scale, &viewport_origin_offset, &footprint.transform, exec);
+	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, physical_tile_size, device_scale, &viewport_origin_offset, &footprint.transform, exec);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
@@ -442,7 +434,7 @@ async fn render_missing_region<F, Fut>(
 	render_params: &RenderParams,
 	viewport_transform: &DAffine2,
 	viewport_origin_offset: &DVec2,
-	device_scale: f64,
+	physical_tile_size: u32,
 ) -> CachedRegion
 where
 	F: Fn(Context<'static>) -> Fut,
@@ -451,11 +443,8 @@ where
 	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
 
-	// Calculate pixel size from tile boundaries to avoid rounding gaps
-	// Use round() on boundaries to ensure adjacent tiles share the same edge
-	let pixel_start = (min_tile.as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
-	let pixel_end = ((max_tile + IVec2::ONE).as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
-	let region_pixel_size = (pixel_end - pixel_start).max(IVec2::ONE).as_uvec2();
+	let tile_count = (max_tile - min_tile) + IVec2::ONE;
+	let region_pixel_size = (tile_count * physical_tile_size as i32).as_uvec2();
 
 	// Tile footprint: shift the viewport transform so the tile's pixel origin becomes (0,0)
 	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
@@ -482,7 +471,6 @@ where
 	CachedRegion {
 		texture: rendered_texture.texture,
 		texture_size: region_pixel_size,
-		scene_bounds: region.scene_bounds.clone(),
 		tiles: region.tiles.clone(),
 		metadata: result.metadata,
 		last_access: 0,
@@ -493,6 +481,7 @@ where
 fn composite_cached_regions(
 	regions: &[CachedRegion],
 	output_resolution: UVec2,
+	physical_tile_size: u32,
 	device_scale: f64,
 	viewport_origin_offset: &DVec2,
 	viewport_transform: &DAffine2,
@@ -524,8 +513,7 @@ fn composite_cached_regions(
 		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 
 		// Convert global tile position to physical pixel offset in the output texture
-		let tile_viewport_pos = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
-		let offset_pixels = (tile_viewport_pos * device_scale).round().as_ivec2();
+		let offset_pixels = min_tile * physical_tile_size as i32 + (*viewport_origin_offset * device_scale).round().as_ivec2();
 
 		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
 			(0, offset_pixels.x as u32, region.texture_size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
