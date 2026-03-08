@@ -17,7 +17,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
+	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
 
 	import type { MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { browserVersion } from "@graphite/utility-functions/platform";
@@ -54,9 +54,11 @@
 	// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
 	// This is the opposite concern of the natural width measurement system, which gets the natural width of the floating menu content in order for the
 	// spawner widget to optionally set its min-size to the floating menu's natural width.
-	let containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
+	const containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
 		resizeObserverCallback(entries);
 	});
+
+	let dialogResizeObserver: ResizeObserver | undefined;
 	let wasOpen = open;
 	let measuringOngoing = false;
 	let measuringOngoingGuard = false;
@@ -134,7 +136,7 @@
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
-			const resizeObserver = new ResizeObserver((entries) => {
+			dialogResizeObserver = new ResizeObserver((entries) => {
 				entries.forEach((entry) => {
 					const existingWidth = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-x"));
 					const existingHeight = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-y"));
@@ -153,8 +155,17 @@
 					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-y", `${targetHeight - height}`);
 				});
 			});
-			resizeObserver.observe(floatingMenuContentDiv);
+			dialogResizeObserver.observe(floatingMenuContentDiv);
 		}
+	});
+
+	onDestroy(() => {
+		containerResizeObserver.disconnect();
+		dialogResizeObserver?.disconnect();
+		window.removeEventListener("pointermove", pointerMoveHandler);
+		window.removeEventListener("keydown", keyDownHandler);
+		window.removeEventListener("pointerdown", pointerDownHandler);
+		window.removeEventListener("pointerup", pointerUpHandler);
 	});
 
 	afterUpdate(() => {

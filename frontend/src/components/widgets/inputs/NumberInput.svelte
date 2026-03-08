@@ -87,6 +87,8 @@
 	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
+	// Cleanup function for active drag interactions, called on destroy to prevent leaked listeners
+	let activeDragCleanup: (() => void) | undefined;
 
 	$: watchValue(value, unit);
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
@@ -107,10 +109,21 @@
 		addEventListener("mousemove", trackShiftAndCtrl);
 	});
 	onDestroy(() => {
+		clearTimeout(repeatTimeout);
+
+		activeDragCleanup?.();
+
+		// Clean up any listeners related to tracking the Shift and Ctrl keys
 		removeEventListener("keydown", trackShiftAndCtrl);
 		removeEventListener("keyup", trackShiftAndCtrl);
 		removeEventListener("mousemove", trackShiftAndCtrl);
-		clearTimeout(repeatTimeout);
+
+		// Clean up any slider-related listeners that may be active
+		removeEventListener("mousedown", sliderAbortFromMousedown);
+		removeEventListener("keydown", sliderAbortFromMousedown);
+		removeEventListener("pointermove", sliderAbortFromDragging);
+		removeEventListener("keydown", sliderAbortFromDragging);
+		removeEventListener("keydown", incrementPressAbort);
 	});
 
 	// ===============================
@@ -333,10 +346,9 @@
 			alreadyActedGuard = true;
 
 			isDragging = true;
-			beginDrag(e);
 
-			removeEventListener("pointermove", onMove);
-			removeEventListener("pointerup", onUp);
+			activeDragCleanup?.();
+			beginDrag(e);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
 		const onUp = () => {
@@ -346,11 +358,15 @@
 			isDragging = false;
 			self?.focus();
 
-			removeEventListener("pointermove", onMove);
-			removeEventListener("pointerup", onUp);
+			activeDragCleanup?.();
 		};
 		addEventListener("pointermove", onMove);
 		addEventListener("pointerup", onUp);
+		activeDragCleanup = () => {
+			removeEventListener("pointermove", onMove);
+			removeEventListener("pointerup", onUp);
+			activeDragCleanup = undefined;
+		};
 	}
 
 	function beginDrag(e: PointerEvent) {
@@ -449,16 +465,20 @@
 			cumulativeDragDelta = 0;
 
 			// Clean up the event listeners.
-			removeEventListener("pointerup", pointerUp);
-			removeEventListener("pointermove", pointerMove);
-			removeEventListener("pointerlockmove", pointerLockMove);
-			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
+			activeDragCleanup?.();
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
 		addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
+		activeDragCleanup = () => {
+			removeEventListener("pointerup", pointerUp);
+			removeEventListener("pointermove", pointerMove);
+			removeEventListener("pointerlockmove", pointerLockMove);
+			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
+			activeDragCleanup = undefined;
+		};
 	}
 
 	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
