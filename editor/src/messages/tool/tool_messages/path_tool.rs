@@ -2401,8 +2401,6 @@ impl Fsm for PathToolFsmState {
 				tool_data.angle_locked = false;
 				tool_data.snapping_axis = None;
 				tool_data.snap_axis_origin = None;
-				tool_data.snapping_axis = None;
-				tool_data.snap_axis_origin = None;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -2651,7 +2649,6 @@ impl Fsm for PathToolFsmState {
 				}
 
 				tool_data.snapping_axis = None;
-				tool_data.snap_axis_origin = None;
 				tool_data.snap_axis_origin = None;
 				tool_data.sliding_point_info = None;
 
