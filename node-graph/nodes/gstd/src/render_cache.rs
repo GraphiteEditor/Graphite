@@ -3,7 +3,7 @@
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
-use glam::{DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::{ApplicationIo, ImageTexture};
@@ -39,6 +39,7 @@ pub struct CachedRegion {
 pub struct CacheKey {
 	pub render_mode_hash: u64,
 	pub scale: u64,
+	pub rotation: u64,
 	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_mask: bool,
@@ -55,6 +56,7 @@ impl CacheKey {
 	fn new(
 		render_mode_hash: u64,
 		scale: f64,
+		rotation: f64,
 		hide_artboards: bool,
 		for_export: bool,
 		for_mask: bool,
@@ -73,9 +75,11 @@ impl CacheKey {
 				bytes
 			})
 			.unwrap_or([0u8; 16]);
+		let quantized_rotation = (rotation * 10000.0).round() / 10000.0;
 		Self {
 			render_mode_hash,
 			scale: scale.to_bits(),
+			rotation: quantized_rotation.to_bits(),
 			hide_artboards,
 			for_export,
 			for_mask,
@@ -374,19 +378,21 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	let logical_scale = footprint.decompose_scale().x;
 	let device_scale = render_params.scale;
-	let physical_scale = logical_scale * device_scale;
+	let rotation = footprint.decompose_rotation();
 
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-	let viewport_bounds = AxisAlignedBbox {
-		start: viewport_bounds.start,
-		end: viewport_bounds.start + viewport_bounds.size() / device_scale,
+	// Tile coordinates are global, anchored to the viewport pixel where the document origin maps to
+	let viewport_origin_offset = footprint.transform.translation;
+	let viewport_res = footprint.resolution.as_dvec2() / device_scale;
+	let viewport_pixel_bounds = AxisAlignedBbox {
+		start: -viewport_origin_offset,
+		end: viewport_res - viewport_origin_offset,
 	};
 
 	let cache_key = CacheKey::new(
 		render_params.render_mode as u64,
 		render_params.scale,
+		rotation,
 		render_params.hide_artboards,
 		render_params.for_export,
 		render_params.for_mask,
@@ -399,14 +405,14 @@ pub async fn render_output_cache<'a: 'n>(
 	);
 
 	let max_region_area = editor_api.editor_preferences.max_render_region_area();
-	let cache_query = tile_cache.query(&viewport_bounds, logical_scale, &cache_key, max_region_area);
+	let cache_query = tile_cache.query(&viewport_pixel_bounds, 1.0, &cache_key, max_region_area);
 
 	let mut new_regions = Vec::new();
 	for missing_region in &cache_query.missing_regions {
 		if missing_region.tiles.is_empty() {
 			continue;
 		}
-		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, logical_scale, device_scale).await;
+		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &viewport_origin_offset, device_scale).await;
 		new_regions.push(region);
 	}
 
@@ -421,7 +427,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, &viewport_bounds, physical_resolution, logical_scale, physical_scale, exec);
+	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, device_scale, &viewport_origin_offset, &footprint.transform, exec);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
@@ -434,7 +440,8 @@ async fn render_missing_region<F, Fut>(
 	render_fn: F,
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	render_params: &RenderParams,
-	logical_scale: f64,
+	viewport_transform: &DAffine2,
+	viewport_origin_offset: &DVec2,
 	device_scale: f64,
 ) -> CachedRegion
 where
@@ -444,16 +451,15 @@ where
 	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
 
-	let tile_scene_size = TILE_SIZE as f64 / logical_scale;
-	let region_scene_start = DVec2::new(min_tile.x as f64 * tile_scene_size, min_tile.y as f64 * tile_scene_size);
-
 	// Calculate pixel size from tile boundaries to avoid rounding gaps
 	// Use round() on boundaries to ensure adjacent tiles share the same edge
 	let pixel_start = (min_tile.as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
 	let pixel_end = ((max_tile + IVec2::ONE).as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
 	let region_pixel_size = (pixel_end - pixel_start).max(IVec2::ONE).as_uvec2();
 
-	let region_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-region_scene_start);
+	// Tile footprint: shift the viewport transform so the tile's pixel origin becomes (0,0)
+	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
+	let region_transform = DAffine2::from_translation(-tile_global_offset) * *viewport_transform;
 	let region_footprint = Footprint {
 		transform: region_transform,
 		resolution: region_pixel_size,
@@ -468,8 +474,7 @@ where
 		unreachable!("render_missing_region: expected texture output from Vello render");
 	};
 
-	// Transform metadata from region pixel space to document space
-	let pixel_to_document = glam::DAffine2::from_translation(region_scene_start) * glam::DAffine2::from_scale(DVec2::splat(1.0 / logical_scale));
+	let pixel_to_document = region_transform.inverse();
 	result.metadata.apply_transform(pixel_to_document);
 
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
@@ -487,10 +492,10 @@ where
 
 fn composite_cached_regions(
 	regions: &[CachedRegion],
-	viewport_bounds: &AxisAlignedBbox,
 	output_resolution: UVec2,
-	logical_scale: f64,
-	physical_scale: f64,
+	device_scale: f64,
+	viewport_origin_offset: &DVec2,
+	viewport_transform: &DAffine2,
 	exec: &wgpu_executor::WgpuExecutor,
 ) -> (wgpu::Texture, rendering::RenderMetadata) {
 	let device = &exec.context.device;
@@ -515,16 +520,12 @@ fn composite_cached_regions(
 	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("composite") });
 	let mut combined_metadata = rendering::RenderMetadata::default();
 
-	// Calculate viewport pixel offset using round() to match region boundary calculations
-	let device_scale = physical_scale / logical_scale;
-	let viewport_pixel_start = (viewport_bounds.start * physical_scale).round().as_ivec2();
-
 	for region in regions {
 		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 
-		// Use round() on tile boundaries to match render_missing_region calculation
-		let region_pixel_start = (min_tile.as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
-		let offset_pixels = region_pixel_start - viewport_pixel_start;
+		// Convert global tile position to physical pixel offset in the output texture
+		let tile_viewport_pos = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
+		let offset_pixels = (tile_viewport_pos * device_scale).round().as_ivec2();
 
 		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
 			(0, offset_pixels.x as u32, region.texture_size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
@@ -562,10 +563,8 @@ fn composite_cached_regions(
 			);
 		}
 
-		// Transform metadata from document space to viewport logical pixels
 		let mut region_metadata = region.metadata.clone();
-		let document_to_viewport = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-viewport_bounds.start);
-		region_metadata.apply_transform(document_to_viewport);
+		region_metadata.apply_transform(*viewport_transform);
 		combined_metadata.merge(&region_metadata);
 	}
 
