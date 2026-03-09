@@ -825,6 +825,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
 				tool_data.line_data.drag_start = input.mouse.position;
+				tool_data.line_data.lock_angle_eligible = !input.keyboard.key(Key::Control);
 
 				// Snapped position in viewport space
 				let mouse_pos = tool_data
@@ -1132,6 +1133,7 @@ impl Fsm for ShapeToolFsmState {
 
 				tool_data.line_data.dragging_endpoint = None;
 				tool_data.line_data.editing_layer = None;
+				tool_data.line_data.lock_angle_eligible = false;
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 
@@ -1150,6 +1152,7 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.cleanup(responses);
 				tool_data.line_data.dragging_endpoint = None;
 				tool_data.line_data.editing_layer = None;
+				tool_data.line_data.lock_angle_eligible = false;
 
 				tool_data.gizmo_manager.handle_cleanup();
 
