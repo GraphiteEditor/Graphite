@@ -1,4 +1,5 @@
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
@@ -6,23 +7,29 @@ import { operatingSystem } from "@graphite/utility-functions/platform";
 
 const SHOW_TOOLTIP_DELAY_MS = 500;
 
-export function createTooltipState(editor: Editor) {
-	const { subscribe, update } = writable<{
-		visible: boolean;
-		element: Element | undefined;
-		position: { x: number; y: number };
-		shiftClickShortcut: ActionShortcut | undefined;
-		altClickShortcut: ActionShortcut | undefined;
-		fullscreenShortcut: ActionShortcut | undefined;
-	}>({
-		visible: false,
-		element: undefined,
-		position: { x: 0, y: 0 },
-		shiftClickShortcut: undefined,
-		altClickShortcut: undefined,
-		fullscreenShortcut: undefined,
-	});
+type TooltipStoreState = {
+	visible: boolean;
+	element: Element | undefined;
+	position: { x: number; y: number };
+	shiftClickShortcut: ActionShortcut | undefined;
+	altClickShortcut: ActionShortcut | undefined;
+	fullscreenShortcut: ActionShortcut | undefined;
+};
+const initialState: TooltipStoreState = {
+	visible: false,
+	element: undefined,
+	position: { x: 0, y: 0 },
+	shiftClickShortcut: undefined,
+	altClickShortcut: undefined,
+	fullscreenShortcut: undefined,
+};
 
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<TooltipStoreState> = import.meta.hot?.data?.store || writable<TooltipStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
+
+export function createTooltipStore(editor: Editor) {
 	let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
 	// Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip
@@ -118,12 +125,19 @@ export function createTooltipState(editor: Editor) {
 		});
 	});
 
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
 		destroy,
 	};
 }
-export type TooltipState = ReturnType<typeof createTooltipState>;
+export type TooltipStore = ReturnType<typeof createTooltipStore>;
 
-// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
-import.meta.hot?.accept(() => location.reload());
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createTooltipStore(...currentArgs);
+});

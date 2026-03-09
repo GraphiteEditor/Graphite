@@ -3,7 +3,7 @@
 
 	import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+	import type { PortfolioStore } from "@graphite/stores/portfolio";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -42,7 +42,7 @@
 	});
 
 	const editor = getContext<Editor>("editor");
-	const portfolio = getContext<PortfolioState>("portfolio");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = e.target;

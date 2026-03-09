@@ -2,10 +2,11 @@ import { get } from "svelte/store";
 
 import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { DialogState } from "@graphite/state-providers/dialog";
-import type { DocumentState } from "@graphite/state-providers/document";
-import type { FullscreenState } from "@graphite/state-providers/fullscreen";
-import type { PortfolioState } from "@graphite/state-providers/portfolio";
+import type { DialogStore } from "@graphite/stores/dialog";
+import type { DocumentStore } from "@graphite/stores/document";
+import { fullscreenModeChanged, toggleFullscreen } from "@graphite/stores/fullscreen";
+import type { FullscreenStore } from "@graphite/stores/fullscreen";
+import type { PortfolioStore } from "@graphite/stores/portfolio";
 import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { operatingSystem } from "@graphite/utility-functions/platform";
@@ -29,9 +30,9 @@ type EventListenerTarget = {
 };
 
 let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor, DialogState, PortfolioState, DocumentState, FullscreenState] | undefined;
+let currentArgs: [Editor, DialogStore, PortfolioStore, DocumentStore, FullscreenStore] | undefined;
 
-export function createInputManager(editor: Editor, dialog: DialogState, portfolio: PortfolioState, document: DocumentState, fullscreen: FullscreenState): () => void {
+export function createInputManager(editor: Editor, dialog: DialogStore, portfolio: PortfolioStore, document: DocumentStore, fullscreen: FullscreenStore) {
 	currentArgs = [editor, dialog, portfolio, document, fullscreen];
 	const appElement = window.document.querySelector("[data-app-container]");
 	const app = appElement instanceof HTMLElement ? appElement : null;
@@ -59,7 +60,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 		{ target: window, eventName: "focusout", action: () => (canvasFocused = false) },
 		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
-		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
+		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreenModeChanged() },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => onPaste(e) },
 		{ target: window.document, eventName: "pointerlockchange", action: onPointerLockChange },
 		{ target: window.document, eventName: "pointerlockerror", action: onPointerLockChange },
@@ -113,7 +114,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			// Don't redirect a fullscreen request, but process it immediately instead
 			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
 				e.preventDefault();
-				fullscreen.toggleFullscreen();
+				toggleFullscreen();
 				return false;
 			}
 
@@ -512,13 +513,16 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	bindListeners();
 
 	// Return the destructor
-	currentCleanup = () => {
+	function destroy() {
 		unbindListeners();
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
 		editor.subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
-	};
-	return currentCleanup;
+	}
+
+	currentCleanup = destroy;
+	return { destroy };
 }
+export type InputManager = ReturnType<typeof createInputManager>;
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
 	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);

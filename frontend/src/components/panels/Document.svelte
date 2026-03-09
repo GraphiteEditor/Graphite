@@ -3,8 +3,8 @@
 
 	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { DocumentState } from "@graphite/state-providers/document";
+	import type { AppWindowStore } from "@graphite/stores/app-window";
+	import type { DocumentStore } from "@graphite/stores/document";
 	import type { MessageBody } from "@graphite/subscription-router";
 	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
@@ -27,8 +27,8 @@
 	let gradientStopPicker: ColorPicker | undefined;
 
 	const editor = getContext<Editor>("editor");
-	const appWindow = getContext<AppWindowState>("appWindow");
-	const document = getContext<DocumentState>("document");
+	const appWindow = getContext<AppWindowStore>("appWindow");
+	const document = getContext<DocumentStore>("document");
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;

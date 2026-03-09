@@ -1,62 +1,62 @@
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import type { MessageBody } from "@graphite/subscription-router";
 
-export function createNodeGraphState(editor: Editor) {
-	const { subscribe, update } = writable<{
-		box: BoxSelection | undefined;
-		clickTargets: FrontendClickTargets | undefined;
-		contextMenuInformation: ContextMenuInformation | undefined;
-		error: NodeGraphErrorDiagnostic | undefined;
-		layerWidths: Map<bigint, number>;
-		chainWidths: Map<bigint, number>;
-		hasLeftInputWire: Map<bigint, boolean>;
-		updateImportsExports: MessageBody<"UpdateImportsExports"> | undefined;
-		nodes: Map<bigint, FrontendNode>;
-		visibleNodes: Set<bigint>;
-		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
-		wires: Map<bigint, Map<number, WirePath>>;
-		wirePathInProgress: WirePath | undefined;
-		nodeDescriptions: Map<string, string>;
-		nodeTypes: FrontendNodeType[];
-		thumbnails: Map<bigint, string>;
-		selected: bigint[];
-		transform: { scale: number; x: number; y: number };
-		inSelectedNetwork: boolean;
-		reorderImportIndex: number | undefined;
-		reorderExportIndex: number | undefined;
-	}>({
-		box: undefined,
-		clickTargets: undefined,
-		contextMenuInformation: undefined,
-		error: undefined,
-		layerWidths: new Map(),
-		chainWidths: new Map(),
-		hasLeftInputWire: new Map(),
-		updateImportsExports: undefined,
-		nodes: new Map(),
-		visibleNodes: new Set(),
-		wires: new Map(),
-		wirePathInProgress: undefined,
-		nodeDescriptions: new Map(),
-		nodeTypes: [],
-		thumbnails: new Map(),
-		selected: [],
-		transform: { scale: 1, x: 0, y: 0 },
-		inSelectedNetwork: true,
-		reorderImportIndex: undefined,
-		reorderExportIndex: undefined,
-	});
+type NodeGraphStoreState = {
+	box: BoxSelection | undefined;
+	clickTargets: FrontendClickTargets | undefined;
+	contextMenuInformation: ContextMenuInformation | undefined;
+	error: NodeGraphErrorDiagnostic | undefined;
+	layerWidths: Map<bigint, number>;
+	chainWidths: Map<bigint, number>;
+	hasLeftInputWire: Map<bigint, boolean>;
+	updateImportsExports: MessageBody<"UpdateImportsExports"> | undefined;
+	nodes: Map<bigint, FrontendNode>;
+	visibleNodes: Set<bigint>;
+	/// The index is the exposed input index. The exports have a first key value of u32::MAX.
+	wires: Map<bigint, Map<number, WirePath>>;
+	wirePathInProgress: WirePath | undefined;
+	nodeDescriptions: Map<string, string>;
+	nodeTypes: FrontendNodeType[];
+	thumbnails: Map<bigint, string>;
+	selected: bigint[];
+	transform: { scale: number; x: number; y: number };
+	inSelectedNetwork: boolean;
+	reorderImportIndex: number | undefined;
+	reorderExportIndex: number | undefined;
+};
+const initialState: NodeGraphStoreState = {
+	box: undefined,
+	clickTargets: undefined,
+	contextMenuInformation: undefined,
+	error: undefined,
+	layerWidths: new Map(),
+	chainWidths: new Map(),
+	hasLeftInputWire: new Map(),
+	updateImportsExports: undefined,
+	nodes: new Map(),
+	visibleNodes: new Set(),
+	wires: new Map(),
+	wirePathInProgress: undefined,
+	nodeDescriptions: new Map(),
+	nodeTypes: [],
+	thumbnails: new Map(),
+	selected: [],
+	transform: { scale: 1, x: 0, y: 0 },
+	inSelectedNetwork: true,
+	reorderImportIndex: undefined,
+	reorderExportIndex: undefined,
+};
 
-	function closeContextMenu() {
-		update((state) => {
-			state.contextMenuInformation = undefined;
-			return state;
-		});
-	}
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<NodeGraphStoreState> = import.meta.hot?.data?.store || writable<NodeGraphStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
 
+export function createNodeGraphStore(editor: Editor) {
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
@@ -206,13 +206,26 @@ export function createNodeGraphState(editor: Editor) {
 		editor.subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
 	}
 
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
-		closeContextMenu,
 		destroy,
 	};
 }
-export type NodeGraphState = ReturnType<typeof createNodeGraphState>;
+export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 
-// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
-import.meta.hot?.accept(() => location.reload());
+export function closeContextMenu() {
+	update((state) => {
+		state.contextMenuInformation = undefined;
+		return state;
+	});
+}
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createNodeGraphStore(...currentArgs);
+});

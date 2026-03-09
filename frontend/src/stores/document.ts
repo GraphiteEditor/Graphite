@@ -1,30 +1,36 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
-export function createDocumentState(editor: Editor) {
-	const state = writable<{
-		toolOptionsLayout: Layout;
-		documentBarLayout: Layout;
-		toolShelfLayout: Layout;
-		workingColorsLayout: Layout;
-		nodeGraphControlBarLayout: Layout;
-		graphViewOverlayOpen: boolean;
-		fadeArtwork: number;
-	}>({
-		toolOptionsLayout: [],
-		documentBarLayout: [],
-		toolShelfLayout: [],
-		workingColorsLayout: [],
-		nodeGraphControlBarLayout: [],
-		graphViewOverlayOpen: false,
-		fadeArtwork: 100,
-	});
-	const { subscribe, update } = state;
+type DocumentStoreState = {
+	toolOptionsLayout: Layout;
+	documentBarLayout: Layout;
+	toolShelfLayout: Layout;
+	workingColorsLayout: Layout;
+	nodeGraphControlBarLayout: Layout;
+	graphViewOverlayOpen: boolean;
+	fadeArtwork: number;
+};
+const initialState: DocumentStoreState = {
+	toolOptionsLayout: [],
+	documentBarLayout: [],
+	toolShelfLayout: [],
+	workingColorsLayout: [],
+	nodeGraphControlBarLayout: [],
+	graphViewOverlayOpen: false,
+	fadeArtwork: 100,
+};
 
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<DocumentStoreState> = import.meta.hot?.data?.store || writable<DocumentStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
+
+export function createDocumentStore(editor: Editor) {
 	// Update layouts
 	editor.subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
@@ -89,12 +95,19 @@ export function createDocumentState(editor: Editor) {
 		editor.subscriptions.unsubscribeLayoutUpdate("NodeGraphControlBar");
 	}
 
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
 		destroy,
 	};
 }
-export type DocumentState = ReturnType<typeof createDocumentState>;
+export type DocumentStore = ReturnType<typeof createDocumentStore>;
 
-// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
-import.meta.hot?.accept(() => location.reload());
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createDocumentStore(...currentArgs);
+});

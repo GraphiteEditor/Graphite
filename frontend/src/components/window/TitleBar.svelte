@@ -4,19 +4,22 @@
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import type { AppWindowStore } from "@graphite/stores/app-window";
+	import { enterFullscreen, exitFullscreen } from "@graphite/stores/fullscreen";
+	import type { FullscreenStore } from "@graphite/stores/fullscreen";
+	import type { TooltipStore } from "@graphite/stores/tooltip";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	const appWindow = getContext<AppWindowState>("appWindow");
+	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
+
+	const appWindow = getContext<AppWindowStore>("appWindow");
 	const editor = getContext<Editor>("editor");
-	const fullscreen = getContext<FullscreenState>("fullscreen");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const fullscreen = getContext<FullscreenStore>("fullscreen");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let menuBarLayout: Layout = [];
 
@@ -52,13 +55,13 @@
 			{#if showFullscreenButton}
 				<LayoutRow
 					tooltipLabel={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-					tooltipDescription={$appWindow.platform === "Web" && $fullscreen.keyboardLockApiSupported
+					tooltipDescription={$appWindow.platform === "Web" && keyboardLockApiSupported
 						? "While fullscreen, keyboard shortcuts normally reserved by the browser become available."
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
 						if (isPlatformNative()) editor.handle.appWindowFullscreen();
-						else ($fullscreen.windowFullscreen ? fullscreen.exitFullscreen : fullscreen.enterFullscreen)();
+						else ($fullscreen.windowFullscreen ? exitFullscreen : enterFullscreen)();
 					}}
 				>
 					<IconLabel icon={isFullscreen ? "FullscreenExit" : "FullscreenEnter"} />

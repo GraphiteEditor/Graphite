@@ -3,19 +3,23 @@ import type { Editor } from "@graphite/editor";
 let currentCleanup: (() => void) | undefined;
 let currentArgs: [Editor] | undefined;
 
-export function createLocalizationManager(editor: Editor): () => void {
+export function createLocalizationManager(editor: Editor) {
 	currentArgs = [editor];
+
 	// Subscribe to process backend event
 	editor.subscriptions.subscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate", (data) => {
 		const localized = localizeTimestamp(data.commitDate);
 		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
 	});
 
-	currentCleanup = () => {
+	function destroy() {
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate");
-	};
-	return currentCleanup;
+	}
+
+	currentCleanup = destroy;
+	return { destroy };
 }
+export type LocalizationManager = ReturnType<typeof createLocalizationManager>;
 
 function localizeTimestamp(utc: string): { timestamp: string; year: string } {
 	// Timestamp

@@ -4,7 +4,7 @@
 	import { evaluateMathExpression, isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/managers/input";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
