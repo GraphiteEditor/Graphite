@@ -291,6 +291,7 @@ fn split_oversized_region(region: RenderRegion, max_region_area: u32) -> Vec<Ren
 	}
 
 	if group1.is_empty() || group2.is_empty() {
+		log::error!("Failed to split oversized region.");
 		return vec![region];
 	}
 
