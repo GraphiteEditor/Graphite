@@ -44,5 +44,5 @@ Frontend-to-backend communication is achieved through a thin Rust translation la
 Backend-to-frontend communication happens by sending a queue of messages to the frontend message dispatcher. After the TS has called any wrapper API function to get into backend code execution, the editor's business logic runs and queues up each [`FrontendMessage`](https://github.com/GraphiteEditor/Graphite/tree/master/editor/src/messages/frontend/frontend_message.rs) which get mapped from Rust to JavaScript data structures in [`/frontend/src/messages.ts`](https://github.com/GraphiteEditor/Graphite/tree/master/frontend/src/messages.ts). Various TS code subscribes to these messages by calling:
 
 ```rs
-subscribeFrontendMessage(MessageName, (messageData) => { /* callback code */ });
+subscribeFrontendMessage(NameOfMessage, (messageData) => { /* callback code */ });
 ```

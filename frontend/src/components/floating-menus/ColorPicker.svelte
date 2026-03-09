@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
-	import type { FillChoice, MenuDirection } from "@graphite/messages";
-	import type { Color } from "@graphite/messages";
+	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { FillChoice, MenuDirection, Color } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import {
 		contrastingOutlineFactor,
-		isColor,
-		isGradient,
+		fillChoiceColor,
+		fillChoiceGradientStops,
 		createColor,
-		createNoneColor,
 		createColorFromHSVA,
 		colorFromCSS,
 		colorToRgb255,
@@ -24,10 +23,8 @@
 	} from "@graphite/utility-functions/colors";
 	import type { HSV, RGB } from "@graphite/utility-functions/colors";
 	import { clamp } from "@graphite/utility-functions/math";
-	import { isDesktop } from "@graphite/utility-functions/platform";
 
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
+	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -37,20 +34,20 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	type PresetColors = "none" | "black" | "white" | "red" | "yellow" | "green" | "cyan" | "blue" | "magenta";
+	type PresetColors = "None" | "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
 
 	const PURE_COLORS: Record<PresetColors, [number, number, number]> = {
-		none: [0, 0, 0],
-		black: [0, 0, 0],
-		white: [1, 1, 1],
-		red: [1, 0, 0],
-		yellow: [1, 1, 0],
-		green: [0, 1, 0],
-		cyan: [0, 1, 1],
-		blue: [0, 0, 1],
-		magenta: [1, 0, 1],
+		None: [0, 0, 0],
+		Black: [0, 0, 0],
+		White: [1, 1, 1],
+		Red: [1, 0, 0],
+		Yellow: [1, 1, 0],
+		Green: [0, 1, 0],
+		Cyan: [0, 1, 1],
+		Blue: [0, 0, 1],
+		Magenta: [1, 0, 1],
 	};
-	const PURE_COLORS_GRAYABLE = [
+	const PURE_COLORS_GRAYABLE: [PresetColors, string, string][] = [
 		["Red", "#ff0000", "#4c4c4c"],
 		["Yellow", "#ffff00", "#e3e3e3"],
 		["Green", "#00ff00", "#969696"],
@@ -70,17 +67,19 @@
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
 
-	const colorForHSVA = isColor(colorOrGradient) ? colorOrGradient : gradientFirstColor(colorOrGradient);
+	const initSolidColor = fillChoiceColor(colorOrGradient);
+	const initGradientStops = fillChoiceGradientStops(colorOrGradient);
+	const colorForHSVA = initSolidColor || (initGradientStops ? gradientFirstColor(initGradientStops) : undefined);
 	const hsvOrNone = colorForHSVA ? colorToHSV(colorForHSVA) : undefined;
 	const hsv = hsvOrNone || { h: 0, s: 0, v: 0 };
 
 	// Gradient color stops
-	$: gradient = isGradient(colorOrGradient) ? colorOrGradient : undefined;
-	let activeIndex = 0 as number | undefined;
+	$: gradient = fillChoiceGradientStops(colorOrGradient);
+	let activeIndex: number | undefined = 0;
 	let activeIndexIsMidpoint = false;
-	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || (colorFromCSS("black") as Color);
+	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || colorFromCSS("black") || createColor(0, 0, 0, 1);
 	// Currently viewed color
-	$: color = isColor(colorOrGradient) ? colorOrGradient : selectedGradientColor;
+	$: color = fillChoiceColor(colorOrGradient) || selectedGradientColor;
 	// New color components
 	let hue = hsv.h;
 	let saturation = hsv.s;
@@ -115,14 +114,30 @@
 	$: watchOpen(open);
 	$: watchColor(color);
 
-	$: oldColor = oldIsNone ? createNoneColor() : createColorFromHSVA(oldHue, oldSaturation, oldValue, oldAlpha);
-	$: newColor = isNone ? createNoneColor() : createColorFromHSVA(hue, saturation, value, alpha);
-	$: rgbChannels = Object.entries(colorToRgb255(newColor) || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
-	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
+	$: oldColor = oldIsNone ? undefined : createColorFromHSVA(oldHue, oldSaturation, oldValue, oldAlpha);
+	$: newColor = isNone ? undefined : createColorFromHSVA(hue, saturation, value, alpha);
+	$: rgbChannels = ((): [keyof RGB, number | undefined][] => {
+		const rgb = newColor ? colorToRgb255(newColor) : undefined;
+		return [
+			["r", rgb?.r],
+			["g", rgb?.g],
+			["b", rgb?.b],
+		];
+	})();
+	$: hsvChannels = ((): [keyof HSV, number | undefined][] => {
+		return [
+			["h", isNone ? undefined : hue * 360],
+			["s", isNone ? undefined : saturation * 100],
+			["v", isNone ? undefined : value * 100],
+		];
+	})();
 	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
-	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
+	$: outlineFactor = Math.max(
+		contrastingOutlineFactor(newColor ? { Solid: newColor } : ("None" as const), "--color-2-mildblack", 0.01),
+		contrastingOutlineFactor(oldColor ? { Solid: oldColor } : ("None" as const), "--color-2-mildblack", 0.01),
+	);
 	$: outlined = outlineFactor > 0.0001;
-	$: transparency = newColor.alpha < 1 || oldColor.alpha < 1;
+	$: transparency = (newColor?.alpha ?? 1) < 1 || (oldColor?.alpha ?? 1) < 1;
 
 	async function watchOpen(open: boolean) {
 		if (open) {
@@ -135,11 +150,6 @@
 
 	function watchColor(color: Color) {
 		const hsv = colorToHSV(color);
-
-		if (hsv === undefined) {
-			setNewHSVA(0, 0, 0, 1, true);
-			return;
-		}
 
 		// Update the hue, but only if it is necessary so we don't:
 		// - ...jump the user's hue from 360° (top) to the equivalent 0° (bottom)
@@ -160,7 +170,7 @@
 	function onPointerDown(e: PointerEvent) {
 		if (disabled) return;
 
-		const target = (e.target || undefined) as HTMLElement | undefined;
+		const target = e.target instanceof HTMLElement ? e.target : undefined;
 		draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
 
 		hueBeforeDrag = hue;
@@ -301,14 +311,20 @@
 		setColor(color);
 	}
 
-	function setColor(color?: Color) {
-		const colorToEmit = color || createColorFromHSVA(hue, saturation, value, alpha);
-
-		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.position[activeIndex] !== undefined && isGradient(colorOrGradient)) {
-			colorOrGradient.color[activeIndex] = colorToEmit;
+	function setColor(color?: Color | "None") {
+		if (color === "None") {
+			dispatch("colorOrGradient", "None");
+			return;
 		}
 
-		dispatch("colorOrGradient", gradient || colorToEmit);
+		const colorToEmit = color || createColorFromHSVA(hue, saturation, value, alpha);
+
+		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient && gradient.position[activeIndex] !== undefined) {
+			const gradientStops = fillChoiceGradientStops(colorOrGradient);
+			if (gradientStops) gradientStops.color[activeIndex] = colorToEmit;
+		}
+
+		dispatch("colorOrGradient", gradient ? { Gradient: gradient } : { Solid: colorToEmit });
 	}
 
 	function swapNewWithOld() {
@@ -323,7 +339,7 @@
 		setNewHSVA(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
 		setOldHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
 
-		setColor(old);
+		setColor(old || "None");
 	}
 
 	function setColorCode(colorCode: string) {
@@ -333,7 +349,7 @@
 
 	function setColorRGB(channel: keyof RGB, strength: number | undefined) {
 		// Do nothing if the given value is undefined
-		if (strength === undefined) return undefined;
+		if (strength === undefined || !newColor) return undefined;
 		// Set the specified channel to the given value
 		else if (channel === "r") setColor(createColor(strength / 255, newColor.green, newColor.blue, newColor.alpha));
 		else if (channel === "g") setColor(createColor(newColor.red, strength / 255, newColor.blue, newColor.alpha));
@@ -356,19 +372,12 @@
 		setColor();
 	}
 
-	function setColorPresetSubtile(e: MouseEvent) {
-		const clickedTile = e.target as HTMLDivElement | undefined;
-		const tileColor = clickedTile?.getAttribute("data-pure-tile") || undefined;
-
-		if (tileColor) setColorPreset(tileColor as PresetColors);
-	}
-
 	function setColorPreset(preset: PresetColors) {
 		dispatch("startHistoryTransaction");
 
-		if (preset === "none") {
+		if (preset === "None") {
 			setNewHSVA(0, 0, 0, 1, true);
-			setColor(createNoneColor());
+			setColor("None");
 		} else {
 			const presetColor = createColor(...PURE_COLORS[preset], 1);
 			const hsv = colorToHSV(presetColor);
@@ -398,18 +407,16 @@
 	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool
 	function eyedropperSupported(): boolean {
 		// TODO: Implement support in the desktop app for OS-level color picking
-		if (isDesktop()) return false;
+		if (isPlatformNative()) return false;
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		return Boolean((window as any).EyeDropper);
+		return window.EyeDropper !== undefined;
 	}
 
 	async function activateEyedropperSample() {
 		if (!eyedropperSupported()) return;
 
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const result = await new (window as any).EyeDropper().open();
+			const result = await new EyeDropper().open();
 			dispatch("startHistoryTransaction");
 			setColorCode(result.sRGBHex);
 		} catch {
@@ -427,8 +434,8 @@
 
 		setColor(color);
 
-		setNewHSVA(hsv.h, hsv.s, hsv.v, color.alpha, color.none);
-		setOldHSVA(hsv.h, hsv.s, hsv.v, color.alpha, color.none);
+		setNewHSVA(hsv.h, hsv.s, hsv.v, color.alpha, false);
+		setOldHSVA(hsv.h, hsv.s, hsv.v, color.alpha, false);
 	}
 
 	export function div(): HTMLDivElement | undefined {
@@ -443,14 +450,14 @@
 <FloatingMenu class="color-picker" classes={{ disabled }} {open} on:open {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
 	<LayoutRow
 		styles={{
-			"--new-color": colorToHexOptionalAlpha(newColor),
+			"--new-color": newColor ? colorToHexOptionalAlpha(newColor) : undefined,
 			"--new-color-contrasting": colorContrastingColor(newColor),
-			"--old-color": colorToHexOptionalAlpha(oldColor),
+			"--old-color": oldColor ? colorToHexOptionalAlpha(oldColor) : undefined,
 			"--old-color-contrasting": colorContrastingColor(oldColor),
 			"--hue-color": colorToRgbCSS(opaqueHueColor),
 			"--hue-color-contrasting": colorContrastingColor(opaqueHueColor),
-			"--opaque-color": colorToHexNoAlpha(colorOpaque(newColor) || createColor(0, 0, 0, 1)),
-			"--opaque-color-contrasting": colorContrastingColor(colorOpaque(newColor) || createColor(0, 0, 0, 1)),
+			"--opaque-color": colorToHexNoAlpha(newColor ? colorOpaque(newColor) : createColor(0, 0, 0, 1)),
+			"--opaque-color-contrasting": colorContrastingColor(newColor ? colorOpaque(newColor) : createColor(0, 0, 0, 1)),
 		}}
 	>
 		{@const hueDescription = "The shade along the spectrum of the rainbow."}
@@ -514,7 +521,7 @@
 					<SpectrumInput
 						{gradient}
 						{disabled}
-						on:gradient={() => dispatch("colorOrGradient", gradient)}
+						on:gradient={() => dispatch("colorOrGradient", gradient ? { Gradient: gradient } : "None")}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
 						activeMarkerIsMidpoint={activeIndexIsMidpoint}
@@ -568,7 +575,7 @@
 				<Separator style="Related" />
 				<LayoutRow>
 					<TextInput
-						value={colorToHexOptionalAlpha(newColor) || "-"}
+						value={newColor ? colorToHexOptionalAlpha(newColor) : "-"}
 						{disabled}
 						on:commitText={({ detail }) => {
 							dispatch("startHistoryTransaction");
@@ -680,7 +687,7 @@
 					<button
 						class="preset-color none"
 						{disabled}
-						on:click={() => setColorPreset("none")}
+						on:click={() => setColorPreset("None")}
 						data-tooltip-label="Set to No Color"
 						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						tabindex="0"
@@ -690,7 +697,7 @@
 				<button
 					class="preset-color black"
 					{disabled}
-					on:click={() => setColorPreset("black")}
+					on:click={() => setColorPreset("Black")}
 					data-tooltip-label="Set to Black"
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
@@ -699,19 +706,19 @@
 				<button
 					class="preset-color white"
 					{disabled}
-					on:click={() => setColorPreset("white")}
+					on:click={() => setColorPreset("White")}
 					data-tooltip-label="Set to White"
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
 				<Separator style="Related" />
-				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
-					{#each PURE_COLORS_GRAYABLE as [name, color, gray]}
+				<button class="preset-color pure" {disabled} tabindex="-1">
+					{#each PURE_COLORS_GRAYABLE as [preset, color, gray]}
 						<div
-							data-pure-tile={name.toLowerCase()}
+							on:click={() => setColorPreset(preset)}
 							style:--pure-color={color}
 							style:--pure-color-gray={gray}
-							data-tooltip-label={`Set to ${name}`}
+							data-tooltip-label={`Set to ${preset}`}
 							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						></div>
 					{/each}

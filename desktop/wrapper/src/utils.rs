@@ -6,7 +6,7 @@ pub(crate) mod menu {
 	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKeyOrMouseMotion, LabeledShortcut};
 	use graphite_editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 	use graphite_editor::messages::layout::LayoutMessage;
-	use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId};
+	use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId, WidgetRow};
 
 	use crate::messages::{EditorMessage, KeyCode, MenuItem, Modifiers, Shortcut};
 
@@ -15,7 +15,7 @@ pub(crate) mod menu {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
 		};
-		let LayoutGroup::Row { widgets } = layout_group else {
+		let LayoutGroup::Row(WidgetRow { widgets }) = layout_group else {
 			panic!("Menu bar layout group is supposed to be a row");
 		};
 		widgets
@@ -89,7 +89,7 @@ pub(crate) mod menu {
 		};
 
 		match icon.as_str() {
-			"CheckboxChecked" => {
+			Some("CheckboxChecked") => {
 				return MenuItem::Checkbox {
 					id,
 					text,
@@ -98,7 +98,7 @@ pub(crate) mod menu {
 					checked: true,
 				};
 			}
-			"CheckboxUnchecked" => {
+			Some("CheckboxUnchecked") => {
 				return MenuItem::Checkbox {
 					id,
 					text,

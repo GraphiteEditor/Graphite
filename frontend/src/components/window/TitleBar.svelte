@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
+	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Layout } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
@@ -11,7 +12,6 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import { isDesktop } from "/src/utility-functions/platform";
 
 	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
@@ -20,8 +20,8 @@
 
 	let menuBarLayout: Layout = [];
 
-	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (isDesktop() && $appWindow.fullscreen);
-	$: isFullscreen = isDesktop() ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
+	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (isPlatformNative() && $appWindow.fullscreen);
+	$: isFullscreen = isPlatformNative() ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
 	// On Mac, the menu bar height needs to be scaled by the inverse of the UI scale to fit its native window buttons
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
@@ -53,7 +53,7 @@
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
-						if (isDesktop()) editor.handle.appWindowFullscreen();
+						if (isPlatformNative()) editor.handle.appWindowFullscreen();
 						else ($fullscreen.windowFullscreen ? fullscreen.exitFullscreen : fullscreen.enterFullscreen)();
 					}}
 				>

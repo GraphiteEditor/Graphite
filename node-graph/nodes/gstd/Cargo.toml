@@ -16,6 +16,14 @@ wasm = [
 	"web-sys",
 	"graphene-application-io/wasm",
 	"image/png",
+	"core-types/wasm",
+	"vector-types/wasm",
+	"graphic-types/wasm",
+	"text-nodes/wasm",
+	"raster-nodes/wasm",
+	"vector-nodes/wasm",
+	"graphene-core/wasm",
+	"graph-craft/wasm",
 ]
 image-compare = []
 vello = ["gpu"]

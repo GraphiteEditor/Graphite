@@ -24,7 +24,8 @@ pub struct GradientOptions {
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
-#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GradientToolMessage {
 	// Standard messages
 	Abort,
@@ -46,7 +47,8 @@ pub enum GradientToolMessage {
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
 	ReverseStops,
@@ -199,7 +201,7 @@ impl LayoutHolder for GradientTool {
 			widgets.push(reverse_direction);
 		}
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -770,8 +772,8 @@ impl Fsm for GradientToolFsmState {
 					if stop_index < gradient.stops.position.len() {
 						let color = gradient.stops.color[stop_index].to_gamma_srgb();
 						let position = gradient.stops.position[stop_index];
-						let DVec2 { x, y } = transform.transform_point2(gradient.start.lerp(gradient.end, position));
-						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, x, y });
+						let position = transform.transform_point2(gradient.start.lerp(gradient.end, position)).into();
+						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, position });
 					}
 				}
 
@@ -824,13 +826,10 @@ impl Fsm for GradientToolFsmState {
 								let viewport_pos = selected_gradient
 									.transform
 									.transform_point2(selected_gradient.gradient.start.lerp(selected_gradient.gradient.end, stop_pos));
+								let position = viewport_pos.into();
 								let color = selected_gradient.gradient.stops.color[stop_index].to_gamma_srgb();
 								tool_data.color_picker_editing_color_stop = Some(stop_index);
-								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition {
-									color,
-									x: viewport_pos.x,
-									y: viewport_pos.y,
-								});
+								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, position });
 							}
 						}
 						_ => {}

@@ -23,7 +23,8 @@ use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ShapeType {
 	#[default]
 	Polygon = 0,

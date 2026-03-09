@@ -1,7 +1,6 @@
 <script lang="ts">
+	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { IconName, PopoverButtonStyle } from "@graphite/icons";
-
-	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "@graphite/messages";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

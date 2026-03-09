@@ -6,7 +6,8 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use num_traits::float::Float;
 
 #[derive(Debug, Clone, Copy, PartialEq, BufferStruct)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", serde(default))]
 pub struct AlphaBlending {
 	pub blend_mode: BlendMode,
@@ -68,8 +69,9 @@ impl AlphaBlending {
 }
 
 #[repr(i32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum BlendMode {
 	// Basic group
 	#[default]
