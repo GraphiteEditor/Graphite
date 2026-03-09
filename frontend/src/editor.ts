@@ -14,8 +14,9 @@ export type Editor = {
 	destroy: () => void;
 };
 
-// `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
-let wasmImport: WebAssembly.Memory | undefined;
+// `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`.
+// Preserved across HMR since WASM state persists in memory and cannot be re-initialized.
+let wasmImport: WebAssembly.Memory | undefined = import.meta.hot?.data?.wasmImport;
 
 // Should be called asynchronously before `createEditor()`.
 export async function initWasm() {
@@ -80,4 +81,13 @@ export function createEditor(): Editor {
 	}
 
 	return { raw, handle, subscriptions, destroy };
+}
+
+// WASM state persists in memory across JS module re-evaluation, so accept HMR updates
+// without propagation to prevent components from trying to re-initialize the editor
+if (import.meta.hot) {
+	import.meta.hot.dispose((data) => {
+		data.wasmImport = wasmImport;
+	});
+	import.meta.hot.accept();
 }
