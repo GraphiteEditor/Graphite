@@ -49,7 +49,8 @@
 	const inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
-		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
+		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
+		// The backend handles idempotency, so this is safe to call again during HMR re-mounts.
 		editor.handle.initAfterFrontendReady();
 	});
 

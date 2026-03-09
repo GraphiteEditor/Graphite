@@ -4,7 +4,11 @@ type ApiResponse = { family: string; variants: string[]; files: Record<string, s
 
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+
 export function createFontsManager(editor: Editor): () => void {
+	currentArgs = [editor];
 	const abortController = new AbortController();
 
 	// Subscribe to process backend events
@@ -49,9 +53,16 @@ export function createFontsManager(editor: Editor): () => void {
 		}
 	});
 
-	return () => {
+	currentCleanup = () => {
 		abortController.abort();
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
 	};
+	return currentCleanup;
 }
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createFontsManager(...currentArgs);
+});

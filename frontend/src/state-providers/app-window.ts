@@ -64,3 +64,6 @@ export function createAppWindowState(editor: Editor) {
 	};
 }
 export type AppWindowState = ReturnType<typeof createAppWindowState>;
+
+// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
+import.meta.hot?.accept(() => location.reload());

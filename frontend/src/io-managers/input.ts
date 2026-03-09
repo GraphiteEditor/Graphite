@@ -28,7 +28,11 @@ type EventListenerTarget = {
 	removeEventListener: typeof window.removeEventListener;
 };
 
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor, DialogState, PortfolioState, DocumentState, FullscreenState] | undefined;
+
 export function createInputManager(editor: Editor, dialog: DialogState, portfolio: PortfolioState, document: DocumentState, fullscreen: FullscreenState): () => void {
+	currentArgs = [editor, dialog, portfolio, document, fullscreen];
 	const appElement = window.document.querySelector("[data-app-container]");
 	const app = appElement instanceof HTMLElement ? appElement : null;
 	app?.focus();
@@ -508,13 +512,20 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	bindListeners();
 
 	// Return the destructor
-	return () => {
+	currentCleanup = () => {
 		unbindListeners();
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
 		editor.subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
 	};
+	return currentCleanup;
 }
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
 	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
 }
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createInputManager(...currentArgs);
+});

@@ -3,7 +3,11 @@ import type { DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor, DialogState] | undefined;
+
 export function createPanicManager(editor: Editor, dialogState: DialogState): () => void {
+	currentArgs = [editor, dialogState];
 	// Code panic dialog and console error
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
@@ -19,9 +23,10 @@ export function createPanicManager(editor: Editor, dialogState: DialogState): ()
 		dialogState.createCrashDialog(panicDetails);
 	});
 
-	return () => {
+	currentCleanup = () => {
 		editor.subscriptions.unsubscribeFrontendMessage("DisplayDialogPanic");
 	};
+	return currentCleanup;
 }
 
 export function githubUrl(panicDetails: string): string {
@@ -82,3 +87,9 @@ export function githubUrl(panicDetails: string): string {
 	}
 	return urlString;
 }
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createPanicManager(...currentArgs);
+});

@@ -15,8 +15,7 @@ export type Editor = {
 };
 
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`.
-// Preserved across HMR since WASM state persists in memory and cannot be re-initialized.
-let wasmImport: WebAssembly.Memory | undefined = import.meta.hot?.data?.wasmImport;
+let wasmImport: WebAssembly.Memory | undefined;
 
 // Should be called asynchronously before `createEditor()`.
 export async function initWasm() {
@@ -83,11 +82,5 @@ export function createEditor(): Editor {
 	return { raw, handle, subscriptions, destroy };
 }
 
-// WASM state persists in memory across JS module re-evaluation, so accept HMR updates
-// without propagation to prevent components from trying to re-initialize the editor
-if (import.meta.hot) {
-	import.meta.hot.dispose((data) => {
-		data.wasmImport = wasmImport;
-	});
-	import.meta.hot.accept();
-}
+// Wasm state can't be hot-replaced, so we tell Vite to do a full page reload when this module changes
+import.meta.hot?.accept(() => location.reload());
