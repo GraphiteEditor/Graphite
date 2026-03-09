@@ -36,6 +36,7 @@ pub struct CachedRegion {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct CacheKey {
+	pub max_region_area: u32,
 	pub render_mode_hash: u64,
 	pub device_scale: u64,
 	pub zoom: u64,
@@ -54,6 +55,7 @@ pub struct CacheKey {
 impl CacheKey {
 	#[expect(clippy::too_many_arguments)]
 	fn new(
+		max_region_area: u32,
 		render_mode_hash: u64,
 		device_scale: f64,
 		zoom: f64,
@@ -80,6 +82,7 @@ impl CacheKey {
 		let quantization_amount = 10f64.powi(ROTATION_QUANTIZATION_DIGITS);
 		let quantized_rotation = (rotation * quantization_amount).round() * quantization_amount.recip();
 		Self {
+			max_region_area,
 			render_mode_hash,
 			device_scale: device_scale.to_bits(),
 			zoom: zoom.to_bits(),
@@ -97,23 +100,12 @@ impl CacheKey {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 struct TileCacheImpl {
 	regions: Vec<CachedRegion>,
 	timestamp: u64,
 	total_memory: usize,
 	cache_key: CacheKey,
-}
-
-impl Default for TileCacheImpl {
-	fn default() -> Self {
-		Self {
-			regions: Vec::new(),
-			timestamp: 0,
-			total_memory: 0,
-			cache_key: CacheKey::default(),
-		}
-	}
 }
 
 #[derive(Clone, Default, dyn_any::DynAny, Debug)]
@@ -275,7 +267,7 @@ fn split_oversized_region(region: RenderRegion, max_region_area: u32) -> Vec<Ren
 	if split_horizontally {
 		let min_x = region.tiles.iter().map(|t| t.x).min().unwrap();
 		let max_x = region.tiles.iter().map(|t| t.x).max().unwrap();
-		let mid_x = (min_x + max_x) / 2;
+		let mid_x = min_x + (max_x - min_x) / 2;
 
 		for &tile in &region.tiles {
 			if tile.x <= mid_x {
@@ -287,7 +279,7 @@ fn split_oversized_region(region: RenderRegion, max_region_area: u32) -> Vec<Ren
 	} else {
 		let min_y = region.tiles.iter().map(|t| t.y).min().unwrap();
 		let max_y = region.tiles.iter().map(|t| t.y).max().unwrap();
-		let mid_y = (min_y + max_y) / 2;
+		let mid_y = min_y + (max_y - min_y) / 2;
 
 		for &tile in &region.tiles {
 			if tile.y <= mid_y {
@@ -363,15 +355,17 @@ pub async fn render_output_cache<'a: 'n>(
 	let zoom = footprint.decompose_scale().x;
 	let rotation = footprint.decompose_rotation();
 
-	// Tile coordinates are global, anchored to the viewport pixel where the document origin maps to
 	let viewport_origin_offset = footprint.transform.translation;
-	let viewport_res = footprint.resolution.as_dvec2() / device_scale;
-	let viewport_pixel_bounds = AxisAlignedBbox {
-		start: -viewport_origin_offset,
-		end: viewport_res - viewport_origin_offset,
+	let device_origin_offset = viewport_origin_offset * device_scale;
+	let viewport_bounds_device = AxisAlignedBbox {
+		start: -device_origin_offset,
+		end: footprint.resolution.as_dvec2() - device_origin_offset,
 	};
 
+	let max_region_area = editor_api.editor_preferences.max_render_region_area();
+
 	let cache_key = CacheKey::new(
+		max_region_area,
 		render_params.render_mode as u64,
 		device_scale,
 		zoom,
@@ -387,10 +381,7 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_pointer_position(),
 	);
 
-	let physical_tile_size = (TILE_SIZE as f64 * device_scale).round() as u32;
-
-	let max_region_area = editor_api.editor_preferences.max_render_region_area();
-	let cache_query = tile_cache.query(&viewport_pixel_bounds, &cache_key, max_region_area);
+	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_area);
 
 	let mut new_regions = Vec::new();
 	for missing_region in &cache_query.missing_regions {
@@ -404,7 +395,7 @@ pub async fn render_output_cache<'a: 'n>(
 			render_params,
 			&footprint.transform,
 			&viewport_origin_offset,
-			physical_tile_size,
+			device_scale,
 		)
 		.await;
 		new_regions.push(region);
@@ -421,7 +412,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, physical_tile_size, device_scale, &viewport_origin_offset, &footprint.transform, exec);
+	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, &device_origin_offset, &footprint.transform, exec);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
@@ -436,7 +427,7 @@ async fn render_missing_region<F, Fut>(
 	render_params: &RenderParams,
 	viewport_transform: &DAffine2,
 	viewport_origin_offset: &DVec2,
-	physical_tile_size: u32,
+	device_scale: f64,
 ) -> CachedRegion
 where
 	F: Fn(Context<'static>) -> Fut,
@@ -446,10 +437,9 @@ where
 	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
 
 	let tile_count = (max_tile - min_tile) + IVec2::ONE;
-	let region_pixel_size = (tile_count * physical_tile_size as i32).as_uvec2();
+	let region_pixel_size = (tile_count * TILE_SIZE as i32).as_uvec2();
 
-	// Tile footprint: shift the viewport transform so the tile's pixel origin becomes (0,0)
-	let tile_global_offset = min_tile.as_dvec2() * TILE_SIZE as f64 + *viewport_origin_offset;
+	let tile_global_offset = min_tile.as_dvec2() * (TILE_SIZE as f64 / device_scale) + *viewport_origin_offset;
 	let region_transform = DAffine2::from_translation(-tile_global_offset) * *viewport_transform;
 	let region_footprint = Footprint {
 		transform: region_transform,
@@ -483,9 +473,7 @@ where
 fn composite_cached_regions(
 	regions: &[CachedRegion],
 	output_resolution: UVec2,
-	physical_tile_size: u32,
-	device_scale: f64,
-	viewport_origin_offset: &DVec2,
+	device_origin_offset: &DVec2,
 	viewport_transform: &DAffine2,
 	exec: &wgpu_executor::WgpuExecutor,
 ) -> (wgpu::Texture, rendering::RenderMetadata) {
@@ -515,7 +503,7 @@ fn composite_cached_regions(
 		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 
 		// Convert global tile position to physical pixel offset in the output texture
-		let offset_pixels = min_tile * physical_tile_size as i32 + (*viewport_origin_offset * device_scale).round().as_ivec2();
+		let offset_pixels = min_tile * TILE_SIZE as i32 + device_origin_offset.round().as_ivec2();
 
 		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
 			(0, offset_pixels.x as u32, region.texture_size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
