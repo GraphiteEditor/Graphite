@@ -1469,7 +1469,10 @@ impl Render for Table<Raster<GPU>> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for row in self.iter() {
 			let alpha_blending = *row.alpha_blending;
-			let blend_mode = alpha_blending.blend_mode.to_peniko();
+			let blend_mode = match render_params.render_mode {
+				RenderMode::Outline => peniko::Mix::Normal,
+				_ => alpha_blending.blend_mode.to_peniko(),
+			};
 
 			let mut layer = false;
 
