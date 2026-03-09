@@ -22,6 +22,8 @@ use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
 
+const PATH_MODIFICATION_INPUT_INDEX: usize = 1;
+
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	closest_point(document, goal, tolerance, layers, |_| false)
@@ -582,7 +584,8 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
-	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), 1)
+	if let Some(TaggedValue::VectorModification(modifications)) =
+		NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), PATH_MODIFICATION_INPUT_INDEX)
 		&& modifications.as_ref() == &VectorModification::default()
 	{
 		return None;

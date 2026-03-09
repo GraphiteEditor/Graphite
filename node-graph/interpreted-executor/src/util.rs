@@ -63,7 +63,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0)],
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), NodeInput::PRIMARY_OUTPUT_INDEX)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::pixel_preview::pixel_preview::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -73,11 +73,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
-<<<<<<< HEAD
-					inputs: vec![NodeInput::node(NodeId(3), 0)],
-=======
-					inputs: vec![NodeInput::node(NodeId(2), NodeInput::PRIMARY_OUTPUT_INDEX)],
->>>>>>> ab83b34a (fix:)
+					inputs: vec![NodeInput::node(NodeId(3), NodeInput::PRIMARY_OUTPUT_INDEX)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work

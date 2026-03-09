@@ -20,6 +20,10 @@ use graphene_std::vector::style::{Fill, Gradient};
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
+const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+const MERGE_CONTENT_INPUT_INDEX: usize = 1;
+const FILL_NODE_FILL_INPUT_INDEX: usize = 1;
+
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
 pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> Option<NodeId> {
 	document
@@ -93,11 +97,9 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		node_id: merge_node_id,
 		parent: first_layer,
 	});
-	const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
-	const MERGE_CONTENT_INDEX: usize = 1;
 	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
 		downstream_input: InputConnector::node(second_layer.to_node(), LAYER_SECONDARY_INPUT_INDEX),
-		input_connector: InputConnector::node(merge_node_id, MERGE_CONTENT_INDEX),
+		input_connector: InputConnector::node(merge_node_id, MERGE_CONTENT_INPUT_INDEX),
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
 		node_ids: vec![second_layer.to_node()],
@@ -279,10 +281,8 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 
 /// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	let fill_index = 1;
-
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(FILL_NODE_FILL_INPUT_INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(gradient.clone())
@@ -290,10 +290,8 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
-	let fill_index = 1;
-
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(FILL_NODE_FILL_INPUT_INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(color.to_linear_srgb())
@@ -522,8 +520,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
-		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[]);
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), InputConnector::PRIMARY_INPUT_INDEX + 1), &[]);
 
 		layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<CPU>>)) || layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<GPU>>))
 	}

@@ -14,6 +14,8 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::regular_polygon;
+use graphene_std::vector::generator_nodes::star;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
 
@@ -195,14 +197,18 @@ impl NumberOfPointsDial {
 		let net_delta = (delta.length() / 25.).round() * sign;
 
 		let Some(layer) = self.layer else { return };
-		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface)) else {
+		let (node_id, sides_input_index) = if let Some(id) = graph_modification_utils::get_star_id(layer, &document.network_interface) {
+			(id, star::SidesInput::<u32>::INDEX)
+		} else if let Some(id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) {
+			(id, regular_polygon::SidesInput::<u32>::INDEX)
+		} else {
 			return;
 		};
 
 		let new_point_count = ((self.initial_points as i32) + (net_delta as i32)).max(3);
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::star::SidesInput::<u32>::INDEX),
+			input_connector: InputConnector::node(node_id, sides_input_index),
 			input: NodeInput::value(TaggedValue::U32(new_point_count as u32), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

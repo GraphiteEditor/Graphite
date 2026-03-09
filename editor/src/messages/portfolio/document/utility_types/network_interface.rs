@@ -419,10 +419,9 @@ impl NodeNetworkInterface {
 			.collect::<Vec<_>>();
 
 		for old_id in new_nodes.iter().map(|(_, old_id, _)| *old_id).collect::<Vec<_>>() {
-			// Try set all selected nodes upstream of a layer to be chain nodes
+				// Try set all selected nodes upstream of a layer to be chain nodes
 			if self.is_layer(&old_id, network_path) {
-				const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
-				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, LAYER_SECONDARY_INPUT_INDEX), network_path) {
+				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, InputConnector::PRIMARY_INPUT_INDEX + 1), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
 						match &mut node_template.persistent_node_metadata.node_type_metadata {
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
@@ -685,7 +684,7 @@ impl NodeNetworkInterface {
 		let (name, description) = match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
 				// Do not display the primary output port for a node if it is a network node with a hidden primary export
-				if *output_index == 0 && self.hidden_primary_output(node_id, network_path) {
+				if *output_index == OutputConnector::PRIMARY_OUTPUT_INDEX && self.hidden_primary_output(node_id, network_path) {
 					return None;
 				};
 				// Get the output name from the interior network export name
@@ -702,7 +701,7 @@ impl NodeNetworkInterface {
 					return None;
 				};
 				// Return None if the primary input is hidden and this is the primary import
-				if *import_index == 0 && self.hidden_primary_import(network_path) {
+				if *import_index == InputConnector::PRIMARY_INPUT_INDEX && self.hidden_primary_import(network_path) {
 					return None;
 				};
 				let (import_name, description) = self.displayed_input_name_and_description(encapsulating_node_id, *import_index, encapsulating_path);
@@ -842,7 +841,7 @@ impl NodeNetworkInterface {
 								input_index,
 							} => {
 								// Stop iterating once the downstream node is the left input to the chain or a sole dependent
-								if !(sole_dependents.contains(downstream_node_id) || downstream_node_id == node_id && *input_index == 1) {
+								if !(sole_dependents.contains(downstream_node_id) || downstream_node_id == node_id && *input_index == InputConnector::PRIMARY_INPUT_INDEX + 1) {
 									// Continue iterating downstream for the downstream node
 									let number_of_outputs = self.number_of_outputs(downstream_node_id, network_path);
 									let Some(outward_wires) = self.outward_wires(network_path) else {
@@ -1075,7 +1074,7 @@ impl NodeNetworkInterface {
 
 		let downstream_nodes = downstream_connectors
 			.iter()
-			.filter_map(|connector| connector.node_id().filter(|_| connector.input_index() == 0))
+			.filter_map(|connector| connector.node_id().filter(|_| connector.input_index() == InputConnector::PRIMARY_INPUT_INDEX))
 			.collect::<Vec<_>>();
 		downstream_nodes.iter().any(|node_id| self.is_layer(node_id, network_path))
 	}
@@ -1198,8 +1197,9 @@ impl NodeNetworkInterface {
 						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
 				{
 					let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
-					const ARTBOARD_CLIP_INDEX: usize = 5;
-					let clip_input = artboard.unwrap().inputs.get(ARTBOARD_CLIP_INDEX).unwrap();
+					// Artboard node: [0]=base, [1]=content, [2]=location, [3]=dimensions, [4]=background, [5]=clip
+					const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
+					let clip_input = artboard.unwrap().inputs.get(ARTBOARD_CLIP_INPUT_INDEX).unwrap();
 					if let NodeInput::Value { tagged_value, .. } = clip_input
 						&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
 					{
@@ -1318,8 +1318,7 @@ impl NodeNetworkInterface {
 				.iter()
 				.filter_map(move |node_id| {
 					if self.is_layer(node_id, network_path) {
-						const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
-						network.nodes.get(node_id).and_then(|node| node.inputs.get(LAYER_SECONDARY_INPUT_INDEX)).and_then(|input| input.as_node())
+						network.nodes.get(node_id).and_then(|node| node.inputs.get(InputConnector::PRIMARY_INPUT_INDEX + 1)).and_then(|input| input.as_node())
 					} else {
 						Some(*node_id)
 					}
@@ -1872,7 +1871,7 @@ impl NodeNetworkInterface {
 				};
 				let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
 
-				if *import_index == 0 {
+				if *import_index == InputConnector::PRIMARY_INPUT_INDEX {
 					let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
 					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
 					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
@@ -1892,7 +1891,7 @@ impl NodeNetworkInterface {
 				};
 				let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
 
-				if *export_index == 0 {
+				if *export_index == InputConnector::PRIMARY_INPUT_INDEX {
 					let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
 					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
 					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
@@ -2266,7 +2265,7 @@ impl NodeNetworkInterface {
 		let dashed = match self.previewing(network_path) {
 			Previewing::Yes { .. } => match input {
 				InputConnector::Node { .. } => false,
-				InputConnector::Export(export_index) => *export_index == 0,
+				InputConnector::Export(export_index) => *export_index == InputConnector::PRIMARY_INPUT_INDEX,
 			},
 			Previewing::No => false,
 		};
@@ -2392,7 +2391,7 @@ impl NodeNetworkInterface {
 
 	/// When previewing, there may be a second path to the root node.
 	pub fn wire_to_root(&mut self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		let input = InputConnector::Export(0);
+		let input = InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX);
 		let current_export = self.upstream_output_connector(&input, network_path)?;
 
 		let root_node = match self.previewing(network_path) {
@@ -2412,7 +2411,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
 			return None;
 		};
-		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == InputConnector::PRIMARY_INPUT_INDEX);
 		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
@@ -2447,7 +2446,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get output port for wire start: {:?}", upstream_output);
 			return None;
 		};
-		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
+		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == InputConnector::PRIMARY_INPUT_INDEX);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
 		Some((build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), thick))
@@ -2516,7 +2515,7 @@ impl NodeNetworkInterface {
 					port_click_targets.insert_node_input(input_index, input_row_count, node_top_left);
 				}
 				// Primary input row is always displayed, even if the input is not exposed
-				if input_index == 0 || input.is_exposed() {
+				if input_index == InputConnector::PRIMARY_INPUT_INDEX || input.is_exposed() {
 					input_row_count += 1;
 				}
 			}
@@ -4023,11 +4022,11 @@ impl NodeNetworkInterface {
 
 				// Load structure if the change is to the document network and to the first or second
 				if network_path.is_empty() {
-					if matches!(input_connector, InputConnector::Export(0)) {
+					if matches!(input_connector, InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX)) {
 						self.load_structure();
 					} else if let InputConnector::Node { node_id, input_index } = &input_connector {
 						// If the connection is made to the first or second input of a node connected to the output, then load the structure
-						if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
+						if self.connected_to_output(node_id, network_path) && (*input_index == InputConnector::PRIMARY_INPUT_INDEX || *input_index == InputConnector::PRIMARY_INPUT_INDEX + 1) {
 							self.load_structure();
 						}
 					}
@@ -4065,7 +4064,7 @@ impl NodeNetworkInterface {
 											.outward_wires(network_path)
 											.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::node(*upstream_node_id, OutputConnector::PRIMARY_OUTPUT_INDEX)))
 											.is_some_and(|outward_wires| outward_wires.len() > 1);
-										if *input_index == 0 && !multiple_outward_wires {
+										if *input_index == InputConnector::PRIMARY_INPUT_INDEX && !multiple_outward_wires {
 											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
 										} else {
 											self.set_absolute_position(upstream_node_id, current_node_position, network_path);
@@ -4110,7 +4109,7 @@ impl NodeNetworkInterface {
 						return;
 					};
 					// If it is a layer and is connected to a single layer, set its position to stack at its previous y position
-					if old_upstream_node_is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == 0 {
+					if old_upstream_node_is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == InputConnector::PRIMARY_INPUT_INDEX {
 						if let Some(downstream_node_id) = outward_wires[0].node_id()
 							&& self.is_layer(&downstream_node_id, network_path)
 						{
@@ -4129,11 +4128,11 @@ impl NodeNetworkInterface {
 				}
 				// Load structure if the change is to the document network and to the first or second
 				if network_path.is_empty() {
-					if matches!(input_connector, InputConnector::Export(0)) {
+					if matches!(input_connector, InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX)) {
 						self.load_structure();
 					} else if let InputConnector::Node { node_id, input_index } = &input_connector {
 						// If the connection is made to the first or second input of a node connected to the output, then load the structure
-						if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
+						if self.connected_to_output(node_id, network_path) && (*input_index == InputConnector::PRIMARY_INPUT_INDEX || *input_index == InputConnector::PRIMARY_INPUT_INDEX + 1) {
 							self.load_structure();
 						}
 					}
@@ -4182,7 +4181,7 @@ impl NodeNetworkInterface {
 						input_index,
 					} = other_outward_wire
 					&& self.is_layer(&downstream_node_id, network_path)
-					&& input_index == 0
+					&& input_index == InputConnector::PRIMARY_INPUT_INDEX
 				{
 					self.set_stack_position_calculated_offset(upstream_node_id, &downstream_node_id, network_path);
 				}
@@ -4316,11 +4315,11 @@ impl NodeNetworkInterface {
 							if let InputConnector::Node { node_id: downstream_id, input_index } = downstream_node {
 								// If the downstream node is not in the delete nodes set, then continue iterating
 								// If the downstream node is the bottom input of a layer then continue iterating
-								if !delete_nodes.contains(downstream_id) || (*input_index == 0 && self.is_layer(downstream_id, network_path)) {
+								if !delete_nodes.contains(downstream_id) || (*input_index == InputConnector::PRIMARY_INPUT_INDEX && self.is_layer(downstream_id, network_path)) {
 									stack.push(*downstream_id);
 								}
 								// If the traversal reaches the primary input of the node to delete then do not delete it
-								if node_id == downstream_id && *input_index == 0 {
+								if node_id == downstream_id && *input_index == InputConnector::PRIMARY_INPUT_INDEX {
 									can_delete = false;
 									stack = Vec::new();
 									break;
@@ -4480,7 +4479,7 @@ impl NodeNetworkInterface {
 		} = self.previewing(network_path)
 		{
 			self.set_input(
-				&InputConnector::Export(0),
+				&InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX),
 				NodeInput::node(root_node_to_restore.node_id, root_node_to_restore.output_index),
 				network_path,
 			);
@@ -4539,10 +4538,11 @@ impl NodeNetworkInterface {
 				return;
 			};
 
-			let label_index = 1;
+			// Artboard node internal structure: inputs[0]=content, inputs[1]=label(name)
+			const ARTBOARD_LABEL_INPUT_INDEX: usize = 1;
 			let label = if !display_name.is_empty() { display_name } else { "Artboard".to_string() };
 			let label_input = NodeInput::value(TaggedValue::String(label), false);
-			to_artboard.inputs[label_index] = label_input;
+			to_artboard.inputs[ARTBOARD_LABEL_INPUT_INDEX] = label_input;
 		}
 
 		self.transaction_modified();
@@ -4662,7 +4662,7 @@ impl NodeNetworkInterface {
 				outward_wires
 					.get(&OutputConnector::node(*node_id, OutputConnector::PRIMARY_OUTPUT_INDEX))
 					.and_then(|outward_wires| (outward_wires.len() == 1).then(|| outward_wires[0]))
-					.and_then(|downstream_connector| if downstream_connector.input_index() == 0 { downstream_connector.node_id() } else { None })
+					.and_then(|downstream_connector| if downstream_connector.input_index() == InputConnector::PRIMARY_INPUT_INDEX { downstream_connector.node_id() } else { None })
 			})
 			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
 			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
@@ -4686,8 +4686,7 @@ impl NodeNetworkInterface {
 
 		// Try build the chain
 		if is_layer {
-			const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
-			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, LAYER_SECONDARY_INPUT_INDEX), network_path);
+			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, InputConnector::PRIMARY_INPUT_INDEX + 1), network_path);
 		} else {
 			self.try_set_node_to_chain(node_id, network_path);
 		}
@@ -4794,10 +4793,10 @@ impl NodeNetworkInterface {
 		}
 		match new_export {
 			Some(new_export) => {
-				self.create_wire(&new_export, &InputConnector::Export(0), network_path);
+				self.create_wire(&new_export, &InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX), network_path);
 			}
 			None => {
-				self.disconnect_input(&InputConnector::Export(0), network_path);
+				self.disconnect_input(&InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX), network_path);
 			}
 		}
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -4931,7 +4930,7 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		};
 		let mut set_position_to_chain = Vec::new();
-		if self.is_layer(input_connector_node_id, network_path) && *input_index == 1 || self.is_chain(input_connector_node_id, network_path) && *input_index == 0 {
+		if self.is_layer(input_connector_node_id, network_path) && *input_index == InputConnector::PRIMARY_INPUT_INDEX + 1 || self.is_chain(input_connector_node_id, network_path) && *input_index == InputConnector::PRIMARY_INPUT_INDEX {
 			let mut downstream_id = *input_connector_node_id;
 			for upstream_node in self
 				.upstream_flow_back_from_nodes(vec![*input_connector_node_id], network_path, FlowType::HorizontalFlow)
@@ -5631,7 +5630,7 @@ impl NodeNetworkInterface {
 		// Get the height of the downstream node if inserting into a stack
 		let mut downstream_height = 0;
 		let inserting_into_stack =
-			!(post_node.input_index() == 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)));
+			!(post_node.input_index() == InputConnector::PRIMARY_INPUT_INDEX + 1 || matches!(post_node, InputConnector::Export(_)) || !post_node.node_id().is_some_and(|post_node_id| self.is_layer(&post_node_id, network_path)));
 		if inserting_into_stack && let Some(downstream_node) = post_node.node_id() {
 			let Some(downstream_node_position) = self.position(&downstream_node, network_path) else {
 				log::error!("Could not get downstream node position in move_layer_to_stack");
@@ -5869,7 +5868,7 @@ impl Iterator for FlowIter<'_> {
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
 				let node_ids = inputs.filter_map(|input| match input {
-					NodeInput::Node { output_index, .. } if self.flow_type == FlowType::HorizontalPrimaryOutputFlow && *output_index != 0 => None,
+					NodeInput::Node { output_index, .. } if self.flow_type == FlowType::HorizontalPrimaryOutputFlow && *output_index != OutputConnector::PRIMARY_OUTPUT_INDEX => None,
 					NodeInput::Node { node_id, .. } => Some(node_id),
 					_ => None,
 				});
@@ -5906,7 +5905,7 @@ pub enum InputConnector {
 
 impl Default for InputConnector {
 	fn default() -> Self {
-		InputConnector::Export(0)
+		InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX)
 	}
 }
 
@@ -5949,7 +5948,7 @@ pub enum OutputConnector {
 
 impl Default for OutputConnector {
 	fn default() -> Self {
-		OutputConnector::Import(0)
+		OutputConnector::Import(OutputConnector::PRIMARY_OUTPUT_INDEX)
 	}
 }
 
@@ -6049,7 +6048,7 @@ impl Ports {
 	}
 
 	fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
-		let center = if input_index == 0 {
+		let center = if input_index == InputConnector::PRIMARY_INPUT_INDEX {
 			node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.)
 		} else {
 			node_top_left + DVec2::new(0., 24. * 1.)
