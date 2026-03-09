@@ -7,7 +7,11 @@ import type { MessageBody } from "@graphite/subscription-router";
 
 const graphiteStore = createStore("graphite", "store");
 
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor, PortfolioState] | undefined;
+
 export function createPersistenceManager(editor: Editor, portfolio: PortfolioState): () => void {
+	currentArgs = [editor, portfolio];
 	// DOCUMENTS
 
 	async function storeDocumentOrder() {
@@ -201,7 +205,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		}
 	});
 
-	return () => {
+	currentCleanup = () => {
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
@@ -211,6 +215,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
 	};
+	return currentCleanup;
 }
 
 export async function wipeDocuments() {
@@ -218,3 +223,9 @@ export async function wipeDocuments() {
 	await del("current_document_id", graphiteStore);
 	await del("documents", graphiteStore);
 }
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createPersistenceManager(...currentArgs);
+});

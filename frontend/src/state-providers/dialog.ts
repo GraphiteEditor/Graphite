@@ -113,3 +113,6 @@ export function createDialogState(editor: Editor) {
 	};
 }
 export type DialogState = ReturnType<typeof createDialogState>;
+
+// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
+import.meta.hot?.accept(() => location.reload());
