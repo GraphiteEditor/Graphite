@@ -55,7 +55,8 @@ impl Default for TextOptions {
 }
 
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TextToolMessage {
 	// Standard messages
 	Abort,
@@ -75,7 +76,8 @@ pub enum TextToolMessage {
 	RefreshEditingFontData,
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TextOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -271,7 +273,7 @@ impl TextTool {
 			},
 		));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -413,7 +415,7 @@ impl TextToolData {
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.map_or("#000000".to_string(), |color| format!("#{}", color.to_rgba_hex_srgb())),
-				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default(),
+				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
@@ -925,7 +927,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
 				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
 				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
-					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default(),
+					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
 				});
 
 				TextToolFsmState::Editing

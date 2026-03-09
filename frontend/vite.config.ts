@@ -3,7 +3,6 @@ import { readFileSync } from "fs";
 import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { sveltePreprocess } from "svelte-preprocess";
 import { defineConfig } from "vite";
 import type { PluginOption } from "vite";
 import { DynamicPublicDirectory as viteMultipleAssets } from "vite-multiple-assets";
@@ -31,25 +30,7 @@ export default defineConfig(({ mode }) => {
 
 function plugins(mode: string): PluginOption[] {
 	const plugins = [
-		svelte({
-			preprocess: [sveltePreprocess()],
-			onwarn(warning, defaultHandler) {
-				const suppressed = [
-					"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y_consider_explicit_label", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y_click_events_have_key_events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y_no_noninteractive_element_interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y_no_static_element_interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-				];
-				if (suppressed.includes(warning.code)) return;
-
-				defaultHandler?.(warning);
-			},
-		}),
+		svelte(),
 		viteMultipleAssets(
 			// Additional static asset directories besides `public/`
 			[

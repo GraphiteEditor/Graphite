@@ -1,68 +1,36 @@
-import type { Layout, LayoutGroup, UIItem, WidgetDiff, WidgetInstance, WidgetSection, WidgetSpanColumn, WidgetSpanRow, WidgetTable } from "@graphite/messages";
+import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
 
-export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
-	return Boolean((layoutColumn as WidgetSpanColumn)?.columnWidgets);
-}
-
-export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
-	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
-}
-
-export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTable {
-	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
-}
-
-export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
-	return Boolean((layoutRow as WidgetSection)?.layout);
-}
-
-/// Unwraps the Serde tagged enum `{ widgetId, widget: { Kind: props } }` into `{ widgetId, props: { kind, ...props } }`
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseWidgetInstance(widgetInstance: any): WidgetInstance {
-	const widgetId = widgetInstance.widgetId;
-
-	const kind = Object.keys(widgetInstance.widget)[0];
-	const props = widgetInstance.widget[kind];
-	props.kind = kind;
-
-	return { widgetId, props };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function parseWidgetDiffs(rawDiffs: any): WidgetDiff[] {
-	return rawDiffs.map((diff: WidgetDiff) => {
-		const { widgetPath, newValue } = diff;
-
-		if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
-		if ("layoutGroup" in newValue) return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
-		if ("widget" in newValue) return { widgetPath, newValue: parseWidgetInstance(newValue.widget) };
-
-		// This code should be unreachable
-		throw new Error("DiffUpdate invalid");
-	});
-}
-
+type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
 export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 	diffs.forEach((update) => {
+		// Extract the actual content from the DiffUpdate tagged enum
+		const { newValue } = update;
+		let newContent: Layout | LayoutGroup | WidgetInstance;
+		if ("layout" in newValue) newContent = newValue.layout;
+		else if ("layoutGroup" in newValue) newContent = newValue.layoutGroup;
+		else if ("widget" in newValue) newContent = newValue.widget;
+		else throw new Error("DiffUpdate invalid");
+
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
-			if (targetLayout && "columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
-			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
-			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
-			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
-			if (targetLayout && "props" in targetLayout && "widgetId" in targetLayout) {
-				if (targetLayout.props.kind === "PopoverButton" && "popoverLayout" in targetLayout.props && targetLayout.props.popoverLayout) {
-					targetLayout.props.popoverLayout = targetLayout.props.popoverLayout.map(createLayoutGroup);
-					return targetLayout.props.popoverLayout[index];
+		const diffObject = update.widgetPath.reduce((targetLayout, index: bigint): UIItem | undefined => {
+			const i = Number(index);
+
+			if (targetLayout && "Column" in targetLayout) return targetLayout.Column.columnWidgets[i];
+			if (targetLayout && "Row" in targetLayout) return targetLayout.Row.rowWidgets[i];
+			if (targetLayout && "Table" in targetLayout) return targetLayout.Table.tableWidgets[i];
+			if (targetLayout && "Section" in targetLayout) return targetLayout.Section.layout[i];
+			if (targetLayout && "widget" in targetLayout && "widgetId" in targetLayout) {
+				if ("PopoverButton" in targetLayout.widget && targetLayout.widget.PopoverButton.popoverLayout) {
+					return targetLayout.widget.PopoverButton.popoverLayout[i];
 				}
 				// eslint-disable-next-line no-console
 				console.error("Tried to index widget");
 				return targetLayout;
 			}
 
-			return targetLayout?.[index];
-		}, layout as UIItem);
+			return targetLayout?.[i];
+		}, layout);
 
 		// Exit if we failed to produce a valid patch for the existing layout.
 		// This means that the backend assumed an existing layout that doesn't exist in the frontend. This can happen, for
@@ -79,53 +47,11 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 			diffObject.length = 0;
 		}
 		// Remove all of the keys from the old object
-		Object.keys(diffObject).forEach((key) => delete (diffObject as Record<string, unknown>)[key]);
+		Object.keys(diffObject).forEach((key) => Reflect.deleteProperty(diffObject, key));
 
 		// Assign keys to the new object
 		// `Object.assign` works but `diffObject = update.newValue;` doesn't.
 		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-		Object.assign(diffObject, update.newValue);
+		Object.assign(diffObject, newContent);
 	});
-}
-
-// Unpacking a layout group
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createLayoutGroup(layoutGroup: any): LayoutGroup {
-	// Detect if this has already been parsed and, if so, return it as-is so this function can be idempotent
-	if ("columnWidgets" in layoutGroup || "rowWidgets" in layoutGroup || "tableWidgets" in layoutGroup || ("name" in layoutGroup && "layout" in layoutGroup)) return layoutGroup;
-
-	if (layoutGroup.column) {
-		const columnWidgets = layoutGroup.column.columnWidgets.map(parseWidgetInstance);
-
-		const result: WidgetSpanColumn = { columnWidgets };
-		return result;
-	}
-
-	if (layoutGroup.row) {
-		const result: WidgetSpanRow = { rowWidgets: layoutGroup.row.rowWidgets.map(parseWidgetInstance) };
-		return result;
-	}
-
-	if (layoutGroup.section) {
-		const result: WidgetSection = {
-			name: layoutGroup.section.name,
-			description: layoutGroup.section.description,
-			visible: layoutGroup.section.visible,
-			pinned: layoutGroup.section.pinned,
-			id: layoutGroup.section.id,
-			layout: layoutGroup.section.layout.map(createLayoutGroup),
-		};
-		return result;
-	}
-
-	if (layoutGroup.table) {
-		const result: WidgetTable = {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			tableWidgets: layoutGroup.table.tableWidgets.map((row: any) => row.map(parseWidgetInstance)),
-			unstyled: layoutGroup.table.unstyled,
-		};
-		return result;
-	}
-
-	throw new Error("Layout row type does not exist");
 }

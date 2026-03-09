@@ -56,7 +56,7 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, Vector>,
 
-	/// Cached surface for WASM viewport rendering (reused across frames)
+	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
 }
@@ -309,7 +309,7 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On WASM, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 

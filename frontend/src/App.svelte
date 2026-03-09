@@ -15,7 +15,7 @@
 	});
 
 	onDestroy(() => {
-		// Destroy the WASM editor handle
+		// Destroy the Wasm editor handle
 		editor?.handle.free();
 	});
 </script>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { ActionShortcut } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 

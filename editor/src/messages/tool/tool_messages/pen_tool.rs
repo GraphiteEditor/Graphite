@@ -44,7 +44,8 @@ impl Default for PenOptions {
 }
 
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PenToolMessage {
 	// Standard messages
 	Abort,
@@ -107,13 +108,15 @@ enum PenToolFsmState {
 	GRSHandle,
 }
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PenOverlayMode {
 	AllHandles = 0,
 	FrontierHandles = 1,
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -238,7 +241,7 @@ impl LayoutHolder for PenTool {
 			.widget_instance(),
 		);
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 

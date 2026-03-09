@@ -38,7 +38,8 @@ impl Default for SplineOptions {
 }
 
 #[impl_message(Message, ToolMessage, Spline)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SplineToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
@@ -65,7 +66,8 @@ enum SplineToolFsmState {
 	MergingEndpoints,
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SplineOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -158,7 +160,7 @@ impl LayoutHolder for SplineTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 

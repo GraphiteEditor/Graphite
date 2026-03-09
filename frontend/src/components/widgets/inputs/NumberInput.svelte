@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
-	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
+	import { evaluateMathExpression, isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
-	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
+	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
@@ -43,8 +43,8 @@
 	export let isInteger = false;
 	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
 	/// "Add"/"Multiply": The value is added or multiplied by `step`.
-	/// "None": the increment arrows are not shown.
 	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+	/// "None": the increment arrows are not shown.
 	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
@@ -364,7 +364,7 @@
 		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
 		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
 		const isSafari = browserVersion().toLowerCase().includes("safari");
-		const usePointerLock = !isSafari && !isDesktop();
+		const usePointerLock = !isSafari && !isPlatformNative();
 
 		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
 		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
@@ -377,7 +377,7 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
-		if (isDesktop()) {
+		if (isPlatformNative()) {
 			editor.handle.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
@@ -427,11 +427,11 @@
 			}
 			ignoredFirstMovement = true;
 		};
-		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// On desktop we don't get `pointermove` events while in pointer lock (CEF doesn't support pointer lock).
 		// We have to listen for our custom `pointerlockmove` events instead.
-		const pointerLockMove = (e: Event) => {
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
-				const delta = (e.detail as { x: number }).x;
+		const pointerLockMove = ({ detail }: WindowEventMap["pointerlockmove"]) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
+				const delta = detail.x;
 				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;

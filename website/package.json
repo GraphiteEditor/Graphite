@@ -13,8 +13,8 @@
 	"scripts": {
 		"postinstall": "node .build-scripts/install.ts",
 		"generate-editor-structure": "node .build-scripts/generate-editor-structure.ts generated/hierarchical_message_system_tree.txt generated/hierarchical_message_system_tree.html",
-		"lint": "eslint . && tsc --noEmit",
-		"lint-fix": "eslint . --fix && tsc --noEmit"
+		"check": "tsc --noEmit && eslint",
+		"fix": "eslint --fix"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.1",
