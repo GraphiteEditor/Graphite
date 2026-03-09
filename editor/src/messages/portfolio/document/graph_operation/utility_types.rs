@@ -35,6 +35,14 @@ pub struct ModifyInputsContext<'a> {
 	pub layer_node: Option<LayerNodeIdentifier>,
 }
 
+const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+const BRUSH_STROKES_INDEX: usize = 1;
+const ARTBOARD_LOCATION_INDEX: usize = 2;
+const ARTBOARD_DIMENSIONS_INDEX: usize = 3;
+const FILL_NODE_FILL_INPUT_INDEX: usize = 1;
+const FILL_NODE_BACKUP_COLOR_INPUT_INDEX: usize = 2;
+const FILL_NODE_BACKUP_GRADIENT_INPUT_INDEX: usize = 3;
+
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
 	pub fn new(network_interface: &'a mut NodeNetworkInterface, responses: &'a mut VecDeque<Message>) -> Self {
@@ -69,9 +77,8 @@ impl<'a> ModifyInputsContext<'a> {
 	///             if insert_index == 3, return (Layer3, None)
 	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
-			InputConnector::Export(0)
+			InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX)
 		} else {
-			const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
 			InputConnector::node(parent.to_node(), LAYER_SECONDARY_INPUT_INDEX)
 		};
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
@@ -321,7 +328,6 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
 		if node_definition.identifier == "Path" {
-			const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[]);
 			if layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) {
 				let Some(flatten_path_definition) = resolve_proto_node_type(graphene_std::vector_nodes::flatten_path::IDENTIFIER) else {
@@ -340,28 +346,24 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn fill_set(&mut self, fill: Fill) {
-		let fill_index = 1;
-		let backup_color_index = 2;
-		let backup_gradient_index = 3;
-
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
 		match &fill {
 			Fill::None => {
-				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
+				let input_connector = InputConnector::node(fill_node_id, FILL_NODE_BACKUP_COLOR_INPUT_INDEX);
 				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new()), false), true);
 			}
 			Fill::Solid(color) => {
-				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
+				let input_connector = InputConnector::node(fill_node_id, FILL_NODE_BACKUP_COLOR_INPUT_INDEX);
 				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new_from_element(*color)), false), true);
 			}
 			Fill::Gradient(gradient) => {
-				let input_connector = InputConnector::node(fill_node_id, backup_gradient_index);
+				let input_connector = InputConnector::node(fill_node_id, FILL_NODE_BACKUP_GRADIENT_INPUT_INDEX);
 				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(gradient.clone()), false), true);
 			}
 		}
-		let input_connector = InputConnector::node(fill_node_id, fill_index);
+		let input_connector = InputConnector::node(fill_node_id, FILL_NODE_FILL_INPUT_INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Fill(fill), false), false);
 	}
 
@@ -507,7 +509,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_network_node_id("Brush", true) else {
 			return;
 		};
-		const BRUSH_STROKES_INDEX: usize = 1;
 		self.set_input_with_refresh(
 			InputConnector::node(brush_node_id, BRUSH_STROKES_INDEX),
 			NodeInput::value(TaggedValue::BrushStrokes(strokes), false),
@@ -516,9 +517,6 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
-		const ARTBOARD_LOCATION_INDEX: usize = 2;
-		const ARTBOARD_DIMENSIONS_INDEX: usize = 3;
-
 		let Some(artboard_node_id) = self.existing_network_node_id("Artboard", true) else {
 			return;
 		};

@@ -196,6 +196,8 @@ mod test_line_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeInputDecleration;
+	use graphene_std::vector::generator_nodes::line::{StartInput, EndInput};
 
 	/// Get the line's document-space start and end points by reading line_to from the node
 	/// and computing the actual positions via the layer's transform.

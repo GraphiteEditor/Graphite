@@ -19,6 +19,8 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::generator_nodes::regular_polygon::SidesInput as PolygonSidesInput;
+use graphene_std::vector::generator_nodes::star::SidesInput as StarSidesInput;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
@@ -194,7 +196,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), 1)
+		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), PolygonSidesInput::<u32>::INDEX)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -211,7 +213,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	}
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), 1)
+		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), StarSidesInput::<u32>::INDEX)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1

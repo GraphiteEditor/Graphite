@@ -103,10 +103,10 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	DAffine2::from_scale_angle_translation(scale, rotation, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
+const ORIGIN_OFFSET_INDEX: usize = 5;
+
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
-	const ORIGIN_OFFSET_INDEX: usize = 5;
-
 	if let Some(&TaggedValue::DVec2(pivot)) = inputs[ORIGIN_OFFSET_INDEX].as_value() {
 		pivot
 	} else {
