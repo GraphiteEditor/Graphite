@@ -3,7 +3,7 @@
 
 	import { wipeDocuments } from "@graphite/managers/persistence";
 	import type { DialogStore } from "@graphite/stores/dialog";
-	import { crashReportUrl } from "/src/utility-functions/crash-report";
+	import { crashReportUrl } from "@graphite/utility-functions/crash-report";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

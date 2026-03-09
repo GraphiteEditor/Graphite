@@ -7,6 +7,8 @@ import type { Editor } from "@graphite/editor";
 import type { IconName } from "@graphite/icons";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
+export type DialogStore = ReturnType<typeof createDialogStore>;
+
 type DialogStoreState = {
 	visible: boolean;
 	title: string;
@@ -27,13 +29,16 @@ const initialState: DialogStoreState = {
 	panicDetails: "",
 };
 
+let editorRef: Editor | undefined = undefined;
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DialogStoreState> = import.meta.hot?.data?.store || writable<DialogStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createDialogStore(editor: Editor) {
-	// Subscribe to process backend events
+	editorRef = editor;
+
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
 			state.visible = true;
@@ -71,6 +76,7 @@ export function createDialogStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("DialogClose", () => {
 		update((state) => {
 			// Disallow dismissing the crash dialog since it should remain as the final notification
@@ -94,23 +100,20 @@ export function createDialogStore(editor: Editor) {
 		editor.handle.requestLicensesThirdPartyDialogWithLicenseText(licenseText);
 	});
 
-	function destroy() {
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayDialog");
-		editor.subscriptions.unsubscribeFrontendMessage("DialogClose");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog");
-		editor.subscriptions.unsubscribeLayoutUpdate("DialogButtons");
-		editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn1");
-		editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn2");
-	}
-
-	currentCleanup = destroy;
-	currentArgs = [editor];
-	return {
-		subscribe,
-		destroy,
-	};
+	return { subscribe };
 }
-export type DialogStore = ReturnType<typeof createDialogStore>;
+
+export function destroyDialogStore() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	editor.subscriptions.unsubscribeFrontendMessage("DisplayDialog");
+	editor.subscriptions.unsubscribeFrontendMessage("DialogClose");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog");
+	editor.subscriptions.unsubscribeLayoutUpdate("DialogButtons");
+	editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn1");
+	editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn2");
+}
 
 // Creates a crash dialog from JS once the editor has panicked.
 // Normal dialogs are created in the Rust backend, but for the crash dialog, the editor has panicked so it cannot respond to widget callbacks.
@@ -129,11 +132,3 @@ export function createCrashDialog(panicDetails: string) {
 		return state;
 	});
 }
-
-// Self-accepting HMR: tear down the old instance and re-create with the new module's code
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor] | undefined;
-import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createDialogStore(...currentArgs);
-});

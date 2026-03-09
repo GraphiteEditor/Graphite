@@ -5,6 +5,8 @@ import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, Cont
 import type { Editor } from "@graphite/editor";
 import type { MessageBody } from "@graphite/subscription-router";
 
+export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
+
 type NodeGraphStoreState = {
 	box: BoxSelection | undefined;
 	clickTargets: FrontendClickTargets | undefined;
@@ -51,12 +53,16 @@ const initialState: NodeGraphStoreState = {
 	reorderExportIndex: undefined,
 };
 
+let editorRef: Editor | undefined = undefined;
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<NodeGraphStoreState> = import.meta.hot?.data?.store || writable<NodeGraphStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createNodeGraphStore(editor: Editor) {
+	editorRef = editor;
+
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
@@ -65,48 +71,56 @@ export function createNodeGraphStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateBox", (data) => {
 		update((state) => {
 			state.box = data.box;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateClickTargets", (data) => {
 		update((state) => {
 			state.clickTargets = data.clickTargets;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateContextMenuInformation", (data) => {
 		update((state) => {
 			state.contextMenuInformation = data.contextMenuInformation;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateImportReorderIndex", (data) => {
 		update((state) => {
 			state.reorderImportIndex = data.importIndex;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateExportReorderIndex", (data) => {
 		update((state) => {
 			state.reorderExportIndex = data.exportIndex;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateImportsExports", (data) => {
 		update((state) => {
 			state.updateImportsExports = data;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateInSelectedNetwork", (data) => {
 		update((state) => {
 			state.inSelectedNetwork = data.inSelectedNetwork;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateLayerWidths", (data) => {
 		update((state) => {
 			state.layerWidths = data.layerWidths;
@@ -115,6 +129,7 @@ export function createNodeGraphStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphNodes", (data) => {
 		update((state) => {
 			state.nodes.clear();
@@ -124,18 +139,21 @@ export function createNodeGraphStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic", (data) => {
 		update((state) => {
 			state.error = data.error;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateVisibleNodes", (data) => {
 		update((state) => {
 			state.visibleNodes = new Set<bigint>(data.nodes);
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
 		update((state) => {
 			data.wires.forEach((wireUpdate) => {
@@ -154,30 +172,35 @@ export function createNodeGraphStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("ClearAllNodeGraphWires", () => {
 		update((state) => {
 			state.wires.clear();
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphSelection", (data) => {
 		update((state) => {
 			state.selected = data.selected;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphTransform", (data) => {
 		update((state) => {
 			state.transform = { scale: data.scale, x: data.translation[0], y: data.translation[1] };
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeThumbnail", (data) => {
 		update((state) => {
 			state.thumbnails.set(data.id, data.value);
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("UpdateWirePathInProgress", (data) => {
 		update((state) => {
 			state.wirePathInProgress = data.wirePath;
@@ -185,35 +208,32 @@ export function createNodeGraphStore(editor: Editor) {
 		});
 	});
 
-	function destroy() {
-		editor.subscriptions.unsubscribeFrontendMessage("SendUIMetadata");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateBox");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateClickTargets");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateExportReorderIndex");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");
-		editor.subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphTransform");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnail");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
-	}
-
-	currentCleanup = destroy;
-	currentArgs = [editor];
-	return {
-		subscribe,
-		destroy,
-	};
+	return { subscribe };
 }
-export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
+
+export function destroyNodeGraphStore() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	editor.subscriptions.unsubscribeFrontendMessage("SendUIMetadata");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateBox");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateClickTargets");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateExportReorderIndex");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");
+	editor.subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphTransform");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnail");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
+}
 
 export function closeContextMenu() {
 	update((state) => {
@@ -221,11 +241,3 @@ export function closeContextMenu() {
 		return state;
 	});
 }
-
-// Self-accepting HMR: tear down the old instance and re-create with the new module's code
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor] | undefined;
-import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createNodeGraphStore(...currentArgs);
-});

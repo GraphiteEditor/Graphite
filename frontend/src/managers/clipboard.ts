@@ -1,33 +1,32 @@
 import type { Editor } from "@graphite/editor";
 
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor] | undefined;
+let editorRef: Editor | undefined = undefined;
 
 export function createClipboardManager(editor: Editor) {
-	currentArgs = [editor];
+	editorRef = editor;
 
-	// Subscribe to process backend event
 	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
 		navigator.clipboard?.writeText?.(data.content);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		editor.handle.readSelection(readAtCaret(data.cut), data.cut);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
-
-	function destroy() {
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
-	}
-
-	currentCleanup = destroy;
-	return { destroy };
 }
-export type ClipboardManager = ReturnType<typeof createClipboardManager>;
+
+export function destroyClipboardManager() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
+}
 
 function readAtCaret(cut: boolean): string | undefined {
 	const element = window.document.activeElement;
@@ -112,6 +111,6 @@ function insertAtCaret(text: string) {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createClipboardManager(...currentArgs);
+	destroyClipboardManager();
+	if (editorRef) newModule?.createClipboardManager(editorRef);
 });
