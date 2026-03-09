@@ -1,57 +1,37 @@
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import type { IconName } from "@graphite/icons";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
-export function createDialogState(editor: Editor) {
-	const { subscribe, update } = writable<{
-		visible: boolean;
-		title: string;
-		icon: IconName | undefined;
-		buttons: Layout;
-		column1: Layout;
-		column2: Layout;
-		panicDetails: string;
-	}>({
-		visible: false,
-		title: "",
-		icon: undefined,
-		buttons: [],
-		column1: [],
-		column2: [],
-		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
-		panicDetails: "",
-	});
+type DialogStoreState = {
+	visible: boolean;
+	title: string;
+	icon: IconName | undefined;
+	buttons: Layout;
+	column1: Layout;
+	column2: Layout;
+	panicDetails: string;
+};
+const initialState: DialogStoreState = {
+	visible: false,
+	title: "",
+	icon: undefined,
+	buttons: [],
+	column1: [],
+	column2: [],
+	// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
+	panicDetails: "",
+};
 
-	function dismissDialog() {
-		update((state) => {
-			// Disallow dismissing the crash dialog since it can confuse users why the app stopped responding if they dismiss it without realizing what it means
-			if (state.panicDetails === "") state.visible = false;
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<DialogStoreState> = import.meta.hot?.data?.store || writable<DialogStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
 
-			return state;
-		});
-	}
-
-	// Creates a crash dialog from JS once the editor has panicked.
-	// Normal dialogs are created in the Rust backend, but for the crash dialog, the editor has panicked so it cannot respond to widget callbacks.
-	function createCrashDialog(panicDetails: string) {
-		update((state) => {
-			state.visible = true;
-
-			state.icon = "Failure";
-			state.title = "Crash";
-			state.panicDetails = panicDetails;
-
-			state.column1 = [];
-			state.column2 = [];
-			state.buttons = [];
-
-			return state;
-		});
-	}
-
+export function createDialogStore(editor: Editor) {
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
@@ -84,7 +64,14 @@ export function createDialogState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeFrontendMessage("DialogClose", dismissDialog);
+	editor.subscriptions.subscribeFrontendMessage("DialogClose", () => {
+		update((state) => {
+			// Disallow dismissing the crash dialog since it should remain as the final notification
+			if (state.panicDetails === "") state.visible = false;
+
+			return state;
+		});
+	});
 
 	editor.subscriptions.subscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
@@ -105,14 +92,37 @@ export function createDialogState(editor: Editor) {
 		editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn2");
 	}
 
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
-		dismissDialog,
-		createCrashDialog,
 		destroy,
 	};
 }
-export type DialogState = ReturnType<typeof createDialogState>;
+export type DialogStore = ReturnType<typeof createDialogStore>;
 
-// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
-import.meta.hot?.accept(() => location.reload());
+// Creates a crash dialog from JS once the editor has panicked.
+// Normal dialogs are created in the Rust backend, but for the crash dialog, the editor has panicked so it cannot respond to widget callbacks.
+export function createCrashDialog(panicDetails: string) {
+	update((state) => {
+		state.visible = true;
+
+		state.icon = "Failure";
+		state.title = "Crash";
+		state.panicDetails = panicDetails;
+
+		state.column1 = [];
+		state.column2 = [];
+		state.buttons = [];
+
+		return state;
+	});
+}
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createDialogStore(...currentArgs);
+});

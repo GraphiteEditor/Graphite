@@ -3,7 +3,7 @@ import type { Editor } from "@graphite/editor";
 let currentCleanup: (() => void) | undefined;
 let currentArgs: [Editor] | undefined;
 
-export function createClipboardManager(editor: Editor): () => void {
+export function createClipboardManager(editor: Editor) {
 	currentArgs = [editor];
 
 	// Subscribe to process backend event
@@ -18,13 +18,16 @@ export function createClipboardManager(editor: Editor): () => void {
 		insertAtCaret(data.content);
 	});
 
-	currentCleanup = () => {
+	function destroy() {
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
-	};
-	return currentCleanup;
+	}
+
+	currentCleanup = destroy;
+	return { destroy };
 }
+export type ClipboardManager = ReturnType<typeof createClipboardManager>;
 
 function readAtCaret(cut: boolean): string | undefined {
 	const element = window.document.activeElement;

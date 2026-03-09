@@ -3,14 +3,14 @@
 
 	import type { LabeledShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import type { TooltipStore } from "@graphite/stores/tooltip";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const tooltip = getContext<TooltipState>("tooltip");
+	const tooltip = getContext<TooltipStore>("tooltip");
 	const editor = getContext<Editor>("editor");
 
 	let self: FloatingMenu | undefined;

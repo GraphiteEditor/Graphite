@@ -7,7 +7,7 @@ const FONT_LIST_API = "https://api.graphite.art/font-list";
 let currentCleanup: (() => void) | undefined;
 let currentArgs: [Editor] | undefined;
 
-export function createFontsManager(editor: Editor): () => void {
+export function createFontsManager(editor: Editor) {
 	currentArgs = [editor];
 	const abortController = new AbortController();
 
@@ -53,13 +53,16 @@ export function createFontsManager(editor: Editor): () => void {
 		}
 	});
 
-	currentCleanup = () => {
+	function destroy() {
 		abortController.abort();
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
 		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
-	};
-	return currentCleanup;
+	}
+
+	currentCleanup = destroy;
+	return { destroy };
 }
+export type FontsManager = ReturnType<typeof createFontsManager>;
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {

@@ -1,23 +1,30 @@
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { AppWindowPlatform } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 
-export function createAppWindowState(editor: Editor) {
-	const { subscribe, update } = writable<{
-		platform: AppWindowPlatform;
-		maximized: boolean;
-		fullscreen: boolean;
-		viewportHolePunch: boolean;
-		uiScale: number;
-	}>({
-		platform: "Web",
-		maximized: false,
-		fullscreen: false,
-		viewportHolePunch: false,
-		uiScale: 1,
-	});
+type AppWindowStoreState = {
+	platform: AppWindowPlatform;
+	maximized: boolean;
+	fullscreen: boolean;
+	viewportHolePunch: boolean;
+	uiScale: number;
+};
+const initialState: AppWindowStoreState = {
+	platform: "Web",
+	maximized: false,
+	fullscreen: false,
+	viewportHolePunch: false,
+	uiScale: 1,
+};
 
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<AppWindowStoreState> = import.meta.hot?.data?.store || writable<AppWindowStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
+
+export function createAppWindowStore(editor: Editor) {
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeFrontendMessage("UpdatePlatform", (data) => {
 		update((state) => {
@@ -58,12 +65,19 @@ export function createAppWindowState(editor: Editor) {
 		editor.subscriptions.unsubscribeFrontendMessage("UpdateUIScale");
 	}
 
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
 		destroy,
 	};
 }
-export type AppWindowState = ReturnType<typeof createAppWindowState>;
+export type AppWindowStore = ReturnType<typeof createAppWindowStore>;
 
-// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
-import.meta.hot?.accept(() => location.reload());
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createAppWindowStore(...currentArgs);
+});

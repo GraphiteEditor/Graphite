@@ -1,53 +1,23 @@
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
 
-export function createFullscreenState(editor: Editor) {
-	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
-	const keyboardLockApiSupported: Readonly<boolean> = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
+type FullscreenStoreState = {
+	windowFullscreen: boolean;
+	keyboardLocked: boolean;
+};
+const initialState: FullscreenStoreState = {
+	windowFullscreen: false,
+	keyboardLocked: false,
+};
 
-	const { subscribe, update } = writable({
-		windowFullscreen: false,
-		keyboardLocked: false,
-		keyboardLockApiSupported,
-	});
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<FullscreenStoreState> = import.meta.hot?.data?.store || writable<FullscreenStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
 
-	function fullscreenModeChanged() {
-		update((state) => {
-			state.windowFullscreen = Boolean(document.fullscreenElement);
-			if (!state.windowFullscreen) state.keyboardLocked = false;
-			return state;
-		});
-	}
-
-	async function enterFullscreen() {
-		await document.documentElement.requestFullscreen();
-
-		if (keyboardLockApiSupported && navigator.keyboard) {
-			await navigator.keyboard.lock(["ControlLeft", "ControlRight"]);
-
-			update((state) => {
-				state.keyboardLocked = true;
-				return state;
-			});
-		}
-	}
-
-	async function exitFullscreen() {
-		await document.exitFullscreen();
-	}
-
-	async function toggleFullscreen() {
-		return new Promise((resolve, reject) => {
-			update((state) => {
-				if (state.windowFullscreen) exitFullscreen().then(resolve).catch(reject);
-				else enterFullscreen().then(resolve).catch(reject);
-
-				return state;
-			});
-		});
-	}
-
+export function createFullscreenStore(editor: Editor) {
 	editor.subscriptions.subscribeFrontendMessage("WindowFullscreen", () => {
 		toggleFullscreen();
 	});
@@ -56,16 +26,57 @@ export function createFullscreenState(editor: Editor) {
 		editor.subscriptions.unsubscribeFrontendMessage("WindowFullscreen");
 	}
 
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
-		fullscreenModeChanged,
-		enterFullscreen,
-		exitFullscreen,
-		toggleFullscreen,
 		destroy,
 	};
 }
-export type FullscreenState = ReturnType<typeof createFullscreenState>;
+export type FullscreenStore = ReturnType<typeof createFullscreenStore>;
 
-// This store is bound to the component tree via setContext() and can't be hot-replaced, so we force a full page reload
-import.meta.hot?.accept(() => location.reload());
+export function fullscreenModeChanged() {
+	update((state) => {
+		state.windowFullscreen = Boolean(document.fullscreenElement);
+		if (!state.windowFullscreen) state.keyboardLocked = false;
+		return state;
+	});
+}
+
+export async function enterFullscreen() {
+	await document.documentElement.requestFullscreen();
+
+	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
+
+	if (keyboardLockApiSupported && navigator.keyboard) {
+		await navigator.keyboard.lock(["ControlLeft", "ControlRight"]);
+
+		update((state) => {
+			state.keyboardLocked = true;
+			return state;
+		});
+	}
+}
+
+export async function exitFullscreen() {
+	await document.exitFullscreen();
+}
+
+export async function toggleFullscreen() {
+	return new Promise((resolve, reject) => {
+		update((state) => {
+			if (state.windowFullscreen) exitFullscreen().then(resolve).catch(reject);
+			else enterFullscreen().then(resolve).catch(reject);
+
+			return state;
+		});
+	});
+}
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createFullscreenStore(...currentArgs);
+});
