@@ -1,5 +1,6 @@
 use super::ShapeToolData;
-use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT};
+use super::line_shape::LineEnd;
+use crate::consts::{ARC_SWEEP_GIZMO_RADIUS, ARC_SWEEP_GIZMO_TEXT_HEIGHT, BOUNDS_SELECT_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -149,6 +150,47 @@ pub trait ShapeGizmoHandler {
 	fn cleanup(&mut self);
 
 	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon>;
+}
+
+/// Check if the mouse clicked on either endpoint of a line-like shape (Line or Arrow).
+pub fn clicked_on_shape_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
+	let line_like_shape_nodes = [
+		DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER),
+		DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER),
+	];
+
+	let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+	let endpoint = line_like_shape_nodes.iter().find_map(|id| {
+		let node_inputs = node_graph_layer.find_node_inputs(id)?;
+		let &TaggedValue::DVec2(endpoint) = node_inputs[1].as_value()? else { return None };
+		Some(endpoint)
+	});
+	let Some(endpoint) = endpoint else { return false };
+
+	let local_start = DVec2::ZERO;
+	let local_end = endpoint;
+
+	let transform = document.metadata().transform_to_viewport(layer);
+	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
+	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
+
+	let mouse_pos = input.mouse.position;
+	let [start, end] = [local_start, local_end].map(|point| transform.transform_point2(point));
+
+	let start_click = (mouse_pos.y - start.y).abs() < threshold_y && (mouse_pos.x - start.x).abs() < threshold_x;
+	let end_click = (mouse_pos.y - end.y).abs() < threshold_y && (mouse_pos.x - end.x).abs() < threshold_x;
+	let endpoint_click = start_click || end_click;
+
+	if endpoint_click {
+		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
+		let anchor_local = if end_click { local_start } else { local_end };
+		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(anchor_local);
+		shape_tool_data.line_data.editing_layer = Some(layer);
+	}
+
+	endpoint_click
 }
 
 /// Center, Lock Ratio, Lock Angle, Snap Angle, Increase/Decrease Side

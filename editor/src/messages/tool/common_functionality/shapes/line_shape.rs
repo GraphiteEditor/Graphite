@@ -1,5 +1,5 @@
 use super::shape_utility::ShapeToolModifierKey;
-use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -178,42 +178,6 @@ pub fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_an
 	}
 
 	document_points
-}
-
-pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER)) else {
-		return false;
-	};
-
-	let Some(&TaggedValue::DVec2(line_to)) = node_inputs[1].as_value() else {
-		return false;
-	};
-
-	// Line goes from local origin (0,0) to line_to, positioned by the Transform node
-	let local_start = DVec2::ZERO;
-	let local_end = line_to;
-
-	let transform = document.metadata().transform_to_viewport(layer);
-	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
-	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
-
-	let drag_start = input.mouse.position;
-	let [start, end] = [local_start, local_end].map(|point| transform.transform_point2(point));
-
-	let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
-	let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
-
-	if start_click || end_click {
-		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-		// Convert the anchor endpoint (the one NOT being dragged) to document space for drag_start
-		let anchor_local = if end_click { local_start } else { local_end };
-		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(anchor_local);
-		shape_tool_data.line_data.editing_layer = Some(layer);
-		return true;
-	}
-	false
 }
 
 #[cfg(test)]

@@ -9,12 +9,12 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
-use crate::messages::tool::common_functionality::shapes::arrow_shape::{Arrow, clicked_on_arrow_endpoints};
+use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
-use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
+use crate::messages::tool::common_functionality::shapes::line_shape::LineToolData;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, clicked_on_shape_endpoints, transform_cage_overlays};
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
@@ -860,7 +860,7 @@ impl Fsm for ShapeToolFsmState {
 					SNAP_POINT_TOLERANCE,
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
-				) && (clicked_on_line_endpoints(layer, document, input, tool_data) || clicked_on_arrow_endpoints(layer, document, input, tool_data))
+				) && clicked_on_shape_endpoints(layer, document, input, tool_data)
 					&& !input.keyboard.key(Key::Control)
 				{
 					responses.add(DocumentMessage::StartTransaction);
