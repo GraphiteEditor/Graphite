@@ -87,7 +87,7 @@ impl Line {
 		});
 	}
 
-	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
+	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		shape_tool_data.line_data.selected_layers_with_position = document
 			.network_interface
 			.selected_nodes()
@@ -106,8 +106,15 @@ impl Line {
 				let viewport_end = transform.transform_point2(line_to);
 				if !line_to.abs_diff_eq(DVec2::ZERO, f64::EPSILON * 1000.) {
 					overlay_context.line(viewport_start, viewport_end, None, None);
-					overlay_context.square(viewport_start, Some(6.), None, None);
-					overlay_context.square(viewport_end, Some(6.), None, None);
+					let is_editing = shape_tool_data.line_data.editing_layer == Some(layer);
+					for (i, pos) in [viewport_start, viewport_end].into_iter().enumerate() {
+						let is_dragged = is_editing && matches!((i, &shape_tool_data.line_data.dragging_endpoint), (0, Some(LineEnd::Start)) | (1, Some(LineEnd::End)));
+						if is_dragged || (pos - mouse_position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2) {
+							overlay_context.hover_manipulator_anchor(pos, is_dragged);
+						} else {
+							overlay_context.square(pos, Some(6.), None, None);
+						}
+					}
 				}
 
 				// Store local-space positions for endpoint editing
@@ -117,7 +124,7 @@ impl Line {
 	}
 }
 
-fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
+pub fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
 
@@ -178,42 +185,6 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 	}
 
 	document_points
-}
-
-pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER)) else {
-		return false;
-	};
-
-	let Some(&TaggedValue::DVec2(line_to)) = node_inputs[1].as_value() else {
-		return false;
-	};
-
-	// Line goes from local origin (0,0) to line_to, positioned by the Transform node
-	let local_start = DVec2::ZERO;
-	let local_end = line_to;
-
-	let transform = document.metadata().transform_to_viewport(layer);
-	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
-	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
-
-	let drag_start = input.mouse.position;
-	let [start, end] = [local_start, local_end].map(|point| transform.transform_point2(point));
-
-	let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
-	let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
-
-	if start_click || end_click {
-		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-		// Convert the anchor endpoint (the one NOT being dragged) to document space for drag_start
-		let anchor_local = if end_click { local_start } else { local_end };
-		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(anchor_local);
-		shape_tool_data.line_data.editing_layer = Some(layer);
-		return true;
-	}
-	false
 }
 
 #[cfg(test)]
