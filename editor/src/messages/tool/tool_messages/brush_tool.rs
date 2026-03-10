@@ -13,7 +13,8 @@ use graphene_std::raster::BlendMode;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DrawMode {
 	Draw = 0,
 	Erase,
@@ -52,7 +53,8 @@ impl Default for BrushOptions {
 }
 
 #[impl_message(Message, ToolMessage, Brush)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BrushToolMessage {
 	// Standard messages
 	Abort,
@@ -65,7 +67,8 @@ pub enum BrushToolMessage {
 	UpdateOptions { options: BrushToolMessageOptionsUpdate },
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BrushToolMessageOptionsUpdate {
 	BlendMode(BlendMode),
 	ChangeDiameter(f64),
@@ -220,7 +223,7 @@ impl LayoutHolder for BrushTool {
 				.widget_instance(),
 		);
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, UVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -56,7 +56,7 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, Vector>,
 
-	/// Cached surface for WASM viewport rendering (reused across frames)
+	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
 }
@@ -84,7 +84,7 @@ pub struct ExportConfig {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
-	pub size: DVec2,
+	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
@@ -309,7 +309,7 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On WASM, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
@@ -514,33 +514,36 @@ impl NodeRuntime {
 		}
 
 		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
-			RenderBoundingBox::None => return,
-			RenderBoundingBox::Infinite => [DVec2::ZERO, DVec2::new(300., 200.)],
-			RenderBoundingBox::Rectangle(bounds) => bounds,
+			RenderBoundingBox::None => None,
+			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
+			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		};
-		let footprint = Footprint {
-			transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
-			resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
-			quality: RenderQuality::Full,
+		let new_thumbnail_svg = if let Some(bounds) = bounds {
+			let footprint = Footprint {
+				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
+				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
+				quality: RenderQuality::Full,
+			};
+
+			// Render the thumbnail from a `Graphic` into an SVG string
+			let render_params = RenderParams {
+				footprint,
+				thumbnail: true,
+				..Default::default()
+			};
+			let mut render = SvgRender::new();
+			graphic.render_svg(&mut render, &render_params);
+
+			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+			render.format_svg(bounds[0], bounds[1]);
+
+			render.svg
+		} else {
+			Vec::new()
 		};
 
-		// Render the thumbnail from a `Graphic` into an SVG string
-		let render_params = RenderParams {
-			footprint,
-			thumbnail: true,
-			..Default::default()
-		};
-		let mut render = SvgRender::new();
-		graphic.render_svg(&mut render, &render_params);
-
-		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		render.format_svg(bounds[0], bounds[1]);
-
-		// UPDATE FRONTEND THUMBNAIL
-
-		let new_thumbnail_svg = render.svg;
+		// Update frontend thumbnail
 		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
-
 		if old_thumbnail_svg != &new_thumbnail_svg {
 			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
 				id: parent_network_node_id,

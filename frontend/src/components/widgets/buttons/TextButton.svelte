@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { MenuListEntry, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { IconName } from "@graphite/icons";
-	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
@@ -53,7 +53,7 @@
 		}
 
 		// Focus the target so that keyboard inputs are sent to the dropdown
-		(e.target as HTMLElement | undefined)?.focus();
+		if (e.target instanceof HTMLElement) e.target.focus();
 
 		// Open the menu list floating menu
 		if (self) self.open = true;

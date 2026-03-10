@@ -1,14 +1,25 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
+	import type { MenuListEntry, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const DASH_ENTRY = { value: "", label: "-" };
+	const DASH_ENTRY: MenuListEntry = {
+		value: "",
+		label: "-",
+		icon: undefined,
+		disabled: false,
+		children: [],
+		childrenHash: 0n,
+		font: undefined,
+		tooltipLabel: "",
+		tooltipDescription: "",
+		tooltipShortcut: undefined,
+	};
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
 
@@ -49,13 +60,13 @@
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
-	function watchSelectedIndex(_?: typeof selectedIndex) {
+	function watchSelectedIndex(_: typeof selectedIndex) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
 
 	// Called only when `entries` is changed from outside this component
-	function watchEntries(_?: typeof entries) {
+	function watchEntries(_: typeof entries) {
 		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
@@ -102,7 +113,7 @@
 	}
 
 	function unFocusDropdownBox(e: FocusEvent) {
-		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]") || undefined;
+		const blurTarget = (e.target instanceof Element ? e.target.closest("[data-dropdown-input]") : undefined) || undefined;
 		if (blurTarget !== self?.div?.()) open = false;
 	}
 </script>

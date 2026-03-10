@@ -142,7 +142,7 @@ The definition for the constructor of a node that applies the opacity transforma
 		})
 	},
 	// Defines the call argument, return value, and inputs.
-	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64))]),
+	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64)]),
 ),
 ```
 

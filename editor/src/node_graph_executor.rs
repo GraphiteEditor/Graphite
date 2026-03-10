@@ -5,8 +5,7 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
-use graphene_std::application_io::{SurfaceFrame, TimingInformation};
+use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
@@ -56,7 +55,6 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	previous_node_to_inspect: Option<NodeId>,
-	last_svg_canvas: Option<SurfaceFrame>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +77,6 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: None,
-			last_svg_canvas: None,
 		};
 		(node_runtime, node_executor)
 	}
@@ -241,15 +238,19 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
+
+		let resolution_in_document_space = bounds[1] - bounds[0];
+		let export_resolution = resolution_in_document_space * export_config.scale_factor;
+		let resolution = export_resolution.round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
+		let viewport = Footprint {
+			resolution,
+			transform,
+			..Default::default()
+		};
 
 		let render_config = RenderConfig {
-			viewport: Footprint {
-				resolution,
-				transform,
-				..Default::default()
-			},
+			viewport,
 			scale: export_config.scale_factor,
 			time: Default::default(),
 			pointer: DVec2::ZERO,
@@ -259,7 +260,7 @@ impl NodeGraphExecutor {
 			for_export: true,
 			for_eyedropper: false,
 		};
-		export_config.size = resolution.as_dvec2();
+		export_config.size = resolution;
 
 		// Execute the node graph
 		self.runtime_io
@@ -384,19 +385,14 @@ impl NodeGraphExecutor {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-				self.last_svg_canvas = None;
 			}
-			RenderOutputType::CanvasFrame(frame) => 'block: {
-				if self.last_svg_canvas == Some(frame) {
-					break 'block;
-				}
+			RenderOutputType::CanvasFrame(frame) => {
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 				let svg = format!(
 					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
 					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
 				);
-				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
@@ -433,7 +429,6 @@ impl NodeGraphExecutor {
 			file_type,
 			name,
 			size,
-			scale_factor,
 			#[cfg(feature = "gpu")]
 			transparent_background,
 			artboard_name,
@@ -458,10 +453,13 @@ impl NodeGraphExecutor {
 				..
 			}) => {
 				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+					responses.add(FrontendMessage::TriggerSaveFile {
+						name,
+						content: svg.into_bytes().into(),
+					});
 				} else {
 					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
+					let size = size.as_dvec2().into();
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 				}
 			}
@@ -504,7 +502,7 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
+				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));

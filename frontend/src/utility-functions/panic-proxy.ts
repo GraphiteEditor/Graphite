@@ -10,7 +10,7 @@ export function panicProxy<T extends object>(module: T): T {
 			if (!isFunction) return targetValue;
 
 			// Special handling to wrap the return of a constructor in the proxy
-			const isClass = isFunction && /^\s*class\s+/.test(targetValue.toString());
+			const isClass = isFunction && /^\s*class\s+/.test(String(targetValue));
 			if (isClass) {
 				return function (...args: unknown[]): unknown {
 					// All three of these comment lines are necessary to suppress errors at both compile time and while editing this file (@ts-expect-error doesn't work here while editing the file)
