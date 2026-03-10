@@ -2630,6 +2630,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.opposite_handle_position = None;
 				tool_data.molding_segment = false;
 				tool_data.molding_info = None;
+				tool_data.temporary_adjacent_handles_while_molding = None;
 
 				PathToolFsmState::Ready
 			}
