@@ -66,7 +66,7 @@ pub async fn export_document(
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => {
 				if file_type == FileType::Pdf {
-					let pdf_bytes = svg_to_pdf(&svg, UVec2::new(width.unwrap_or(1920), height.unwrap_or(1080)))?;
+					let pdf_bytes = svg_to_pdf(&svg, width, height)?;
 					std::fs::write(&output_path, pdf_bytes)?;
 					log::info!("Exported PDF to: {}", output_path.display());
 				} else {
@@ -237,7 +237,7 @@ pub async fn export_gif(
 }
 
 /// Convert an SVG string to PDF bytes using krilla and krilla-svg.
-fn svg_to_pdf(svg: &str, size: UVec2) -> Result<Vec<u8>, String> {
+fn svg_to_pdf(svg: &str, width: Option<u32>, height: Option<u32>) -> Result<Vec<u8>, String> {
 	use krilla::page::PageSettings;
 	use krilla_svg::{SurfaceExt, SvgSettings};
 
@@ -245,11 +245,14 @@ fn svg_to_pdf(svg: &str, size: UVec2) -> Result<Vec<u8>, String> {
 	let options = usvg_045::Options::default();
 	let tree = usvg_045::Tree::from_str(svg, &options).map_err(|e| format!("Failed to parse SVG for PDF conversion: {e}"))?;
 
+	let (page_width, page_height) = match (width, height) {
+		(Some(w), Some(h)) => (w as f32, h as f32),
+		_ => (tree.size().width() as f32, tree.size().height() as f32),
+	};
+
 	// Create a krilla PDF document
 	let mut document = krilla::Document::new();
 
-	let page_width = size.x.max(1) as f32;
-	let page_height = size.y.max(1) as f32;
 	let page_settings = PageSettings::from_wh(page_width, page_height).ok_or_else(|| "Invalid page dimensions for PDF export".to_string())?;
 
 	let mut page = document.start_page_with(page_settings);
