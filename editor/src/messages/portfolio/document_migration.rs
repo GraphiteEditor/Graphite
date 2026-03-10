@@ -1708,6 +1708,132 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
 	}
 
+	// Migrate old Arrow node from (start, end, shaft_width, head_width, head_length) to (arrow_to, shaft_width, head_width, head_length) with a Transform node for positioning
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER) && inputs_count == 6 {
+		// Read old start and end values
+		let start = match node.inputs.get(1)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::ZERO
+				}
+			}
+			_ => DVec2::ZERO,
+		};
+		let end = match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::new(100., 0.)
+				}
+			}
+			_ => DVec2::new(100., 0.),
+		};
+
+		// Replace inputs with the new node definition (primary + arrow_to + shaft_width + head_width + head_length)
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Preserve primary input connection
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Set arrow_to = end - start
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+		// Preserve shaft_width, head_width, head_length (shifted from indices 3,4,5 to 2,3,4)
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+
+		// Find downstream connection to insert Transform node
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		if let Some(downstream_input) = downstream {
+			// Create a Transform node with translation = start
+			let Some(transform_node_type) = resolve_network_node_type("Transform") else {
+				log::error!("Transform node definition not found during Arrow migration");
+				return None;
+			};
+			let mut transform_template = transform_node_type.default_node_template();
+			transform_template.document_node.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+
+			let transform_id = NodeId::new();
+
+			// Position the Transform node to the right of the Arrow node
+			let arrow_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+			document.network_interface.insert_node(transform_id, transform_template, network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
+			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
+		}
+	}
+
+	// Migrate old Line node from (start, end) to (line_to) with a Transform node for positioning
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER) && inputs_count == 3 {
+		// Read old start and end values
+		let start = match node.inputs.get(1)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::ZERO
+				}
+			}
+			_ => DVec2::ZERO,
+		};
+		let end = match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::new(100., 100.)
+				}
+			}
+			_ => DVec2::new(100., 100.),
+		};
+
+		// Replace inputs with the new node definition (primary + line_to)
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Preserve primary input connection
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Set line_to = end - start
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+
+		// Find downstream connection to insert Transform node
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		if let Some(downstream_input) = downstream {
+			// Create a Transform node with translation = start
+			let Some(transform_node_type) = resolve_network_node_type("Transform") else {
+				log::error!("Transform node definition not found during Line migration");
+				return None;
+			};
+			let mut transform_template = transform_node_type.default_node_template();
+			transform_template.document_node.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+
+			let transform_id = NodeId::new();
+
+			// Position the Transform node to the right of the Line node
+			let line_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+			document.network_interface.insert_node(transform_id, transform_template, network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, line_position + IVec2::new(7, 0), network_path);
+			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
+		}
+	}
+
 	// Add context features to nodes that don't have them (fine-grained context caching migration)
 	if node.context_features == graphene_std::ContextDependencies::default()
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()

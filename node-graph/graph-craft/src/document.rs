@@ -452,7 +452,7 @@ pub struct OldDocumentNode {
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Metadata about the node including its position in the graph UI
 pub struct OldDocumentNodeMetadata {
 	pub position: IVec2,

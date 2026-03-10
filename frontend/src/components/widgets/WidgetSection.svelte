@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { WidgetSection as WidgetSectionData, LayoutTarget } from "@graphite/messages";
-	import { isWidgetSpanRow, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -62,10 +61,10 @@
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.layout as layoutGroup}
-				{#if isWidgetSpanRow(layoutGroup)}
-					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
-				{:else if isWidgetSection(layoutGroup)}
-					<svelte:self widgetData={layoutGroup} {layoutTarget} />
+				{#if "Row" in layoutGroup}
+					<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
+				{:else if "Section" in layoutGroup}
+					<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
 				{/if}
 			{/each}
 		</LayoutCol>

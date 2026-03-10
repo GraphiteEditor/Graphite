@@ -50,7 +50,8 @@ pub struct PathToolOptions {
 }
 
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PathToolMessage {
 	// Standard messages
 	Abort,
@@ -155,7 +156,8 @@ pub enum PathToolMessage {
 	ToggleSegmentEditing,
 }
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum PathOverlayMode {
 	AllHandles = 0,
 	#[default]
@@ -178,7 +180,8 @@ impl Default for PathEditingMode {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
@@ -326,7 +329,7 @@ impl LayoutHolder for PathTool {
 
 		// Works only if a single layer is selected and its type is Vector
 		let path_node_button = TextButton::new("Make Path Editable")
-			.icon(Some("NodeShape".into()))
+			.icon("NodeShape")
 			.tooltip_label("Make Path Editable")
 			.tooltip_description(
 				"Enables the Pen and Path tools to directly edit layer geometry resulting from nondestructive operations. This inserts a 'Path' node as the last operation of the selected layer.",
@@ -349,32 +352,30 @@ impl LayoutHolder for PathTool {
 
 		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
 
-		Layout(vec![LayoutGroup::Row {
-			widgets: vec![
-				x_location,
-				related_seperator.clone(),
-				y_location,
-				unrelated_seperator.clone(),
-				colinear_handle_checkbox,
-				related_seperator.clone(),
-				colinear_handles_label,
-				unrelated_seperator.clone(),
-				point_editing_mode,
-				related_seperator.clone(),
-				segment_editing_mode,
-				unrelated_seperator.clone(),
-				path_overlay_mode_widget,
-				unrelated_seperator.clone(),
-				path_node_button,
-				// checkbox.clone(),
-				// related_seperator.clone(),
-				// dropdown.clone(),
-				// unrelated_seperator,
-				// pivot_reference,
-				// related_seperator.clone(),
-				// pin_pivot,
-			],
-		}])
+		Layout(vec![LayoutGroup::row(vec![
+			x_location,
+			related_seperator.clone(),
+			y_location,
+			unrelated_seperator.clone(),
+			colinear_handle_checkbox,
+			related_seperator.clone(),
+			colinear_handles_label,
+			unrelated_seperator.clone(),
+			point_editing_mode,
+			related_seperator.clone(),
+			segment_editing_mode,
+			unrelated_seperator.clone(),
+			path_overlay_mode_widget,
+			unrelated_seperator.clone(),
+			path_node_button,
+			// checkbox.clone(),
+			// related_seperator.clone(),
+			// dropdown.clone(),
+			// unrelated_seperator,
+			// pivot_reference,
+			// related_seperator.clone(),
+			// pin_pivot,
+		])])
 	}
 }
 

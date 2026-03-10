@@ -42,7 +42,8 @@ pub enum GizmoEmphasis {
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysType {
 	ArtboardName,
 	CompassRose,
@@ -60,7 +61,8 @@ pub enum OverlaysType {
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
@@ -160,11 +162,11 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-#[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip)]
-	#[specta(skip)]
 	internal: Arc<Mutex<OverlayContextInternal>>,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,

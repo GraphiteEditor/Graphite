@@ -3,7 +3,8 @@ use std::ops::{Add, Div, Mul, Sub};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::DVec2;
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct ViewportMessageHandler {
 	bounds: Bounds,
 	// Ratio of logical pixels to physical pixels
@@ -157,7 +158,8 @@ pub trait Position {
 	fn y(&self) -> f64;
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct Point {
 	x: f64,
 	y: f64,
@@ -183,7 +185,8 @@ impl Position for Point {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LogicalPoint {
 	inner: Point,
 	scale: f64,
@@ -217,7 +220,8 @@ impl FromWithScale<Point> for LogicalPoint {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct PhysicalPoint {
 	inner: Point,
 	scale: f64,
@@ -258,7 +262,8 @@ pub trait Rect<P: Position>: Position {
 	fn height(&self) -> f64;
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, ExtractField)]
 struct Bounds {
 	offset: Point,
 	size: Point,
@@ -286,7 +291,8 @@ impl Rect<Point> for Bounds {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LogicalBounds {
 	offset: Point,
 	size: Point,
@@ -338,7 +344,8 @@ impl FromWithScale<Bounds> for LogicalBounds {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct PhysicalBounds {
 	offset: Point,
 	size: Point,

@@ -110,7 +110,8 @@ bitflags! {
 }
 
 #[impl_message(Message, InputMapperMessage, DoubleClick)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type, num_enum::TryFromPrimitive)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum MouseButton {
 	Left,

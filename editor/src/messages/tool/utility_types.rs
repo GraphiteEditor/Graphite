@@ -128,23 +128,21 @@ pub struct DocumentToolData {
 impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = Layout(vec![
-			LayoutGroup::Row {
-				widgets: vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					IconButton::new("SwapVertical", 16)
-						.tooltip_label("Swap Working Colors")
-						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
-						.on_update(|_| ToolMessage::SwapColors.into())
-						.widget_instance(),
-					IconButton::new("WorkingColors", 16)
-						.tooltip_label("Reset Working Colors")
-						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
-						.on_update(|_| ToolMessage::ResetColors.into())
-						.widget_instance(),
-				],
-			},
+			LayoutGroup::row(vec![
+				WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance(),
+			]),
+			LayoutGroup::row(vec![
+				IconButton::new("SwapVertical", 16)
+					.tooltip_label("Swap Working Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
+					.on_update(|_| ToolMessage::SwapColors.into())
+					.widget_instance(),
+				IconButton::new("WorkingColors", 16)
+					.tooltip_label("Reset Working Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
+					.on_update(|_| ToolMessage::ResetColors.into())
+					.widget_instance(),
+			]),
 		]);
 
 		responses.add(LayoutMessage::SendLayout {
@@ -308,7 +306,7 @@ impl ToolData {
 			.skip(1)
 			.collect();
 
-		Layout(vec![LayoutGroup::Row { widgets: tool_groups_layout }])
+		Layout(vec![LayoutGroup::row(tool_groups_layout)])
 	}
 }
 
@@ -360,7 +358,8 @@ impl ToolFsmState {
 }
 
 #[repr(usize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default)]
 pub enum ToolType {
 	// General tool group
 	#[default]
@@ -524,7 +523,8 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 	}
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HintData(pub Vec<HintGroup>);
 
 impl HintData {
@@ -558,7 +558,7 @@ impl HintData {
 			}
 		}
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 
 	pub fn send_layout(&self, responses: &mut VecDeque<Message>) {
@@ -576,10 +576,12 @@ impl HintData {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HintGroup(pub Vec<HintInfo>);
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).

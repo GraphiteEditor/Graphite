@@ -1,25 +1,28 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
+use crate::messages::frontend::IconName;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
 
 /// Represents an entry in the layer tree hierarchy, sent to the frontend.
 /// Each entry contains its layer ID and a list of its visible children.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct LayerStructureEntry {
 	#[serde(rename = "layerId")]
 	pub layer_id: NodeId,
 	pub children: Vec<LayerStructureEntry>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	#[serde(rename = "implementationName")]
 	pub implementation_name: String,
 	#[serde(rename = "iconName")]
-	pub icon_name: Option<String>,
+	pub icon_name: Option<IconName>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
@@ -47,7 +50,8 @@ pub struct LayerPanelEntry {
 }
 
 /// IMPORTANT: the same node may appear multiple times.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SelectedNodes(pub Vec<NodeId>);
 
 impl SelectedNodes {
@@ -157,5 +161,6 @@ impl SelectedNodes {
 	}
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct CollapsedLayers(pub Vec<LayerNodeIdentifier>);
