@@ -3,24 +3,12 @@ use glam::{DAffine2, UVec2, Vec2};
 
 pub struct Resampler {
 	pipeline: wgpu::RenderPipeline,
-	sampler: wgpu::Sampler,
 	bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl Resampler {
 	pub fn new(device: &wgpu::Device) -> Self {
 		let shader = device.create_shader_module(wgpu::include_wgsl!("resample_shader.wgsl"));
-
-		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-			label: Some("sampler"),
-			address_mode_u: wgpu::AddressMode::ClampToEdge,
-			address_mode_v: wgpu::AddressMode::ClampToEdge,
-			address_mode_w: wgpu::AddressMode::ClampToEdge,
-			mag_filter: wgpu::FilterMode::Nearest,
-			min_filter: wgpu::FilterMode::Nearest,
-			mipmap_filter: wgpu::FilterMode::Nearest,
-			..Default::default()
-		});
 
 		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("resample_bind_group_layout"),
@@ -31,18 +19,12 @@ impl Resampler {
 					ty: wgpu::BindingType::Texture {
 						multisampled: false,
 						view_dimension: wgpu::TextureViewDimension::D2,
-						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
 					},
 					count: None,
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
-					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-					count: None,
-				},
-				wgpu::BindGroupLayoutEntry {
-					binding: 2,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Buffer {
 						ty: wgpu::BufferBindingType::Uniform,
@@ -89,7 +71,7 @@ impl Resampler {
 			cache: None,
 		});
 
-		Resampler { pipeline, sampler, bind_group_layout }
+		Resampler { pipeline, bind_group_layout }
 	}
 
 	pub fn resample(&self, context: &WgpuContext, source: &wgpu::Texture, target_size: UVec2, transform: &DAffine2) -> wgpu::Texture {
@@ -134,10 +116,6 @@ impl Resampler {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&self.sampler),
-				},
-				wgpu::BindGroupEntry {
-					binding: 2,
 					resource: params_buffer.as_entire_binding(),
 				},
 			],

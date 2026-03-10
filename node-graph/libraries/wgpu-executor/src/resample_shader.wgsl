@@ -20,7 +20,6 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
 
 @group(0) @binding(0) var t_source: texture_2d<f32>;
-@group(0) @binding(1) var s_nearest: sampler;
 
 struct Params {
 	matrix: mat2x2<f32>,
@@ -29,14 +28,15 @@ struct Params {
 };
 
 // We need to use a uniform buffer for the params because push constants are not supported on web
-@group(0) @binding(2) var<uniform> params: Params;
+@group(0) @binding(1) var<uniform> params: Params;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let position = params.matrix * in.tex_coords + params.translation;
 	let texel = vec2<i32>(floor(position));
 	let texture_size = vec2<i32>(textureDimensions(t_source));
-	let in_bounds = texel.x >= 0 && texel.x < texture_size.x && texel.y >= 0 && texel.y < texture_size.y;
-	let color = textureLoad(t_source, clamp(texel, vec2<i32>(0), texture_size - vec2<i32>(1)), 0);
-	return select(vec4<f32>(0.0), color, in_bounds);
+    if (texel.x >= 0 && texel.x < texture_size.x && texel.y >= 0 && texel.y < texture_size.y) {
+		return textureLoad(t_source, texel, 0);
+	}
+    return vec4<f32>(0.0);
 }
