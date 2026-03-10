@@ -172,7 +172,7 @@ impl Polygon {
 			else {
 				return;
 			};
-			let Some(&TaggedValue::U32(n)) = node_inputs.get(SidesInput::<u32>::INDEX).unwrap().as_value() else {
+			let Some(&TaggedValue::U32(n)) = node_inputs.get(SidesInput::<u32>::INDEX).and_then(|input| input.as_value()) else {
 				return;
 			};
 			(id, SidesInput::<u32>::INDEX, n)
@@ -181,7 +181,7 @@ impl Polygon {
 			else {
 				return;
 			};
-			let Some(&TaggedValue::U32(n)) = node_inputs.get(star::SidesInput::<u32>::INDEX).unwrap().as_value() else {
+			let Some(&TaggedValue::U32(n)) = node_inputs.get(star::SidesInput::<u32>::INDEX).and_then(|input| input.as_value()) else {
 				return;
 			};
 			(id, star::SidesInput::<u32>::INDEX, n)
