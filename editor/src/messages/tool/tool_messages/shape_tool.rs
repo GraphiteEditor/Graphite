@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
+use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -677,7 +677,15 @@ impl Fsm for ShapeToolFsmState {
 				let modifying_transform_cage = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::RotatingBounds | ShapeToolFsmState::SkewingBounds { .. });
 				let hovering_over_gizmo = tool_data.gizmo_manager.hovering_over_gizmo();
 
-				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
+				// Check if hovering over a line/arrow endpoint (using data from previous overlay pass)
+				let hovering_over_endpoint = tool_data.line_data.selected_layers_with_position.iter().any(|(layer, endpoints)| {
+					let transform = document.metadata().transform_to_viewport(*layer);
+					endpoints
+						.iter()
+						.any(|&local_pos| (transform.transform_point2(local_pos) - input.mouse.position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2))
+				});
+
+				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo && !hovering_over_endpoint {
 					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				}
 
@@ -690,15 +698,8 @@ impl Fsm for ShapeToolFsmState {
 					anchor_overlays(document, &mut overlay_context);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
-					Line::overlays(document, tool_data, &mut overlay_context);
-					Arrow::overlays(document, tool_data, &mut overlay_context);
-
-					let hovering_over_endpoint = tool_data.line_data.selected_layers_with_position.iter().any(|(layer, endpoints)| {
-						let transform = document.metadata().transform_to_viewport(*layer);
-						endpoints
-							.iter()
-							.any(|&local_pos| (transform.transform_point2(local_pos) - input.mouse.position).length_squared() < SNAP_POINT_TOLERANCE.powi(2))
-					});
+					Line::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
+					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
 
 					if all_selected_layers_line_or_arrow {
 						let cursor = if hovering_over_endpoint { MouseCursorIcon::Default } else { MouseCursorIcon::Crosshair };
@@ -743,8 +744,8 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
-					Line::overlays(document, tool_data, &mut overlay_context);
-					Arrow::overlays(document, tool_data, &mut overlay_context);
+					Line::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
+					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
 
 					if tool_options.shape_type == ShapeType::Circle {
 						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);

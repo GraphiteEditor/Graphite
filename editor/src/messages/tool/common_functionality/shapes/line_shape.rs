@@ -1,5 +1,5 @@
 use super::shape_utility::ShapeToolModifierKey;
-use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -87,7 +87,7 @@ impl Line {
 		});
 	}
 
-	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
+	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		shape_tool_data.line_data.selected_layers_with_position = document
 			.network_interface
 			.selected_nodes()
@@ -106,8 +106,15 @@ impl Line {
 				let viewport_end = transform.transform_point2(line_to);
 				if !line_to.abs_diff_eq(DVec2::ZERO, f64::EPSILON * 1000.) {
 					overlay_context.line(viewport_start, viewport_end, None, None);
-					overlay_context.square(viewport_start, Some(6.), None, None);
-					overlay_context.square(viewport_end, Some(6.), None, None);
+					let is_editing = shape_tool_data.line_data.editing_layer == Some(layer);
+					for (i, pos) in [viewport_start, viewport_end].into_iter().enumerate() {
+						let is_dragged = is_editing && matches!((i, &shape_tool_data.line_data.dragging_endpoint), (0, Some(LineEnd::Start)) | (1, Some(LineEnd::End)));
+						if is_dragged || (pos - mouse_position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2) {
+							overlay_context.hover_manipulator_anchor(pos, is_dragged);
+						} else {
+							overlay_context.square(pos, Some(6.), None, None);
+						}
+					}
 				}
 
 				// Store local-space positions for endpoint editing

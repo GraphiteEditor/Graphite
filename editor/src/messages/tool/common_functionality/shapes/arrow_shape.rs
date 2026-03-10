@@ -1,6 +1,7 @@
 use super::line_shape::{LineEnd, generate_line};
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
+use crate::consts::BOUNDS_SELECT_THRESHOLD;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -81,7 +82,7 @@ impl Arrow {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
+	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		let arrow_layers: HashMap<LayerNodeIdentifier, [DVec2; 2]> = document
 			.network_interface
 			.selected_nodes()
@@ -95,8 +96,15 @@ impl Arrow {
 				let viewport_end = transform.transform_point2(arrow_to);
 
 				if !arrow_to.abs_diff_eq(DVec2::ZERO, f64::EPSILON * 1000.) {
-					overlay_context.square(viewport_start, Some(6.), None, None);
-					overlay_context.square(viewport_end, Some(6.), None, None);
+					let is_editing = shape_tool_data.line_data.editing_layer == Some(layer);
+					for (i, pos) in [viewport_start, viewport_end].into_iter().enumerate() {
+						let is_dragged = is_editing && matches!((i, &shape_tool_data.line_data.dragging_endpoint), (0, Some(LineEnd::Start)) | (1, Some(LineEnd::End)));
+						if is_dragged || (pos - mouse_position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2) {
+							overlay_context.hover_manipulator_anchor(pos, is_dragged);
+						} else {
+							overlay_context.square(pos, Some(6.), None, None);
+						}
+					}
 				}
 
 				Some((layer, [DVec2::ZERO, arrow_to]))
