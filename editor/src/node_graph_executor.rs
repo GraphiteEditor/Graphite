@@ -238,15 +238,19 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
+
+		let resolution_in_document_space = bounds[1] - bounds[0];
+		let export_resolution = resolution_in_document_space * export_config.scale_factor;
+		let resolution = export_resolution.round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
+		let viewport = Footprint {
+			resolution,
+			transform,
+			..Default::default()
+		};
 
 		let render_config = RenderConfig {
-			viewport: Footprint {
-				resolution,
-				transform,
-				..Default::default()
-			},
+			viewport,
 			scale: export_config.scale_factor,
 			time: Default::default(),
 			pointer: DVec2::ZERO,
@@ -256,7 +260,7 @@ impl NodeGraphExecutor {
 			for_export: true,
 			for_eyedropper: false,
 		};
-		export_config.size = resolution.as_dvec2();
+		export_config.size = resolution;
 
 		// Execute the node graph
 		self.runtime_io
@@ -425,7 +429,6 @@ impl NodeGraphExecutor {
 			file_type,
 			name,
 			size,
-			scale_factor,
 			#[cfg(feature = "gpu")]
 			transparent_background,
 			artboard_name,
@@ -456,7 +459,7 @@ impl NodeGraphExecutor {
 					});
 				} else {
 					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
+					let size = size.as_dvec2().into();
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 				}
 			}

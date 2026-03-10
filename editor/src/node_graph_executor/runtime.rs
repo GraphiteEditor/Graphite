@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, UVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -84,7 +84,7 @@ pub struct ExportConfig {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
-	pub size: DVec2,
+	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
