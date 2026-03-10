@@ -228,42 +228,38 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![TextLabel::new("Grid").bold(true).widget_instance()],
-	});
+	widgets.push(LayoutGroup::row(vec![TextLabel::new("Grid").bold(true).widget_instance()]));
 
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![
-			TextLabel::new("Type").table_align(true).widget_instance(),
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(vec![
-				RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
-					if let GridType::Isometric { y_axis_spacing, angle_a, angle_b } = grid.grid_type {
-						grid.isometric_y_spacing = y_axis_spacing;
-						grid.isometric_angle_a = angle_a;
-						grid.isometric_angle_b = angle_b;
-					}
-					grid.grid_type = GridType::Rectangular { spacing: grid.rectangular_spacing };
-				})),
-				RadioEntryData::new("isometric").label("Isometric").on_update(update_val(grid, |grid, _| {
-					if let GridType::Rectangular { spacing } = grid.grid_type {
-						grid.rectangular_spacing = spacing;
-					}
-					grid.grid_type = GridType::Isometric {
-						y_axis_spacing: grid.isometric_y_spacing,
-						angle_a: grid.isometric_angle_a,
-						angle_b: grid.isometric_angle_b,
-					};
-				})),
-			])
-			.min_width(200)
-			.selected_index(Some(match grid.grid_type {
-				GridType::Rectangular { .. } => 0,
-				GridType::Isometric { .. } => 1,
-			}))
-			.widget_instance(),
-		],
-	});
+	widgets.push(LayoutGroup::row(vec![
+		TextLabel::new("Type").table_align(true).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		RadioInput::new(vec![
+			RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
+				if let GridType::Isometric { y_axis_spacing, angle_a, angle_b } = grid.grid_type {
+					grid.isometric_y_spacing = y_axis_spacing;
+					grid.isometric_angle_a = angle_a;
+					grid.isometric_angle_b = angle_b;
+				}
+				grid.grid_type = GridType::Rectangular { spacing: grid.rectangular_spacing };
+			})),
+			RadioEntryData::new("isometric").label("Isometric").on_update(update_val(grid, |grid, _| {
+				if let GridType::Rectangular { spacing } = grid.grid_type {
+					grid.rectangular_spacing = spacing;
+				}
+				grid.grid_type = GridType::Isometric {
+					y_axis_spacing: grid.isometric_y_spacing,
+					angle_a: grid.isometric_angle_a,
+					angle_b: grid.isometric_angle_b,
+				};
+			})),
+		])
+		.min_width(200)
+		.selected_index(Some(match grid.grid_type {
+			GridType::Rectangular { .. } => 0,
+			GridType::Isometric { .. } => 1,
+		}))
+		.widget_instance(),
+	]));
 
 	let mut color_widgets = vec![
 		TextLabel::new("Display").table_align(true).widget_instance(),
@@ -288,80 +284,72 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			}))
 			.widget_instance(),
 	);
-	widgets.push(LayoutGroup::Row { widgets: color_widgets });
+	widgets.push(LayoutGroup::row(color_widgets));
 
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![
-			TextLabel::new("Origin").table_align(true).widget_instance(),
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			NumberInput::new(Some(grid.origin.x))
-				.label("X")
-				.unit(" px")
-				.min_width(98)
-				.on_update(update_origin(grid, |grid| Some(&mut grid.origin.x)))
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			NumberInput::new(Some(grid.origin.y))
-				.label("Y")
-				.unit(" px")
-				.min_width(98)
-				.on_update(update_origin(grid, |grid| Some(&mut grid.origin.y)))
-				.widget_instance(),
-		],
-	});
+	widgets.push(LayoutGroup::row(vec![
+		TextLabel::new("Origin").table_align(true).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		NumberInput::new(Some(grid.origin.x))
+			.label("X")
+			.unit(" px")
+			.min_width(98)
+			.on_update(update_origin(grid, |grid| Some(&mut grid.origin.x)))
+			.widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		NumberInput::new(Some(grid.origin.y))
+			.label("Y")
+			.unit(" px")
+			.min_width(98)
+			.on_update(update_origin(grid, |grid| Some(&mut grid.origin.y)))
+			.widget_instance(),
+	]));
 
 	match grid.grid_type {
-		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::Row {
-			widgets: vec![
-				TextLabel::new("Spacing").table_align(true).widget_instance(),
+		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::row(vec![
+			TextLabel::new("Spacing").table_align(true).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			NumberInput::new(Some(spacing.x))
+				.label("X")
+				.unit(" px")
+				.min(0.)
+				.min_width(98)
+				.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			NumberInput::new(Some(spacing.y))
+				.label("Y")
+				.unit(" px")
+				.min(0.)
+				.min_width(98)
+				.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
+				.widget_instance(),
+		])),
+		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
+			widgets.push(LayoutGroup::row(vec![
+				TextLabel::new("Y Spacing").table_align(true).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				NumberInput::new(Some(spacing.x))
-					.label("X")
+				NumberInput::new(Some(y_axis_spacing))
 					.unit(" px")
 					.min(0.)
+					.min_width(200)
+					.on_update(update_origin(grid, |grid| grid.grid_type.isometric_y_spacing()))
+					.widget_instance(),
+			]));
+			widgets.push(LayoutGroup::row(vec![
+				TextLabel::new("Angles").table_align(true).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(angle_a))
+					.unit("°")
 					.min_width(98)
-					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
+					.on_update(update_origin(grid, |grid| grid.grid_type.angle_a()))
 					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				NumberInput::new(Some(spacing.y))
-					.label("Y")
-					.unit(" px")
-					.min(0.)
+				NumberInput::new(Some(angle_b))
+					.unit("°")
 					.min_width(98)
-					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
+					.on_update(update_origin(grid, |grid| grid.grid_type.angle_b()))
 					.widget_instance(),
-			],
-		}),
-		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
-			widgets.push(LayoutGroup::Row {
-				widgets: vec![
-					TextLabel::new("Y Spacing").table_align(true).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					NumberInput::new(Some(y_axis_spacing))
-						.unit(" px")
-						.min(0.)
-						.min_width(200)
-						.on_update(update_origin(grid, |grid| grid.grid_type.isometric_y_spacing()))
-						.widget_instance(),
-				],
-			});
-			widgets.push(LayoutGroup::Row {
-				widgets: vec![
-					TextLabel::new("Angles").table_align(true).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					NumberInput::new(Some(angle_a))
-						.unit("°")
-						.min_width(98)
-						.on_update(update_origin(grid, |grid| grid.grid_type.angle_a()))
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					NumberInput::new(Some(angle_b))
-						.unit("°")
-						.min_width(98)
-						.on_update(update_origin(grid, |grid| grid.grid_type.angle_b()))
-						.widget_instance(),
-				],
-			});
+			]));
 		}
 	}
 

@@ -1,4 +1,4 @@
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
 let resizeObserver: ResizeObserver | undefined;
 
@@ -11,7 +11,8 @@ export function setupViewportResizeObserver(editor: Editor) {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
 	if (viewports.length <= 0) return;
 
-	const viewport = viewports[0] as HTMLElement;
+	const viewport = viewports[0];
+	if (!(viewport instanceof HTMLElement)) return;
 
 	resizeObserver = new ResizeObserver((entries) => {
 		for (const entry of entries) {
