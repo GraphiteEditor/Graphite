@@ -149,7 +149,7 @@ keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
-kurbo = { version = "0.13", features = ["serde"] }
+kurbo = { version = "0.13", features = ["serde", "ordered-dash"] }
 vello = "0.7"
 vello_encoding = "0.7"
 resvg = "0.47"
@@ -238,3 +238,5 @@ debug = true
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
 download-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
+kurbo = { git = "https://github.com/RobertBrewitz/kurbo.git", branch = "strokeel", features = ["serde", "ordered-dash"] }
+polycool = { git = "https://github.com/RobertBrewitz/kurbo.git", branch = "strokeel" }
