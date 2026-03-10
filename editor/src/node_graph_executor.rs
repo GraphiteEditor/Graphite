@@ -260,7 +260,7 @@ impl NodeGraphExecutor {
 			for_export: true,
 			for_eyedropper: false,
 		};
-		export_config.size = resolution.as_dvec2();
+		export_config.size = resolution;
 
 		// Execute the node graph
 		self.runtime_io
@@ -429,7 +429,6 @@ impl NodeGraphExecutor {
 			file_type,
 			name,
 			size,
-			scale_factor,
 			#[cfg(feature = "gpu")]
 			transparent_background,
 			artboard_name,
@@ -460,7 +459,7 @@ impl NodeGraphExecutor {
 					});
 				} else {
 					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
+					let size = size.as_dvec2().into();
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 				}
 			}
