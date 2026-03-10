@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
-	import { type Editor } from "@graphite/editor";
+	import type { Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
 	import { createHyperlinkManager } from "@graphite/io-managers/hyperlink";
 	import { createInputManager } from "@graphite/io-managers/input";
@@ -19,7 +19,7 @@
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite WASM editor
+	// Graphite Wasm editor
 	export let editor: Editor;
 	setContext("editor", editor);
 

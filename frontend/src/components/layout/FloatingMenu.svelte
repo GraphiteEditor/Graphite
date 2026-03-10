@@ -1,6 +1,4 @@
 <script lang="ts" context="module">
-	export type MenuType = "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
-
 	/// Prevents the escape key from closing the parent floating menu of the given element.
 	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
 	/// After checking for the Escape key, it checks (in one `setTimeout`) for the attribute and ignores the key if it's present.
@@ -21,7 +19,7 @@
 <script lang="ts">
 	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
 
-	import type { MenuDirection } from "@graphite/messages";
+	import type { MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -38,7 +36,7 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let open: boolean;
-	export let type: MenuType;
+	export let type: "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
 	export let direction: MenuDirection = "Bottom";
 	export let windowEdgeMargin = 6;
 	export let scrollableY = false;
@@ -309,7 +307,7 @@
 
 	function pointerMoveHandler(e: PointerEvent) {
 		// This element and the element being hovered over
-		const target = e.target as HTMLElement | undefined;
+		const target = e.target instanceof HTMLElement ? e.target : undefined;
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
@@ -398,9 +396,9 @@
 			else {
 				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
 				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
-				if (foundTarget) {
+				if (foundTarget instanceof HTMLElement) {
 					dispatch("open", false);
-					(foundTarget as HTMLElement).click();
+					foundTarget.click();
 				}
 
 				// In either case, we are done searching

@@ -11,6 +11,13 @@ dealloc_nodes = ["core-types/dealloc_nodes"]
 wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
 loading = ["serde_json"]
+wasm = [
+	"core-types/wasm",
+	"graphic-types/wasm",
+	"text-nodes/wasm",
+	"tsify",
+	"wasm-bindgen",
+]
 
 [dependencies]
 # Local dependencies
@@ -29,7 +36,6 @@ text-nodes = { workspace = true }
 # Workspace dependencies
 log = { workspace = true }
 glam = { workspace = true }
-specta = { workspace = true }
 rustc-hash = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
@@ -39,6 +45,8 @@ serde = { workspace = true }
 wgpu-executor = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
 
 # Workspace dependencies
 [target.'cfg(target_family = "wasm")'.dependencies]

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { type IconName, type IconSize } from "@graphite/icons";
-	import type { ActionShortcut } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { IconName, IconSize } from "@graphite/icons";
 
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 

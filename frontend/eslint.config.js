@@ -72,7 +72,7 @@ export default defineConfig([
 			],
 			"@typescript-eslint/consistent-type-imports": "error",
 			"@typescript-eslint/consistent-type-definitions": ["error", "type"],
-			"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
+			"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
 			"@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
 			"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
 			"@typescript-eslint/no-restricted-types": ["error", { types: { null: "Use `undefined` instead." } }],
@@ -87,6 +87,7 @@ export default defineConfig([
 			"svelte/require-each-key": "off", // TODO: Remove this rule and fix the places where it's violated
 
 			// Import plugin config (for intelligently validating module import statements)
+			"import/consistent-type-specifier-style": ["error", "prefer-top-level"],
 			"import/no-unresolved": "error",
 			// `no-duplicates` disabled due to <https://github.com/import-js/eslint-plugin-import/issues/1479#issuecomment-1789527447>. Reenable if that issue gets fixed.
 			"import/no-duplicates": "off",

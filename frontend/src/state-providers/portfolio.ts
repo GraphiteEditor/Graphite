@@ -1,27 +1,21 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import type { OpenDocument } from "@graphite/messages";
-import {
-	TriggerFetchAndOpenDocument,
-	TriggerSaveDocument,
-	TriggerExportImage,
-	TriggerSaveFile,
-	TriggerImport,
-	TriggerOpen,
-	UpdateActiveDocument,
-	UpdateOpenDocumentsList,
-	UpdateDataPanelState,
-	UpdatePropertiesPanelState,
-	UpdateLayersPanelState,
-} from "@graphite/messages";
+import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { Editor } from "@graphite/editor";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
 export function createPortfolioState(editor: Editor) {
-	const { subscribe, update } = writable({
+	const { subscribe, update } = writable<{
+		unsaved: boolean;
+		documents: OpenDocument[];
+		activeDocumentIndex: number;
+		dataPanelOpen: boolean;
+		propertiesPanelOpen: boolean;
+		layersPanelOpen: boolean;
+	}>({
 		unsaved: false,
-		documents: [] as OpenDocument[],
+		documents: [],
 		activeDocumentIndex: 0,
 		dataPanelOpen: false,
 		propertiesPanelOpen: true,
@@ -29,13 +23,13 @@ export function createPortfolioState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
 			state.documents = data.openDocuments;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateActiveDocument", (data) => {
 		update((state) => {
 			// Assume we receive a correct document id
 			const activeId = state.documents.findIndex((doc) => doc.id === data.documentId);
@@ -43,7 +37,7 @@ export function createPortfolioState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerFetchAndOpenDocument", async (data) => {
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
@@ -55,22 +49,22 @@ export function createPortfolioState(editor: Editor) {
 			}, 0);
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerOpen, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
 		const data = await upload(`image/*,.${editor.handle.fileExtension()}`, "data");
 		editor.handle.openFile(data.filename, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerImport", async () => {
 		// TODO: Use the same `accept` string as in the `TriggerOpen` handler once importing Graphite documents as nodes is supported
 		const data = await upload("image/*", "data");
 		editor.handle.importFile(data.filename, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
 		downloadFile(data.name, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveFile, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSaveFile", (data) => {
 		downloadFile(data.name, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerExportImage, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerExportImage", async (data) => {
 		const { svg, name, mime, size } = data;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
@@ -78,7 +72,7 @@ export function createPortfolioState(editor: Editor) {
 
 		// Rasterize the SVG to an image file
 		try {
-			const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
+			const blob = await rasterizeSVG(svg, size[0], size[1], mime, backgroundColor);
 
 			// Have the browser download the file to the user's disk
 			downloadFileBlob(name, blob);
@@ -86,19 +80,19 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDataPanelState, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateDataPanelState", async (data) => {
 		update((state) => {
 			state.dataPanelOpen = data.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelState, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdatePropertiesPanelState", async (data) => {
 		update((state) => {
 			state.propertiesPanelOpen = data.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateLayersPanelState, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateLayersPanelState", async (data) => {
 		update((state) => {
 			state.layersPanelOpen = data.open;
 			return state;

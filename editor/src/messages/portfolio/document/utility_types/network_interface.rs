@@ -2108,9 +2108,10 @@ impl NodeNetworkInterface {
 
 		let grip_padding = 4.;
 		let grip_width = 8.;
+		let lock_icon_width = if self.is_locked(node_id, network_path) { GRID_SIZE as f64 } else { 0. };
 		let icon_overhang_width = GRID_SIZE as f64 / 2.;
 
-		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + icon_overhang_width;
+		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + lock_icon_width + icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -2527,14 +2528,25 @@ impl NodeNetworkInterface {
 			});
 			let width = layer_width_cells * crate::consts::GRID_SIZE;
 			let height = 2 * crate::consts::GRID_SIZE;
+			let locked = self.is_locked(node_id, network_path);
 
 			// Update visibility button click target
 			let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
 			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
 			let visibility_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
-			// Update grip button click target, which is positioned to the left of the left most icon
-			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - (GRID_SIZE as f64) / 2., 24.);
+			// Update lock button click target, positioned one grid unit to the left of the visibility button (only when locked)
+			let lock_click_target = if locked {
+				let lock_offset = node_top_left + DVec2::new(width as f64 - GRID_SIZE as f64, 24.);
+				let subpath = Subpath::new_rounded_rectangle(DVec2::new(-12., -12.) + lock_offset, DVec2::new(12., 12.) + lock_offset, [3.; 4]);
+				Some(ClickTarget::new_with_subpath(subpath, 0.))
+			} else {
+				None
+			};
+
+			// Update grip button click target, which is positioned to the left of the leftmost icon
+			let icons_width = if locked { GRID_SIZE as f64 } else { 0. };
+			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - (GRID_SIZE as f64) / 2. - icons_width, 24.);
 			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
 			let grip_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
@@ -2552,6 +2564,7 @@ impl NodeNetworkInterface {
 				port_click_targets,
 				node_type_metadata: NodeTypeClickTargets::Layer(LayerClickTargets {
 					visibility_click_target,
+					lock_click_target,
 					grip_click_target,
 				}),
 			}
@@ -2749,10 +2762,17 @@ impl NodeNetworkInterface {
 					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
+					// Visibility button (eye icon)
 					if let ClickTargetType::Subpath(subpath) = layer_metadata.visibility_click_target.target_type() {
 						icon_click_targets.push(subpath.to_bezpath().to_svg());
 					}
-
+					// Lock button (padlock icon), only when the layer is locked
+					if let Some(lock_click_target) = &layer_metadata.lock_click_target
+						&& let ClickTargetType::Subpath(subpath) = lock_click_target.target_type()
+					{
+						icon_click_targets.push(subpath.to_bezpath().to_svg());
+					}
+					// Drag grip (dotted symbol)
 					if let ClickTargetType::Subpath(subpath) = layer_metadata.grip_click_target.target_type() {
 						icon_click_targets.push(subpath.to_bezpath().to_svg());
 					}
@@ -2882,6 +2902,7 @@ impl NodeNetworkInterface {
 					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
 						match click_target_type {
 							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
+							LayerClickTargetTypes::Lock => layer.lock_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
 							LayerClickTargetTypes::Grip => layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id),
 						}
 					} else {
@@ -4508,6 +4529,8 @@ impl NodeNetworkInterface {
 
 		node_metadata.persistent_metadata.locked = locked;
 		self.transaction_modified();
+		self.try_unload_layer_width(node_id, network_path);
+		self.unload_node_click_targets(node_id, network_path);
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
@@ -5700,14 +5723,16 @@ impl Iterator for FlowIter<'_> {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ImportOrExport {
 	Import(usize),
 	Export(usize),
 }
 
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum InputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -5747,7 +5772,8 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OutputConnector {
 	#[serde(rename = "node")]
 	Node {
@@ -6419,6 +6445,8 @@ pub enum NodeTypeClickTargets {
 pub struct LayerClickTargets {
 	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
 	pub visibility_click_target: ClickTarget,
+	/// Cache for the lock icon button, only present when the layer is locked.
+	pub lock_click_target: Option<ClickTarget>,
 	/// Cache for the grip icon, which is next to the visibility button.
 	pub grip_click_target: ClickTarget,
 	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
@@ -6427,6 +6455,7 @@ pub struct LayerClickTargets {
 
 pub enum LayerClickTargetTypes {
 	Visibility,
+	Lock,
 	Grip,
 	// Preview,
 }

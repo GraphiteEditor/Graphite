@@ -2,7 +2,8 @@ use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum GradientType {
 	#[default]
@@ -13,7 +14,8 @@ pub enum GradientType {
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 // TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny)]
 pub struct GradientStops {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
@@ -336,7 +338,8 @@ impl GradientStops {
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct Gradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
