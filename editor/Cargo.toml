@@ -45,6 +45,9 @@ vello = { workspace = true }
 base64 = { workspace = true }
 spin = { workspace = true }
 image = { workspace = true }
+krilla = { workspace = true }
+krilla-svg = { workspace = true }
+usvg-045 = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

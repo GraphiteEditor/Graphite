@@ -91,7 +91,7 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 
 impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
-		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
+		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG"), (FileType::Pdf, "PDF")]
 			.into_iter()
 			.map(|(file_type, name)| {
 				RadioEntryData::new(format!("{file_type:?}"))
@@ -114,7 +114,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.increment_step(0.5)
-				.disabled(self.file_type == FileType::Svg)
+				.disabled(self.file_type == FileType::Svg || self.file_type == FileType::Pdf)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
 				.widget_instance(),

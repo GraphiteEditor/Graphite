@@ -97,7 +97,7 @@ async fn create_context<'a: 'n>(
 	let footprint = render_config.viewport;
 
 	let render_output_type = match render_config.export_format {
-		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
+		ExportFormat::Svg | ExportFormat::Pdf => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
 	};
 

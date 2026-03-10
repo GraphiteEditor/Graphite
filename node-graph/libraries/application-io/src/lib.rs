@@ -225,6 +225,7 @@ pub enum ExportFormat {
 	#[default]
 	Svg,
 	Raster,
+	Pdf,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]

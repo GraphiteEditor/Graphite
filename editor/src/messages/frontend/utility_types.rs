@@ -47,6 +47,7 @@ pub enum FileType {
 	Png,
 	Jpg,
 	Svg,
+	Pdf,
 }
 
 impl FileType {
@@ -55,6 +56,7 @@ impl FileType {
 			FileType::Png => "image/png",
 			FileType::Jpg => "image/jpeg",
 			FileType::Svg => "image/svg+xml",
+			FileType::Pdf => "application/pdf",
 		}
 	}
 }

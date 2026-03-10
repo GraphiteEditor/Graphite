@@ -225,10 +225,10 @@ impl NodeGraphExecutor {
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
 
-		let export_format = if export_config.file_type == FileType::Svg {
-			graphene_std::application_io::ExportFormat::Svg
-		} else {
-			graphene_std::application_io::ExportFormat::Raster
+		let export_format = match export_config.file_type {
+			FileType::Svg => graphene_std::application_io::ExportFormat::Svg,
+			FileType::Pdf => graphene_std::application_io::ExportFormat::Pdf,
+			_ => graphene_std::application_io::ExportFormat::Raster,
 		};
 
 		// Calculate the bounding box of the region to be exported
@@ -440,6 +440,7 @@ impl NodeGraphExecutor {
 			FileType::Svg => "svg",
 			FileType::Png => "png",
 			FileType::Jpg => "jpg",
+			FileType::Pdf => "pdf",
 		};
 		let base_name = match (artboard_name, artboard_count) {
 			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
@@ -453,10 +454,12 @@ impl NodeGraphExecutor {
 				..
 			}) => {
 				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile {
-						name,
-						content: svg.into_bytes().into(),
-					});
+					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+				} else if file_type == FileType::Pdf {
+					match svg_to_pdf(&svg, size) {
+						Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name, content: pdf_data }),
+						Err(err) => return Err(format!("Failed to convert SVG to PDF: {err}")),
+					}
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = size.as_dvec2().into();
@@ -500,6 +503,9 @@ impl NodeGraphExecutor {
 					FileType::Svg => {
 						return Err("SVG cannot be exported from an image buffer".to_string());
 					}
+					FileType::Pdf => {
+						return Err("PDF cannot be exported from an image buffer".to_string());
+					}
 				}
 
 				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
@@ -511,6 +517,35 @@ impl NodeGraphExecutor {
 
 		Ok(())
 	}
+}
+
+/// Convert an SVG string to PDF bytes using krilla and krilla-svg.
+fn svg_to_pdf(svg: &str, size: DVec2) -> Result<Vec<u8>, String> {
+	use krilla::page::PageSettings;
+	use krilla_svg::{SurfaceExt, SvgSettings};
+
+	// Parse the SVG with usvg 0.45 (matching krilla-svg's expected version)
+	let options = usvg_045::Options::default();
+	let tree = usvg_045::Tree::from_str(svg, &options).map_err(|e| format!("Failed to parse SVG for PDF conversion: {e}"))?;
+
+	// Create a krilla PDF document
+	let mut document = krilla::Document::new();
+
+	let page_width = size.x.max(1.) as f32;
+	let page_height = size.y.max(1.) as f32;
+	let page_settings = PageSettings::from_wh(page_width, page_height).ok_or_else(|| "Invalid page dimensions for PDF export".to_string())?;
+
+	let mut page = document.start_page_with(page_settings);
+	let mut surface = page.surface();
+
+	let krilla_size = krilla::geom::Size::from_wh(page_width, page_height).ok_or_else(|| "Invalid size for PDF export".to_string())?;
+	surface.draw_svg(&tree, krilla_size, SvgSettings::default());
+
+	surface.finish();
+	page.finish();
+
+	let pdf_bytes = document.finish().map_err(|e| format!("Failed to generate PDF: {e:?}"))?;
+	Ok(pdf_bytes)
 }
 
 // Re-export for usage by tests in other modules
