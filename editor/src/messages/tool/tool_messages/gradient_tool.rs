@@ -1187,8 +1187,8 @@ impl Fsm for GradientToolFsmState {
 					}
 
 					// Convert drag_start from document space to effective viewport space
-					let d2v = document.metadata().document_to_viewport;
-					let drag_start_viewport = d2v.transform_point2(tool_data.drag_start) + tool_data.auto_pan_shift;
+					let document_to_viewport = document.metadata().document_to_viewport;
+					let drag_start_viewport = document_to_viewport.transform_point2(tool_data.drag_start) + tool_data.auto_pan_shift;
 					tool_data.auto_pan_shift = DVec2::ZERO;
 
 					selected_gradient.update_gradient(

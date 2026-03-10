@@ -929,13 +929,11 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
 					ShapeType::Arrow => Arrow::create_node(
-						document,
-						tool_data.data.drag_start,
 						tool_options.arrow_shaft_width,
 						tool_options.arrow_head_width,
 						tool_options.arrow_head_length,
 					),
-					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
+					ShapeType::Line => Line::create_node(),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -956,12 +954,26 @@ impl Fsm for ShapeToolFsmState {
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
+						defered_responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
+						defered_responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
