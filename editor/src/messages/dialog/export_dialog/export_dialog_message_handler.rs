@@ -113,6 +113,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.unit("")
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+				.increment_step(0.5)
 				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
