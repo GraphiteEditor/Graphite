@@ -1,3 +1,4 @@
+use super::line_shape::generate_line;
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -7,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::snapping::SnapData;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -31,20 +33,22 @@ impl Arrow {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
-		_viewport: &ViewportMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		tool_data: &mut ShapeToolData,
-		_modifier: ShapeToolModifierKey,
+		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		// Track current mouse position in viewport space
+		let [center, snap_angle, lock_angle] = modifier;
+
 		tool_data.line_data.drag_current = input.mouse.position;
 
-		// Compute arrow_to in document space
-		let document_to_viewport = document.metadata().document_to_viewport;
-		let start_document = tool_data.data.drag_start;
-		let end_document = document_to_viewport.inverse().transform_point2(input.mouse.position);
-		let arrow_to = end_document - start_document;
+		let keyboard = &input.keyboard;
+		let ignore = [layer];
+		let snap_data = SnapData::ignore(document, input, viewport, &ignore);
+		let document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+
+		let arrow_to = document_points[1] - document_points[0];
 
 		if arrow_to.length() < 1e-6 {
 			return;
@@ -54,7 +58,8 @@ impl Arrow {
 			return;
 		};
 
-		// Update Arrow node arrow_to in document space
+		let document_to_viewport = document.metadata().document_to_viewport;
+
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
 			input: NodeInput::value(TaggedValue::DVec2(arrow_to), false),
@@ -63,7 +68,7 @@ impl Arrow {
 		let scope = downstream.inverse() * document_to_viewport;
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
-			transform: DAffine2::from_translation(start_document),
+			transform: DAffine2::from_translation(document_points[0]),
 			transform_in: TransformIn::Scope { scope },
 			skip_rerender: false,
 		});

@@ -1224,7 +1224,12 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
-				ShapeType::Arrow => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arrow")])],
+				ShapeType::Arrow => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arrow"),
+					HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
+				])],
 				ShapeType::Line => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
 					HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
@@ -1251,7 +1256,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Arrow => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Angle")]),
+				ShapeType::Arrow => HintGroup(vec![
+					HintInfo::keys([Key::Shift], "15° Increments"),
+					HintInfo::keys([Key::Alt], "From Center"),
+					HintInfo::keys([Key::Control], "Lock Angle"),
+				]),
 				ShapeType::Line => HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
 					HintInfo::keys([Key::Alt], "From Center"),
