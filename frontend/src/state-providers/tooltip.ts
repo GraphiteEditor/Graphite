@@ -1,19 +1,26 @@
 import { writable } from "svelte/store";
 
+import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { ActionShortcut } from "@graphite/messages";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
 const SHOW_TOOLTIP_DELAY_MS = 500;
 
 export function createTooltipState(editor: Editor) {
-	const { subscribe, update } = writable({
+	const { subscribe, update } = writable<{
+		visible: boolean;
+		element: Element | undefined;
+		position: { x: number; y: number };
+		shiftClickShortcut: ActionShortcut | undefined;
+		altClickShortcut: ActionShortcut | undefined;
+		fullscreenShortcut: ActionShortcut | undefined;
+	}>({
 		visible: false,
-		element: undefined as Element | undefined,
+		element: undefined,
 		position: { x: 0, y: 0 },
-		shiftClickShortcut: undefined as ActionShortcut | undefined,
-		altClickShortcut: undefined as ActionShortcut | undefined,
-		fullscreenShortcut: undefined as ActionShortcut | undefined,
+		shiftClickShortcut: undefined,
+		altClickShortcut: undefined,
+		fullscreenShortcut: undefined,
 	});
 
 	let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;

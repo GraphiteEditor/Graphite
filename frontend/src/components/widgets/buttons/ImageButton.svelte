@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionShortcut } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { IMAGE_BASE64_STRINGS } from "@graphite/utility-functions/images";
 
 	let className = "";

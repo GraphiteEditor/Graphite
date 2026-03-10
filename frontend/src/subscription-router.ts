@@ -1,18 +1,25 @@
-import type { FrontendMessages, LayoutTarget, WidgetDiff } from "@graphite/messages";
-import { parseWidgetDiffs } from "@graphite/utility-functions/widgets";
+import type { FrontendMessage, LayoutTarget, WidgetDiff } from "@graphite/../wasm/pkg/graphite_wasm";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FrontendMessageCallbacks = Record<string, ((messageData: any) => void) | undefined>;
+// Type convert a union of messages into a map of messages
+export type ToMessageMap<T> = {
+	[K in T extends string ? T : T extends object ? keyof T : never]: K extends T ? Record<string, never> : T extends Record<K, infer Payload> ? Payload : never;
+};
+
+export type MessageMap = ToMessageMap<FrontendMessage>;
+export type MessageName = keyof MessageMap;
+export type MessageBody<T extends MessageName> = Extract<FrontendMessage, Record<T, unknown>>[T];
 
 export function createSubscriptionRouter() {
-	const subscriptions: FrontendMessageCallbacks = {};
+	// Callbacks are wrapped at subscription time to capture their type-specific data extraction in a closure,
+	// so the stored function has a uniform signature and the map doesn't need per-key generic value types.
+	const subscriptions: Partial<Record<MessageName, (taggedMessage: MessageMap) => void>> = {};
 	const layoutCallbacks: Partial<Record<LayoutTarget, (diffs: WidgetDiff[]) => void>> = {};
 
-	const subscribeFrontendMessage = <T extends keyof FrontendMessages>(messageType: T, callback: (data: FrontendMessages[T]) => void) => {
-		subscriptions[messageType] = callback;
+	const subscribeFrontendMessage = <T extends MessageName>(messageType: T, callback: (data: MessageMap[T]) => void) => {
+		subscriptions[messageType] = (taggedMessage: MessageMap) => callback(taggedMessage[messageType]);
 	};
 
-	const unsubscribeFrontendMessage = (messageType: keyof FrontendMessages) => {
+	const unsubscribeFrontendMessage = (messageType: MessageName) => {
 		delete subscriptions[messageType];
 	};
 
@@ -24,43 +31,56 @@ export function createSubscriptionRouter() {
 		delete layoutCallbacks[target];
 	};
 
-	const handleFrontendMessage = (messageType: keyof FrontendMessages, messageData: Record<string, unknown>) => {
+	function normalizeMessage<T extends string | object>(message: T): ToMessageMap<T>;
+	function normalizeMessage(message: string | Record<string, unknown>): Record<string, unknown> {
+		// If it's a bare string, convert it to an object with an empty payload
+		if (typeof message === "string") {
+			const result: Record<string, Record<string, never>> = { [message]: {} };
+			return result;
+		}
+
+		// If it's already an object, it matches the structure of our map
+		return message;
+	}
+
+	const handleFrontendMessage = (messageType: MessageName, messageData: FrontendMessage) => {
 		// Messages with non-empty data are provided by Serde JSON as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
 		// Messages with empty data are provided by Serde JSON as a string with the message name, like: "NameOfThisMessage"
-		// Here we extract the payload object or use an empty object depending on the situation.
-		const message = messageData[messageType] || {};
+		// Here we extract the payload object or create an empty payload object, as needed.
+		const taggedMessage = normalizeMessage(messageData);
 
-		// Resolve the callback lookup and the data to pass, depending on whether this is a layout update or a regular message.
+		// Resolve the dispatch thunk, depending on whether this is a layout update or a regular message.
 		// UpdateLayout messages are dispatched to layout-specific callbacks based on the layout target.
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		let getCallback: () => ((data: any) => void) | undefined;
-		let callbackData: unknown;
-		let errorLabel: string;
-		if (messageType === "UpdateLayout") {
-			const { layoutTarget, diff } = message as FrontendMessages["UpdateLayout"];
-			getCallback = () => layoutCallbacks[layoutTarget];
-			callbackData = parseWidgetDiffs(diff);
-			errorLabel = `UpdateLayout for layout target "${layoutTarget}"`;
-		} else {
-			getCallback = () => subscriptions[messageType];
-			callbackData = message;
-			errorLabel = messageType;
+		// The thunk is re-evaluated on each retry because the callback may not be registered yet.
+		let getHandler: () => ((taggedMessage: MessageMap) => void) | undefined = () => subscriptions[messageType];
+
+		// Handle layout updates specially to route them to layout-specific callbacks and extract the diffs as the data to pass
+		let target: LayoutTarget | undefined;
+		if ("UpdateLayout" in taggedMessage) {
+			const { layoutTarget, diff } = taggedMessage["UpdateLayout"];
+			target = layoutTarget;
+
+			getHandler = () => {
+				const layoutCallback = layoutCallbacks[layoutTarget];
+				if (!layoutCallback) return undefined;
+				return () => layoutCallback(diff);
+			};
 		}
 
 		// Try to execute the callback. Due to message ordering, the callback may not be registered yet,
 		// so we retry a few times on the next stack frame to give onMount a chance to run.
 		let retries = 0;
 		const callCallback = () => {
-			const callback = getCallback();
+			const handler = getHandler();
 
-			if (callback) {
-				callback(callbackData);
+			if (handler) {
+				handler(taggedMessage);
 			} else if (retries <= 3) {
 				retries += 1;
 				setTimeout(callCallback, 0);
 			} else {
 				// eslint-disable-next-line no-console
-				console.error(`Received a frontend message of type "${errorLabel}" but no handler was registered for it from the client.`);
+				console.error(`Received a frontend message of type ${messageType}${target ? ` (${target})` : ""} but no handler was registered for it from the client.`);
 			}
 		};
 

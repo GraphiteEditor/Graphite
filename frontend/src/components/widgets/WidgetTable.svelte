@@ -1,22 +1,21 @@
 <script lang="ts">
-	import type { LayoutTarget, WidgetTable as WidgetTableData } from "@graphite/messages";
+	import type { LayoutTarget, WidgetTable } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
-	export let widgetData: WidgetTableData;
+	export let widgetData: WidgetTable;
 	export let layoutTarget: LayoutTarget;
-	export let unstyled = false;
 
 	$: columns = widgetData.tableWidgets.length > 0 ? widgetData.tableWidgets[0].length : 0;
 </script>
 
-<table class:unstyled>
+<table class:unstyled={widgetData.unstyled}>
 	<tbody>
 		{#each widgetData.tableWidgets as row}
 			<tr>
 				{#each row as cell}
 					<td colspan={row.length < columns ? columns - row.length + 1 : undefined}>
-						<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} narrow={true} />
+						<WidgetSpan direction="row" widgets={[cell]} {layoutTarget} narrow={true} />
 					</td>
 				{/each}
 			</tr>

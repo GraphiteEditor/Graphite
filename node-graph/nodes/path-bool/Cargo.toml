@@ -6,6 +6,9 @@ description = "Path boolean operation nodes for Graphene"
 authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
+[features]
+wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
+
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
@@ -13,8 +16,11 @@ core-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
 glam = { workspace = true }
-specta = { workspace = true }
 log = { workspace = true }
 path-bool = { workspace = true }
 serde = { workspace = true }
 vector-types = { workspace = true }
+
+# Optional workspace dependencies
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }

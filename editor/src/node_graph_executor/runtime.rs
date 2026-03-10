@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, UVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -56,7 +56,7 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, Vector>,
 
-	/// Cached surface for WASM viewport rendering (reused across frames)
+	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
 }
@@ -84,7 +84,7 @@ pub struct ExportConfig {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
-	pub size: DVec2,
+	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
@@ -309,7 +309,7 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On WASM, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 

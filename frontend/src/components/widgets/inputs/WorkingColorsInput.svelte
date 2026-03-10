@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Color } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Color } from "@graphite/messages";
-	import { isColor, colorToRgbaCSS } from "@graphite/utility-functions/colors";
+	import { fillChoiceColor, colorToRgbaCSS } from "@graphite/utility-functions/colors";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -43,8 +43,11 @@
 		<ColorPicker
 			open={primaryOpen}
 			on:open={({ detail }) => (primaryOpen = detail)}
-			colorOrGradient={primary}
-			on:colorOrGradient={({ detail }) => isColor(detail) && primaryColorChanged(detail)}
+			colorOrGradient={{ Solid: primary }}
+			on:colorOrGradient={({ detail }) => {
+				const color = fillChoiceColor(detail);
+				if (color) primaryColorChanged(color);
+			}}
 			direction="Right"
 		/>
 	</LayoutRow>
@@ -53,8 +56,11 @@
 		<ColorPicker
 			open={secondaryOpen}
 			on:open={({ detail }) => (secondaryOpen = detail)}
-			colorOrGradient={secondary}
-			on:colorOrGradient={({ detail }) => isColor(detail) && secondaryColorChanged(detail)}
+			colorOrGradient={{ Solid: secondary }}
+			on:colorOrGradient={({ detail }) => {
+				const color = fillChoiceColor(detail);
+				if (color) secondaryColorChanged(color);
+			}}
 			direction="Right"
 		/>
 	</LayoutRow>

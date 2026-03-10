@@ -389,7 +389,7 @@ impl PreferencesDialogMessageHandler {
 			}
 		}
 
-		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())
+		Layout(rows.into_iter().map(|r| LayoutGroup::row(r)).collect())
 	}
 
 	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
@@ -416,7 +416,7 @@ impl PreferencesDialogMessageHandler {
 			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 
 	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
