@@ -209,8 +209,7 @@ pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &Document
 		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
 		// Convert the anchor endpoint (the one NOT being dragged) to document space for drag_start
 		let anchor_local = if end_click { local_start } else { local_end };
-		let document_to_viewport = document.metadata().document_to_viewport;
-		shape_tool_data.data.drag_start = document_to_viewport.inverse().transform_point2(transform.transform_point2(anchor_local));
+		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(anchor_local);
 		shape_tool_data.line_data.editing_layer = Some(layer);
 		return true;
 	}
@@ -240,13 +239,9 @@ mod test_line_tool {
 					return None;
 				};
 
-				// Local origin (0,0) and line_to -> transform to viewport -> then to document space
-				let transform = document.metadata().transform_to_viewport(layer);
-				let viewport_start = transform.transform_point2(DVec2::ZERO);
-				let viewport_end = transform.transform_point2(line_to);
-				let document_to_viewport = document.metadata().document_to_viewport;
-				let doc_start = document_to_viewport.inverse().transform_point2(viewport_start);
-				let doc_end = document_to_viewport.inverse().transform_point2(viewport_end);
+				let transform_to_doc = document.metadata().transform_to_document(layer);
+				let doc_start = transform_to_doc.transform_point2(DVec2::ZERO);
+				let doc_end = transform_to_doc.transform_point2(line_to);
 				Some((doc_start, doc_end))
 			})
 			.next()

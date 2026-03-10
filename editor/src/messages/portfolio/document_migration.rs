@@ -1768,9 +1768,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// Position the Transform node to the right of the Arrow node
 			let arrow_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
 			document.network_interface.insert_node(transform_id, transform_template, network_path);
-			document
-				.network_interface
-				.shift_absolute_node_position(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
 			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
 		}
 	}
@@ -1831,9 +1829,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			// Position the Transform node to the right of the Line node
 			let line_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
 			document.network_interface.insert_node(transform_id, transform_template, network_path);
-			document
-				.network_interface
-				.shift_absolute_node_position(&transform_id, line_position + IVec2::new(7, 0), network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, line_position + IVec2::new(7, 0), network_path);
 			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
 		}
 	}

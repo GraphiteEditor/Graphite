@@ -327,7 +327,7 @@ impl Fsm for FreehandToolFsmState {
 					// Once the metadata catches up (origin maps to start), switch to using it so
 					// that mid-stroke pan/tilt/zoom works correctly.
 					if let Some(start) = tool_data.new_layer_viewport_start
-						&& transform.transform_point2(DVec2::ZERO).abs_diff_eq(start, f64::EPSILON * 1000.)
+						&& transform.transform_point2(DVec2::ZERO).abs_diff_eq(start, 1e-5)
 					{
 						tool_data.new_layer_viewport_start = None;
 					}
