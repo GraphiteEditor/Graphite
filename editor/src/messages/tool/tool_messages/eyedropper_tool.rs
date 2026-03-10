@@ -9,7 +9,8 @@ pub struct EyedropperTool {
 }
 
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum EyedropperToolMessage {
 	// Standard messages
 	Abort,
@@ -46,9 +47,9 @@ impl LayoutHolder for EyedropperTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for EyedropperTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		if let ToolMessage::Eyedropper(EyedropperToolMessage::PreviewImage { data, width, height }) = message {
-			let image = EyedropperPreviewImage { data, width, height };
+			let image = EyedropperPreviewImage { data: data.into(), width, height };
 
-			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice.clone());
+			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice);
 
 			if !self.data.preview {
 				disable_cursor_preview(responses, &mut self.data);
@@ -87,10 +88,18 @@ enum EyedropperToolFsmState {
 	SamplingSecondary,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PrimarySecondary {
+	#[default]
+	Primary,
+	Secondary,
+}
+
 #[derive(Clone, Debug, Default)]
 struct EyedropperToolData {
 	preview: bool,
-	color_choice: Option<String>,
+	color_choice: Option<PrimarySecondary>,
 }
 
 impl Fsm for EyedropperToolFsmState {
@@ -127,7 +136,11 @@ impl Fsm for EyedropperToolFsmState {
 			}
 			// Sampling -> Ready
 			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::SamplePrimaryColorEnd) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::SampleSecondaryColorEnd) => {
-				let set_color_choice = if self == EyedropperToolFsmState::SamplingPrimary { "Primary" } else { "Secondary" }.to_string();
+				let set_color_choice = match self {
+					EyedropperToolFsmState::SamplingPrimary => PrimarySecondary::Primary,
+					EyedropperToolFsmState::SamplingSecondary => PrimarySecondary::Secondary,
+					_ => unreachable!(),
+				};
 				update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice));
 				disable_cursor_preview(responses, tool_data);
 
@@ -185,7 +198,7 @@ fn update_cursor_preview(
 	tool_data: &mut EyedropperToolData,
 	_input: &InputPreprocessorMessageHandler,
 	_global_tool_data: &DocumentToolData,
-	set_color_choice: Option<String>,
+	set_color_choice: Option<PrimarySecondary>,
 ) {
 	tool_data.preview = true;
 	tool_data.color_choice = set_color_choice;
@@ -198,7 +211,7 @@ fn update_cursor_preview(
 	tool_data: &mut EyedropperToolData,
 	input: &InputPreprocessorMessageHandler,
 	global_tool_data: &DocumentToolData,
-	set_color_choice: Option<String>,
+	set_color_choice: Option<PrimarySecondary>,
 ) {
 	tool_data.preview = true;
 	tool_data.color_choice = set_color_choice.clone();
@@ -211,7 +224,7 @@ fn update_cursor_preview_common(
 	image: Option<EyedropperPreviewImage>,
 	input: &InputPreprocessorMessageHandler,
 	global_tool_data: &DocumentToolData,
-	set_color_choice: Option<String>,
+	set_color_choice: Option<PrimarySecondary>,
 ) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
 		image,

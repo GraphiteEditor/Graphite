@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
+	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Color, FrontendMessages, MenuDirection } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
-	import { isColor, createColor } from "@graphite/utility-functions/colors";
+	import type { MessageBody } from "@graphite/subscription-router";
+	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
-	import { isWidgetSpanRow } from "@graphite/utility-functions/widgets";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -20,8 +20,6 @@
 	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	type DisplayEditableTextbox = FrontendMessages["DisplayEditableTextbox"];
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
@@ -35,7 +33,7 @@
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
-	let textInputMatrix: number[];
+	let textInputMatrix: [number, number, number, number, number, number];
 
 	// Scrollbars
 	let scrollbarPos = { x: 0.5, y: 0.5 };
@@ -93,7 +91,7 @@
 	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
-		if (!isWidgetSpanRow(layoutGroup)) return undefined;
+		if (!layoutGroup || !("Row" in layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
 		let totalToolRowsFor1Columns = 0;
@@ -108,8 +106,8 @@
 		};
 
 		let toolsInCurrentGroup = 0;
-		layoutGroup.rowWidgets.forEach((widget) => {
-			if (widget.props.kind === "Separator") {
+		layoutGroup.Row.rowWidgets.forEach((widget) => {
+			if ("Separator" in widget.widget) {
 				totalSeparators += 1;
 				tally();
 			} else {
@@ -176,8 +174,7 @@
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let canvas = (window as any).imageCanvases[canvasName];
+			let canvas = window.imageCanvases[canvasName];
 
 			// Get logical dimensions from foreignObject parent (set by backend)
 			const foreignObject = placeholder.parentElement;
@@ -295,10 +292,9 @@
 	}
 
 	// Update mouse cursor icon
-	export function updateMouseCursor(cursor: string) {
-		const mouseCursorIconCSSNames: Record<string, string> = {
+	export function updateMouseCursor(cursor: MouseCursorIcon) {
+		const mouseCursorIconCSSNames: Record<MouseCursorIcon, string> = {
 			Default: "default",
-			Alias: "alias",
 			None: "none",
 			ZoomIn: "zoom-in",
 			ZoomOut: "zoom-out",
@@ -312,7 +308,7 @@
 			NWSEResize: "nwse-resize",
 			Rotate: "custom-rotate",
 		};
-		let cursorString = mouseCursorIconCSSNames[cursor] || mouseCursorIconCSSNames["Alias"];
+		let cursorString = mouseCursorIconCSSNames[cursor] || "alias";
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
 		if (cursor === "Rotate") {
@@ -345,7 +341,7 @@
 		editor.handle.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
 		showTextInput = true;
 
 		await tick();
@@ -377,9 +373,9 @@
 
 		textInputMatrix = data.transform;
 
-		const bytes = new Uint8Array(data.fontData);
-		if (bytes.length > 0) {
-			window.document.fonts.add(new FontFace("text-font", bytes));
+		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
+			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
+			window.document.fonts.add(new FontFace("text-font", fontView));
 			textInput.style.fontFamily = "text-font";
 		}
 
@@ -423,7 +419,8 @@
 	}
 
 	function gradientStopPickerDirection(position: { x: number; y: number } | undefined, viewport: HTMLDivElement | undefined): MenuDirection {
-		const picker = (gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]") || undefined) as HTMLElement | undefined;
+		const element = gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]");
+		const picker = element instanceof HTMLElement ? element : undefined;
 		if (!picker || !position || !viewport) return "Bottom";
 
 		const roomRight = position.x + picker.offsetWidth - viewport.clientWidth;
@@ -473,7 +470,7 @@
 		// Gradient stop color picker
 		editor.subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
 			gradientStopPickerColor = data.color;
-			gradientStopPickerPosition = { x: data.x, y: data.y };
+			gradientStopPickerPosition = { x: data.position[0], y: data.position[1] };
 		});
 
 		// Update scrollbars and rulers
@@ -511,9 +508,9 @@
 		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
 			await tick();
 
-			const fontData = new Uint8Array(data.fontData);
-			if (fontData.length > 0 && textInput) {
-				window.document.fonts.add(new FontFace("text-font", fontData));
+			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
+				const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
+				window.document.fonts.add(new FontFace("text-font", fontView));
 				textInput.style.fontFamily = "text-font";
 			}
 		});
@@ -615,11 +612,10 @@
 									gradientStopPickerColor = undefined;
 								}
 							}}
-							colorOrGradient={gradientStopPickerColor || createColor(0, 0, 0, 1)}
+							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
 							on:colorOrGradient={({ detail }) => {
-								if (isColor(detail)) {
-									editor.handle.updateGradientStopColor(detail.red, detail.green, detail.blue, detail.alpha);
-								}
+								const color = fillChoiceColor(detail);
+								if (color) editor.handle.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
 							}}
 							on:startHistoryTransaction={() => editor.handle.startGradientStopColorTransaction()}
 							on:commitHistoryTransaction={() => editor.handle.commitGradientStopColorTransaction()}

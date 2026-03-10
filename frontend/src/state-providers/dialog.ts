@@ -1,18 +1,26 @@
 import { writable } from "svelte/store";
 
+import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import type { IconName } from "@graphite/icons";
-import type { Layout } from "@graphite/messages";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDialogState(editor: Editor) {
-	const { subscribe, update } = writable({
+	const { subscribe, update } = writable<{
+		visible: boolean;
+		title: string;
+		icon: IconName | undefined;
+		buttons: Layout;
+		column1: Layout;
+		column2: Layout;
+		panicDetails: string;
+	}>({
 		visible: false,
 		title: "",
-		icon: "" as IconName,
-		buttons: [] as Layout,
-		column1: [] as Layout,
-		column2: [] as Layout,
+		icon: undefined,
+		buttons: [],
+		column1: [],
+		column2: [],
 		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 		panicDetails: "",
 	});

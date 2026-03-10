@@ -98,6 +98,7 @@ rustc-hash = "2.0"
 bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 futures = "0.3"
@@ -176,11 +177,7 @@ fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
-specta = { version = "2.0.0-rc.22", features = [
-	"glam",
-	"derive",
-	# "typescript",
-] }
+tsify = { version = "0.5", default-features = false, features = ["js"] }
 syn = { version = "2.0", default-features = false, features = [
 	"full",
 	"derive",
@@ -230,7 +227,6 @@ graphite-proc-macros = { opt-level = 1 }
 image = { opt-level = 2 }
 rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }
-specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
 node-macro = { opt-level = 2 }
 

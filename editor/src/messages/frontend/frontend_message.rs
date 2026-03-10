@@ -1,15 +1,16 @@
+use super::IconName;
 use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::frontend::utility_types::EyedropperPreviewImage;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, Transform,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
-use glam::IVec2;
+use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
@@ -20,13 +21,14 @@ use std::path::PathBuf;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 
 #[impl_message(Message, Frontend)]
-#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
 		title: String,
-		icon: String,
+		icon: IconName,
 	},
 	DialogClose,
 	DisplayDialogPanic {
@@ -41,7 +43,7 @@ pub enum FrontendMessage {
 		font_size: f64,
 		color: String,
 		#[serde(rename = "fontData")]
-		font_data: Vec<u8>,
+		font_data: serde_bytes::ByteBuf,
 		transform: [f64; 6],
 		#[serde(rename = "maxWidth")]
 		max_width: Option<f64>,
@@ -51,7 +53,7 @@ pub enum FrontendMessage {
 	},
 	DisplayEditableTextboxUpdateFontData {
 		#[serde(rename = "fontData")]
-		font_data: Vec<u8>,
+		font_data: serde_bytes::ByteBuf,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -87,11 +89,11 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 		name: String,
 		path: Option<PathBuf>,
-		content: Vec<u8>,
+		content: serde_bytes::ByteBuf,
 	},
 	TriggerSaveFile {
 		name: String,
-		content: Vec<u8>,
+		content: serde_bytes::ByteBuf,
 	},
 	TriggerExportImage {
 		svg: String,
@@ -125,6 +127,7 @@ pub enum FrontendMessage {
 	TriggerOpen,
 	TriggerImport,
 	TriggerSavePreferences {
+		#[tsify(type = "unknown")]
 		preferences: PreferencesMessageHandler,
 	},
 	TriggerSaveActiveDocument {
@@ -152,9 +155,8 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateGradientStopColorPickerPosition {
-		color: Color,
-		x: f64,
-		y: f64,
+		color: Color, // TODO: Color (without `none`) -> Color (with `none`)
+		position: (f64, f64),
 	},
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
@@ -163,10 +165,10 @@ pub enum FrontendMessage {
 		exports: Vec<Option<FrontendGraphInput>>,
 		/// The primary import location.
 		#[serde(rename = "importPosition")]
-		import_position: IVec2,
+		import_position: (i32, i32),
 		/// The primary export location.
 		#[serde(rename = "exportPosition")]
-		export_position: IVec2,
+		export_position: (i32, i32),
 		/// The document network does not have an add import or export button.
 		#[serde(rename = "addImportExport")]
 		add_import_export: bool,
@@ -202,7 +204,7 @@ pub enum FrontendMessage {
 	UpdateLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		diff: Vec<WidgetDiff>,
+		diff: Vec<WidgetDiff>, // TODO: Align this with what's generated
 	},
 	UpdateImportReorderIndex {
 		#[serde(rename = "importIndex")]
@@ -223,6 +225,8 @@ pub enum FrontendMessage {
 	UpdateDocumentArtwork {
 		svg: String,
 	},
+	// This message is intercepted before being sent to the frontend
+	#[serde(skip)]
 	UpdateImageData {
 		image_data: Vec<(u64, Image<Color>)>,
 	},
@@ -253,7 +257,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "secondaryColor")]
 		secondary_color: String,
 		#[serde(rename = "setColorChoice")]
-		set_color_choice: Option<String>,
+		set_color_choice: Option<PrimarySecondary>,
 	},
 	UpdateGraphFadeArtwork {
 		percentage: f64,
@@ -278,7 +282,8 @@ pub enum FrontendMessage {
 		selected: Vec<NodeId>,
 	},
 	UpdateNodeGraphTransform {
-		transform: Transform,
+		translation: (f64, f64),
+		scale: f64,
 	},
 	UpdateNodeThumbnail {
 		id: NodeId,
@@ -304,6 +309,7 @@ pub enum FrontendMessage {
 	UpdateViewportHolePunch {
 		active: bool,
 	},
+	#[cfg(not(target_family = "wasm"))]
 	UpdateViewportPhysicalBounds {
 		x: f64,
 		y: f64,
@@ -322,18 +328,26 @@ pub enum FrontendMessage {
 	},
 
 	// Window prefix: cause the application window to do something
+	#[cfg(not(target_family = "wasm"))]
 	WindowPointerLock,
 	WindowPointerLockMove {
-		x: f64,
-		y: f64,
+		position: (f64, f64),
 	},
+	#[cfg(not(target_family = "wasm"))]
 	WindowClose,
+	#[cfg(not(target_family = "wasm"))]
 	WindowMinimize,
+	#[cfg(not(target_family = "wasm"))]
 	WindowMaximize,
 	WindowFullscreen,
+	#[cfg(not(target_family = "wasm"))]
 	WindowDrag,
+	#[cfg(not(target_family = "wasm"))]
 	WindowHide,
+	#[cfg(not(target_family = "wasm"))]
 	WindowHideOthers,
+	#[cfg(not(target_family = "wasm"))]
 	WindowShowAll,
+	#[cfg(not(target_family = "wasm"))]
 	WindowRestart,
 }

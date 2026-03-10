@@ -32,3 +32,9 @@ To also view logs of the messages dispatched by the message system, activate *He
 ## Node/layer and document IDs
 
 In debug mode, hover over a layer's name in the Layers panel, or a layer/node in the node graph, to view a tooltip with its ID. Likewise, document IDs may be read from their tab tooltips.
+
+## Performance profiling
+
+Be aware that having your browser's developer tools open will significantly impact performance in both debug and release builds, so it's best to close that when not in use.
+
+The *Performance* tab of the browser developer tools lets you record and analyze performance profiles, and this is a useful way to track down bottlenecks. The Firefox profiler has some additional features missing from the Chromium debugger, so if you are digging deep into a performance issue, it can be worth giving Firefox a try for that purpose. Be sure to use debug builds while profiling, otherwise inlined functions and other optimizations may produce a misleading view of where time is being spent. The live deployed web app (production and dev) and build links hosted by our CI infrastructure are all built with release optimizations.

@@ -68,7 +68,8 @@ impl Default for ShapeToolOptions {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ShapeOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -88,7 +89,8 @@ pub enum ShapeOptionsUpdate {
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ShapeToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
@@ -103,6 +105,7 @@ pub enum ShapeToolMessage {
 	PointerOutsideViewport { modifier: ShapeToolModifierKey },
 	UpdateOptions { options: ShapeOptionsUpdate },
 	SetShape { shape: ShapeType },
+	SyncShapeWithOptions,
 
 	IncreaseSides,
 	DecreaseSides,
@@ -178,27 +181,9 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
-		MenuListEntry::new("Rectangle").label("Rectangle").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Rectangle),
-			}
-			.into()
-		}),
-		MenuListEntry::new("Ellipse").label("Ellipse").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Ellipse),
-			}
-			.into()
-		}),
 		MenuListEntry::new("Arrow").label("Arrow").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arrow),
-			}
-			.into()
-		}),
-		MenuListEntry::new("Line").label("Line").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Line),
 			}
 			.into()
 		}),
@@ -423,7 +408,7 @@ impl LayoutHolder for ShapeTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -926,22 +911,14 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
-					ShapeType::Arrow => Arrow::create_node(
-						document,
-						tool_data.data.drag_start,
-						tool_options.arrow_shaft_width,
-						tool_options.arrow_head_width,
-						tool_options.arrow_head_length,
-					),
-					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
+					ShapeType::Arrow => Arrow::create_node(tool_options.arrow_shaft_width, tool_options.arrow_head_width, tool_options.arrow_head_length),
+					ShapeType::Line => Line::create_node(),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input, viewport), responses);
 
 				let defered_responses = &mut VecDeque::new();
-
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 
 				match tool_data.current_shape {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
@@ -952,16 +929,35 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
+						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
+						let viewport_drag_start = tool_data.data.viewport_drag_start(document);
+						defered_responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., viewport_drag_start),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
+						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
+						let viewport_drag_start = tool_data.data.viewport_drag_start(document);
+						defered_responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., viewport_drag_start),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
+						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 					}
 				}
 
@@ -1170,14 +1166,15 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
-
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
+				// Update hints for the new shape (without updating options.shape_type)
+				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
 				ShapeToolFsmState::Ready(shape)
+			}
+			(_, ShapeToolMessage::SyncShapeWithOptions) => {
+				// Sync current_shape with the dropdown selection when returning from alias tools
+				tool_data.current_shape = tool_options.shape_type;
+				update_dynamic_hints(&ShapeToolFsmState::Ready(tool_options.shape_type), responses, tool_data);
+				ShapeToolFsmState::Ready(tool_options.shape_type)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;

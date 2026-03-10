@@ -1,8 +1,7 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, GradientStop, GradientStops};
+use graphene_std::vector::style::FillChoice;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -63,7 +62,7 @@ impl LayoutMessageHandler {
 		while let Some((mut widget_path, layout_group)) = stack.pop() {
 			match layout_group {
 				// Check if any of the widgets in the current column or row have the correct id
-				LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
+				LayoutGroup::Column(WidgetColumn { widgets }) | LayoutGroup::Row(WidgetRow { widgets }) => {
 					for (index, widget) in widgets.iter().enumerate() {
 						// Return if this is the correct ID
 						if widget.widget_id == widget_id {
@@ -84,10 +83,10 @@ impl LayoutMessageHandler {
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.
-				LayoutGroup::Section { layout, .. } => {
+				LayoutGroup::Section(WidgetSection { layout, .. }) => {
 					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
-				LayoutGroup::Table { rows, .. } => {
+				LayoutGroup::Table(WidgetTable { rows, .. }) => {
 					for (row_index, row) in rows.iter().enumerate() {
 						for (cell_index, cell) in row.iter().enumerate() {
 							// Return if this is the correct ID
@@ -158,60 +157,12 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						// Decodes the colors in gamma, not linear
-						let decode_color = |color: &serde_json::map::Map<String, serde_json::value::Value>| -> Option<Color> {
-							let red = color.get("red").and_then(|x| x.as_f64()).map(|x| x as f32);
-							let green = color.get("green").and_then(|x| x.as_f64()).map(|x| x as f32);
-							let blue = color.get("blue").and_then(|x| x.as_f64()).map(|x| x as f32);
-							let alpha = color.get("alpha").and_then(|x| x.as_f64()).map(|x| x as f32);
-
-							if let (Some(red), Some(green), Some(blue), Some(alpha)) = (red, green, blue, alpha)
-								&& let Some(color) = Color::from_rgbaf32(red, green, blue, alpha)
-							{
-								return Some(color);
-							}
-							None
+						let Ok(fill_choice) = serde_json::from_value::<FillChoice>(value) else {
+							warn!("ColorInput update was not able to be parsed as FillChoice: {color_button:?}");
+							return;
 						};
-
-						(|| {
-							let Some(update_value) = value.as_object() else {
-								warn!("ColorInput update was not of type: object");
-								return Message::NoOp;
-							};
-
-							// None
-							let is_none = update_value.get("none").and_then(|x| x.as_bool());
-							if is_none == Some(true) {
-								color_button.value = FillChoice::None;
-								return (color_button.on_update.callback)(color_button);
-							}
-
-							// Solid
-							if let Some(color) = decode_color(update_value) {
-								color_button.value = FillChoice::Solid(color);
-								return (color_button.on_update.callback)(color_button);
-							}
-
-							// Gradient
-							let positions = update_value.get("position").and_then(|x| x.as_array());
-							let midpoints = update_value.get("midpoint").and_then(|x| x.as_array());
-							let colors = update_value.get("color").and_then(|x| x.as_array());
-
-							if let (Some(positions), Some(midpoints), Some(colors)) = (positions, midpoints, colors) {
-								let gradient_stops = positions.iter().zip(midpoints.iter()).zip(colors.iter()).filter_map(|((pos, mid), col)| {
-									let position = pos.as_f64()?;
-									let midpoint = mid.as_f64()?;
-									let color = col.as_object().and_then(decode_color)?;
-									Some(GradientStop { position, midpoint, color })
-								});
-
-								color_button.value = FillChoice::Gradient(GradientStops::new(gradient_stops));
-								return (color_button.on_update.callback)(color_button);
-							}
-
-							warn!("ColorInput update was not able to be parsed with color data: {color_button:?}");
-							Message::NoOp
-						})()
+						color_button.value = fill_choice;
+						(color_button.on_update.callback)(color_button)
 					}
 				};
 
