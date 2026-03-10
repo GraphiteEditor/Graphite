@@ -2333,9 +2333,12 @@ dependencies = [
  "graphene-std",
  "image",
  "interpreted-executor",
+ "krilla",
+ "krilla-svg",
  "log",
  "preprocessor",
  "tokio",
+ "usvg 0.45.1",
  "wgpu",
  "wgpu-executor",
 ]
