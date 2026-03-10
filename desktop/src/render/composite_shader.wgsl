@@ -6,7 +6,6 @@ struct VertexOutput {
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 	var out: VertexOutput;
-
 	let pos = array(
 		vec2f( -1.0, -1.0),
 		vec2f( 3.0, -1.0),

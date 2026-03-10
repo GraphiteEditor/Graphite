@@ -1,4 +1,5 @@
 pub mod any;
+pub mod pixel_preview;
 pub mod render_cache;
 pub mod render_node;
 pub mod text;
