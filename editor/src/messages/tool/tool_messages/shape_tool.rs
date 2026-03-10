@@ -9,7 +9,7 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
-use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
+use crate::messages::tool::common_functionality::shapes::arrow_shape::{Arrow, clicked_on_arrow_endpoints};
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
@@ -645,11 +645,11 @@ impl Fsm for ShapeToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let all_selected_layers_line = document
+		let all_selected_layers_line_or_arrow = document
 			.network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
-			.all(|layer| graph_modification_utils::get_line_id(layer, &document.network_interface).is_some());
+			.all(|layer| graph_modification_utils::get_line_id(layer, &document.network_interface).is_some() || graph_modification_utils::get_arrow_id(layer, &document.network_interface).is_some());
 
 		let ToolMessage::Shape(event) = event else { return self };
 
@@ -691,8 +691,9 @@ impl Fsm for ShapeToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
 					Line::overlays(document, tool_data, &mut overlay_context);
+					Arrow::overlays(document, tool_data, &mut overlay_context);
 
-					if all_selected_layers_line {
+					if all_selected_layers_line_or_arrow {
 						return self;
 					}
 
@@ -729,6 +730,8 @@ impl Fsm for ShapeToolFsmState {
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
 					Line::overlays(document, tool_data, &mut overlay_context);
+					Arrow::overlays(document, tool_data, &mut overlay_context);
+
 					if tool_options.shape_type == ShapeType::Circle {
 						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
 					}
@@ -836,14 +839,14 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
-				// If clicked on endpoints of a selected line, drag its endpoints
+				// If clicked on endpoints of a selected line or arrow, drag its endpoints
 				if let Some((layer, _, _)) = closest_point(
 					document,
 					mouse_pos,
 					SNAP_POINT_TOLERANCE,
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
-				) && clicked_on_line_endpoints(layer, document, input, tool_data)
+				) && (clicked_on_line_endpoints(layer, document, input, tool_data) || clicked_on_arrow_endpoints(layer, document, input, tool_data))
 					&& !input.keyboard.key(Key::Control)
 				{
 					responses.add(DocumentMessage::StartTransaction);
@@ -999,7 +1002,12 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::Ready(tool_data.current_shape);
 				};
 
-				Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses);
+				if graph_modification_utils::get_arrow_id(layer, &document.network_interface).is_some() {
+					Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses);
+				} else {
+					Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses);
+				}
+
 				// Auto-panning
 				let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);

@@ -1,6 +1,7 @@
-use super::line_shape::generate_line;
+use super::line_shape::{LineEnd, generate_line};
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
+use crate::consts::BOUNDS_SELECT_THRESHOLD;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -8,6 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
+pub use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
@@ -46,7 +48,11 @@ impl Arrow {
 		let keyboard = &input.keyboard;
 		let ignore = [layer];
 		let snap_data = SnapData::ignore(document, input, viewport, &ignore);
-		let document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+		let mut document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+
+		if tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
+			document_points.swap(0, 1);
+		}
 
 		let arrow_to = document_points[1] - document_points[0];
 
@@ -76,5 +82,60 @@ impl Arrow {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn overlays(_document: &DocumentMessageHandler, _tool_data: &ShapeToolData, _overlay_context: &mut OverlayContext) {}
+	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
+		let arrow_layers: HashMap<LayerNodeIdentifier, [DVec2; 2]> = document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.filter_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER))?;
+				let Some(&TaggedValue::DVec2(arrow_to)) = node_inputs[1].as_value() else { return None };
+
+				let transform = document.metadata().transform_to_viewport(layer);
+				let viewport_start = transform.transform_point2(DVec2::ZERO);
+				let viewport_end = transform.transform_point2(arrow_to);
+
+				if !arrow_to.abs_diff_eq(DVec2::ZERO, f64::EPSILON * 1000.) {
+					overlay_context.square(viewport_start, Some(6.), None, None);
+					overlay_context.square(viewport_end, Some(6.), None, None);
+				}
+
+				Some((layer, [DVec2::ZERO, arrow_to]))
+			})
+			.collect();
+
+		shape_tool_data.line_data.selected_layers_with_position.extend(arrow_layers);
+	}
+}
+
+pub fn clicked_on_arrow_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
+	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER)) else {
+		return false;
+	};
+	let Some(&TaggedValue::DVec2(arrow_to)) = node_inputs[1].as_value() else { return false };
+
+	let local_start = DVec2::ZERO;
+	let local_end = arrow_to;
+
+	let transform = document.metadata().transform_to_viewport(layer);
+	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
+	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
+
+	let drag_start = input.mouse.position;
+	let [start, end] = [local_start, local_end].map(|point| transform.transform_point2(point));
+
+	let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
+	let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
+	let endpoint_click = start_click || end_click;
+
+	if endpoint_click {
+		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
+		let anchor_local = if end_click { local_start } else { local_end };
+		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(anchor_local);
+		shape_tool_data.line_data.editing_layer = Some(layer);
+	}
+
+	endpoint_click
 }
