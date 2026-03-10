@@ -2519,10 +2519,12 @@ impl DocumentMessageHandler {
 						.icon("RenderModeOutline")
 						.tooltip_label("Render Mode: Outline")
 						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
-					RadioEntryData::new("PixelPreview")
-						.icon("RenderModePixels")
-						.tooltip_label("Render Mode: Pixel Preview")
-						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::PixelPreview }.into()),
+					RadioEntryData::new("PixelPreview").icon("RenderModePixels").tooltip_label("Render Mode: Pixel Preview").on_update(|_| {
+						DocumentMessage::SetRenderMode {
+							render_mode: RenderMode::PixelPreview,
+						}
+						.into()
+					}),
 					RadioEntryData::new("SvgPreview")
 						.icon("RenderModeSvg")
 						.tooltip_label("Render Mode: SVG Preview")
