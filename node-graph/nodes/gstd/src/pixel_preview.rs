@@ -59,7 +59,7 @@ pub async fn pixel_preview<'a: 'n>(
 	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let resampled = exec.resample_texture(&source_texture.texture, physical_resolution, &transform).await;
+	let resampled = exec.resample_texture(&source_texture.texture, physical_resolution, &transform);
 
 	result.data = RenderOutputType::Texture(ImageTexture { texture: resampled });
 

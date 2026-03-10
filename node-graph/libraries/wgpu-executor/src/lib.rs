@@ -26,7 +26,7 @@ pub use wgpu::Features as WgpuFeatures;
 pub struct WgpuExecutor {
 	pub context: WgpuContext,
 	vello_renderer: Mutex<Renderer>,
-	resampler: Mutex<Resampler>,
+	resampler: Resampler,
 	pub shader_runtime: ShaderRuntime,
 }
 
@@ -157,9 +157,8 @@ impl WgpuExecutor {
 		Ok(())
 	}
 
-	pub async fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> wgpu::Texture {
-		let resampler = self.resampler.lock().await;
-		resampler.resample(&self.context, source, target_size, transform)
+	pub fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> wgpu::Texture {
+		self.resampler.resample(&self.context, source, target_size, transform)
 	}
 
 	#[cfg(target_family = "wasm")]
@@ -209,8 +208,8 @@ impl WgpuExecutor {
 		Some(Self {
 			shader_runtime: ShaderRuntime::new(&context),
 			context,
+			resampler,
 			vello_renderer: vello_renderer.into(),
-			resampler: resampler.into(),
 		})
 	}
 }
