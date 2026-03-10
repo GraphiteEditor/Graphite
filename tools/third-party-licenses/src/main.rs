@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
-use std::{fs, process};
+use std::process::ExitCode;
 
 mod cargo;
 #[cfg(feature = "desktop")]
@@ -13,8 +14,27 @@ use crate::cargo::CargoLicenseSource;
 use crate::cef::CefLicenseSource;
 use crate::npm::NpmLicenseSource;
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+	#[error("{1}: {0}")]
+	Io(#[source] std::io::Error, String),
+
+	#[error("{1}: {0}")]
+	Json(#[source] serde_json::Error, String),
+
+	#[error("{1}: {0}")]
+	Utf8(#[source] std::string::FromUtf8Error, String),
+
+	#[error("{0}")]
+	Command(String),
+
+	#[cfg(feature = "desktop")]
+	#[error("Could not find CREDITS.html or CREDITS.html.xz in {0}")]
+	CefCreditsNotFound(PathBuf),
+}
+
 pub trait LicenceSource: std::hash::Hash {
-	fn licenses(&self) -> Vec<LicenseEntry>;
+	fn licenses(&self) -> Result<Vec<LicenseEntry>, Error>;
 }
 
 pub struct LicenseEntry {
@@ -38,7 +58,15 @@ struct Run<'a> {
 	cef: &'a CefLicenseSource,
 }
 
-fn main() {
+fn main() -> ExitCode {
+	if let Err(e) = run() {
+		eprintln!("Error: {e}");
+		return ExitCode::FAILURE;
+	}
+	ExitCode::SUCCESS
+}
+
+fn run() -> Result<(), Error> {
 	let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 	let workspace_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
 
@@ -71,32 +99,26 @@ fn main() {
 
 	if current_hash == fs::read_to_string(&current_hash_path).unwrap_or_default() {
 		eprintln!("No changes in licenses detected, skipping generation.");
-		return;
+		return Ok(());
 	}
 	eprintln!("Changes in licenses detected, generating new license file.");
 
 	let licenses = merge_filter_dedup_and_sort(vec![
-		cargo_source.licenses(),
-		npm_source.licenses(),
+		cargo_source.licenses()?,
+		npm_source.licenses()?,
 		#[cfg(feature = "desktop")]
-		cef_source.licenses(),
+		cef_source.licenses()?,
 	]);
 	let formatted = format_credits(&licenses);
 
 	#[cfg(feature = "desktop")]
-	let output = compress(&formatted);
+	let output = compress(&formatted)?;
 	#[cfg(not(feature = "desktop"))]
 	let output = formatted.as_bytes().to_vec();
 	if let Some(parent) = output_path.parent() {
-		fs::create_dir_all(parent).unwrap_or_else(|e| {
-			eprintln!("Failed to create directory {}: {e}", parent.display());
-			std::process::exit(1);
-		});
+		fs::create_dir_all(parent).map_err(|e| Error::Io(e, format!("Failed to create directory {}", parent.display())))?;
 	}
-	fs::write(&output_path, &output).unwrap_or_else(|e| {
-		eprintln!("Failed to write {}: {e}", &output_path.display());
-		std::process::exit(1);
-	});
+	fs::write(&output_path, &output).map_err(|e| Error::Io(e, format!("Failed to write {}", output_path.display())))?;
 	run.output = &output;
 
 	let hash = {
@@ -105,10 +127,9 @@ fn main() {
 		format!("{:016x}", hasher.finish())
 	};
 
-	fs::write(&current_hash_path, hash).unwrap_or_else(|e| {
-		eprintln!("Failed to write hash file {}: {e}", current_hash_path.display());
-		process::exit(1);
-	});
+	fs::write(&current_hash_path, hash).map_err(|e| Error::Io(e, format!("Failed to write hash file {}", current_hash_path.display())))?;
+
+	Ok(())
 }
 
 fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
@@ -210,20 +231,11 @@ fn dedup_by_licence_text(vec: Vec<LicenseEntry>) -> Vec<LicenseEntry> {
 }
 
 #[cfg(feature = "desktop")]
-fn compress(content: &str) -> Vec<u8> {
+fn compress(content: &str) -> Result<Vec<u8>, Error> {
 	use std::io::Write;
 	let mut buf = Vec::new();
-	let mut writer = lzma_rust2::XzWriter::new(&mut buf, lzma_rust2::XzOptions::default()).unwrap_or_else(|e| {
-		eprintln!("Failed to create XZ writer: {e}");
-		std::process::exit(1);
-	});
-	writer.write_all(content.as_bytes()).unwrap_or_else(|e| {
-		eprintln!("Failed to write compressed credits: {e}");
-		std::process::exit(1);
-	});
-	writer.finish().unwrap_or_else(|e| {
-		eprintln!("Failed to finish XZ compression: {e}");
-		std::process::exit(1);
-	});
-	buf
+	let mut writer = lzma_rust2::XzWriter::new(&mut buf, lzma_rust2::XzOptions::default()).map_err(|e| Error::Io(e, "Failed to create XZ writer".into()))?;
+	writer.write_all(content.as_bytes()).map_err(|e| Error::Io(e, "Failed to write compressed credits".into()))?;
+	writer.finish().map_err(|e| Error::Io(e, "Failed to finish XZ compression".into()))?;
+	Ok(buf)
 }

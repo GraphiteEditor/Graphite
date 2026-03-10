@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { ActionShortcut } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";

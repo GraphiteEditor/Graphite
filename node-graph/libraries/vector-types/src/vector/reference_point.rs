@@ -1,7 +1,8 @@
 use core_types::math::bbox::AxisAlignedBbox;
 use glam::DVec2;
 
-#[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum ReferencePoint {
 	#[default]
 	None,

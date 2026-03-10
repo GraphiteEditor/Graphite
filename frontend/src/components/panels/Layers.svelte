@@ -2,20 +2,13 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
 
+	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import {
-		patchLayout,
-		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerStructure,
-		UpdateLayersPanelControlBarLeftLayout,
-		UpdateLayersPanelControlBarRightLayout,
-		UpdateLayersPanelBottomBarLayout,
-	} from "@graphite/messages";
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
+	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -76,26 +69,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructure, (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -114,11 +107,11 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarLeftLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarRightLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructure);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
+		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);

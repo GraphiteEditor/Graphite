@@ -12,27 +12,10 @@ members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/libraries/application-io",
-	"node-graph/libraries/core-types",
-	"node-graph/libraries/no-std-types",
-	"node-graph/libraries/raster-types",
-	"node-graph/libraries/vector-types",
-	"node-graph/libraries/graphic-types",
-	"node-graph/libraries/rendering",
-	"node-graph/libraries/wgpu-executor",
-	"node-graph/nodes/blending",
-	"node-graph/nodes/brush",
-	"node-graph/nodes/gcore",
-	"node-graph/nodes/graphic",
-	"node-graph/nodes/math",
-	"node-graph/nodes/path-bool",
-	"node-graph/nodes/raster",
+	"node-graph/libraries/*",
+	"node-graph/nodes/*",
 	"node-graph/nodes/raster/shaders",
 	"node-graph/nodes/raster/shaders/entrypoint",
-	"node-graph/nodes/text",
-	"node-graph/nodes/transform",
-	"node-graph/nodes/repeat",
-	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/nodes/gstd",
@@ -40,6 +23,7 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"proc-macros",
+	"tools/cargo-run",
 	"tools/crate-hierarchy-viz",
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
@@ -51,33 +35,13 @@ default-members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/libraries/application-io",
-	"node-graph/libraries/core-types",
-	"node-graph/libraries/no-std-types",
-	"node-graph/libraries/raster-types",
-	"node-graph/libraries/vector-types",
-	"node-graph/libraries/graphic-types",
-	"node-graph/libraries/rendering",
-	"node-graph/libraries/wgpu-executor",
-	"node-graph/nodes/blending",
-	"node-graph/nodes/brush",
-	"node-graph/nodes/gcore",
-	"node-graph/nodes/graphic",
-	"node-graph/nodes/math",
-	"node-graph/nodes/path-bool",
-	"node-graph/nodes/raster",
-	"node-graph/nodes/raster/shaders",
-	"node-graph/nodes/text",
-	"node-graph/nodes/transform",
-	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
-	"node-graph/graphene-cli",
-	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
-	# blocked by https://github.com/rust-lang/cargo/issues/15890
+	# blocked by https://github.com/rust-lang/cargo/issues/16000
 #	"proc-macros",
+	"tools/cargo-run",
 ]
 resolver = "2"
 
@@ -134,6 +98,7 @@ rustc-hash = "2.0"
 bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 futures = "0.3"
@@ -205,17 +170,14 @@ image = { version = "0.25", default-features = false, features = [
 	"png",
 	"jpeg",
 	"bmp",
+	"gif",
 ] }
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
-specta = { version = "2.0.0-rc.22", features = [
-	"glam",
-	"derive",
-	# "typescript",
-] }
+tsify = { version = "0.5", default-features = false, features = ["js"] }
 syn = { version = "2.0", default-features = false, features = [
 	"full",
 	"derive",
@@ -265,16 +227,11 @@ graphite-proc-macros = { opt-level = 1 }
 image = { opt-level = 2 }
 rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }
-specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
 node-macro = { opt-level = 2 }
 
 [profile.release]
 lto = "thin"
-debug = true
-
-[profile.profiling]
-inherits = "release"
 debug = true
 
 [patch.crates-io]

@@ -1011,12 +1011,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
-				let table = LayoutGroup::Table {
-					unstyled: true,
-					rows: vec![
+				let table = LayoutGroup::table(
+					vec![
 						vec![
 							TextButton::new("New Document")
-								.icon(Some("File".into()))
+								.icon("File")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 								.widget_instance(),
@@ -1024,7 +1023,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Document")
-								.icon(Some("Folder".into()))
+								.icon("Folder")
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::Open.into())
 								.widget_instance(),
@@ -1032,20 +1031,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
-								.icon(Some("Image".into()))
+								.icon("Image")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into())
 								.widget_instance(),
 						],
 						vec![
 							TextButton::new("Support the Development Fund")
-								.icon(Some("Heart".into()))
+								.icon("Heart")
 								.flush(true)
 								.on_commit(move |_| FrontendMessage::TriggerVisitLink { url: donate.to_string() }.into())
 								.widget_instance(),
 						],
 					],
-				};
+					true,
+				);
 
 				responses.add(LayoutMessage::DestroyLayout {
 					layout_target: LayoutTarget::WelcomeScreenButtons,
@@ -1061,7 +1061,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
-				let row = LayoutGroup::Row { widgets };
+				let row = LayoutGroup::row(widgets);
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),

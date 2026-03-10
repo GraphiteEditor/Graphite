@@ -24,7 +24,7 @@ impl DialogLayoutHolder for ConfirmRestartDialog {
 			TextButton::new("Later").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -33,27 +33,23 @@ impl LayoutHolder for ConfirmRestartDialog {
 		let changed_settings = "• ".to_string() + &self.changed_settings.join("\n• ");
 
 		Layout(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Restart to apply changes?").bold(true).multiline(true).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					TextLabel::new(
-						format!(
-							"
+			LayoutGroup::row(vec![TextLabel::new("Restart to apply changes?").bold(true).multiline(true).widget_instance()]),
+			LayoutGroup::row(vec![
+				TextLabel::new(
+					format!(
+						"
 							Settings that only take effect on next launch:\n\
 							{changed_settings}\n\
 							\n\
 							This only takes a few seconds. Open documents,\n\
 							even unsaved ones, will be automatically restored.
 							"
-						)
-						.trim(),
 					)
-					.multiline(true)
-					.widget_instance(),
-				],
-			},
+					.trim(),
+				)
+				.multiline(true)
+				.widget_instance(),
+			]),
 		])
 	}
 }
