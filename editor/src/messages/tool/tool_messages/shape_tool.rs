@@ -943,8 +943,6 @@ impl Fsm for ShapeToolFsmState {
 
 				let defered_responses = &mut VecDeque::new();
 
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
-
 				match tool_data.current_shape {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
@@ -954,16 +952,19 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
+						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
+						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
+						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
 					}
 				}
 
