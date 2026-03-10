@@ -16,6 +16,7 @@ pub enum FileType {
 	Png,
 	Jpg,
 	Gif,
+	Pdf,
 }
 
 pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
@@ -24,7 +25,8 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 		Some("png") => Ok(FileType::Png),
 		Some("jpg" | "jpeg") => Ok(FileType::Jpg),
 		Some("gif") => Ok(FileType::Gif),
-		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .gif".to_string()),
+		Some("pdf") => Ok(FileType::Pdf),
+		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .gif, .pdf".to_string()),
 	}
 }
 
@@ -39,7 +41,7 @@ pub async fn export_document(
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
-		FileType::Svg => ExportFormat::Svg,
+		FileType::Svg | FileType::Pdf => ExportFormat::Svg,
 		_ => ExportFormat::Raster,
 	};
 
@@ -63,9 +65,15 @@ pub async fn export_document(
 	match result {
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => {
-				// Write SVG directly to file
-				std::fs::write(&output_path, svg)?;
-				log::info!("Exported SVG to: {}", output_path.display());
+				if file_type == FileType::Pdf {
+					let pdf_bytes = svg_to_pdf(&svg, UVec2::new(width.unwrap_or(1920), height.unwrap_or(1080)))?;
+					std::fs::write(&output_path, pdf_bytes)?;
+					log::info!("Exported PDF to: {}", output_path.display());
+				} else {
+					// Write SVG directly to file
+					std::fs::write(&output_path, svg)?;
+					log::info!("Exported SVG to: {}", output_path.display());
+				}
 			}
 			RenderOutputType::Texture(image_texture) => {
 				// Convert GPU texture to CPU buffer
@@ -112,7 +120,7 @@ fn write_raster_image(output_path: PathBuf, file_type: FileType, data: Vec<u8>, 
 			image.write_to(&mut cursor, ImageFormat::Jpeg)?;
 			log::info!("Exported JPG to: {}", output_path.display());
 		}
-		FileType::Svg | FileType::Gif => unreachable!("SVG and GIF should have been handled in export_document"),
+		FileType::Svg | FileType::Gif | FileType::Pdf => unreachable!("SVG, GIF, and PDF should have been handled in export_document"),
 	}
 
 	std::fs::write(&output_path, cursor.into_inner())?;
@@ -226,4 +234,33 @@ pub async fn export_gif(
 
 	log::info!("Exported GIF to: {}", output_path.display());
 	Ok(())
+}
+
+/// Convert an SVG string to PDF bytes using krilla and krilla-svg.
+fn svg_to_pdf(svg: &str, size: UVec2) -> Result<Vec<u8>, String> {
+	use krilla::page::PageSettings;
+	use krilla_svg::{SurfaceExt, SvgSettings};
+
+	// Parse the SVG with usvg 0.45 (matching krilla-svg's expected version)
+	let options = usvg_045::Options::default();
+	let tree = usvg_045::Tree::from_str(svg, &options).map_err(|e| format!("Failed to parse SVG for PDF conversion: {e}"))?;
+
+	// Create a krilla PDF document
+	let mut document = krilla::Document::new();
+
+	let page_width = size.x.max(1) as f32;
+	let page_height = size.y.max(1) as f32;
+	let page_settings = PageSettings::from_wh(page_width, page_height).ok_or_else(|| "Invalid page dimensions for PDF export".to_string())?;
+
+	let mut page = document.start_page_with(page_settings);
+	let mut surface = page.surface();
+
+	let krilla_size = krilla::geom::Size::from_wh(page_width, page_height).ok_or_else(|| "Invalid size for PDF export".to_string())?;
+	surface.draw_svg(&tree, krilla_size, SvgSettings::default());
+
+	surface.finish();
+	page.finish();
+
+	let pdf_bytes = document.finish().map_err(|e| format!("Failed to generate PDF: {e:?}"))?;
+	Ok(pdf_bytes)
 }
