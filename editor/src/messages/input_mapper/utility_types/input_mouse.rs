@@ -76,7 +76,8 @@ pub struct EditorMouseState {
 
 impl EditorMouseState {
 	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
-		let mouse_keys = MouseKeys::from_bits(keys).expect("Invalid decoding of MouseKeys");
+		// TODO: Some graphic tablets send key codes not mentioned in the spec. In the future we would like to support these as well.
+		let mouse_keys = MouseKeys::from_bits_truncate(keys);
 
 		Self {
 			editor_position,
@@ -109,7 +110,8 @@ bitflags! {
 }
 
 #[impl_message(Message, InputMapperMessage, DoubleClick)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type, num_enum::TryFromPrimitive)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum MouseButton {
 	Left,

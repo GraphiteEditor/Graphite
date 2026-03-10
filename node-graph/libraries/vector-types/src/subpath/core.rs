@@ -312,12 +312,46 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors([p1, p2], false)
 	}
 
+	/// Constructs an arrow shape from start and end points with parametric control over dimensions
+	pub fn new_arrow(start: DVec2, end: DVec2, shaft_width: f64, head_width: f64, head_length: f64) -> Self {
+		let delta = end - start;
+		let length = delta.length();
+
+		if length < 1e-10 {
+			// Degenerate case: return a point
+			return Self::from_anchors([start], true);
+		}
+
+		let direction = delta / length;
+		let perpendicular = DVec2::new(-direction.y, direction.x);
+
+		let half_shaft = shaft_width * 0.5;
+		let half_head = head_width * 0.5;
+		let head_base_distance = (length - head_length).max(0.);
+		let head_base = start + direction * head_base_distance;
+
+		// Arrow path starts at the tail, traces around the shape, and returns to the tail
+		let anchors = [
+			start,                                  // Tail center (origin)
+			start + perpendicular * half_shaft,     // Tail top
+			head_base + perpendicular * half_shaft, // Head base top (shaft)
+			head_base + perpendicular * half_head,  // Head base top (wide)
+			end,                                    // Tip
+			head_base - perpendicular * half_head,  // Head base bottom (wide)
+			head_base - perpendicular * half_shaft, // Head base bottom (shaft)
+			start - perpendicular * half_shaft,     // Tail bottom
+		];
+
+		Self::from_anchors(anchors, true)
+	}
+
 	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
 		let theta_end = turns * std::f64::consts::TAU + start_angle;
 
-		let b = calculate_b(a, turns, outer_radius, spiral_type);
+		let a = if spiral_type == SpiralType::Logarithmic { a.max(1e-10) } else { a };
+		let b = calculate_growth_factor(a, turns, outer_radius, spiral_type);
 
 		let mut theta = start_angle;
 		while theta < theta_end {
@@ -350,7 +384,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 }
 
-pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
+pub fn calculate_growth_factor(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
 	match spiral_type {
 		SpiralType::Archimedean => {
 			let total_theta = turns * TAU;

@@ -1,6 +1,7 @@
 use core_types::Ctx;
-use core_types::registry::types::{Angle, PixelSize};
+use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::table::Table;
+use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
 use vector_types::subpath;
@@ -186,19 +187,92 @@ fn star<T: AsU64>(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
-/// Generates a line with endpoints at the two chosen coordinates.
-#[node_macro::node(category("Vector: Shape"))]
-fn line(
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum QRCodeErrorCorrectionLevel {
+	/// Allows recovery from up to 7% data loss.
+	#[default]
+	Low,
+	/// Allows recovery from up to 15% data loss.
+	Medium,
+	/// Allows recovery from up to 25% data loss.
+	Quartile,
+	/// Allows recovery from up to 30% data loss.
+	High,
+}
+
+/// Generates a QR code from the input text.
+#[node_macro::node(category("Vector: Shape"), name("QR Code"))]
+fn qr_code(
 	_: impl Ctx,
 	_primary: (),
-	/// Coordinate of the line's initial endpoint.
-	#[default(0., 0.)]
-	start: PixelSize,
-	/// Coordinate of the line's terminal endpoint.
-	#[default(100., 100.)]
-	end: PixelSize,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")]
+	#[default("https://graphite.art")]
+	text: String,
+	#[widget(ParsedWidgetOverride::Hidden)] has_size: bool,
+	#[unit(" px")]
+	#[hard_min(1.)]
+	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
+	size: f64,
+	error_correction: QRCodeErrorCorrectionLevel,
+	#[default(false)] individual_squares: bool,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
+	let ecc = match error_correction {
+		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
+		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
+		QRCodeErrorCorrectionLevel::Quartile => qrcodegen::QrCodeEcc::Quartile,
+		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
+	};
+
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return Table::default() };
+
+	let mut vector = match individual_squares {
+		true => {
+			let mut vector = Vector::default();
+
+			let dimension = qr_code.size() as usize;
+			for y in 0..dimension {
+				for x in 0..dimension {
+					if qr_code.get_module(x as i32, y as i32) {
+						let corner1 = DVec2::new(x as f64, y as f64);
+						let corner2 = corner1 + DVec2::splat(1.);
+						vector.append_subpath(
+							subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
+							false,
+						);
+					}
+				}
+			}
+
+			vector
+		}
+		false => crate::merge_qr_squares::merge_qr_squares(&qr_code),
+	};
+
+	if has_size {
+		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size.max(1.) / qr_code.size() as f64)));
+	}
+
+	Table::new_from_element(vector)
+}
+
+/// Generates an arrow from the origin to the chosen coordinate.
+#[node_macro::node(category("Vector: Shape"))]
+fn arrow(
+	_: impl Ctx,
+	_primary: (),
+	#[default(100., 0.)] arrow_to: PixelSize,
+	#[default(10)] shaft_width: PixelLength,
+	#[default(30)] head_width: PixelLength,
+	#[default(20)] head_length: PixelLength,
+) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
 }
 
 trait GridSpacing {
@@ -348,5 +422,12 @@ mod tests {
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
 		}
+	}
+
+	#[test]
+	fn qr_code_test() {
+		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
+		assert!(qr.iter().next().unwrap().element.point_domain.ids().len() > 0);
+		assert!(qr.iter().next().unwrap().element.segment_domain.ids().len() > 0);
 	}
 }

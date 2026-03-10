@@ -128,7 +128,7 @@ impl DataPanelMessageHandler {
 		}
 
 		if !widgets.is_empty() {
-			layout.0.insert(0, LayoutGroup::Row { widgets });
+			layout.0.insert(0, LayoutGroup::row(widgets));
 		}
 
 		responses.add(LayoutMessage::SendLayout {
@@ -166,11 +166,12 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		Vec<String>,
+		GradientStops,
 		f64,
 		u32,
 		u64,
 		bool,
+		Vec<String>,
 		String,
 		Option<f64>,
 		DVec2,
@@ -184,7 +185,7 @@ fn column_headings(value: &[&str]) -> Vec<WidgetInstance> {
 
 fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
 	let error = vec![TextLabel::new(x).widget_instance()];
-	vec![LayoutGroup::Row { widgets: error }]
+	vec![LayoutGroup::row(error)]
 }
 
 trait TableRowLayout {
@@ -233,7 +234,7 @@ impl<T: TableRowLayout> TableRowLayout for Vec<T> {
 
 		rows.insert(0, column_headings(&["", "element"]));
 
-		vec![LayoutGroup::Table { rows, unstyled: false }]
+		vec![LayoutGroup::table(rows, false)]
 	}
 }
 
@@ -275,7 +276,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 
 		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
-		vec![LayoutGroup::Table { rows, unstyled: false }]
+		vec![LayoutGroup::table(rows, false)]
 	}
 }
 
@@ -432,10 +433,6 @@ impl TableRowLayout for Vector {
 						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_instance(),
-						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
 						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
 						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
 					]);
@@ -491,7 +488,7 @@ impl TableRowLayout for Vector {
 			}
 		}
 
-		vec![LayoutGroup::Row { widgets: table_tabs }, LayoutGroup::Table { rows: table_rows, unstyled: false }]
+		vec![LayoutGroup::row(table_tabs), LayoutGroup::table(table_rows, false)]
 	}
 }
 
@@ -507,7 +504,7 @@ impl TableRowLayout for Raster<CPU> {
 
 		if raster.width == 0 || raster.height == 0 {
 			let widgets = vec![TextLabel::new("Image has no area").widget_instance()];
-			return vec![LayoutGroup::Row { widgets }];
+			return vec![LayoutGroup::row(widgets)];
 		}
 
 		let base64_string = raster.base64_string.clone().unwrap_or_else(|| {
@@ -522,7 +519,7 @@ impl TableRowLayout for Raster<CPU> {
 		});
 
 		let widgets = vec![ImageLabel::new(base64_string).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -535,7 +532,7 @@ impl TableRowLayout for Raster<GPU> {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new("Raster is a texture on the GPU and cannot currently be displayed here").widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -555,7 +552,7 @@ impl TableRowLayout for Color {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -564,7 +561,7 @@ impl TableRowLayout for GradientStops {
 		"Gradient"
 	}
 	fn identifier(&self) -> String {
-		format!("Gradient ({} stops)", self.0.len())
+		format!("Gradient ({} stops)", self.len())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetInstance {
 		ColorInput::new(FillChoice::Gradient(self.clone()))
@@ -575,7 +572,7 @@ impl TableRowLayout for GradientStops {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -588,7 +585,7 @@ impl TableRowLayout for f64 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -601,7 +598,7 @@ impl TableRowLayout for u32 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -614,7 +611,7 @@ impl TableRowLayout for u64 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -627,7 +624,7 @@ impl TableRowLayout for bool {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -646,7 +643,7 @@ impl TableRowLayout for String {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -659,7 +656,7 @@ impl TableRowLayout for Option<f64> {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(format!("{self:?}")).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -672,7 +669,7 @@ impl TableRowLayout for DVec2 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -685,7 +682,7 @@ impl TableRowLayout for Vec2 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -698,7 +695,7 @@ impl TableRowLayout for DAffine2 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new(format_transform_matrix(self)).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
@@ -712,12 +709,28 @@ impl TableRowLayout for Affine2 {
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
 		let widgets = vec![TextLabel::new(format_transform_matrix(&matrix)).widget_instance()];
-		vec![LayoutGroup::Row { widgets }]
+		vec![LayoutGroup::row(widgets)]
 	}
 }
 
 fn format_transform_matrix(transform: &DAffine2) -> String {
-	let (scale, angle, translation) = transform.to_scale_angle_translation();
+	let (scale, angle, translation) = if transform.matrix2.determinant().abs() <= f64::EPSILON {
+		let [col_0, col_1] = transform.matrix2.to_cols_array_2d().map(|[x, y]| DVec2::new(x, y));
+
+		let scale = DVec2::new(col_0.length(), col_1.length());
+
+		let rotation = if scale.x > f64::EPSILON {
+			col_0.y.atan2(col_0.x)
+		} else if scale.y > f64::EPSILON {
+			col_1.y.atan2(col_1.x) - std::f64::consts::FRAC_PI_2
+		} else {
+			0.
+		};
+
+		(scale, rotation, transform.translation)
+	} else {
+		transform.to_scale_angle_translation()
+	};
 	let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 	let round = |x: f64| (x * 1e3).round() / 1e3;
 

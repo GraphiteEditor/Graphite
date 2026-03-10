@@ -1,7 +1,3 @@
-<script lang="ts" context="module">
-	export type ScrollbarDirection = "Horizontal" | "Vertical";
-</script>
-
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
@@ -21,7 +17,7 @@
 
 	const dispatch = createEventDispatcher<{ trackShift: number; thumbPosition: number; thumbDragStart: undefined; thumbDragEnd: undefined; thumbDragAbort: undefined }>();
 
-	export let direction: ScrollbarDirection = "Vertical";
+	export let direction: "Horizontal" | "Vertical" = "Vertical";
 	export let thumbPosition = 0.5;
 	export let thumbLength = 0.5;
 
@@ -210,7 +206,7 @@
 <div class={`scrollbar-input ${direction.toLowerCase()}`}>
 	<button class="arrow decrease" on:pointerdown={() => pressArrow(-1)} tabindex="-1" data-scrollbar-arrow></button>
 	<div class="scroll-track" on:pointerdown={pressTrack} bind:this={scrollTrack}>
-		<div class="scroll-thumb" on:pointerdown={dragThumb} class:dragging style:top={thumbTop} style:bottom={thumbBottom} style:left={thumbLeft} style:right={thumbRight} />
+		<div class="scroll-thumb" on:pointerdown={dragThumb} class:dragging style:top={thumbTop} style:bottom={thumbBottom} style:left={thumbLeft} style:right={thumbRight}></div>
 	</div>
 	<button class="arrow increase" on:pointerdown={() => pressArrow(1)} tabindex="-1" data-scrollbar-arrow></button>
 </div>

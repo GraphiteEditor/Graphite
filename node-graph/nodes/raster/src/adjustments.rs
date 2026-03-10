@@ -33,8 +33,9 @@ use vector_types::GradientStops;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 #[repr(u32)]
 pub enum LuminanceCalculation {
@@ -54,7 +55,6 @@ fn luminance<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -73,14 +73,13 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -102,7 +101,6 @@ fn extract_channel<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -127,7 +125,6 @@ fn make_opaque<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -154,7 +151,6 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -186,7 +182,6 @@ fn brightness_contrast<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -268,7 +263,6 @@ fn levels<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -337,7 +331,6 @@ fn black_and_white<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -411,7 +404,6 @@ fn hue_saturation<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -447,7 +439,6 @@ fn invert<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -471,7 +462,6 @@ fn threshold<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -518,7 +508,6 @@ fn vibrance<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -575,8 +564,9 @@ fn vibrance<T: Adjust<Color>>(
 }
 
 #[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -585,8 +575,9 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 #[repr(u32)]
 pub enum RedGreenBlueAlpha {
@@ -598,8 +589,9 @@ pub enum RedGreenBlueAlpha {
 }
 
 /// Style of noise pattern.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -615,8 +607,9 @@ pub enum NoiseType {
 }
 
 /// Style of layered levels of the noise pattern.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum FractalType {
 	#[default]
 	None,
@@ -631,8 +624,9 @@ pub enum FractalType {
 }
 
 /// Distance function used by the cellular noise.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -642,8 +636,9 @@ pub enum CellularDistanceFunction {
 	Hybrid,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -661,8 +656,9 @@ pub enum CellularReturnType {
 	Division,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -684,7 +680,6 @@ fn channel_mixer<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -775,8 +770,9 @@ fn channel_mixer<T: Adjust<Color>>(
 }
 
 #[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -785,8 +781,9 @@ pub enum RelativeAbsolute {
 }
 
 #[repr(u32)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -815,7 +812,6 @@ fn selective_color<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -962,7 +958,6 @@ fn posterize<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -997,7 +992,6 @@ fn exposure<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,

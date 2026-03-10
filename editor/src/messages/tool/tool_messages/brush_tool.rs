@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_BRUSH_SIZE;
 use crate::messages::portfolio::document::graph_operation::transform_utils::get_current_transform;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_network_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -13,7 +13,8 @@ use graphene_std::raster::BlendMode;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DrawMode {
 	Draw = 0,
 	Erase,
@@ -52,7 +53,8 @@ impl Default for BrushOptions {
 }
 
 #[impl_message(Message, ToolMessage, Brush)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BrushToolMessage {
 	// Standard messages
 	Abort,
@@ -65,7 +67,8 @@ pub enum BrushToolMessage {
 	UpdateOptions { options: BrushToolMessageOptionsUpdate },
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BrushToolMessageOptionsUpdate {
 	BlendMode(BlendMode),
 	ChangeDiameter(f64),
@@ -220,7 +223,7 @@ impl LayoutHolder for BrushTool {
 				.widget_instance(),
 		);
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -316,7 +319,7 @@ impl BrushToolData {
 				continue;
 			};
 
-			if *reference == Some("Brush".to_string()) && node_id != layer.to_node() {
+			if reference == DefinitionIdentifier::Network("Brush".into()) && node_id != layer.to_node() {
 				let points_input = node.inputs.get(1)?;
 				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
 				self.strokes.clone_from(strokes);
@@ -324,7 +327,7 @@ impl BrushToolData {
 				return Some(layer);
 			}
 
-			if *reference == Some("Transform".to_string()) {
+			if reference == DefinitionIdentifier::Network("Transform".into()) {
 				self.transform = get_current_transform(&node.inputs) * self.transform;
 			}
 		}
@@ -475,7 +478,7 @@ impl Fsm for BrushToolFsmState {
 fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(DocumentMessage::DeselectAllLayers);
 
-	let brush_node = resolve_document_node_type("Brush").expect("Brush node does not exist").default_node_template();
+	let brush_node = resolve_network_node_type("Brush").expect("Brush node does not exist").default_node_template();
 
 	let id = NodeId::new();
 	responses.add(GraphOperationMessage::NewCustomLayer {

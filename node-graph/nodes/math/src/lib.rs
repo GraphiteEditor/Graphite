@@ -405,7 +405,6 @@ fn random(
 	/// Seed to determine the unique variation of which number is generated.
 	seed: u64,
 	/// The smaller end of the range within which the random number is generated.
-	#[default(0.)]
 	min: f64,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
@@ -551,6 +550,7 @@ fn clamp<T: std::cmp::PartialOrd>(
 	min: T,
 	/// The right (greater) side of the range. The output is never greater than this number.
 	#[implementations(f64, f32, u32, &str)]
+	#[default(1)]
 	max: T,
 ) -> T {
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
@@ -706,6 +706,7 @@ fn logical_or(
 	/// One of the two boolean values, either of which may be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, either of which may be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value || other_value
@@ -718,6 +719,7 @@ fn logical_and(
 	/// One of the two boolean values, both of which must be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, both of which must be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value && other_value
@@ -759,27 +761,65 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::RED)] color: Table<Color>) -> Table<Color> {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Table<Color>) -> Table<Color> {
 	color
 }
 
-/// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
-#[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
-	gradient
+/// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
+#[node_macro::node(category("Color"), name("RGBA to Color"))]
+fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> Table<Color> {
+	let red = (red as f32).clamp(0., 1.);
+	let green = (green as f32).clamp(0., 1.);
+	let blue = (blue as f32).clamp(0., 1.);
+	let alpha = (alpha as f32).clamp(0., 1.);
+
+	Table::new_from_element(Color::from_rgbaf32_unchecked(red, green, blue, alpha))
+}
+
+/// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
+#[node_macro::node(category("Color"), name("HSVA to Color"))]
+fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> Table<Color> {
+	let hue = (hue as f32) - (hue as f32).floor();
+	let saturation = (saturation as f32).clamp(0., 1.);
+	let value = (value as f32).clamp(0., 1.);
+	let alpha = (alpha as f32).clamp(0., 1.);
+
+	Table::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
+}
+
+/// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
+#[node_macro::node(category("Color"), name("HSLA to Color"))]
+fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> Table<Color> {
+	let hue = (hue as f32) - (hue as f32).floor();
+	let saturation = (saturation as f32).clamp(0., 1.);
+	let lightness = (lightness as f32).clamp(0., 1.);
+	let alpha = (alpha as f32).clamp(0., 1.);
+
+	Table::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
+}
+
+/// Constructs a color value from an sRGB color code string, such as `#RRGGBB` or `#RRGGBBAA`. Invalid hex code strings produce no color.
+#[node_macro::node(category("Color"), name("Hex to Color"))]
+fn hex_to_color(_: impl Ctx, hex_code: String) -> Table<Color> {
+	match Color::from_hex_str(&hex_code) {
+		Some(c) => Table::new_from_element(c),
+		None => Table::new(),
+	}
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_table_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Table<GradientStops> {
-	Table::new_from_element(gradient)
+fn gradient_value(_: impl Ctx, _primary: (), gradient: Table<GradientStops>) -> Table<GradientStops> {
+	gradient
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Table<Color> {
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, position: Fraction) -> Table<Color> {
+	let Some(row) = gradient.get(0) else { return Table::new() };
+
 	let position = position.clamp(0., 1.);
-	let color = gradient.evaluate(position);
+	let color = row.element.evaluate(position);
 	Table::new_from_element(color)
 }
 
@@ -810,7 +850,7 @@ fn dot_product(
 	/// An operand of the dot product operation.
 	vector_a: DVec2,
 	/// The other operand of the dot product operation.
-	#[default((1., 0.))]
+	#[default(1., 0.)]
 	vector_b: DVec2,
 	/// Whether to normalize both input vectors so the calculation ranges in `[-1, 1]` by considering only their degree of directional alignment.
 	normalize: bool,
@@ -857,7 +897,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	#[expose]
 	#[implementations(DVec2, DVec2, DAffine2, DAffine2)]
 	target: U,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: bool,
 ) -> f64 {
 	let from = observer.to_position();

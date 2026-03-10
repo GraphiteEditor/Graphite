@@ -1,11 +1,10 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
-export function createFullscreenState(_: Editor) {
+export function createFullscreenState(editor: Editor) {
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const keyboardLockApiSupported: Readonly<boolean> = "keyboard" in navigator && (navigator as any).keyboard && "lock" in (navigator as any).keyboard;
+	const keyboardLockApiSupported: Readonly<boolean> = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
 	const { subscribe, update } = writable({
 		windowFullscreen: false,
@@ -24,9 +23,8 @@ export function createFullscreenState(_: Editor) {
 	async function enterFullscreen() {
 		await document.documentElement.requestFullscreen();
 
-		if (keyboardLockApiSupported) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			await (navigator as any).keyboard.lock(["ControlLeft", "ControlRight"]);
+		if (keyboardLockApiSupported && navigator.keyboard) {
+			await navigator.keyboard.lock(["ControlLeft", "ControlRight"]);
 
 			update((state) => {
 				state.keyboardLocked = true;
@@ -49,6 +47,10 @@ export function createFullscreenState(_: Editor) {
 			});
 		});
 	}
+
+	editor.subscriptions.subscribeFrontendMessage("WindowFullscreen", () => {
+		toggleFullscreen();
+	});
 
 	return {
 		subscribe,

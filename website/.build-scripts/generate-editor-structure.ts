@@ -1,3 +1,5 @@
+// TODO: Port this script to Rust as part of `tools/editor-message-tree/src/main.rs`
+
 /* eslint-disable no-console */
 
 import fs from "fs";
@@ -48,7 +50,7 @@ function buildHtmlList(nodes: Entry[], currentIndex: number, currentLevel: numbe
 		const hasDirectChildren = i + 1 < nodes.length && nodes[i + 1].level > node.level;
 		const hasDeeperChildren = hasDirectChildren && i + 2 < nodes.length && nodes[i + 2].level > nodes[i + 1].level;
 
-		const linkHtml = node.link ? `<a href="${node.link}" target="_blank">${path.basename(node.link)}</a>` : "";
+		const linkHtml = node.link ? `<a href="${node.link}" target="_blank">${path.basename(node.link.split("#L").join(":"))}</a>` : "";
 		const fieldPieces = node.text.match(/([^:]*):(.*)/);
 		let escapedText;
 		if (fieldPieces && fieldPieces.length === 3) {

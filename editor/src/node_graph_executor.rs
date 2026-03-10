@@ -5,8 +5,8 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
-use graphene_std::application_io::{SurfaceFrame, TimingInformation};
+use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -44,6 +44,7 @@ pub struct CompilationResponse {
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
+	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
@@ -54,7 +55,6 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	previous_node_to_inspect: Option<NodeId>,
-	last_svg_canvas: Option<SurfaceFrame>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,7 +77,6 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: None,
-			last_svg_canvas: None,
 		};
 		(node_runtime, node_executor)
 	}
@@ -157,6 +156,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
+			for_eyedropper: false,
 		};
 
 		// Execute the node graph
@@ -184,6 +184,43 @@ impl NodeGraphExecutor {
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
+	#[allow(clippy::too_many_arguments)]
+	#[cfg(not(target_family = "wasm"))]
+	pub(crate) fn submit_eyedropper_preview(
+		&mut self,
+		document: &DocumentMessageHandler,
+		document_id: DocumentId,
+		transform: DAffine2,
+		pointer: DVec2,
+		viewport_resolution: UVec2,
+		viewport_scale: f64,
+		time: TimingInformation,
+	) -> Result<Message, String> {
+		let viewport = Footprint {
+			transform,
+			resolution: viewport_resolution,
+			..Default::default()
+		};
+		let render_config = RenderConfig {
+			viewport,
+			scale: viewport_scale,
+			time,
+			pointer,
+			export_format: graphene_std::application_io::ExportFormat::Raster,
+			render_mode: document.render_mode,
+			hide_artboards: false,
+			for_export: false,
+			for_eyedropper: true,
+		};
+
+		// Execute the node graph
+		let execution_id = self.queue_execution(render_config);
+
+		self.futures.push_back((execution_id, ExecutionContext { export_config: None, document_id }));
+
+		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
+	}
+
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
@@ -201,15 +238,19 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
+
+		let resolution_in_document_space = bounds[1] - bounds[0];
+		let export_resolution = resolution_in_document_space * export_config.scale_factor;
+		let resolution = export_resolution.round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
+		let viewport = Footprint {
+			resolution,
+			transform,
+			..Default::default()
+		};
 
 		let render_config = RenderConfig {
-			viewport: Footprint {
-				resolution,
-				transform,
-				..Default::default()
-			},
+			viewport,
 			scale: export_config.scale_factor,
 			time: Default::default(),
 			pointer: DVec2::ZERO,
@@ -217,99 +258,22 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
+			for_eyedropper: false,
 		};
-		export_config.size = resolution.as_dvec2();
+		export_config.size = resolution;
 
 		// Execute the node graph
 		self.runtime_io
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
-		let execution_context = ExecutionContext {
-			export_config: Some(export_config),
-			document_id,
-		};
-		self.futures.push_back((execution_id, execution_context));
-
-		Ok(())
-	}
-
-	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let ExportConfig {
-			file_type,
-			name,
-			size,
-			scale_factor,
-			#[cfg(feature = "gpu")]
-			transparent_background,
-			..
-		} = export_config;
-
-		let file_extension = match file_type {
-			FileType::Svg => "svg",
-			FileType::Png => "png",
-			FileType::Jpg => "jpg",
-		};
-		let name = format!("{name}.{file_extension}");
-
-		match node_graph_output {
-			TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Svg { svg, .. },
-				..
-			}) => {
-				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
-				} else {
-					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
-					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
-				}
-			}
-			#[cfg(feature = "gpu")]
-			TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Buffer { data, width, height },
-				..
-			}) if file_type != FileType::Svg => {
-				use image::buffer::ConvertBuffer;
-				use image::{ImageFormat, RgbImage, RgbaImage};
-
-				let Some(image) = RgbaImage::from_raw(width, height, data) else {
-					return Err("Failed to create image buffer for export".to_string());
-				};
-
-				let mut encoded = Vec::new();
-				let mut cursor = std::io::Cursor::new(&mut encoded);
-
-				match file_type {
-					FileType::Png => {
-						let result = if transparent_background {
-							image.write_to(&mut cursor, ImageFormat::Png)
-						} else {
-							let image: RgbImage = image.convert();
-							image.write_to(&mut cursor, ImageFormat::Png)
-						};
-						if let Err(err) = result {
-							return Err(format!("Failed to encode PNG: {err}"));
-						}
-					}
-					FileType::Jpg => {
-						let image: RgbImage = image.convert();
-						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
-						if let Err(err) = result {
-							return Err(format!("Failed to encode JPG: {err}"));
-						}
-					}
-					FileType::Svg => {
-						return Err("SVG cannot be exported from an image buffer".to_string());
-					}
-				}
-
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
-			}
-			_ => {
-				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
-			}
-		};
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				export_config: Some(export_config),
+				document_id,
+			},
+		));
 
 		Ok(())
 	}
@@ -357,7 +321,7 @@ impl NodeGraphExecutor {
 
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
-						self.export(node_graph_output, export_config, responses)?;
+						self.process_export(node_graph_output, export_config, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
@@ -401,6 +365,10 @@ impl NodeGraphExecutor {
 					});
 					responses.add(NodeGraphMessage::SendGraph);
 				}
+				NodeGraphUpdate::EyedropperPreview(raster) => {
+					let (data, width, height) = raster.to_flat_u8();
+					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
+				}
 			}
 		}
 
@@ -417,19 +385,14 @@ impl NodeGraphExecutor {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-				self.last_svg_canvas = None;
 			}
-			RenderOutputType::CanvasFrame(frame) => 'block: {
-				if self.last_svg_canvas == Some(frame) {
-					break 'block;
-				}
+			RenderOutputType::CanvasFrame(frame) => {
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 				let svg = format!(
 					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
 					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
 				);
-				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
@@ -442,6 +405,7 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 			click_targets,
 			clip_targets,
+			vector_data,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately
@@ -452,9 +416,98 @@ impl NodeGraphExecutor {
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
+		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
+
+		Ok(())
+	}
+
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let ExportConfig {
+			file_type,
+			name,
+			size,
+			#[cfg(feature = "gpu")]
+			transparent_background,
+			artboard_name,
+			artboard_count,
+			..
+		} = export_config;
+
+		let file_extension = match file_type {
+			FileType::Svg => "svg",
+			FileType::Png => "png",
+			FileType::Jpg => "jpg",
+		};
+		let base_name = match (artboard_name, artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
+			_ => name,
+		};
+		let name = format!("{base_name}.{file_extension}");
+
+		match node_graph_output {
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) => {
+				if file_type == FileType::Svg {
+					responses.add(FrontendMessage::TriggerSaveFile {
+						name,
+						content: svg.into_bytes().into(),
+					});
+				} else {
+					let mime = file_type.to_mime().to_string();
+					let size = size.as_dvec2().into();
+					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
+				}
+			}
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) if file_type != FileType::Svg => {
+				use image::buffer::ConvertBuffer;
+				use image::{ImageFormat, RgbImage, RgbaImage};
+
+				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+					return Err("Failed to create image buffer for export".to_string());
+				};
+
+				let mut encoded = Vec::new();
+				let mut cursor = std::io::Cursor::new(&mut encoded);
+
+				match file_type {
+					FileType::Png => {
+						let result = if transparent_background {
+							image.write_to(&mut cursor, ImageFormat::Png)
+						} else {
+							let image: RgbImage = image.convert();
+							image.write_to(&mut cursor, ImageFormat::Png)
+						};
+						if let Err(err) = result {
+							return Err(format!("Failed to encode PNG: {err}"));
+						}
+					}
+					FileType::Jpg => {
+						let image: RgbImage = image.convert();
+						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
+						if let Err(err) = result {
+							return Err(format!("Failed to encode JPG: {err}"));
+						}
+					}
+					FileType::Svg => {
+						return Err("SVG cannot be exported from an image buffer".to_string());
+					}
+				}
+
+				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
+			}
+			_ => {
+				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
+			}
+		};
 
 		Ok(())
 	}

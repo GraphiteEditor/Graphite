@@ -1,13 +1,14 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
-	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
+	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
+	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -49,7 +50,8 @@ pub struct PathToolOptions {
 }
 
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PathToolMessage {
 	// Standard messages
 	Abort,
@@ -73,6 +75,11 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	ClosePath,
+	ConnectPointsByPosition {
+		layer: LayerNodeIdentifier,
+		start_position: DVec2,
+		end_position: DVec2,
+	},
 	DoubleClick {
 		extend_selection: Key,
 		shrink_selection: Key,
@@ -149,7 +156,8 @@ pub enum PathToolMessage {
 	ToggleSegmentEditing,
 }
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum PathOverlayMode {
 	AllHandles = 0,
 	#[default]
@@ -172,13 +180,14 @@ impl Default for PathEditingMode {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
 	PivotGizmoType(PivotGizmoType),
-	TogglePivotGizmoType(bool),
+	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
 }
 
@@ -320,7 +329,7 @@ impl LayoutHolder for PathTool {
 
 		// Works only if a single layer is selected and its type is Vector
 		let path_node_button = TextButton::new("Make Path Editable")
-			.icon(Some("NodeShape".into()))
+			.icon("NodeShape")
 			.tooltip_label("Make Path Editable")
 			.tooltip_description(
 				"Enables the Pen and Path tools to directly edit layer geometry resulting from nondestructive operations. This inserts a 'Path' node as the last operation of the selected layer.",
@@ -343,32 +352,30 @@ impl LayoutHolder for PathTool {
 
 		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
 
-		Layout(vec![LayoutGroup::Row {
-			widgets: vec![
-				x_location,
-				related_seperator.clone(),
-				y_location,
-				unrelated_seperator.clone(),
-				colinear_handle_checkbox,
-				related_seperator.clone(),
-				colinear_handles_label,
-				unrelated_seperator.clone(),
-				point_editing_mode,
-				related_seperator.clone(),
-				segment_editing_mode,
-				unrelated_seperator.clone(),
-				path_overlay_mode_widget,
-				unrelated_seperator.clone(),
-				path_node_button,
-				// checkbox.clone(),
-				// related_seperator.clone(),
-				// dropdown.clone(),
-				// unrelated_seperator,
-				// pivot_reference,
-				// related_seperator.clone(),
-				// pin_pivot,
-			],
-		}])
+		Layout(vec![LayoutGroup::row(vec![
+			x_location,
+			related_seperator.clone(),
+			y_location,
+			unrelated_seperator.clone(),
+			colinear_handle_checkbox,
+			related_seperator.clone(),
+			colinear_handles_label,
+			unrelated_seperator.clone(),
+			point_editing_mode,
+			related_seperator.clone(),
+			segment_editing_mode,
+			unrelated_seperator.clone(),
+			path_overlay_mode_widget,
+			unrelated_seperator.clone(),
+			path_node_button,
+			// checkbox.clone(),
+			// related_seperator.clone(),
+			// dropdown.clone(),
+			// unrelated_seperator,
+			// pivot_reference,
+			// related_seperator.clone(),
+			// pin_pivot,
+		])])
 	}
 }
 
@@ -392,7 +399,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 					responses.add(OverlaysMessage::Draw);
 				}
 				PathOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.disabled {
+					if !self.tool_data.pivot_gizmo.state.enabled {
 						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
@@ -401,8 +408,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 						self.send_layout(responses, LayoutTarget::ToolOptions);
 					}
 				}
-				PathOptionsUpdate::TogglePivotGizmoType(state) => {
-					self.tool_data.pivot_gizmo.state.disabled = !state;
+				PathOptionsUpdate::SetPivotGizmoEnabled(enabled) => {
+					self.tool_data.pivot_gizmo.state.enabled = enabled;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -1566,7 +1573,7 @@ impl Fsm for PathToolFsmState {
 		let ToolMessage::Path(event) = event else { return self };
 
 		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
-		tool_data.pivot_gizmo.state.disabled = true;
+		tool_data.pivot_gizmo.state.enabled = false;
 
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
@@ -1883,12 +1890,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::Drawing { selection_shape } => {
-						let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-							.unwrap()
-							.with_alpha(0.05)
-							.to_rgba_hex_srgb();
-						fill_color.insert(0, '#');
-						let fill_color = Some(fill_color.as_str());
+						let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 						let selection_mode = match tool_action_data.preferences.get_selection_mode() {
 							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
@@ -1972,19 +1974,14 @@ impl Fsm for PathToolFsmState {
 							let origin = tool_data.drag_start_pos;
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
-							let faded = |color: &str| {
-								let mut color = graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-								color.insert(0, '#');
-								color
-							};
 							match axis {
 								Axis::Y => {
 									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_GREEN), None);
-									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(&faded(COLOR_OVERLAY_RED)), None);
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_RED_25), None);
 								}
 								Axis::X | Axis::Both => {
 									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_RED), None);
-									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(&faded(COLOR_OVERLAY_GREEN)), None);
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_GREEN_25), None);
 								}
 							}
 						}
@@ -2669,6 +2666,60 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
+			(_, PathToolMessage::ConnectPointsByPosition { layer, start_position, end_position }) => {
+				// Get the merged vector
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
+					return self;
+				};
+
+				// Find points by their positions (with small tolerance for floating point comparison)
+				const POSITION_TOLERANCE: f64 = 1e-6;
+
+				let positions = vector.point_domain.positions();
+				let point_ids = vector.point_domain.ids();
+
+				let mut start_point_id = None;
+				let mut end_point_id = None;
+
+				// Get the merged layer's transform to convert local positions to document space
+				let layer_transform = document.metadata().transform_to_document(layer);
+
+				for (i, &local_pos) in positions.iter().enumerate() {
+					// Transform the local position to document space for comparison
+					let doc_pos = layer_transform.transform_point2(local_pos);
+
+					let start_distance = (doc_pos - start_position).length();
+					let end_distance = (doc_pos - end_position).length();
+
+					if start_point_id.is_none() && start_distance < POSITION_TOLERANCE {
+						start_point_id = Some(point_ids[i]);
+					}
+					if end_point_id.is_none() && end_distance < POSITION_TOLERANCE {
+						end_point_id = Some(point_ids[i]);
+					}
+					if start_point_id.is_some() && end_point_id.is_some() {
+						break;
+					}
+				}
+
+				if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
+					// Create segment directly
+					responses.add(DocumentMessage::StartTransaction);
+
+					let segment_id = SegmentId::generate();
+					let modification_type = VectorModificationType::InsertSegment {
+						id: segment_id,
+						points: [end_id, start_id],
+						handles: [None, None],
+					};
+
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					responses.add(DocumentMessage::EndTransaction);
+					responses.add(OverlaysMessage::Draw);
+				}
+
+				self
+			}
 			(_, PathToolMessage::StartSlidingPoint) => {
 				responses.add(DocumentMessage::StartTransaction);
 				if tool_data.start_sliding_point(shape_editor, document) {
@@ -2767,7 +2818,7 @@ impl Fsm for PathToolFsmState {
 						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
 							layer
 						} else {
-							let Some(node_type) = resolve_document_node_type("Path") else {
+							let Some(node_type) = resolve_network_node_type("Path") else {
 								error!("Could not resolve node type for Path");
 								continue;
 							};
@@ -2777,14 +2828,15 @@ impl Fsm for PathToolFsmState {
 
 							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
-							let fill_color = Color::WHITE;
+							// Defaults chosen because the pasted geometry has no inherent associated style
 							let stroke_color = Color::BLACK;
-
-							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
-							responses.add(GraphOperationMessage::FillSet { layer, fill });
+							let fill_color = Color::WHITE;
 
 							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
 							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
+							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+							responses.add(GraphOperationMessage::FillSet { layer, fill });
 
 							new_layers.push(layer);
 
@@ -3123,10 +3175,9 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				let colinear = shape_editor.selected_manipulator_angles(&document.network_interface);
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
-					colinear,
+					colinear: shape_editor.selected_manipulator_angles(&document.network_interface),
 				};
 
 				let old = tool_data.make_path_editable_is_allowed;
@@ -3418,7 +3469,7 @@ fn update_dynamic_hints(
 			}
 
 			let drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
-			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
+			let mut delete_selected_hints = vec![HintInfo::keys([Key::Backspace], "Delete Selected")];
 
 			if at_least_one_anchor_selected {
 				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
@@ -3604,4 +3655,5 @@ fn update_dynamic_hints(
 		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	hint_data.send_layout(responses);
+	responses.add(ToolMessage::UpdateHints);
 }

@@ -1,0 +1,18 @@
+[package]
+name = "node-docs"
+description = "Tool to generate node documentation for the node catalog on the Graphite website"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Local dependencies
+graphene-std = { workspace = true }
+interpreted-executor = { workspace = true }
+graph-craft = { workspace = true, features = ["loading"] }
+preprocessor = { workspace = true }
+
+# Workspace dependencies
+indoc = { workspace = true }
+convert_case = { workspace = true }

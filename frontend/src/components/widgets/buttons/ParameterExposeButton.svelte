@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { FrontendGraphDataType, ActionShortcut } from "@graphite/messages";
+	import type { FrontendGraphDataType, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 

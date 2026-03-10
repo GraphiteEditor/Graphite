@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { MenuListEntry, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { IconName } from "@graphite/icons";
-	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
@@ -12,6 +12,7 @@
 	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 
 	let self: MenuList;
+	let open = false;
 
 	// Note: IconButton should instead be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
@@ -52,7 +53,7 @@
 		}
 
 		// Focus the target so that keyboard inputs are sent to the dropdown
-		(e.target as HTMLElement | undefined)?.focus();
+		if (e.target instanceof HTMLElement) e.target.focus();
 
 		// Open the menu list floating menu
 		if (self) self.open = true;
@@ -93,9 +94,9 @@
 	</button>
 	{#if menuListChildrenExists}
 		<MenuList
-			on:open={({ detail }) => self && (self.open = detail)}
 			on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
-			open={self?.open || false}
+			on:open={({ detail }) => (open = detail)}
+			{open}
 			entries={menuListChildren || []}
 			entriesHash={menuListChildrenHash || 0n}
 			direction="Bottom"

@@ -46,12 +46,12 @@ enum Command {
 		/// Path to the .graphite document
 		document: PathBuf,
 	},
-	/// Export a .graphite document to a file (SVG, PNG, or JPG).
+	/// Export a .graphite document to a file (SVG, PNG, JPG, or GIF).
 	Export {
 		/// Path to the .graphite document
 		document: PathBuf,
 
-		/// Output file path (extension determines format: .svg, .png, .jpg)
+		/// Output file path (extension determines format: .svg, .png, .jpg, .gif)
 		#[clap(long, short = 'o')]
 		output: PathBuf,
 
@@ -74,6 +74,18 @@ enum Command {
 		/// Transparent background for PNG exports
 		#[clap(long)]
 		transparent: bool,
+
+		/// Frames per second for GIF animation (default: 30)
+		#[clap(long, default_value = "30")]
+		fps: f64,
+
+		/// Total number of frames for GIF animation
+		#[clap(long)]
+		frames: Option<u32>,
+
+		/// Animation duration in seconds for GIF (takes precedence over --frames)
+		#[clap(long)]
+		duration: Option<f64>,
 	},
 	ListNodeIdentifiers,
 }
@@ -97,10 +109,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		Command::Compile { ref document, .. } => document,
 		Command::Export { ref document, .. } => document,
 		Command::ListNodeIdentifiers => {
-			let mut ids: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
-			ids.sort_by_key(|x| x.name.clone());
-			for id in ids {
-				println!("{}", id.name)
+			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
+			nodes.sort_by_key(|x| x.as_str().to_string());
+			for id in nodes {
+				println!("{}", id.as_str());
 			}
 			return Ok(());
 		}
@@ -108,7 +120,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
 
-	log::info!("creating gpu context",);
+	log::info!("Creating GPU context");
 	let mut application_io = block_on(WasmApplicationIo::new_offscreen());
 
 	if let Command::Export { image: Some(ref image_path), .. } = app.command {
@@ -125,7 +137,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
 	let device = wgpu_executor_ref.context.device.clone();
 
-	let preferences = EditorPreferences { use_vello: true };
+	let preferences = EditorPreferences {
+		max_render_region_size: EditorPreferences::default().max_render_region_size,
+	};
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io_for_api),
@@ -147,6 +161,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			width,
 			height,
 			transparent,
+			fps,
+			frames,
+			duration,
 			..
 		} => {
 			// Spawn thread to poll GPU device
@@ -163,8 +180,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Create executor
 			let executor = create_executor(proto_graph)?;
 
-			// Perform export
-			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, width, height, transparent).await?;
+			if fps <= 0. {
+				return Err("Fps number must be positive".into());
+			}
+
+			// Perform export based on file type
+			if file_type == export::FileType::Gif {
+				let animation = export::AnimationParams::new(fps, frames, duration);
+				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation).await?;
+			} else {
+				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}
@@ -212,7 +238,7 @@ fn fix_nodes(network: &mut NodeNetwork) {
 			// https://github.com/GraphiteEditor/Graphite/blob/d68f91ccca69e90e6d2df78d544d36cd1aaf348e/editor/src/messages/portfolio/portfolio_message_handler.rs#L535
 			// Since the CLI doesn't have the document node definitions, a less robust method of just patching the inputs is used.
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier)
-				if (proto_node_identifier.name.starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.name.starts_with("graphene_core::AddArtboardNode"))
+				if (proto_node_identifier.as_str().starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.as_str().starts_with("graphene_core::AddArtboardNode"))
 					&& node.inputs.len() < 3 =>
 			{
 				node.inputs.push(NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath));

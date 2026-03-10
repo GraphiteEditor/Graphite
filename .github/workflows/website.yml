@@ -37,7 +37,7 @@ jobs:
       - name: 🕸 Install Zola
         uses: taiki-e/install-action@v2
         with:
-          tool: zola@0.20.0
+          tool: zola@0.22.0
 
       - name: 🔍 Check if `website/other` directory changed
         uses: dorny/paths-filter@v3
@@ -67,18 +67,26 @@ jobs:
           rustup update stable
           echo "🦀 Latest updated version of Rust:"
           rustc --version
-          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
+          cd tools/editor-message-tree
+          cargo run
+          cd ../..
           mkdir artifacts
-          mv hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
+          mv website/generated/hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
 
-      - name: 🚚 Move `artifacts` contents to the project root
+      - name: 🚚 Move `artifacts` contents to website/generated
         run: |
-          mv artifacts/* .
+          mkdir -p website/generated
+          mv artifacts/* website/generated/
 
       - name: 🔧 Build auto-generated code docs artifacts into HTML
         run: |
           cd website
           npm run generate-editor-structure
+
+      - name: 📃 Generate node catalog documentation
+        run: |
+          cd tools/node-docs
+          cargo run
 
       - name: 🌐 Build Graphite website with Zola
         env:
@@ -86,7 +94,7 @@ jobs:
         run: |
           cd website
           npm ci
-          npm run lint
+          npm run check
           zola --config config.toml build --minify
 
       - name: 📤 Publish to Cloudflare Pages

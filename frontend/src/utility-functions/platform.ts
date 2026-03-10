@@ -1,5 +1,3 @@
-import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-
 export function browserVersion(): string {
 	const agent = window.navigator.userAgent;
 	let match = agent.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
@@ -25,37 +23,15 @@ export function browserVersion(): string {
 	return `${match[0]} ${match[1]}`;
 }
 
-export type OperatingSystem = "Windows" | "Mac" | "Linux" | "Unknown";
+export type OperatingSystem = "Windows" | "Mac" | "Linux";
 
 export function operatingSystem(): OperatingSystem {
 	const osTable: Record<string, OperatingSystem> = {
 		Windows: "Windows",
 		Mac: "Mac",
 		Linux: "Linux",
-		Unknown: "Unknown",
 	};
 
 	const userAgentOS = Object.keys(osTable).find((key) => window.navigator.userAgent.includes(key));
-	return osTable[userAgentOS || "Unknown"];
-}
-
-export function isDesktop(): boolean {
-	return isPlatformNative();
-}
-
-export function isEventSupported(eventName: string) {
-	const onEventName = `on${eventName}`;
-
-	let tag = "div";
-	if (["select", "change"].includes(eventName)) tag = "select";
-	if (["submit", "reset"].includes(eventName)) tag = "form";
-	if (["error", "load", "abort"].includes(eventName)) tag = "img";
-	const element = document.createElement(tag);
-
-	if (onEventName in element) return true;
-
-	// Check if "return;" gets converted into a function, meaning the event is supported
-	element.setAttribute(eventName, "return;");
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return typeof (element as Record<string, any>)[onEventName] === "function";
+	return osTable[userAgentOS || "Windows"];
 }

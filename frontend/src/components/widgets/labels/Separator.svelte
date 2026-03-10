@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorStyle } from "@graphite/messages";
+	import type { SeparatorDirection, SeparatorStyle } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	// Content
 	export let direction: SeparatorDirection = "Horizontal";
@@ -8,7 +8,7 @@
 
 <div class={`separator ${direction.toLowerCase()} ${style.toLowerCase()}`}>
 	{#if style === "Section"}
-		<div />
+		<div></div>
 	{/if}
 </div>
 

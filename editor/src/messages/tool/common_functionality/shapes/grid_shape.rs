@@ -1,7 +1,7 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -86,7 +86,7 @@ pub struct Grid;
 
 impl Grid {
 	pub fn create_node(grid_type: GridType) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Grid").expect("Grid can't be found");
+		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::grid::IDENTIFIER).expect("Grid can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::GridType(grid_type), false)),

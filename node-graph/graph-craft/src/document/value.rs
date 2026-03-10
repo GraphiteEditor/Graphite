@@ -26,6 +26,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use text_nodes::vector_types::GradientStop;
 
 pub struct TaggedValueTypeError;
 
@@ -116,15 +117,15 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
+			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
-						let internal_id = concrete_type.id?;
 						use std::any::TypeId;
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						Some(match internal_id {
+						Some(match concrete_type.id? {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
@@ -138,6 +139,15 @@ macro_rules! tagged_value {
 			}
 			pub fn from_type_or_none(input: &Type) -> Self {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
+			}
+			pub fn to_debug_string(&self) -> String {
+				match self {
+					Self::None => "()".to_string(),
+					$( Self::$identifier(x) => format!("{:?}", x), )*
+					Self::RenderOutput(_) => "RenderOutput".to_string(),
+					Self::SurfaceFrame(_) => "SurfaceFrame".to_string(),
+					Self::EditorApi(_) => "WasmEditorApi".to_string(),
+				}
 			}
 		}
 
@@ -173,9 +183,6 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	OptionalF64(Option<f64>),
-	ColorNotInTable(Color),
-	OptionalColorNotInTable(Option<Color>),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -202,8 +209,10 @@ tagged_value! {
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ColorTable", alias = "OptionalColor")]
+	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
+	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
 	// ============
 	// STRUCT TYPES
@@ -215,8 +224,6 @@ tagged_value! {
 	DAffine2(DAffine2),
 	Stroke(graphic_types::vector_types::vector::style::Stroke),
 	Gradient(graphic_types::vector_types::vector::style::Gradient),
-	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
-	GradientStops(GradientStops),
 	Font(text_nodes::Font),
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
@@ -231,6 +238,7 @@ tagged_value! {
 	Fill(vector::style::Fill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
+	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
 	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
@@ -244,6 +252,7 @@ tagged_value! {
 	SelectiveColorChoice(raster_nodes::adjustments::SelectiveColorChoice),
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
+	RowsOrColumns(vector::misc::RowsOrColumns),
 	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
@@ -288,15 +297,12 @@ impl TaggedValue {
 		fn to_color(input: &str) -> Option<Color> {
 			// String syntax (e.g. "000000ff")
 			if input.starts_with('"') && input.ends_with('"') {
-				let color = input.trim().trim_matches('"').trim().trim_start_matches('#');
-				match color.len() {
-					6 => return Color::from_rgb_str(color),
-					8 => return Color::from_rgba_str(color),
-					_ => {
-						log::error!("Invalid default value color string: {input}");
-						return None;
-					}
+				let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
+				let color = Color::from_hex_str(hex);
+				if color.is_none() {
+					log::error!("Invalid default value color string: {input}");
 				}
+				return color;
 			}
 
 			// Color constant syntax (e.g. Color::BLACK)
@@ -322,6 +328,35 @@ impl TaggedValue {
 
 			log::error!("Invalid default value color: {input}");
 			None
+		}
+
+		fn to_gradient(input: &str) -> Option<GradientStops> {
+			// String syntax: (e.g. "000000ff, ff0000ff")
+			let stops = input.split(',').filter_map(|s| to_color(s.trim())).collect::<Vec<_>>();
+			if stops.len() == 1 {
+				Some(GradientStops::new(vec![
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: stops[0],
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: stops[0],
+					},
+				]))
+			} else if stops.len() >= 2 {
+				let step = 1. / (stops.len() - 1) as f64;
+				Some(GradientStops::new(stops.into_iter().enumerate().map(|(i, color)| GradientStop {
+					position: i as f64 * step,
+					midpoint: 0.5,
+					color,
+				})))
+			} else {
+				log::error!("Invalid default value gradient string: {input}");
+				None
+			}
 		}
 
 		fn to_reference_point(input: &str) -> Option<ReferencePoint> {
@@ -353,24 +388,25 @@ impl TaggedValue {
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
-				let internal_id = concrete_type.id?;
+				let ty = concrete_type.id?;
 				use std::any::TypeId;
 				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-				let ty = match internal_id {
-					x if x == TypeId::of::<()>() => TaggedValue::None,
-					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
-					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
-					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
-					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
-					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
-					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
-					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
-					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+				let ty = match () {
+					() if ty == TypeId::of::<()>() => TaggedValue::None,
+					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
+					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
+					() if ty == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
+					() if ty == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
+					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
+					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
+					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
+					// `Color` (not in a table) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
+					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
+					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
 				};
 				Some(ty)
@@ -527,9 +563,4 @@ mod fake_hash {
 			self.1.hash(state)
 		}
 	}
-}
-
-#[test]
-fn can_construct_color() {
-	assert_eq!(TaggedValue::from_type(&concrete!(Color)).unwrap(), TaggedValue::ColorNotInTable(Color::default()));
 }

@@ -43,19 +43,28 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 
-			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
-				name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
-				file_type: self.file_type,
-				scale_factor: self.scale_factor,
-				bounds: self.bounds,
-				transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
-			}),
+			ExportDialogMessage::Submit => {
+				let artboard_name = match self.bounds {
+					ExportBounds::Artboard(layer) => self.artboards.get(&layer).cloned(),
+					_ => None,
+				};
+				responses.add_front(PortfolioMessage::SubmitDocumentExport {
+					name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
+					file_type: self.file_type,
+					scale_factor: self.scale_factor,
+					bounds: self.bounds,
+					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
+					artboard_name,
+					artboard_count: self.artboards.len(),
+				})
+			}
 		}
 
 		self.send_dialog_to_frontend(responses);
 	}
 
-	advertise_actions! {ExportDialogUpdate;}
+	advertise_actions!(ExportDialogUpdate;
+	);
 }
 
 impl DialogLayoutHolder for ExportDialogMessageHandler {
@@ -67,16 +76,16 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 			TextButton::new("Export")
 				.emphasized(true)
 				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![ExportDialogMessage::Submit.into()],
 					}
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -104,6 +113,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.unit("")
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+				.increment_step(0.5)
 				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
@@ -122,7 +132,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		} else {
 			self.bounds
 		};
-		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap_or(0);
 
 		let mut entries = choices
 			.into_iter()
@@ -161,10 +171,10 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		];
 
 		Layout(vec![
-			LayoutGroup::Row { widgets: export_type },
-			LayoutGroup::Row { widgets: resolution },
-			LayoutGroup::Row { widgets: export_area },
-			LayoutGroup::Row { widgets: transparent_background },
+			LayoutGroup::row(export_type),
+			LayoutGroup::row(resolution),
+			LayoutGroup::row(export_area),
+			LayoutGroup::row(transparent_background),
 		])
 	}
 }

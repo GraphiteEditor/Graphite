@@ -79,6 +79,7 @@ export default defineConfig([
 			"@typescript-eslint/no-restricted-types": ["error", { types: { null: "Use `undefined` instead." } }],
 
 			// Import plugin config (for intelligently validating module import statements)
+			"import/consistent-type-specifier-style": ["error", "prefer-top-level"],
 			"import/no-unresolved": "error",
 			"import/prefer-default-export": "off",
 			"import/no-relative-packages": "error",

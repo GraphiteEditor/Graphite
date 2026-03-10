@@ -1,4 +1,4 @@
-use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
+use crate::application::Editor;
 use crate::messages::prelude::*;
 use bitflags::bitflags;
 use std::fmt::{self, Display, Formatter};
@@ -67,7 +67,8 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type, num_enum::TryFromPrimitive)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum Key {
 	// Writing system keys
@@ -258,7 +259,7 @@ impl fmt::Display for Key {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
-		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+		let is_mac = Editor::environment().is_mac();
 
 		let name = match self {
 			// Writing system keys
@@ -275,21 +276,21 @@ impl fmt::Display for Key {
 			Self::Slash => "/",
 
 			// Functional keys
-			Self::Alt => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Alt",
-				KeyboardPlatformLayout::Mac => "⌥",
+			Self::Alt => match is_mac {
+				true => "⌥",
+				false => "Alt",
 			},
-			Self::Meta => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "⊞",
-				KeyboardPlatformLayout::Mac => "⌘",
+			Self::Meta => match is_mac {
+				true => "⌘",
+				false => "⊞",
 			},
-			Self::Shift => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Shift",
-				KeyboardPlatformLayout::Mac => "⇧",
+			Self::Shift => match is_mac {
+				true => "⇧",
+				false => "Shift",
 			},
-			Self::Control => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Ctrl",
-				KeyboardPlatformLayout::Mac => "⌃",
+			Self::Control => match is_mac {
+				true => "⌃",
+				false => "Ctrl",
 			},
 			Self::Backspace => "⌫",
 
@@ -317,9 +318,9 @@ impl fmt::Display for Key {
 
 			// Other keys that aren't part of the W3C spec
 			Self::Command => "⌘",
-			Self::Accel => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Ctrl",
-				KeyboardPlatformLayout::Mac => "⌘",
+			Self::Accel => match is_mac {
+				true => "⌘",
+				false => "Ctrl",
 			},
 			Self::MouseLeft => "Click",
 			Self::MouseRight => "R.Click",
@@ -356,10 +357,9 @@ impl fmt::Display for KeysGroup {
 			.0
 			.iter()
 			.map(|key| {
-				let keyboard_layout = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
-				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
+				if Editor::environment().is_mac() && key_is_modifier {
 					key.to_string()
 				} else {
 					key.to_string() + JOINER_MARK
@@ -380,7 +380,8 @@ impl fmt::Display for KeysGroup {
 // LabeledKey
 // ==========
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LabeledKey {
 	key: Key,
 	label: String,
@@ -396,7 +397,8 @@ impl LabeledKey {
 // MouseMotion
 // ===========
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MouseMotion {
 	None,
 	Lmb,
@@ -416,7 +418,8 @@ pub enum MouseMotion {
 // LabeledKeyOrMouseMotion
 // =======================
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LabeledKeyOrMouseMotion {
 	Key(LabeledKey),
@@ -438,7 +441,8 @@ impl From<Key> for LabeledKeyOrMouseMotion {
 // LabeledShortcut
 // ===============
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LabeledShortcut(pub Vec<LabeledKeyOrMouseMotion>);
 
 impl From<KeysGroup> for LabeledShortcut {

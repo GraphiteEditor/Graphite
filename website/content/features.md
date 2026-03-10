@@ -3,7 +3,7 @@ title = "Graphite features"
 
 [extra]
 css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css", "/component/youtube-embed.css"]
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 +++
 
 <section>
@@ -103,7 +103,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Procedural vector editing and usability</span>
 		</div>
 		<!-- Alpha 4 -->
-		<div class="feature-icon ongoing heading" data-year="2025">
+		<div class="feature-icon ongoing heading" data-year="2025–">
 			<h3>— Alpha 4 —</h3>
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
@@ -138,37 +138,37 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 66" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>All-around performance optimizations</span>
 		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Desktop app (Windows, Mac, Linux)</span>
-		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Blend tool to morph between shapes</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Expanded imaging model data format</span>
+			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Stable document format</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Desktop app <a href="/#desktop-first-and-web-ready">release candidates</a></span>
+		</div>
+		<!-- Beta 1 -->
+		<div class="feature-icon heading" data-year="Early 2026">
+			<h3>— Beta 1 —</h3>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Desktop app release and 1.0 launch</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Context menus throughout the editor</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 64" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Node version management</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Stable document format</span>
-		</div>
-		<!-- Beta 1 -->
-		<div class="feature-icon heading" data-year="2026">
-			<h3>— Beta 1 —</h3>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Simplified main properties panel</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 64" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Node version management</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -193,6 +193,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Custom attributes for table data</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Expanded imaging model data format</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -303,7 +307,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Raw photo processing</span>
 		</div>
 		<!-- LTS Releases -->
-		<div class="feature-icon heading">
+		<div class="feature-icon heading" data-year="Future">
 			<h3>— LTS Releases —</h3>
 		</div>
 		<div class="feature-icon">
@@ -344,7 +348,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 49" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>AI nodes and tools (e.g. magic wand)</span>
+			<span>Neural nodes/tools like Magic Wand</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 20" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
