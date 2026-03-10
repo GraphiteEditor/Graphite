@@ -589,6 +589,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::RenderScrollbars);
 				if opened {
 					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 				}
 				if open {
 					responses.add(ToolMessage::DeactivateTools);
