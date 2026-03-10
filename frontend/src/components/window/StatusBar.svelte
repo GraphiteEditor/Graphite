@@ -40,7 +40,12 @@
 		justify-content: space-between;
 
 		.hints {
-			overflow: hidden;
+			overflow-x: auto;
+			scrollbar-width: none;
+
+			&::-webkit-scrollbar {
+				display: none;
+			}
 			--row-height: 24px;
 			margin: 0 4px;
 			max-width: calc(100% - 2 * 4px);
