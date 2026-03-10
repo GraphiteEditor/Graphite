@@ -41,13 +41,9 @@ export function setupViewportResizeObserver(editor: Editor) {
 			const bounds = entry.target.getBoundingClientRect();
 
 			// TODO: Consider passing physical sizes as well to eliminate pixel inaccuracies since width and height could be rounded differently
-			const scale = logicalWidth > 0 ? physicalWidth / logicalWidth : 1;
+			const scale = logicalWidth > 0 && physicalWidth > 0 ? physicalWidth / logicalWidth : 1;
 
-			if (!scale || scale <= 0) {
-				editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, 1e-6);
-			} else {
-				editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
-			}
+			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 		}
 	});
 
