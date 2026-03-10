@@ -11,7 +11,8 @@ pub struct PreferencesMessageContext<'a> {
 	pub tool_message_handler: &'a ToolMessageHandler,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,

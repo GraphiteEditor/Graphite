@@ -72,7 +72,7 @@ export default defineConfig([
 			],
 			"@typescript-eslint/consistent-type-imports": "error",
 			"@typescript-eslint/consistent-type-definitions": ["error", "type"],
-			"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "as", objectLiteralTypeAssertions: "never" }],
+			"@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
 			"@typescript-eslint/consistent-indexed-object-style": ["error", "record"],
 			"@typescript-eslint/consistent-generic-constructors": ["error", "constructor"],
 			"@typescript-eslint/no-restricted-types": ["error", { types: { null: "Use `undefined` instead." } }],

@@ -11,6 +11,7 @@ default = ["serde"]
 nightly = []
 type_id_logging = []
 dealloc_nodes = []
+wasm = ["tsify", "wasm-bindgen", "no-std-types/wasm"]
 
 [dependencies]
 # Local dependencies
@@ -29,7 +30,6 @@ rustc-hash = { workspace = true }
 dyn-any = { workspace = true }
 ctor = { workspace = true }
 rand_chacha = { workspace = true }
-specta = { workspace = true }
 image = { workspace = true }
 tinyvec = { workspace = true }
 parley = { workspace = true }
@@ -42,6 +42,8 @@ polycool = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies

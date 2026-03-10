@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "Inflector"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1157,9 +1151,10 @@ dependencies = [
  "serde",
  "serde_json",
  "skrifa 0.40.0",
- "specta",
  "tinyvec",
  "tokio",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2290,9 +2285,9 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
- "specta",
  "text-nodes",
  "tokio",
+ "tsify",
  "url",
  "vector-nodes",
  "wasm-bindgen",
@@ -2348,7 +2343,8 @@ dependencies = [
  "raster-types",
  "serde",
  "serde_json",
- "specta",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2414,8 +2410,8 @@ dependencies = [
  "raster-types",
  "serde",
  "serde_json",
- "specta",
  "vector-types",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2538,11 +2534,12 @@ dependencies = [
  "once_cell",
  "preprocessor",
  "serde",
+ "serde_bytes",
  "serde_json",
- "specta",
  "spin",
  "thiserror 2.0.18",
  "tokio",
+ "tsify",
  "usvg",
  "vello",
  "wasm-bindgen",
@@ -3740,8 +3737,9 @@ dependencies = [
  "num-traits",
  "num_enum",
  "serde",
- "specta",
  "spirv-std",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4295,8 +4293,9 @@ dependencies = [
  "node-macro",
  "path-bool",
  "serde",
- "specta",
+ "tsify",
  "vector-types",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4919,10 +4918,11 @@ dependencies = [
  "raster-nodes-shaders",
  "raster-types",
  "serde",
- "specta",
  "spirv-std",
  "tokio",
+ "tsify",
  "vector-types",
+ "wasm-bindgen",
  "wgpu-executor",
 ]
 
@@ -4955,7 +4955,8 @@ dependencies = [
  "node-macro",
  "serde",
  "serde_json",
- "specta",
+ "tsify",
+ "wasm-bindgen",
  "wgpu",
 ]
 
@@ -5640,6 +5641,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5d440709e79d88e51ac01c4b72fc6cb7314017bb7da9eeff678aa94c10e3ea8"
+dependencies = [
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5653,6 +5664,17 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5903,29 +5925,6 @@ dependencies = [
  "byteorder",
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "specta"
-version = "2.0.0-rc.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab7f01e9310a820edd31c80fde3cae445295adde21a3f9416517d7d65015b971"
-dependencies = [
- "glam",
- "specta-macros",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "specta-macros"
-version = "2.0.0-rc.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0074b9e30ed84c6924eb63ad8d2fe71cdc82628525d84b1fcb1f2fd40676517"
-dependencies = [
- "Inflector",
- "proc-macro2",
- "quote",
- "syn 2.0.106",
 ]
 
 [[package]]
@@ -6245,7 +6244,9 @@ dependencies = [
  "parley",
  "serde",
  "skrifa 0.40.0",
+ "tsify",
  "vector-types",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6666,6 +6667,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
+name = "tsify"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ec91b85e6c6592ed28636cb1dd1fac377ecbbeb170ff1d79f97aac5e38926d"
+dependencies = [
+ "serde",
+ "serde-wasm-bindgen",
+ "tsify-macros",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "tsify-macros"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fc2c44dc9fe4baf55b88e032621b7a11b215a1f0a7de8d0aa04367207d915bc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.106",
+]
+
+[[package]]
 name = "ttf-parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6909,7 +6934,9 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "tokio",
+ "tsify",
  "vector-types",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6931,8 +6958,9 @@ dependencies = [
  "polycool",
  "rustc-hash 2.1.1",
  "serde",
- "specta",
  "tinyvec",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]

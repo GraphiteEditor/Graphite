@@ -8,7 +8,7 @@ export function createFontsManager(editor: Editor) {
 	// Subscribe to process backend events
 	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		const response = await fetch(FONT_LIST_API);
-		const fontListResponse = (await response.json()) as { items: ApiResponse };
+		const fontListResponse: { items: ApiResponse } = await response.json();
 		const fontListData = fontListResponse.items;
 
 		const catalog = fontListData.map((font) => {

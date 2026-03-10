@@ -150,7 +150,8 @@ impl PivotGizmo {
 	}
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PivotGizmoType {
 	// Pivot
 	#[default]
@@ -161,7 +162,8 @@ pub enum PivotGizmoType {
 	// TODO: Add "Individual"
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PivotGizmoState {
 	pub enabled: bool,
 	pub gizmo_type: PivotGizmoType,

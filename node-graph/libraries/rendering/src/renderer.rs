@@ -18,8 +18,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
 use graphic_types::{Artboard, Graphic};
-use kurbo::Affine;
-use kurbo::Shape;
+use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -260,6 +259,36 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	let cols = transform.to_cols_array();
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
+}
+
+fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::Color) {
+	use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
+
+	let outline_stroke = kurbo::Stroke {
+		width: LAYER_OUTLINE_STROKE_WEIGHT / if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. },
+		miter_limit: 4.,
+		join: Join::Miter,
+		start_cap: Cap::Butt,
+		end_cap: Cap::Butt,
+		dash_pattern: Default::default(),
+		dash_offset: 0.,
+	};
+
+	let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
+	let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+
+	(outline_stroke, outline_color_peniko)
+}
+
+fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_params: &RenderParams) {
+	use graphic_types::vector_types::vector::PointId;
+
+	let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
+
+	let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
+	outline_path.apply_affine(Affine::new(outline_transform.to_cols_array()));
+
+	scene.stroke(&outline_stroke, Affine::IDENTITY, outline_color_peniko, None, &outline_path);
 }
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
@@ -935,10 +964,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
 		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
-		use vello::kurbo::{Cap, Join};
-		use vello::peniko;
 
 		for row in self.iter() {
 			use graphic_types::vector_types::vector;
@@ -1111,20 +1137,9 @@ impl Render for Table<Vector> {
 			// Render the path
 			match render_params.render_mode {
 				RenderMode::Outline => {
-					let outline_stroke = kurbo::Stroke {
-						width: LAYER_OUTLINE_STROKE_WEIGHT / if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. },
-						miter_limit: 4.,
-						join: Join::Miter,
-						start_cap: Cap::Butt,
-						end_cap: Cap::Butt,
-						dash_pattern: Default::default(),
-						dash_offset: 0.,
-					};
+					let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
-					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
-
-					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
+					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
 				}
 				_ => {
 					if use_layer {
@@ -1375,8 +1390,6 @@ impl Render for Table<Raster<CPU>> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
-		use vello::peniko;
-
 		for row in self.iter() {
 			let image = &row.element;
 			if image.data.is_empty() {
@@ -1389,7 +1402,7 @@ impl Render for Table<Raster<CPU>> {
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 			let mut layer = false;
 
-			if (opacity < 1. || alpha_blending.blend_mode != BlendMode::default())
+			if (opacity < 1. || (render_params.render_mode != RenderMode::Outline && alpha_blending.blend_mode != BlendMode::default()))
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false)
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
@@ -1397,6 +1410,19 @@ impl Render for Table<Raster<CPU>> {
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
+
+			if let RenderMode::Outline = render_params.render_mode {
+				let outline_transform = transform * *row.transform;
+				draw_raster_outline(scene, &outline_transform, render_params);
+
+				if layer {
+					scene.pop_layer();
+				}
+
+				continue;
+			}
+
+			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
 			let image_brush = peniko::ImageBrush::new(peniko::ImageData {
 				data: image.to_flat_u8().0.into(),
@@ -1406,7 +1432,6 @@ impl Render for Table<Raster<CPU>> {
 				alpha_type: peniko::ImageAlphaType::Alpha,
 			})
 			.with_extend(peniko::Extend::Repeat);
-			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
 			scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
 
@@ -1441,19 +1466,34 @@ impl Render for Table<Raster<GPU>> {
 		log::warn!("tried to render texture as an svg");
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
-		use vello::peniko;
-
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for row in self.iter() {
-			let blend_mode = *row.alpha_blending;
+			let alpha_blending = *row.alpha_blending;
+			let blend_mode = match render_params.render_mode {
+				RenderMode::Outline => peniko::Mix::Normal,
+				_ => alpha_blending.blend_mode.to_peniko(),
+			};
+
 			let mut layer = false;
-			if blend_mode != Default::default()
+
+			if (render_params.render_mode != RenderMode::Outline && alpha_blending != Default::default())
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true)
 			{
-				let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
+				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(peniko::Fill::NonZero, blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, alpha_blending.opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
+			}
+
+			if let RenderMode::Outline = render_params.render_mode {
+				let outline_transform = transform * *row.transform;
+				draw_raster_outline(scene, &outline_transform, render_params);
+
+				if layer {
+					scene.pop_layer();
+				}
+
+				continue;
 			}
 
 			let width = row.element.data().width();

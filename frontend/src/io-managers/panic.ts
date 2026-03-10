@@ -7,8 +7,7 @@ export function createPanicManager(editor: Editor, dialogState: DialogState) {
 	// Code panic dialog and console error
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(Error as any).stackTraceLimit = Infinity;
+		Error.stackTraceLimit = Infinity;
 		const stackTrace = new Error().stack || "";
 		const panicDetails = `${data.panicInfo}${stackTrace ? `\n\n${stackTrace}` : ""}`;
 

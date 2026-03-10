@@ -1,33 +1,53 @@
 import { writable } from "svelte/store";
 
+import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
-import type { NodeGraphError, Box, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath, FrontendMessages } from "@graphite/messages";
-
-type UpdateImportsExports = FrontendMessages["UpdateImportsExports"];
+import type { MessageBody } from "@graphite/subscription-router";
 
 export function createNodeGraphState(editor: Editor) {
-	const { subscribe, update } = writable({
-		box: undefined as Box | undefined,
-		clickTargets: undefined as FrontendClickTargets | undefined,
-		contextMenuInformation: undefined as ContextMenuInformation | undefined,
-		error: undefined as NodeGraphError | undefined,
-		layerWidths: new Map<bigint, number>(),
-		chainWidths: new Map<bigint, number>(),
-		hasLeftInputWire: new Map<bigint, boolean>(),
-		updateImportsExports: undefined as UpdateImportsExports | undefined,
-		nodes: new Map<bigint, FrontendNode>(),
-		visibleNodes: new Set<bigint>(),
+	const { subscribe, update } = writable<{
+		box: BoxSelection | undefined;
+		clickTargets: FrontendClickTargets | undefined;
+		contextMenuInformation: ContextMenuInformation | undefined;
+		error: NodeGraphErrorDiagnostic | undefined;
+		layerWidths: Map<bigint, number>;
+		chainWidths: Map<bigint, number>;
+		hasLeftInputWire: Map<bigint, boolean>;
+		updateImportsExports: MessageBody<"UpdateImportsExports"> | undefined;
+		nodes: Map<bigint, FrontendNode>;
+		visibleNodes: Set<bigint>;
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
-		wires: new Map<bigint, Map<number, WirePath>>(),
-		wirePathInProgress: undefined as WirePath | undefined,
-		nodeDescriptions: new Map<string, string>(),
-		nodeTypes: [] as FrontendNodeType[],
-		thumbnails: new Map<bigint, string>(),
-		selected: [] as bigint[],
+		wires: Map<bigint, Map<number, WirePath>>;
+		wirePathInProgress: WirePath | undefined;
+		nodeDescriptions: Map<string, string>;
+		nodeTypes: FrontendNodeType[];
+		thumbnails: Map<bigint, string>;
+		selected: bigint[];
+		transform: { scale: number; x: number; y: number };
+		inSelectedNetwork: boolean;
+		reorderImportIndex: number | undefined;
+		reorderExportIndex: number | undefined;
+	}>({
+		box: undefined,
+		clickTargets: undefined,
+		contextMenuInformation: undefined,
+		error: undefined,
+		layerWidths: new Map(),
+		chainWidths: new Map(),
+		hasLeftInputWire: new Map(),
+		updateImportsExports: undefined,
+		nodes: new Map(),
+		visibleNodes: new Set(),
+		wires: new Map(),
+		wirePathInProgress: undefined,
+		nodeDescriptions: new Map(),
+		nodeTypes: [],
+		thumbnails: new Map(),
+		selected: [],
 		transform: { scale: 1, x: 0, y: 0 },
 		inSelectedNetwork: true,
-		reorderImportIndex: undefined as number | undefined,
-		reorderExportIndex: undefined as number | undefined,
+		reorderImportIndex: undefined,
+		reorderExportIndex: undefined,
 	});
 
 	function closeContextMenu() {
@@ -148,7 +168,7 @@ export function createNodeGraphState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphTransform", (data) => {
 		update((state) => {
-			state.transform = data.transform;
+			state.transform = { scale: data.scale, x: data.translation[0], y: data.translation[1] };
 			return state;
 		});
 	});

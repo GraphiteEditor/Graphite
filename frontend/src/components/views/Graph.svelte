@@ -3,8 +3,8 @@
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 
+	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
@@ -80,7 +80,8 @@
 
 	function setEditingImportName(event: Event) {
 		if (editingNameImportIndex !== undefined) {
-			let text = (event.target as HTMLInputElement)?.value;
+			if (!(event.target instanceof HTMLInputElement)) return;
+			let text = event.target.value;
 			editor.handle.setImportName(editingNameImportIndex, text);
 			editingNameImportIndex = undefined;
 		}
@@ -88,7 +89,8 @@
 
 	function setEditingExportName(event: Event) {
 		if (editingNameExportIndex !== undefined) {
-			let text = (event.target as HTMLInputElement)?.value;
+			if (!(event.target instanceof HTMLInputElement)) return;
+			let text = event.target.value;
 			editor.handle.setExportName(editingNameExportIndex, text);
 			editingNameExportIndex = undefined;
 		}

@@ -19,7 +19,7 @@
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite WASM editor
+	// Graphite Wasm editor
 	export let editor: Editor;
 	setContext("editor", editor);
 
