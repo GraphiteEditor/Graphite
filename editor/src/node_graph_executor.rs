@@ -454,10 +454,13 @@ impl NodeGraphExecutor {
 				..
 			}) => {
 				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+					responses.add(FrontendMessage::TriggerSaveFile {
+						name,
+						content: svg.into_bytes().into(),
+					});
 				} else if file_type == FileType::Pdf {
-					match svg_to_pdf(&svg, size) {
-						Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name, content: pdf_data }),
+					match svg_to_pdf(&svg, size.into()) {
+						Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name, content: pdf_data.into() }),
 						Err(err) => return Err(format!("Failed to convert SVG to PDF: {err}")),
 					}
 				} else {
