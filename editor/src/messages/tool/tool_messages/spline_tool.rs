@@ -1,6 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -255,11 +256,15 @@ struct SplineToolData {
 	merge_endpoints: Vec<(EndpointPosition, PointId)>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
+	/// Viewport-space start position for newly created layers, used to compute local-space
+	/// positions before the deferred TransformSet has been reflected in metadata.
+	new_layer_viewport_start: Option<DVec2>,
 }
 
 impl SplineToolData {
 	fn cleanup(&mut self) {
 		self.current_layer = None;
+		self.new_layer_viewport_start = None;
 		self.merge_layers = HashSet::new();
 		self.merge_endpoints = Vec::new();
 		self.preview_point = None;
@@ -270,9 +275,7 @@ impl SplineToolData {
 
 	/// Get the snapped point while ignoring current layer
 	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> SnappedPoint {
-		let metadata = document.metadata();
-		let transform = self.current_layer.map_or(metadata.document_to_viewport, |layer| metadata.transform_to_viewport(layer));
-		let point = SnapCandidatePoint::handle(transform.inverse().transform_point2(input.mouse.position));
+		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let ignore = if let Some(layer) = self.current_layer { vec![layer] } else { vec![] };
 		let snap_data = SnapData::ignore(document, input, viewport, &ignore);
 		self.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default())
@@ -400,6 +403,21 @@ impl Fsm for SplineToolFsmState {
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_data.current_layer = Some(layer);
+				tool_data.new_layer_viewport_start = Some(viewport_vec);
+
+				// Position the layer at the initial mouse position via Transform
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_translation(viewport_vec),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						}
+						.into(),
+						NodeGraphMessage::RunDocumentGraph.into(),
+					],
+				});
 
 				SplineToolFsmState::Drawing
 			}
@@ -409,10 +427,25 @@ impl Fsm for SplineToolFsmState {
 					tool_data.extend = false;
 					return SplineToolFsmState::Drawing;
 				}
-				if tool_data.current_layer.is_none() {
+				let Some(layer) = tool_data.current_layer else {
 					return SplineToolFsmState::Ready;
 				};
-				tool_data.next_point = tool_data.snapped_point(document, input, viewport).snapped_point_document;
+
+				// Convert snapped document-space position to layer-local space
+				let snapped_document = tool_data.snapped_point(document, input, viewport).snapped_point_document;
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let viewport_pos = document_to_viewport.transform_point2(snapped_document);
+
+				// For newly created layers, the deferred TransformSet may not yet be reflected
+				// in the metadata, so compute local position from the known viewport start.
+				tool_data.next_point = if let Some(start) = tool_data.new_layer_viewport_start {
+					viewport_pos - start
+				} else {
+					let transform = document.metadata().transform_to_viewport(layer);
+					transform.inverse().transform_point2(viewport_pos)
+				};
+				tool_data.new_layer_viewport_start = None;
+
 				if tool_data.points.last().is_none_or(|last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					let preview_point = tool_data.preview_point;
 					extend_spline(tool_data, false, responses);
@@ -430,13 +463,24 @@ impl Fsm for SplineToolFsmState {
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
 				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
 
-				// Endpoints snapping
+				// Endpoints snapping - closest_point returns local-space positions
 				if let Some((_, _, point)) = join_point {
 					tool_data.next_point = point;
 					tool_data.snap_manager.clear_indicator();
 				} else {
+					// Convert snapped document-space position to layer-local space
 					let snapped_point = tool_data.snapped_point(document, input, viewport);
-					tool_data.next_point = snapped_point.snapped_point_document;
+					let document_to_viewport = document.metadata().document_to_viewport;
+					let viewport_pos = document_to_viewport.transform_point2(snapped_point.snapped_point_document);
+
+					// For newly created layers, the deferred TransformSet may not yet be reflected
+					// in the metadata, so compute local position from the known viewport start.
+					tool_data.next_point = if let Some(start) = tool_data.new_layer_viewport_start {
+						viewport_pos - start
+					} else {
+						let transform = document.metadata().transform_to_viewport(layer);
+						transform.inverse().transform_point2(viewport_pos)
+					};
 					tool_data.snap_manager.update_indicator(snapped_point);
 				}
 
