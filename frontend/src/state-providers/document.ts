@@ -1,42 +1,38 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-
-import {
-	patchLayout,
-	UpdateDocumentBarLayout,
-	UpdateToolOptionsLayout,
-	UpdateToolShelfLayout,
-	UpdateWorkingColorsLayout,
-	UpdateNodeGraphControlBarLayout,
-	UpdateGraphViewOverlay,
-	UpdateGraphFadeArtwork,
-} from "@graphite/messages";
-import type { Layout } from "@graphite/messages";
+import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { Editor } from "@graphite/editor";
+import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDocumentState(editor: Editor) {
-	const state = writable({
-		// Layouts
-		toolOptionsLayout: [] as Layout,
-		documentBarLayout: [] as Layout,
-		toolShelfLayout: [] as Layout,
-		workingColorsLayout: [] as Layout,
-		nodeGraphControlBarLayout: [] as Layout,
-		// Graph view overlay
+	const state = writable<{
+		toolOptionsLayout: Layout;
+		documentBarLayout: Layout;
+		toolShelfLayout: Layout;
+		workingColorsLayout: Layout;
+		nodeGraphControlBarLayout: Layout;
+		graphViewOverlayOpen: boolean;
+		fadeArtwork: number;
+	}>({
+		toolOptionsLayout: [],
+		documentBarLayout: [],
+		toolShelfLayout: [],
+		workingColorsLayout: [],
+		nodeGraphControlBarLayout: [],
 		graphViewOverlayOpen: false,
 		fadeArtwork: 100,
 	});
 	const { subscribe, update } = state;
 
 	// Update layouts
-	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
 			state.fadeArtwork = data.percentage;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -44,7 +40,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -52,7 +48,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -60,7 +56,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -68,7 +64,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", (data) => {
 		update((state) => {
 			patchLayout(state.nodeGraphControlBarLayout, data);
 			return state;
@@ -76,7 +72,7 @@ export function createDocumentState(editor: Editor) {
 	});
 
 	// Show or hide the graph view overlay
-	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
 			return state;

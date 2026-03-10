@@ -3,11 +3,9 @@ use parley::fontique::Blob;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// Import specta so derive macros can find it
-use core_types::specta;
-
 /// A font type (storing font family and font style and an optional preview URL)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, DynAny, core_types::specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, DynAny)]
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,

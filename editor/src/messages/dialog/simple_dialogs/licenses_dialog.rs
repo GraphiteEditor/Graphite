@@ -12,7 +12,7 @@ impl DialogLayoutHolder for LicensesDialog {
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DialogClose.into()).widget_instance()];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 
 	fn layout_column_2(&self) -> Layout {
@@ -34,10 +34,10 @@ impl DialogLayoutHolder for LicensesDialog {
 		];
 		let widgets = button_definitions
 			.iter()
-			.map(|&(icon, label, message_factory)| TextButton::new(label).icon(Some((icon).into())).flush(true).on_update(move |_| message_factory()).widget_instance())
+			.map(|&(icon, label, message_factory)| TextButton::new(label).icon(icon).flush(true).on_update(move |_| message_factory()).widget_instance())
 			.collect();
 
-		Layout(vec![LayoutGroup::Column { widgets }])
+		Layout(vec![LayoutGroup::column(widgets)])
 	}
 }
 
@@ -56,12 +56,8 @@ impl LayoutHolder for LicensesDialog {
 		let description = description.trim();
 
 		Layout(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Graphite is free, open source software").bold(true).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(description).multiline(true).widget_instance()],
-			},
+			LayoutGroup::row(vec![TextLabel::new("Graphite is free, open source software").bold(true).widget_instance()]),
+			LayoutGroup::row(vec![TextLabel::new(description).multiline(true).widget_instance()]),
 		])
 	}
 }

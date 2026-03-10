@@ -1,16 +1,15 @@
-import { type Editor } from "@graphite/editor";
-import { TriggerClipboardWrite, TriggerSelectionRead, TriggerSelectionWrite } from "@graphite/messages";
+import type { Editor } from "@graphite/editor";
 
 export function createClipboardManager(editor: Editor) {
 	// Subscribe to process backend event
-	editor.subscriptions.subscribeJsMessage(TriggerClipboardWrite, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
 		navigator.clipboard?.writeText?.(data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSelectionRead, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		editor.handle.readSelection(readAtCaret(data.cut), data.cut);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSelectionWrite, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
 }
@@ -44,7 +43,7 @@ function readAtCaret(cut: boolean): string | undefined {
 		return undefined;
 	}
 
-	const selectedText = selection.toString();
+	const selectedText = String(selection);
 	if (!selectedText) return undefined;
 
 	if (cut) {

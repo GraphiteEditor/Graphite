@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::process;
 use std::process::Command;
 
-use crate::{LicenceSource, LicenseEntry, Package};
+use crate::{Error, LicenceSource, LicenseEntry, Package};
 
 pub struct NpmLicenseSource {
 	dir: PathBuf,
@@ -16,8 +15,8 @@ impl NpmLicenseSource {
 }
 
 impl LicenceSource for NpmLicenseSource {
-	fn licenses(&self) -> Vec<LicenseEntry> {
-		parse(run(&self.dir))
+	fn licenses(&self) -> Result<Vec<LicenseEntry>, Error> {
+		Ok(parse(run(&self.dir)?))
 	}
 }
 
@@ -66,7 +65,7 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 		.collect()
 }
 
-fn run(dir: &std::path::Path) -> Output {
+fn run(dir: &std::path::Path) -> Result<Output, Error> {
 	#[cfg(not(target_os = "windows"))]
 	let mut cmd = Command::new("npx");
 	#[cfg(target_os = "windows")]
@@ -74,20 +73,13 @@ fn run(dir: &std::path::Path) -> Output {
 	cmd.args(["license-checker-rseidelsohn", "--production", "--json"]);
 	cmd.current_dir(dir);
 
-	let output = cmd.output().unwrap_or_else(|e| {
-		eprintln!("Failed to run npx license-checker-rseidelsohn: {e}");
-		process::exit(1);
-	});
+	let output = cmd.output().map_err(|e| Error::Io(e, "Failed to run npx license-checker-rseidelsohn".into()))?;
 
 	if !output.status.success() {
-		eprintln!("npx license-checker-rseidelsohn failed:\n{}", String::from_utf8_lossy(&output.stderr));
-		process::exit(1);
+		return Err(Error::Command(format!("npx license-checker-rseidelsohn failed:\n{}", String::from_utf8_lossy(&output.stderr))));
 	}
 
-	let json_str = String::from_utf8(output.stdout).expect("Invalid UTF-8 from license-checker");
+	let json_str = String::from_utf8(output.stdout).map_err(|e| Error::Utf8(e, "Invalid UTF-8 from license-checker".into()))?;
 
-	serde_json::from_str(&json_str).unwrap_or_else(|e| {
-		eprintln!("Failed to parse license-checker JSON: {e}");
-		process::exit(1)
-	})
+	serde_json::from_str(&json_str).map_err(|e| Error::Json(e, "Failed to parse license-checker JSON".into()))
 }

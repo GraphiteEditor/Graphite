@@ -183,7 +183,7 @@ allow-git = []
 
 [sources.allow-org]
 # 1 or more github.com organizations to allow git sources for
-github = ["linebender", "Rust-GPU", "specta-rs"]
+github = ["linebender", "Rust-GPU"]
 # 1 or more gitlab.com organizations to allow git sources for
 #gitlab = [""]
 # 1 or more bitbucket.org organizations to allow git sources for
