@@ -13,7 +13,8 @@ use glam::DAffine2;
 ///
 /// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum Fill {
 	#[default]
 	None,
@@ -157,7 +158,8 @@ impl From<Gradient> for Fill {
 ///
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum FillChoice {
 	#[default]
 	None,
@@ -204,7 +206,8 @@ impl From<Fill> for FillChoice {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum FillType {
 	#[default]
@@ -214,7 +217,8 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
@@ -234,7 +238,8 @@ impl StrokeCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
@@ -254,7 +259,8 @@ impl StrokeJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
@@ -270,7 +276,8 @@ impl StrokeAlign {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
@@ -289,7 +296,8 @@ fn daffine2_identity() -> DAffine2 {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 #[serde(default)]
 pub struct Stroke {
 	/// Stroke color
@@ -481,7 +489,8 @@ impl Default for Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
@@ -648,7 +657,8 @@ impl PathStyle {
 }
 
 /// Ways the user can choose to view the artwork in the viewport.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
 pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]

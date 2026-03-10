@@ -14,17 +14,35 @@ fn has_attribute(attrs: &[Attribute], target: &str) -> bool {
 /// Make setting strings easier by allowing all types that `impl Into<String>`
 ///
 /// Returns the new input type and a conversion to the original.
-fn easier_string_assignment(field_ty: &Type, field_ident: &Ident) -> (TokenStream2, TokenStream2) {
-	if let Type::Path(type_path) = field_ty {
-		if let Some(last_segment) = type_path.path.segments.last() {
-			// Check if this type is a `String`
-			// Based on https://stackoverflow.com/questions/66906261/rust-proc-macro-derive-how-do-i-check-if-a-field-is-of-a-primitive-type-like-b
-			if last_segment.ident == Ident::new("String", last_segment.ident.span()) {
+fn easier_string_assignment(field: &Field, field_ty: &Type, field_ident: &Ident) -> (TokenStream2, TokenStream2) {
+	let has_string_attr = has_attribute(&field.attrs, "string");
+
+	if let Type::Path(type_path) = field_ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+	{
+		// Check for `Option<String>` or `Option<StringAlias>` with `#[widget_builder(string)]`
+		if last_segment.ident == Ident::new("Option", last_segment.ident.span())
+			&& let PathArguments::AngleBracketed(generic_args) = &last_segment.arguments
+		{
+			let inner_is_string = generic_args.args.first().is_some_and(|arg| {
+				matches!(arg, syn::GenericArgument::Type(Type::Path(inner_path))
+				if inner_path.path.segments.last().is_some_and(|seg| seg.ident == Ident::new("String", seg.ident.span())))
+			});
+			if inner_is_string || has_string_attr {
 				return (
-					quote::quote_spanned!(type_path.span()=> impl Into<String>),
-					quote::quote_spanned!(field_ident.span()=> #field_ident.into()),
+					quote::quote_spanned!(field_ty.span()=> impl Into<String>),
+					quote::quote_spanned!(field_ident.span()=> Some(#field_ident.into())),
 				);
 			}
+		}
+
+		// Check if this type is a `String`
+		// Based on https://stackoverflow.com/questions/66906261/rust-proc-macro-derive-how-do-i-check-if-a-field-is-of-a-primitive-type-like-b
+		if last_segment.ident == Ident::new("String", last_segment.ident.span()) || has_string_attr {
+			return (
+				quote::quote_spanned!(field_ty.span()=> impl Into<String>),
+				quote::quote_spanned!(field_ident.span()=> #field_ident.into()),
+			);
 		}
 	}
 	(quote::quote_spanned!(field_ty.span()=> #field_ty), quote::quote_spanned!(field_ident.span()=> #field_ident))
@@ -45,21 +63,18 @@ fn find_type_and_assignment(field: &Field) -> syn::Result<(TokenStream2, TokenSt
 	let field_ty = &field.ty;
 	let field_ident = extract_ident(field)?;
 
-	let (mut function_input_ty, mut assignment) = easier_string_assignment(field_ty, field_ident);
+	let (mut function_input_ty, mut assignment) = easier_string_assignment(field, field_ty, field_ident);
 
 	// Check if type is `WidgetCallback`
-	if let Type::Path(type_path) = field_ty {
-		if let Some(last_segment) = type_path.path.segments.last() {
-			if let PathArguments::AngleBracketed(generic_args) = &last_segment.arguments {
-				if let Some(first_generic) = generic_args.args.first() {
-					if last_segment.ident == Ident::new("WidgetCallback", last_segment.ident.span()) {
-						// Assign builder pattern to assign the closure directly
-						function_input_ty = quote::quote_spanned!(field_ty.span()=> impl Fn(&#first_generic) -> crate::messages::message::Message + 'static + Send + Sync);
-						assignment = quote::quote_spanned!(field_ident.span()=> crate::messages::layout::utility_types::layout_widget::WidgetCallback::new(#field_ident));
-					}
-				}
-			}
-		}
+	if let Type::Path(type_path) = field_ty
+		&& let Some(last_segment) = type_path.path.segments.last()
+		&& let PathArguments::AngleBracketed(generic_args) = &last_segment.arguments
+		&& let Some(first_generic) = generic_args.args.first()
+		&& last_segment.ident == Ident::new("WidgetCallback", last_segment.ident.span())
+	{
+		// Assign builder pattern to assign the closure directly
+		function_input_ty = quote::quote_spanned!(field_ty.span()=> impl Fn(&#first_generic) -> crate::messages::message::Message + 'static + Send + Sync);
+		assignment = quote::quote_spanned!(field_ident.span()=> crate::messages::layout::utility_types::layout_widget::WidgetCallback::new(#field_ident));
 	}
 	Ok((function_input_ty, assignment))
 }

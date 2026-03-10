@@ -11,37 +11,46 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 	fn process_message(&mut self, message: AppWindowMessage, responses: &mut std::collections::VecDeque<Message>, _: ()) {
 		match message {
 			AppWindowMessage::PointerLock => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowPointerLock);
 			}
 			AppWindowMessage::PointerLockMove { x, y } => {
-				responses.add(FrontendMessage::WindowPointerLockMove { x, y });
+				responses.add(FrontendMessage::WindowPointerLockMove { position: (x, y) });
 			}
 			AppWindowMessage::Close => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowClose);
 			}
 			AppWindowMessage::Minimize => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowMinimize);
 			}
 			AppWindowMessage::Maximize => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowMaximize);
 			}
 			AppWindowMessage::Fullscreen => {
 				responses.add(FrontendMessage::WindowFullscreen);
 			}
 			AppWindowMessage::Drag => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowDrag);
 			}
 			AppWindowMessage::Hide => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowHide);
 			}
 			AppWindowMessage::HideOthers => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowHideOthers);
 			}
 			AppWindowMessage::ShowAll => {
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowShowAll);
 			}
 			AppWindowMessage::Restart => {
 				responses.add(PortfolioMessage::AutoSaveAllDocuments);
+				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowRestart);
 			}
 		}
@@ -57,7 +66,8 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 	);
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum AppWindowPlatform {
 	#[default]
 	Web,

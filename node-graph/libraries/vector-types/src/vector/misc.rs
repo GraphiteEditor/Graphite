@@ -8,7 +8,8 @@ use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point
 use std::ops::Sub;
 
 /// Represents different geometric interpretations of calculating the centroid (center of mass).
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum CentroidType {
 	/// The center of mass for the area of a solid shape's interior, as if made out of an infinitely flat material.
@@ -19,7 +20,8 @@ pub enum CentroidType {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum RowsOrColumns {
 	#[default]
@@ -65,7 +67,8 @@ impl AsI64 for f64 {
 	}
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum GridType {
 	#[default]
@@ -74,7 +77,8 @@ pub enum GridType {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum ArcType {
 	#[default]
@@ -84,7 +88,8 @@ pub enum ArcType {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum MergeByDistanceAlgorithm {
 	#[default]
@@ -93,7 +98,8 @@ pub enum MergeByDistanceAlgorithm {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum ExtrudeJoiningAlgorithm {
 	All,
@@ -103,7 +109,8 @@ pub enum ExtrudeJoiningAlgorithm {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum PointSpacingType {
 	#[default]
@@ -522,7 +529,8 @@ impl HandleId {
 	}
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum SpiralType {
 	#[default]
