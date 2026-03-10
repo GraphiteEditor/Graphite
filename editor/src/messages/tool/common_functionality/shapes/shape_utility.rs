@@ -171,16 +171,11 @@ pub fn clicked_on_shape_endpoints(layer: LayerNodeIdentifier, document: &Documen
 	let local_end = endpoint;
 
 	let transform = document.metadata().transform_to_viewport(layer);
-	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
-	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
-
 	let mouse_pos = input.mouse.position;
 	let [start, end] = [local_start, local_end].map(|point| transform.transform_point2(point));
 
-	let start_click = (mouse_pos.y - start.y).abs() < threshold_y && (mouse_pos.x - start.x).abs() < threshold_x;
-	let end_click = (mouse_pos.y - end.y).abs() < threshold_y && (mouse_pos.x - end.x).abs() < threshold_x;
+	let start_click = (mouse_pos - start).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2);
+	let end_click = (mouse_pos - end).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2);
 	let endpoint_click = start_click || end_click;
 
 	if endpoint_click {
