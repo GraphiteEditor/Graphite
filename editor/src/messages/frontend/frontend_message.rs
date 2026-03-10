@@ -225,8 +225,6 @@ pub enum FrontendMessage {
 	UpdateDocumentArtwork {
 		svg: String,
 	},
-	// This message is intercepted before being sent to the frontend
-	#[serde(skip)]
 	UpdateImageData {
 		image_data: Vec<(u64, Image<Color>)>,
 	},
