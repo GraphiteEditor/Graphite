@@ -33,10 +33,10 @@ pub enum ShapeType {
 	Arc,
 	Spiral,
 	Grid,
-	Rectangle,
-	Ellipse,
 	Arrow,
-	Line,
+	Line,      // KEEP THIS AT THE END
+	Rectangle, // KEEP THIS AT THE END
+	Ellipse,   // KEEP THIS AT THE END
 }
 
 impl ShapeType {
@@ -46,12 +46,12 @@ impl ShapeType {
 			Self::Star => "Star",
 			Self::Circle => "Circle",
 			Self::Arc => "Arc",
-			Self::Grid => "Grid",
 			Self::Spiral => "Spiral",
-			Self::Rectangle => "Rectangle",
-			Self::Ellipse => "Ellipse",
+			Self::Grid => "Grid",
 			Self::Arrow => "Arrow",
 			Self::Line => "Line",
+			Self::Rectangle => "Rectangle",
+			Self::Ellipse => "Ellipse",
 		})
 		.into()
 	}
@@ -61,7 +61,6 @@ impl ShapeType {
 			Self::Line => "Line Tool",
 			Self::Rectangle => "Rectangle Tool",
 			Self::Ellipse => "Ellipse Tool",
-			Self::Arrow => "Arrow Tool",
 			_ => "",
 		})
 		.into()
@@ -80,7 +79,6 @@ impl ShapeType {
 			Self::Line => "VectorLineTool",
 			Self::Rectangle => "VectorRectangleTool",
 			Self::Ellipse => "VectorEllipseTool",
-			Self::Arrow => "VectorArrowTool",
 			_ => "",
 		})
 		.into()
@@ -91,7 +89,6 @@ impl ShapeType {
 			Self::Line => ToolType::Line,
 			Self::Rectangle => ToolType::Rectangle,
 			Self::Ellipse => ToolType::Ellipse,
-			Self::Arrow => ToolType::Shape,
 			_ => ToolType::Shape,
 		}
 	}
