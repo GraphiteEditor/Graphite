@@ -693,7 +693,17 @@ impl Fsm for ShapeToolFsmState {
 					Line::overlays(document, tool_data, &mut overlay_context);
 					Arrow::overlays(document, tool_data, &mut overlay_context);
 
+					let hovering_over_endpoint = tool_data.line_data.selected_layers_with_position.iter().any(|(layer, endpoints)| {
+						let transform = document.metadata().transform_to_viewport(*layer);
+						endpoints
+							.iter()
+							.any(|&local_pos| (transform.transform_point2(local_pos) - input.mouse.position).length_squared() < SNAP_POINT_TOLERANCE.powi(2))
+					});
+
 					if all_selected_layers_line_or_arrow {
+						let cursor = if hovering_over_endpoint { MouseCursorIcon::Default } else { MouseCursorIcon::Crosshair };
+						tool_data.cursor = cursor;
+						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 						return self;
 					}
 
@@ -722,7 +732,11 @@ impl Fsm for ShapeToolFsmState {
 						}
 					}
 
-					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or_else(|| tool_data.transform_cage_mouse_icon(input));
+					let cursor = tool_data
+						.gizmo_manager
+						.mouse_cursor_icon()
+						.or_else(|| hovering_over_endpoint.then_some(MouseCursorIcon::Default))
+						.unwrap_or_else(|| tool_data.transform_cage_mouse_icon(input));
 
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
