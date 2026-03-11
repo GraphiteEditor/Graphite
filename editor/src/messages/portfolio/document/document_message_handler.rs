@@ -2519,11 +2519,12 @@ impl DocumentMessageHandler {
 						.icon("RenderModeOutline")
 						.tooltip_label("Render Mode: Outline")
 						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
-					// TODO: See issue #320
-					// RadioEntryData::new("PixelPreview")
-					// 	.icon("RenderModePixels")
-					// 	.tooltip_label("Render Mode: Pixel Preview")
-					// 	.on_update(|_| todo!()),
+					RadioEntryData::new("PixelPreview").icon("RenderModePixels").tooltip_label("Render Mode: Pixel Preview").on_update(|_| {
+						DocumentMessage::SetRenderMode {
+							render_mode: RenderMode::PixelPreview,
+						}
+						.into()
+					}),
 					RadioEntryData::new("SvgPreview")
 						.icon("RenderModeSvg")
 						.tooltip_label("Render Mode: SVG Preview")
@@ -2534,7 +2535,7 @@ impl DocumentMessageHandler {
 				if disabled {
 					for entry in &mut entries {
 						entry.tooltip_description = "
-							*Normal* and *Outline* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
+							*Normal*, *Outline*, and *Pixel Preview* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
 							\n\
 							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
 							"
