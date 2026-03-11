@@ -6480,8 +6480,7 @@ dependencies = [
 [[package]]
 name = "vello"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72fef40773530322d5c2ffe3c1107e9874bd8239ac137d1c2b6c1edad695146e"
+source = "git+https://github.com/Keavon/vello.git?branch=0.7.0-fix-images-rendering-blurry#9a2591c80470789eb82681203c21b7d9002bedcb"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
@@ -6499,8 +6498,7 @@ dependencies = [
 [[package]]
 name = "vello_encoding"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24c91203ec4b483440614a9a5c7c2d991932af72c5349659a63ec49476f0b79c"
+source = "git+https://github.com/Keavon/vello.git?branch=0.7.0-fix-images-rendering-blurry#9a2591c80470789eb82681203c21b7d9002bedcb"
 dependencies = [
  "bytemuck",
  "guillotiere",
@@ -6512,8 +6510,7 @@ dependencies = [
 [[package]]
 name = "vello_shaders"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a765d44d4bd354146e44f9a860f4e92effd91a97302549be9e47f0a18d8128c"
+source = "git+https://github.com/Keavon/vello.git?branch=0.7.0-fix-images-rendering-blurry#9a2591c80470789eb82681203c21b7d9002bedcb"
 dependencies = [
  "bytemuck",
  "log",

@@ -1057,7 +1057,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC4").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
@@ -1191,7 +1191,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
-			#[cfg(not(target_family = "wasm"))]
 			PortfolioMessage::SubmitEyedropperPreviewRender => {
 				use crate::consts::EYEDROPPER_PREVIEW_AREA_RESOLUTION;
 
@@ -1222,10 +1221,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 					Ok(message) => responses.add_front(message),
 				}
-			}
-			#[cfg(target_family = "wasm")]
-			PortfolioMessage::SubmitEyedropperPreviewRender => {
-				// TODO: Currently for Wasm, this is implemented through SVG rendering but the Eyedropper tool doesn't work at all when Vello is enabled as the renderer
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;

@@ -237,3 +237,5 @@ debug = true
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
 download-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
+vello = { git = "https://github.com/Keavon/vello.git", branch = "0.7.0-fix-images-rendering-blurry" }
+vello_encoding = { git = "https://github.com/Keavon/vello.git", branch = "0.7.0-fix-images-rendering-blurry" }

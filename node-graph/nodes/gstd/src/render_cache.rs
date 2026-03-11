@@ -106,6 +106,12 @@ struct TileCacheImpl {
 	timestamp: u64,
 	total_memory: usize,
 	cache_key: CacheKey,
+	texture_cache_resolution: UVec2,
+	/// Pool of textures of the same size: `texture_cache_resolution`.
+	/// Reusing textures reduces the wgpu allocation pressure,
+	/// which is a problem on web since we have to wait for
+	/// the browser to garbage collect unused textures, eating up memory.
+	texture_cache: Vec<Arc<wgpu::Texture>>,
 }
 
 #[derive(Clone, Default, dyn_any::DynAny, Debug)]
@@ -214,6 +220,36 @@ impl TileCacheImpl {
 		self.regions.clear();
 		self.total_memory = 0;
 	}
+
+	pub fn request_texture(&mut self, size: UVec2, device: &wgpu::Device) -> Arc<wgpu::Texture> {
+		if self.texture_cache_resolution != size {
+			self.texture_cache_resolution = size;
+			self.texture_cache.clear();
+		}
+		self.texture_cache.truncate(5);
+		for texture in &self.texture_cache {
+			if Arc::strong_count(texture) == 1 {
+				return Arc::clone(texture);
+			}
+		}
+		let texture = Arc::new(device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("viewport_output"),
+			size: wgpu::Extent3d {
+				width: size.x,
+				height: size.y,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			format: wgpu::TextureFormat::Rgba8Unorm,
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
+			view_formats: &[],
+		}));
+		self.texture_cache.push(texture.clone());
+
+		texture
+	}
 }
 
 impl TileCache {
@@ -223,6 +259,10 @@ impl TileCache {
 
 	pub fn store_regions(&self, regions: Vec<CachedRegion>) {
 		self.0.lock().unwrap().store_regions(regions);
+	}
+
+	pub fn request_texture(&self, size: UVec2, device: &wgpu::Device) -> Arc<wgpu::Texture> {
+		self.0.lock().unwrap().request_texture(size, device)
 	}
 }
 
@@ -413,7 +453,11 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, physical_resolution, &device_origin_offset, &footprint.transform, exec);
+
+	let device = &exec.context.device;
+	let output_texture = tile_cache.request_texture(physical_resolution, device);
+
+	let combined_metadata = composite_cached_regions(&all_regions, output_texture.as_ref(), &device_origin_offset, &footprint.transform, exec);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
@@ -462,7 +506,7 @@ where
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
 
 	CachedRegion {
-		texture: rendered_texture.texture,
+		texture: rendered_texture.texture.as_ref().clone(),
 		texture_size: region_pixel_size,
 		tiles: region.tiles.clone(),
 		metadata: result.metadata,
@@ -473,29 +517,14 @@ where
 
 fn composite_cached_regions(
 	regions: &[CachedRegion],
-	output_resolution: UVec2,
+	output_texture: &wgpu::Texture,
 	device_origin_offset: &DVec2,
 	viewport_transform: &DAffine2,
 	exec: &wgpu_executor::WgpuExecutor,
-) -> (wgpu::Texture, rendering::RenderMetadata) {
+) -> rendering::RenderMetadata {
 	let device = &exec.context.device;
 	let queue = &exec.context.queue;
-
-	// TODO: Use texture pool to reuse existing unused textures instead of allocating fresh ones every time
-	let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-		label: Some("viewport_output"),
-		size: wgpu::Extent3d {
-			width: output_resolution.x,
-			height: output_resolution.y,
-			depth_or_array_layers: 1,
-		},
-		mip_level_count: 1,
-		sample_count: 1,
-		dimension: wgpu::TextureDimension::D2,
-		format: wgpu::TextureFormat::Rgba8Unorm,
-		usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
-		view_formats: &[],
-	});
+	let output_resolution = UVec2::new(output_texture.width(), output_texture.height());
 
 	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("composite") });
 	let mut combined_metadata = rendering::RenderMetadata::default();
@@ -548,5 +577,5 @@ fn composite_cached_regions(
 	}
 
 	queue.submit([encoder.finish()]);
-	(output_texture, combined_metadata)
+	combined_metadata
 }
