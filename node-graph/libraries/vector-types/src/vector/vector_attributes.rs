@@ -710,6 +710,10 @@ impl FaceSideSet {
 		self.set.insert(self.index(side));
 	}
 
+	fn remove(&mut self, side: FaceSide) {
+		self.set.set(self.index(side), false);
+	}
+
 	fn contains(&self, side: FaceSide) -> bool {
 		self.set.contains(self.index(side))
 	}
@@ -1102,6 +1106,10 @@ impl<Upstream> Vector<Upstream> {
 		(0..self.point_domain.len()).any(|point_index| self.segment_domain.connected_count(point_index) > 2)
 	}
 
+	pub fn has_regions(&self) -> bool {
+		!self.region_domain.id.is_empty()
+	}
+
 	pub fn construct_faces(&self) -> FaceIterator<'_, Upstream> {
 		let mut adjacency: Vec<Vec<FaceSide>> = vec![Vec::new(); self.point_domain.len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
@@ -1134,7 +1142,14 @@ impl<Upstream> Vector<Upstream> {
 				if seen.contains(side) {
 					continue;
 				}
-				if (self.construct_face(&adjacency, side, &mut faces, &mut seen)).is_none() {
+				if self.construct_face(&adjacency, side, &mut faces, &mut seen).is_none() {
+					// Undo `seen` markings for sides added during this failed face construction,
+					// so they remain available for future face constructions starting from different sides.
+					if let Some(&last_start) = faces.face_start.last() {
+						for &failed_side in &faces.sides[last_start..] {
+							seen.remove(failed_side);
+						}
+					}
 					faces.backtrack();
 				}
 			}
