@@ -196,10 +196,11 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				None
 			};
 
-			let texture = exec
-				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
-				.await
-				.expect("Failed to render Vello scene");
+			let texture = Arc::new(
+				exec.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
+					.await
+					.expect("Failed to render Vello scene"),
+			);
 
 			RenderOutputType::Texture(ImageTexture { texture })
 		}

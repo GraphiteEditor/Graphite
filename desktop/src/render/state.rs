@@ -11,13 +11,13 @@ pub(crate) struct RenderState {
 	executor: WgpuExecutor,
 	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
-	transparent_texture: wgpu::Texture,
+	transparent_texture: std::sync::Arc<wgpu::Texture>,
 	sampler: wgpu::Sampler,
 	desired_width: u32,
 	desired_height: u32,
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
-	viewport_texture: Option<wgpu::Texture>,
+	viewport_texture: Option<std::sync::Arc<wgpu::Texture>>,
 	overlays_texture: Option<TargetTexture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
@@ -50,7 +50,7 @@ impl RenderState {
 
 		surface.configure(&context.device, &config);
 
-		let transparent_texture = context.device.create_texture(&wgpu::TextureDescriptor {
+		let transparent_texture = std::sync::Arc::new(context.device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("Transparent Texture"),
 			size: wgpu::Extent3d {
 				width: 1,
@@ -63,7 +63,7 @@ impl RenderState {
 			format: wgpu::TextureFormat::Bgra8UnormSrgb,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 			view_formats: &[],
-		});
+		}));
 
 		// Create shader module
 		let shader = context.device.create_shader_module(wgpu::include_wgsl!("composite_shader.wgsl"));
@@ -207,7 +207,7 @@ impl RenderState {
 		}
 	}
 
-	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
+	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: std::sync::Arc<wgpu::Texture>) {
 		self.viewport_texture = Some(viewport_texture);
 		self.update_bindgroup();
 	}
