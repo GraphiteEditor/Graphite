@@ -1,6 +1,5 @@
 use core_types::table::{Table, TableRow, TableRowRef};
 use core_types::{Color, Ctx};
-use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -11,27 +10,11 @@ use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
 use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
-#[widget(Radio)]
-pub enum BooleanOperation {
-	#[default]
-	#[icon("BooleanUnion")]
-	Union,
-	#[icon("BooleanSubtractFront")]
-	SubtractFront,
-	#[icon("BooleanSubtractBack")]
-	SubtractBack,
-	#[icon("BooleanIntersect")]
-	Intersect,
-	#[icon("BooleanDifference")]
-	Difference,
-}
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category(""))]
