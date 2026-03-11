@@ -1,0 +1,23 @@
+Cargo.toml
+  e1585ca2daa593ba 240-241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "6d0357bbcf1fca2bf0e80a199230c738b896d9c3",
+  "prompts": {
+    "e1585ca2daa593ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4aff083-1d5c-433a-8a89-0cf98133d9ec",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 6,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
