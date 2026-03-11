@@ -46,7 +46,7 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
-	#[allow(unused)]
+	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
 	cli: Cli,
 	startup_time: Option<Instant>,
