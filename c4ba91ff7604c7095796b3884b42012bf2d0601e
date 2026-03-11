@@ -1,0 +1,27 @@
+editor/src/node_graph_executor.rs
+  21950f46e707e5b8 206-214
+editor/src/node_graph_executor/runtime.rs
+  21950f46e707e5b8 307-310
+editor/src/messages/tool/tool_messages/eyedropper_tool.rs
+  21950f46e707e5b8 4,112,118,124,136,150,207,212-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "c4ba91ff7604c7095796b3884b42012bf2d0601e",
+  "prompts": {
+    "21950f46e707e5b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1dc4fe4-58e1-4f76-8d97-ec59a8ce5124",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 71,
+      "total_deletions": 58,
+      "accepted_lines": 61,
+      "overriden_lines": 2
+    }
+  }
+}
