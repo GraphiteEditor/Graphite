@@ -490,25 +490,31 @@ impl TextToolData {
 		});
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
-			fill: if editing_text.color.is_some() {
-				Fill::Solid(editing_text.color.unwrap().to_gamma_srgb())
-			} else {
-				Fill::None
-			},
+			fill: if let Some(color) = editing_text.color { Fill::Solid(color.to_gamma_srgb()) } else { Fill::None },
 		});
-		responses.add(GraphOperationMessage::TransformSet {
-			layer: self.layer,
-			transform: editing_text.transform,
-			transform_in: TransformIn::Viewport,
-			skip_rerender: true,
-		});
+		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
 
 		self.set_editing(true, font_cache, responses);
 
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
+		// Defer TransformSet until after the graph has run so that downstream_transform_to_viewport
+		// has correct metadata for the new layer (needed for proper placement in transformed parents).
+		let layer = self.layer;
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![
+				GraphOperationMessage::TransformSet {
+					layer,
+					transform,
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				}
+				.into(),
+				NodeGraphMessage::RunDocumentGraph.into(),
+			],
+		});
 	}
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {

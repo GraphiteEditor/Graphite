@@ -1,3 +1,7 @@
+// =============
+// VERTEX SHADER
+// =============
+
 struct VertexOutput {
 	@builtin(position) clip_position: vec4<f32>,
 	@location(0) tex_coords: vec2<f32>,
@@ -6,19 +10,21 @@ struct VertexOutput {
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 	var out: VertexOutput;
-
 	let pos = array(
-		vec2f( -1.0, -1.0),
-		vec2f( 3.0, -1.0),
-		vec2f( -1.0, 3.0),
+		vec2f(-1.0, -1.0),
+		vec2f(3.0, -1.0),
+		vec2f(-1.0, 3.0),
 	);
 	let xy = pos[vertex_index];
-	out.clip_position = vec4f(xy , 0.0, 1.0);
-	let coords = (xy / 2. + 0.5);
+	out.clip_position = vec4f(xy, 0.0, 1.0);
+	let coords = xy / 2. + 0.5;
 	out.tex_coords = vec2f(coords.x, 1. - coords.y);
 	return out;
 }
 
+// ===============
+// FRAGMENT SHADER
+// ===============
 
 struct Constants {
 	viewport_scale: vec2<f32>,

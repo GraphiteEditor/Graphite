@@ -1,6 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -1297,9 +1298,34 @@ impl PenToolData {
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
-		// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
+		// Set up the first point at local origin (0,0) and position the layer at the viewport location via Transform
+		let id = PointId::generate();
+		self.add_point(LastPoint {
+			id,
+			pos: DVec2::ZERO,
+			in_segment: None,
+			handle_start: DVec2::ZERO,
+		});
+		self.next_point = DVec2::ZERO;
+		self.next_handle_start = DVec2::ZERO;
+		self.handle_end = None;
+
+		// Defer the transform setup and point insertion until after the layer is created
 		responses.add(DeferMessage::AfterGraphRun {
-			messages: vec![PenToolMessage::AddPointLayerPosition { layer, viewport: viewport_vec }.into()],
+			messages: vec![
+				GraphOperationMessage::TransformSet {
+					layer,
+					transform: DAffine2::from_translation(viewport_vec),
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				}
+				.into(),
+				GraphOperationMessage::Vector {
+					layer,
+					modification_type: VectorModificationType::InsertPoint { id, position: DVec2::ZERO },
+				}
+				.into(),
+			],
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

@@ -1,5 +1,5 @@
 use core_types::Ctx;
-use core_types::registry::types::{Angle, PixelSize};
+use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DVec2;
@@ -257,29 +257,22 @@ fn qr_code(
 	Table::new_from_element(vector)
 }
 
-/// Generates a line with endpoints at the two chosen coordinates.
+/// Generates an arrow from the origin to the chosen coordinate.
 #[node_macro::node(category("Vector: Shape"))]
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	#[default(0., 0.)] start: PixelSize,
-	#[default(100., 0.)] end: PixelSize,
-	#[unit(" px")]
-	#[default(10)]
-	shaft_width: f64,
-	#[unit(" px")]
-	#[default(30)]
-	head_width: f64,
-	#[unit(" px")]
-	#[default(20)]
-	head_length: f64,
+	#[default(100., 0.)] arrow_to: PixelSize,
+	#[default(10)] shaft_width: PixelLength,
+	#[default(30)] head_width: PixelLength,
+	#[default(20)] head_length: PixelLength,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(start, end, shaft_width, head_width, head_length)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
+fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
 }
 
 trait GridSpacing {

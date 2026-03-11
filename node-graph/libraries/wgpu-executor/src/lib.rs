@@ -1,7 +1,9 @@
 mod context;
+mod resample;
 pub mod shader_runtime;
 pub mod texture_conversion;
 
+use crate::resample::Resampler;
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
 use core_types::Color;
@@ -9,7 +11,6 @@ use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
-pub use rendering::RenderContext;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;
@@ -17,6 +18,7 @@ use wgpu::{Origin3d, TextureAspect};
 
 pub use context::Context as WgpuContext;
 pub use context::ContextBuilder as WgpuContextBuilder;
+pub use rendering::RenderContext;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
 
@@ -24,6 +26,7 @@ pub use wgpu::Features as WgpuFeatures;
 pub struct WgpuExecutor {
 	pub context: WgpuContext,
 	vello_renderer: Mutex<Renderer>,
+	resampler: Resampler,
 	pub shader_runtime: ShaderRuntime,
 }
 
@@ -154,6 +157,10 @@ impl WgpuExecutor {
 		Ok(())
 	}
 
+	pub fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> wgpu::Texture {
+		self.resampler.resample(&self.context, source, target_size, transform)
+	}
+
 	#[cfg(target_family = "wasm")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
@@ -196,9 +203,12 @@ impl WgpuExecutor {
 		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
 		.ok()?;
 
+		let resampler = Resampler::new(&context.device);
+
 		Some(Self {
 			shader_runtime: ShaderRuntime::new(&context),
 			context,
+			resampler,
 			vello_renderer: vello_renderer.into(),
 		})
 	}
