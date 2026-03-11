@@ -1110,6 +1110,15 @@ impl<Upstream> Vector<Upstream> {
 		!self.region_domain.id.is_empty()
 	}
 
+	/// Determines if face-by-face fill rendering should be used.
+	/// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
+	/// Branching vectors with regions (e.g. boolean operation results) use even-odd fill
+	/// on the main stroke path instead, since face decomposition can't determine which
+	/// bounded faces should vs. shouldn't be filled in boolean results.
+	pub fn use_face_fill(&self) -> bool {
+		self.is_branching() && !self.has_regions()
+	}
+
 	pub fn construct_faces(&self) -> FaceIterator<'_, Upstream> {
 		let mut adjacency: Vec<Vec<FaceSide>> = vec![Vec::new(); self.point_domain.len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {

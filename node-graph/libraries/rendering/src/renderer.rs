@@ -854,13 +854,9 @@ impl Render for Table<Vector> {
 				(id, mask_type, vector_row)
 			});
 
-			// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
-			// Branching vectors with regions (e.g. boolean operation results) use even-odd fill
-			// on the main stroke path instead, since face decomposition can't determine which
-			// bounded faces should vs. shouldn't be filled in boolean results.
-			let use_face_fill = vector.is_branching() && !vector.has_regions();
+			let use_face_fill = vector.use_face_fill();
 			if use_face_fill {
-				for mut face_path in vector.construct_faces().filter(|face| !(face.area() < 0.0)) {
+				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 
 					let face_d = face_path.to_svg();
@@ -934,8 +930,7 @@ impl Render for Table<Vector> {
 				}
 				attributes.push_val(fill_and_stroke);
 
-				// Branching vectors with regions use even-odd fill on the main path
-				if vector.is_branching() && vector.has_regions() {
+				if vector.is_branching() && !use_face_fill {
 					attributes.push("fill-rule", "evenodd");
 				}
 
@@ -1095,14 +1090,10 @@ impl Render for Table<Vector> {
 			};
 
 			// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
-			// Branching vectors with regions (e.g. boolean operation results) use even-odd fill
-			// on the main stroke path instead, since face decomposition can't determine which
-			// bounded faces should vs. shouldn't be filled in boolean results.
-			let use_face_fill = row.element.is_branching() && !row.element.has_regions();
+			let use_face_fill = row.element.use_face_fill();
 			let do_fill = |scene: &mut Scene| {
 				if use_face_fill {
-					// For branching paths without regions (meshes), fill each face separately
-					for mut face_path in row.element.construct_faces().filter(|face| !(face.area() < 0.0)) {
+					for mut face_path in row.element.construct_faces().filter(|face| face.area() >= 0.) {
 						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 						let mut kurbo_path = kurbo::BezPath::new();
 						for element in face_path {
@@ -1110,11 +1101,9 @@ impl Render for Table<Vector> {
 						}
 						do_fill_path(scene, &kurbo_path, peniko::Fill::NonZero);
 					}
-				} else if row.element.is_branching() && row.element.has_regions() {
-					// For branching paths with regions (boolean ops), use even-odd fill
+				} else if row.element.is_branching() {
 					do_fill_path(scene, &path, peniko::Fill::EvenOdd);
 				} else {
-					// Simple fill of the entire path
 					do_fill_path(scene, &path, peniko::Fill::NonZero);
 				}
 			};
