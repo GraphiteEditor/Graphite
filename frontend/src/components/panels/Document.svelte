@@ -237,7 +237,7 @@
 			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
 			const svg = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
+				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
 				`.trim();
 
 			if (!rasterizedCanvas) {

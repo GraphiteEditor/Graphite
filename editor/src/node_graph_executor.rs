@@ -185,7 +185,6 @@ impl NodeGraphExecutor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn submit_eyedropper_preview(
 		&mut self,
 		document: &DocumentMessageHandler,
@@ -201,13 +200,25 @@ impl NodeGraphExecutor {
 			resolution: viewport_resolution,
 			..Default::default()
 		};
+
+		// TODO: On desktop, SVG Preview mode cannot work with the Eyedropper tool until <https://github.com/GraphiteEditor/Graphite/issues/3796> is implemented.
+		// TODO: So for now, we fall back to the Eyedropper using Normal mode (Vello) rendering, which looks similar enough to SVG Preview.
+		#[cfg(not(target_family = "wasm"))]
+		let render_mode = match document.render_mode {
+			graphene_std::vector::style::RenderMode::SvgPreview => graphene_std::vector::style::RenderMode::Normal,
+			other => other,
+		};
+		// On web, SVG Preview is handled by the frontend's SVG rasterization path instead, producing the correct result, so we keep it enabled.
+		#[cfg(target_family = "wasm")]
+		let render_mode = document.render_mode;
+
 		let render_config = RenderConfig {
 			viewport,
 			scale: viewport_scale,
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			render_mode: document.render_mode,
+			render_mode,
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,

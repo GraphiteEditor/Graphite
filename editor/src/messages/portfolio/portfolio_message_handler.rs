@@ -1191,7 +1191,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
-			#[cfg(not(target_family = "wasm"))]
 			PortfolioMessage::SubmitEyedropperPreviewRender => {
 				use crate::consts::EYEDROPPER_PREVIEW_AREA_RESOLUTION;
 
@@ -1222,10 +1221,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 					Ok(message) => responses.add_front(message),
 				}
-			}
-			#[cfg(target_family = "wasm")]
-			PortfolioMessage::SubmitEyedropperPreviewRender => {
-				// TODO: Currently for Wasm, this is implemented through SVG rendering but the Eyedropper tool doesn't work at all when Vello is enabled as the renderer
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;
