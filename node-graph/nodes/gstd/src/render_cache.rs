@@ -106,7 +106,12 @@ struct TileCacheImpl {
 	timestamp: u64,
 	total_memory: usize,
 	cache_key: CacheKey,
-	texture_cache: (UVec2, Vec<Arc<wgpu::Texture>>),
+	texture_cache_resolution: UVec2,
+	/// Pool of textures of the same size: `texture_cache_resolution`.
+	/// Reusing textures reduces the wgpu allocation pressure,
+	/// which is a problem on web since we have to wait for
+	/// the browser to garbage collect unused textures, eating up memory.
+	texture_cache: Vec<Arc<wgpu::Texture>>,
 }
 
 #[derive(Clone, Default, dyn_any::DynAny, Debug)]
@@ -217,13 +222,13 @@ impl TileCacheImpl {
 	}
 
 	pub fn request_texture(&mut self, size: UVec2, device: &wgpu::Device) -> Arc<wgpu::Texture> {
-		if self.texture_cache.0 != size {
-			self.texture_cache.0 = size;
-			self.texture_cache.1.clear();
+		if self.texture_cache_resolution != size {
+			self.texture_cache_resolution = size;
+			self.texture_cache.clear();
 		}
-		self.texture_cache.1.truncate(5);
-		for texture in &self.texture_cache.1 {
-			if Arc::strong_count(&texture) == 1 {
+		self.texture_cache.truncate(5);
+		for texture in &self.texture_cache {
+			if Arc::strong_count(texture) == 1 {
 				return Arc::clone(texture);
 			}
 		}
@@ -241,7 +246,7 @@ impl TileCacheImpl {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
 			view_formats: &[],
 		}));
-		self.texture_cache.1.push(texture.clone());
+		self.texture_cache.push(texture.clone());
 
 		texture
 	}
