@@ -309,6 +309,10 @@ impl NodeRuntime {
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
 						}
+						// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
+						_ if render_config.for_eyedropper => {
+							continue;
+						}
 						#[cfg(all(target_family = "wasm", feature = "gpu"))]
 						Ok(TaggedValue::RenderOutput(RenderOutput {
 							data: RenderOutputType::Texture(image_texture),
