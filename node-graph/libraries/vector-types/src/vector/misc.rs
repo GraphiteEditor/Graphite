@@ -7,6 +7,23 @@ use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, QuadBez};
 use std::ops::Sub;
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum BooleanOperation {
+	#[default]
+	#[icon("BooleanUnion")]
+	Union,
+	#[icon("BooleanSubtractFront")]
+	SubtractFront,
+	#[icon("BooleanSubtractBack")]
+	SubtractBack,
+	#[icon("BooleanIntersect")]
+	Intersect,
+	#[icon("BooleanDifference")]
+	Difference,
+}
+
 /// Represents different geometric interpretations of calculating the centroid (center of mass).
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]

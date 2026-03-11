@@ -28,6 +28,7 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	),
 	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
 	("\"OptionalF64\":", "\"F64\":"),
+	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -454,10 +455,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	// ================================
-	// path-bool
+	// path bool
 	// ================================
 	NodeReplacement {
-		node: graphene_std::path_bool::boolean_operation::IDENTIFIER,
+		node: graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER,
 		aliases: &["graphene_path_bool::BooleanOperationNode", "graphene_std::vector::BooleanOperationNode"],
 	},
 	// ================================

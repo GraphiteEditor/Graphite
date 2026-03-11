@@ -14,7 +14,7 @@ pub use graphene_core::debug;
 pub use graphic_nodes;
 pub use graphic_types::{Artboard, Graphic, Vector};
 pub use math_nodes;
-pub use path_bool_nodes as path_bool;
+pub use path_bool_nodes;
 pub use raster_nodes;
 pub use repeat_nodes;
 pub use text_nodes;

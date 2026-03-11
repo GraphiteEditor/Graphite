@@ -16,7 +16,6 @@ graph-craft = { workspace = true }
 graphene-core = { workspace = true }
 wgpu-executor = { workspace = true }
 core-types = { workspace = true }
-path-bool-nodes = { workspace = true }
 dyn-any = { workspace = true }
 
 # Workspace dependencies
