@@ -391,7 +391,9 @@ impl PreferencesDialogMessageHandler {
 			#[cfg(target_os = "macos")]
 			{
 				let vsync_description = "
-					Enable vertical synchronization (VSync), which synchronizes the frame rate to the display's refresh rate. This can reduce screen tearing but may add input latency.\n\
+					Render frames with vertical synchronization (v-sync) to prevent visual tearing within Graphite and the operating system compositor. This introduces increased input latency which is more noticeable on lower refresh rate displays. Future versions of Graphite will aim to reduce the macOS-specific latency without tearing artifacts.\n\
+					\n\
+					The application will restart for this change to take effect.\n\
 					\n\
 					*Default: Off.*
 					"
@@ -404,15 +406,15 @@ impl PreferencesDialogMessageHandler {
 					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					CheckboxInput::new(vsync_checked)
-						.tooltip_label("Enable VSync")
+						.tooltip_label("Enable V-Sync")
 						.tooltip_description(vsync_description)
 						.on_update(|checkbox_input: &CheckboxInput| Message::Batched {
 							messages: Box::new([PreferencesDialogMessage::MayRequireRestart.into(), PreferencesMessage::VSync { vsync: checkbox_input.checked }.into()]),
 						})
 						.for_label(checkbox_id)
 						.widget_instance(),
-					TextLabel::new("Enable VSync")
-						.tooltip_label("Enable VSync")
+					TextLabel::new("Enable V-Sync")
+						.tooltip_label("Enable V-Sync")
 						.tooltip_description(vsync_description)
 						.for_checkbox(checkbox_id)
 						.widget_instance(),
@@ -422,7 +424,7 @@ impl PreferencesDialogMessageHandler {
 			}
 		}
 
-		Layout(rows.into_iter().map(|r| LayoutGroup::row(r)).collect())
+		Layout(rows.into_iter().map(LayoutGroup::row).collect())
 	}
 
 	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
