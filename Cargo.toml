@@ -10,7 +10,6 @@ members = [
 	"editor",
 	"frontend/wasm",
 	"libraries/dyn-any",
-	"libraries/path-bool",
 	"libraries/math-parser",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
@@ -33,7 +32,6 @@ default-members = [
 	"editor",
 	"frontend/wasm",
 	"libraries/dyn-any",
-	"libraries/path-bool",
 	"libraries/math-parser",
 	"node-graph/graph-craft",
 	"node-graph/interpreted-executor",
@@ -67,7 +65,6 @@ dyn-any = { path = "libraries/dyn-any", features = [
 ] }
 preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
-path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/libraries/application-io" }
 core-types = { path = "node-graph/libraries/core-types" }
 no-std-types = { path = "node-graph/libraries/no-std-types" }
@@ -212,6 +209,8 @@ cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"
+linesweeper = "0.3"
+smallvec = "1.13.2"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
