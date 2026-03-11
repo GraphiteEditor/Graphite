@@ -122,7 +122,8 @@
 			let transform = `translate(${x} ${y})`;
 			if (isVertical) transform += " rotate(270)";
 
-			const text = numberInterval >= 1 ? `${labelNumber}` : labelNumber.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
+			const num = Math.abs(labelNumber) < 1e-9 ? 0 : labelNumber;
+			const text = numberInterval >= 1 ? `${num}` : num.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
 
 			results.push({ transform, text });
 			labelNumber += numberInterval * trackedAxis.sign;
