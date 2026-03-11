@@ -3,7 +3,7 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
-use graphene_std::path_bool::BooleanOperation;
+use graphene_std::vector::misc::BooleanOperation;
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
