@@ -129,9 +129,6 @@ fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item =
 	let mut paths = Vec::new();
 	let mut row = TableRow::<Vector>::default();
 
-	// How should we style the result? The previous implementation copied it
-	// from either the first or the last row, depending on the boolean op.
-	// We copy that behaviour, although I'm not sure what motivated it.
 	let copy_from = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
 		vector.clone().next()
 	} else {
@@ -144,24 +141,13 @@ fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item =
 		row.element.upstream_data = copy_from.element.upstream_data.clone();
 	}
 
-	for v in vector {
-		paths.push(to_bez_path(v.element, *v.transform));
+	for element in vector {
+		paths.push(to_bez_path(element.element, *element.transform));
 	}
 
-	log::debug!("boolean op {boolean_operation:?} on paths:");
-	for p in &paths {
-		log::debug!("{}", p.to_svg());
-	}
-
-	// unwrap: Topology::from_paths only errors on a non-closed path, and our paths are closed because `push_subpath`
-	// always makes closed subpaths.
+	// This unwrap is safe because `Topology::from_paths` only errors on a non-closed path, and our paths are closed because `push_subpath` always makes closed subpaths.
 	let top = Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON).unwrap();
-	let contours = top.contours(|w| w.is_inside(boolean_operation));
-
-	log::debug!("boolean op output paths:");
-	for c in contours.contours() {
-		log::debug!("{}", c.path.to_svg());
-	}
+	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
 
 	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
 		row.element.append_subpath(subpath, false);
@@ -268,10 +254,9 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 		.collect()
 }
 
-// I don't think this quantization should be necessary, but
-// - it imitates the previous behavior, and
-// - without it, the oak leaf in changing seasons is funky, since without
-//   quantization the top and bottom points don't quite line up vertically.
+// This quantization should potentially be removed since it's not conceptually necessary,
+// but without it, the oak leaf in the Changing Seasons demo artwork is funky because
+// quantization is needed for the top and bottom points to line up vertically.
 fn quantize_segment(seg: PathSeg) -> PathSeg {
 	const QUANTIZE_EPS: f64 = 1e-8;
 	fn q(p: Point) -> Point {
@@ -352,7 +337,7 @@ pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
 	match binary_op(a, b, FillRule::NonZero, BinaryOp::Intersection) {
 		Ok(contours) => contours.contours().map(|c| c.path.clone()).collect(),
 		Err(e) => {
-			log::error!("boolean op failed: {e}");
+			log::error!("Boolean Operation failed: {e}");
 			Vec::new()
 		}
 	}

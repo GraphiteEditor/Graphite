@@ -3046,7 +3046,7 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path: BezPath = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
+			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
 			let intersection = boolean_intersect(&path, &clip_path);
 			let subtracted = BezPath::from_path_segments(intersection.iter().flat_map(|p| p.segments()));
 			if subtracted.is_empty() {
