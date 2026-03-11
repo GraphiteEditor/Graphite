@@ -22,7 +22,7 @@ pub async fn pixel_preview<'a: 'n>(
 	let physical_scale = render_params.scale;
 
 	let footprint = *ctx.footprint();
-	let viewport_zoom = footprint.decompose_scale().x;
+	let viewport_zoom = footprint.decompose_scale().x * physical_scale;
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
 		let context = OwnedContextImpl::from(ctx).into_context();
