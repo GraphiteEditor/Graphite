@@ -1,3 +1,4 @@
+use crate::render_node::RenderOutputType;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2};
@@ -6,8 +7,6 @@ use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::{ApplicationIo, ImageTexture};
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
-
-use crate::render_node::RenderOutputType;
 
 #[node_macro::node(category(""))]
 pub async fn pixel_preview<'a: 'n>(
@@ -25,7 +24,7 @@ pub async fn pixel_preview<'a: 'n>(
 	let footprint = *ctx.footprint();
 	let viewport_zoom = footprint.decompose_scale().x;
 
-	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1.0 {
+	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
 		let context = OwnedContextImpl::from(ctx).into_context();
 		return data.eval(context).await;
 	}
@@ -37,9 +36,12 @@ pub async fn pixel_preview<'a: 'n>(
 		resolution: logical_resolution.as_uvec2().max(UVec2::ONE),
 		..footprint
 	};
+
 	let bounds = logical_footprint.viewport_bounds_in_local_space();
+
 	let upstream_min = bounds.start.floor();
 	let upstream_max = bounds.end.ceil();
+
 	let upstream_size = (upstream_max - upstream_min).max(DVec2::ONE);
 	let upstream_resolution = upstream_size.as_uvec2().max(UVec2::ONE);
 
@@ -52,9 +54,7 @@ pub async fn pixel_preview<'a: 'n>(
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(upstream_footprint).with_vararg(Box::new(render_params)).into_context();
 	let mut result = data.eval(new_ctx).await;
 
-	let RenderOutputType::Texture(ref source_texture) = result.data else {
-		return result;
-	};
+	let RenderOutputType::Texture(ref source_texture) = result.data else { return result };
 
 	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
 

@@ -184,8 +184,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
 			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
-			let encoding = scene.encoding_mut();
-			for transform in encoding.transforms.iter_mut() {
+			for transform in scene.encoding_mut().transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}

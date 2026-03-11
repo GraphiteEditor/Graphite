@@ -2535,7 +2535,7 @@ impl DocumentMessageHandler {
 				if disabled {
 					for entry in &mut entries {
 						entry.tooltip_description = "
-							*Normal* and *Outline* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
+							*Normal*, *Outline*, and *Pixel Preview* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
 							\n\
 							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
 							"
