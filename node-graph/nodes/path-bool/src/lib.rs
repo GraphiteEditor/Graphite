@@ -145,8 +145,14 @@ fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item =
 		paths.push(to_bez_path(element.element, *element.transform));
 	}
 
-	// This unwrap is safe because `Topology::from_paths` only errors on a non-closed path, and our paths are closed because `push_subpath` always makes closed subpaths.
-	let top = Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON).unwrap();
+	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
+		Ok(top) => top,
+		Err(e) => {
+			log::error!("Boolean operation failed while building topology: {e}");
+			table.push(row);
+			return table;
+		}
+	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
 
 	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
@@ -283,12 +289,14 @@ fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffi
 	let mut first = true;
 
 	for seg in subpath.iter_closed() {
+		let quantized = quantize_segment(transform * seg);
 		if first {
 			first = false;
-			path.move_to(quantize_segment(transform * seg).start());
+			path.move_to(quantized.start());
 		}
-		path.push(quantize_segment(transform * seg).as_path_el());
+		path.push(quantized.as_path_el());
 	}
+	path.close_path();
 }
 
 fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vec<Subpath<PointId>> {
@@ -304,10 +312,6 @@ fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vec<Subpath<P
 			let [start, handle1, handle2, end] = [d(cubic.p0), d(cubic.p1), d(cubic.p2), d(cubic.p3)];
 
 			if current_start.is_none() {
-				// Start a new subpath
-				if !manipulators_list.is_empty() {
-					all_subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), true));
-				}
 				// Use the correct in-handle (None) and out-handle for the start point
 				manipulators_list.push(ManipulatorGroup::new(start, None, Some(handle1)));
 			} else {
@@ -337,7 +341,7 @@ pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
 	match binary_op(a, b, FillRule::NonZero, BinaryOp::Intersection) {
 		Ok(contours) => contours.contours().map(|c| c.path.clone()).collect(),
 		Err(e) => {
-			log::error!("Boolean Operation failed: {e}");
+			log::error!("Boolean Operation failed (a: {} segments, b: {} segments): {e}", a.segments().count(), b.segments().count());
 			Vec::new()
 		}
 	}
