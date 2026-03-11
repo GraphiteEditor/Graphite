@@ -339,6 +339,7 @@ impl NodeRuntime {
 							// Configure the surface at physical resolution (for HiDPI displays)
 							let surface_inner = &surface.surface.inner;
 							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
+							log::debug!("surface_caps: {:?}", surface_caps);
 							surface_inner.configure(
 								&executor.context.device,
 								&vello::wgpu::SurfaceConfiguration {
