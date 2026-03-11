@@ -5,6 +5,7 @@
 	const MAJOR_MARK_THICKNESS = 16;
 	const MINOR_MARK_THICKNESS = 6;
 	const MICRO_MARK_THICKNESS = 3;
+	const TAU = 2 * Math.PI;
 
 	type RulerDirection = "Horizontal" | "Vertical";
 
@@ -21,10 +22,7 @@
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
 
-	type Axis = {
-		sign: number;
-		vec: [number, number];
-	};
+	type Axis = { sign: number; vec: [number, number] };
 
 	$: axes = computeAxes(tilt);
 	$: isHorizontal = direction === "Horizontal";
@@ -33,13 +31,12 @@
 	$: stretchFactor = 1 / (isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]);
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
 	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis);
-	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, minorDivisions, microDivisions, rulerLength, otherAxis);
+	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis);
 	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
-		const HALF_PI = Math.PI / 2;
-		const normTilt = ((tilt % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-		const octant = Math.floor((normTilt + Math.PI / 4) / HALF_PI) % 4;
+		const normTilt = ((tilt % TAU) + TAU) % TAU;
+		const octant = Math.floor((normTilt + Math.PI / 4) / (Math.PI / 2)) % 4;
 
 		const [c, s] = [Math.cos(tilt), Math.sin(tilt)];
 		const posX: Axis = { sign: 1, vec: [c, s] };
@@ -62,6 +59,7 @@
 		direction: RulerDirection,
 		effectiveOrigin: number,
 		stretchedSpacing: number,
+		stretchFactor: number,
 		minorDivisions: number,
 		microDivisions: number,
 		rulerLength: number,
@@ -73,19 +71,21 @@
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 
 		const [vx, vy] = otherAxis.vec;
-		// Tick direction: project outward from viewport edge into the ruler strip
 		const flip = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
 		const [dx, dy] = [vx * flip, vy * flip];
 		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
 
 		let path = "";
 		let i = 0;
-		for (let loc = shiftedOffsetStart; loc < rulerLength + RULER_THICKNESS; loc += divisions) {
-			const length = i % majorMarksFrequency === 0 ? MAJOR_MARK_THICKNESS : i % adaptive.micro === 0 ? MINOR_MARK_THICKNESS : MICRO_MARK_THICKNESS;
+		for (let location = shiftedOffsetStart; location < rulerLength + RULER_THICKNESS; location += divisions) {
+			let length;
+			if (i % majorMarksFrequency === 0) length = MAJOR_MARK_THICKNESS;
+			else if (i % adaptive.micro === 0) length = MINOR_MARK_THICKNESS;
+			else length = MICRO_MARK_THICKNESS;
 			i += 1;
 
-			const pos = Math.round(loc) + 0.5;
-			const [sx, sy] = direction === "Horizontal" ? [pos, syBase] : [sxBase, pos];
+			const destination = Math.round(location) + 0.5;
+			const [sx, sy] = direction === "Horizontal" ? [destination, syBase] : [sxBase, destination];
 			path += `M${sx},${sy}l${dx * length},${dy * length} `;
 		}
 
@@ -103,7 +103,6 @@
 	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
-		// Compute the tick tip offset so labels align with the top of the slanted tick
 		const [vx, vy] = otherAxis.vec;
 		const flip = isVertical ? (vx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
 		const tipOffsetX = vx * flip * MAJOR_MARK_THICKNESS;
@@ -115,16 +114,15 @@
 
 		const results: { transform: string; text: string }[] = [];
 
-		for (let loc = shiftedOffsetStart; loc < rulerLength; loc += stretchedSpacing) {
-			const destination = Math.round(loc);
+		for (let location = shiftedOffsetStart; location < rulerLength; location += stretchedSpacing) {
+			const destination = Math.round(location);
 			const x = isVertical ? 9 : destination + 2 + tipOffsetX;
 			const y = isVertical ? destination + 1 + tipOffsetY : 9;
 
 			let transform = `translate(${x} ${y})`;
-			if (isVertical) transform += " rotate(-90)";
+			if (isVertical) transform += " rotate(270)";
 
-			const num = Math.abs(labelNumber) < 1e-9 ? 0 : labelNumber;
-			const text = numberInterval >= 1 ? `${num}` : num.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
+			const text = numberInterval >= 1 ? `${labelNumber}` : labelNumber.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
 
 			results.push({ transform, text });
 			labelNumber += numberInterval * trackedAxis.sign;
@@ -148,6 +146,7 @@
 		}
 	}
 
+	// Modulo function that works for negative numbers, unlike the JS `%` operator
 	function mod(n: number, m: number): number {
 		const remainder = n % m;
 		return Math.floor(remainder >= 0 ? remainder : remainder + m);
