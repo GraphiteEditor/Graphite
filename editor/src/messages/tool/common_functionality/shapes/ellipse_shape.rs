@@ -9,6 +9,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::ellipse::*;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -37,11 +39,11 @@ impl Ellipse {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node(node_id, RadiusXInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, RadiusYInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64(((start.y - end.y) / 2.).abs()), false),
 			});
 			responses.add(GraphOperationMessage::TransformSet {

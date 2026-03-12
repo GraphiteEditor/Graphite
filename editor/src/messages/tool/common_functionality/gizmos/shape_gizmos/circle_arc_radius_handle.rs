@@ -11,6 +11,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_2;
 
@@ -165,7 +166,7 @@ impl RadiusHandle {
 		self.previous_mouse_position = input.mouse.position;
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::circle::RadiusInput::INDEX),
 			input: NodeInput::value(TaggedValue::F64(current_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

@@ -12,6 +12,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::arc::*;
 use graphene_std::vector::misc::ArcType;
 use std::collections::VecDeque;
 
@@ -172,7 +174,7 @@ impl Arc {
 			}
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node(node_id, RadiusInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 

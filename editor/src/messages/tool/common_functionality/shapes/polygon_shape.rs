@@ -15,6 +15,9 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::regular_polygon::*;
+use graphene_std::vector::generator_nodes::star;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
@@ -147,7 +150,7 @@ impl Polygon {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, RadiusInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
@@ -163,18 +166,26 @@ impl Polygon {
 	/// Updates the number of sides of a polygon or star node and syncs the Shape tool UI widget accordingly.
 	/// Increases or decreases the side count based on user input, clamped to a minimum of 3.
 	pub fn decrease_or_increase_sides(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface)) else {
-			return;
-		};
-
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-			.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))
-			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER)))
-		else {
-			return;
-		};
-
-		let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
+		let (node_id, sides_input_index, n) = if let Some(id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) {
+			let Some(node_inputs) =
+				NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))
+			else {
+				return;
+			};
+			let Some(&TaggedValue::U32(n)) = node_inputs.get(SidesInput::<u32>::INDEX).and_then(|input| input.as_value()) else {
+				return;
+			};
+			(id, SidesInput::<u32>::INDEX, n)
+		} else if let Some(id) = graph_modification_utils::get_star_id(layer, &document.network_interface) {
+			let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
+			else {
+				return;
+			};
+			let Some(&TaggedValue::U32(n)) = node_inputs.get(star::SidesInput::<u32>::INDEX).and_then(|input| input.as_value()) else {
+				return;
+			};
+			(id, star::SidesInput::<u32>::INDEX, n)
+		} else {
 			return;
 		};
 
@@ -185,7 +196,7 @@ impl Polygon {
 		});
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, sides_input_index),
 			input: NodeInput::value(TaggedValue::U32(new_dimension), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

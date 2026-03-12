@@ -12,6 +12,7 @@ use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyl
 use graphene_std::raster::BlendMode;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
+const BRUSH_STROKES_INDEX: usize = 1;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -320,7 +321,7 @@ impl BrushToolData {
 			};
 
 			if reference == DefinitionIdentifier::Network("Brush".into()) && node_id != layer.to_node() {
-				let points_input = node.inputs.get(1)?;
+				let points_input = node.inputs.get(BRUSH_STROKES_INDEX)?;
 				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
 				self.strokes.clone_from(strokes);
 

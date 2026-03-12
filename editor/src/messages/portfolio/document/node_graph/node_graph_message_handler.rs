@@ -223,8 +223,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						x: (mid_point.x / 24.) as i32,
 						y: (mid_point.y / 24.) as i32,
 					});
-					let node_input_connector = InputConnector::node(node_id, 0);
-					let node_output_connector = OutputConnector::node(node_id, 0);
+					let node_input_connector = InputConnector::node(node_id, InputConnector::PRIMARY_INPUT_INDEX);
+					let node_output_connector = OutputConnector::node(node_id, OutputConnector::PRIMARY_OUTPUT_INDEX);
 					responses.add(NodeGraphMessage::CreateWire {
 						output_connector,
 						input_connector: node_input_connector,
@@ -473,7 +473,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let encapsulating_connector = InputConnector::node(*node_id, 0);
+				let encapsulating_connector = InputConnector::node(*node_id, InputConnector::PRIMARY_INPUT_INDEX);
 				if !exposed {
 					network_interface.disconnect_input(&encapsulating_connector, network_path);
 				}
@@ -492,7 +492,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					log::error!("Could not get outward wires in remove_import");
 					return;
 				};
-				let Some(downstream_connections) = outward_wires.get(&OutputConnector::Import(0)).cloned() else {
+				let Some(downstream_connections) = outward_wires.get(&OutputConnector::Import(OutputConnector::PRIMARY_OUTPUT_INDEX)).cloned() else {
 					log::error!("Could not get outward wires for import in remove_import");
 					return;
 				};
@@ -506,7 +506,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendWires);
 			}
 			NodeGraphMessage::ExposePrimaryExport { exposed } => {
-				let export_connector: InputConnector = InputConnector::Export(0);
+				let export_connector: InputConnector = InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX);
 				if !exposed {
 					network_interface.disconnect_input(&export_connector, breadcrumb_network_path);
 				}
@@ -527,7 +527,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						log::error!("Could not get outward wires in remove_import");
 						return;
 					};
-					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*encapsulating_node, 0)).cloned() else {
+					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*encapsulating_node, OutputConnector::PRIMARY_OUTPUT_INDEX)).cloned() else {
 						log::error!("Could not get outward wires for import in remove_import");
 						return;
 					};
@@ -865,7 +865,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
 					responses.add(DocumentMessage::AddTransaction);
-					if remove_import_index == 0 {
+					if remove_import_index == InputConnector::PRIMARY_INPUT_INDEX {
 						responses.add(NodeGraphMessage::ExposeEncapsulatingPrimaryInput { exposed: false })
 					} else {
 						responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
@@ -873,7 +873,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
 					responses.add(DocumentMessage::AddTransaction);
-					if remove_export_index == 0 {
+					if remove_export_index == InputConnector::PRIMARY_INPUT_INDEX {
 						responses.add(NodeGraphMessage::ExposePrimaryExport { exposed: false })
 					} else {
 						responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
@@ -930,7 +930,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.initial_disconnecting = true;
 					self.disconnecting = Some(*clicked_input);
 
-					let output_connector = if *clicked_input == InputConnector::Export(0) {
+					let output_connector = if *clicked_input == InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX) {
 						network_interface.root_node(breadcrumb_network_path).map(|root_node| root_node.to_connector())
 					} else {
 						network_interface.upstream_output_connector(clicked_input, breadcrumb_network_path)
@@ -1070,7 +1070,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							let mut disconnect_root_node = false;
 							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
 								&& root_node_to_restore.is_some()
-								&& *disconnecting == InputConnector::Export(0)
+								&& *disconnecting == InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX)
 							{
 								disconnect_root_node = true;
 							}
@@ -1107,7 +1107,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							});
 						let to_connector_is_layer = to_connector.is_some_and(|to_connector| {
 							if let InputConnector::Node { node_id, input_index } = to_connector {
-								input_index == 0 && network_interface.is_layer(&node_id, selection_network_path)
+								input_index == InputConnector::PRIMARY_INPUT_INDEX && network_interface.is_layer(&node_id, selection_network_path)
 							} else {
 								false
 							}
@@ -1324,7 +1324,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.cloned()
 						.collect::<Vec<_>>()
 					{
-						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, 1), selection_network_path);
+						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, InputConnector::PRIMARY_INPUT_INDEX + 1), selection_network_path);
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
@@ -1335,9 +1335,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
 					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
-						let has_primary_output_connection = network_interface
-							.outward_wires(selection_network_path)
-							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
+						let has_primary_output_connection = network_interface.outward_wires(selection_network_path).is_some_and(|outward_wires| {
+							outward_wires
+								.get(&OutputConnector::node(selected_node_id, OutputConnector::PRIMARY_OUTPUT_INDEX))
+								.is_some_and(|outward_wires| !outward_wires.is_empty())
+						});
 						if !has_primary_output_connection {
 							let Some(network) = network_interface.nested_network(selection_network_path) else {
 								return;
@@ -1531,13 +1533,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					let number_of_outputs = network_interface.number_of_outputs(selected_node, selection_network_path);
-					let mut first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*selected_node, 0), selection_network_path);
+					let mut first_deselected_upstream_output =
+						network_interface.upstream_output_connector(&InputConnector::node(*selected_node, InputConnector::PRIMARY_INPUT_INDEX), selection_network_path);
 					while let Some(OutputConnector::Node { node_id, .. }) = &first_deselected_upstream_output {
 						if !all_selected_nodes.contains(node_id) {
 							break;
 						}
 
-						first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*node_id, 0), selection_network_path);
+						first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*node_id, InputConnector::PRIMARY_INPUT_INDEX), selection_network_path);
 					}
 
 					let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
@@ -1560,7 +1563,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Handle reconnection
 					// Find first non selected upstream node by primary flow
 					if let Some(first_deselected_upstream_output) = first_deselected_upstream_output {
-						let Some(downstream_connections_to_first_output) = outward_wires.get(&OutputConnector::node(*selected_node, 0)).cloned() else {
+						let Some(downstream_connections_to_first_output) = outward_wires.get(&OutputConnector::node(*selected_node, OutputConnector::PRIMARY_OUTPUT_INDEX)).cloned() else {
 							log::error!("Could not get downstream_connections_to_first_output in shake node");
 							return;
 						};
@@ -2188,7 +2191,9 @@ impl NodeGraphMessageHandler {
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
-						(true, false, Some(layer)) => network_interface.output_type(&OutputConnector::node(layer.to_node(), 1), &[]).add_node_string(),
+						(true, false, Some(layer)) => network_interface
+							.output_type(&OutputConnector::node(layer.to_node(), OutputConnector::PRIMARY_OUTPUT_INDEX + 1), &[])
+							.add_node_string(),
 						_ => None,
 					};
 
@@ -2589,7 +2594,7 @@ impl NodeGraphMessageHandler {
 		};
 		let mut nodes = Vec::new();
 		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible)).collect::<Vec<_>>() {
-			let primary_input_connector = InputConnector::node(node_id, 0);
+			let primary_input_connector = InputConnector::node(node_id, InputConnector::PRIMARY_INPUT_INDEX);
 
 			let primary_input = if network_interface
 				.input_from_connector(&primary_input_connector, breadcrumb_network_path)
@@ -2603,7 +2608,7 @@ impl NodeGraphMessageHandler {
 				.filter_map(|input_index| network_interface.frontend_input_from_connector(&InputConnector::node(node_id, input_index), breadcrumb_network_path))
 				.collect();
 
-			let primary_output = network_interface.frontend_output_from_connector(&OutputConnector::node(node_id, 0), breadcrumb_network_path);
+			let primary_output = network_interface.frontend_output_from_connector(&OutputConnector::node(node_id, OutputConnector::PRIMARY_OUTPUT_INDEX), breadcrumb_network_path);
 
 			let exposed_outputs = (1..network_interface.number_of_outputs(&node_id, breadcrumb_network_path))
 				.filter_map(|output_index| network_interface.frontend_output_from_connector(&OutputConnector::node(node_id, output_index), breadcrumb_network_path))
@@ -2618,7 +2623,7 @@ impl NodeGraphMessageHandler {
 			};
 
 			let is_export = network_interface
-				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
+				.input_from_connector(&InputConnector::Export(InputConnector::PRIMARY_INPUT_INDEX), breadcrumb_network_path)
 				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
 			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
 

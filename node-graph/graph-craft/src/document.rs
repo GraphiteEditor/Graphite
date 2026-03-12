@@ -222,6 +222,8 @@ impl DocumentNodeMetadata {
 }
 
 impl NodeInput {
+	pub const PRIMARY_OUTPUT_INDEX: usize = 0;
+
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index }
 	}
@@ -573,7 +575,7 @@ impl NodeNetwork {
 
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
-			exports: vec![NodeInput::node(NodeId(0), 0)],
+			exports: vec![NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
 			..Default::default()
 		}
@@ -767,7 +769,7 @@ impl NodeNetwork {
 				if let NodeInput::Scope(key) = input {
 					let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
 					// TODO use correct output index
-					*input = NodeInput::node(*import_id, 0);
+					*input = NodeInput::node(*import_id, NodeInput::PRIMARY_OUTPUT_INDEX);
 				}
 			}
 		}
@@ -866,7 +868,7 @@ impl NodeNetwork {
 						NodeInput::Scope(ref key) => {
 							let (import_id, _ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
 							// TODO use correct output index
-							nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
+							nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, NodeInput::PRIMARY_OUTPUT_INDEX);
 						}
 						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
 					}
@@ -946,7 +948,7 @@ impl NodeNetwork {
 			);
 			*export = NodeInput::Node {
 				node_id: merged_node_id,
-				output_index: 0,
+				output_index: NodeInput::PRIMARY_OUTPUT_INDEX,
 			};
 		}
 	}
@@ -1149,7 +1151,7 @@ mod test {
 
 	fn add_network() -> NodeNetwork {
 		NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
+			exports: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				(
 					NodeId(0),
@@ -1162,7 +1164,7 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						inputs: vec![NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						..Default::default()
 					},
@@ -1179,7 +1181,7 @@ mod test {
 		let mut network = add_network();
 		network.map_ids(|id| NodeId(id.0 + 1));
 		let mapped_add = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(2), 0)],
+			exports: vec![NodeInput::node(NodeId(2), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				(
 					NodeId(1),
@@ -1192,7 +1194,7 @@ mod test {
 				(
 					NodeId(2),
 					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						inputs: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						..Default::default()
 					},
@@ -1214,11 +1216,11 @@ mod test {
 		};
 		// TODO: Extend test cases to test nested network
 		let mut extraction_network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
+			exports: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				id_node.clone(),
 				DocumentNode {
-					inputs: vec![NodeInput::node(NodeId(0), 0)],
+					inputs: vec![NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 					implementation: DocumentNodeImplementation::Extract,
 					..Default::default()
 				},
@@ -1239,7 +1241,7 @@ mod test {
 	#[test]
 	fn flatten_add() {
 		let mut network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
+			exports: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [(
 				NodeId(1),
 				DocumentNode {
@@ -1264,7 +1266,7 @@ mod test {
 	#[test]
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
-			inputs: vec![NodeInput::node(NodeId(0), 0)],
+			inputs: vec![NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			call_argument: concrete!(u32),
 			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 			..Default::default()
@@ -1347,12 +1349,12 @@ mod test {
 
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(11), 0)],
+			exports: vec![NodeInput::node(NodeId(11), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				(
 					NodeId(10),
 					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(14), 0)],
+						inputs: vec![NodeInput::node(NodeId(14), NodeInput::PRIMARY_OUTPUT_INDEX)],
 						call_argument: concrete!(u32),
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
@@ -1381,7 +1383,7 @@ mod test {
 				(
 					NodeId(11),
 					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(10), 0)],
+						inputs: vec![NodeInput::node(NodeId(10), NodeInput::PRIMARY_OUTPUT_INDEX)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
@@ -1401,7 +1403,7 @@ mod test {
 
 	fn two_node_identity() -> NodeNetwork {
 		NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
+			exports: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX), NodeInput::node(NodeId(2), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				(
 					NodeId(1),
@@ -1461,10 +1463,10 @@ mod test {
 
 	#[test]
 	fn simple_duplicate() {
-		let result = output_duplicate(vec![NodeInput::node(NodeId(1), 0)], NodeInput::node(NodeId(1), 0));
+		let result = output_duplicate(vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)], NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX));
 		println!("{result:#?}");
 		assert_eq!(result.exports.len(), 1, "The number of outputs should remain as 1");
-		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
+		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), NodeInput::PRIMARY_OUTPUT_INDEX), "The outer network output should be from a duplicated inner network");
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
 		ids.sort();
 		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain identity and values");

@@ -15,6 +15,8 @@ use core::f64;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::star::*;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
@@ -152,12 +154,12 @@ impl Star {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, Radius1Input::INDEX),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 3),
+				input_connector: InputConnector::node(node_id, Radius2Input::INDEX),
 				input: NodeInput::value(TaggedValue::F64(radius / 2.), false),
 			});
 
