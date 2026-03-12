@@ -459,7 +459,8 @@ impl NodeGraphExecutor {
 						content: svg.into_bytes().into(),
 					});
 				} else if file_type == FileType::Pdf {
-					match svg_to_pdf(&svg, size.into()) {
+					let size = size.as_dvec2();
+					match rendering::svg_to_pdf::svg_to_pdf(&svg, Some(size.x.max(1.) as f32), Some(size.y.max(1.) as f32)) {
 						Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name, content: pdf_data.into() }),
 						Err(err) => return Err(format!("Failed to convert SVG to PDF: {err}")),
 					}
@@ -520,35 +521,6 @@ impl NodeGraphExecutor {
 
 		Ok(())
 	}
-}
-
-/// Convert an SVG string to PDF bytes using krilla and krilla-svg.
-fn svg_to_pdf(svg: &str, size: DVec2) -> Result<Vec<u8>, String> {
-	use krilla::page::PageSettings;
-	use krilla_svg::{SurfaceExt, SvgSettings};
-
-	// Parse the SVG with usvg 0.45 (matching krilla-svg's expected version)
-	let options = usvg_045::Options::default();
-	let tree = usvg_045::Tree::from_str(svg, &options).map_err(|e| format!("Failed to parse SVG for PDF conversion: {e}"))?;
-
-	// Create a krilla PDF document
-	let mut document = krilla::Document::new();
-
-	let page_width = size.x.max(1.) as f32;
-	let page_height = size.y.max(1.) as f32;
-	let page_settings = PageSettings::from_wh(page_width, page_height).ok_or_else(|| "Invalid page dimensions for PDF export".to_string())?;
-
-	let mut page = document.start_page_with(page_settings);
-	let mut surface = page.surface();
-
-	let krilla_size = krilla::geom::Size::from_wh(page_width, page_height).ok_or_else(|| "Invalid size for PDF export".to_string())?;
-	surface.draw_svg(&tree, krilla_size, SvgSettings::default());
-
-	surface.finish();
-	page.finish();
-
-	let pdf_bytes = document.finish().map_err(|e| format!("Failed to generate PDF: {e:?}"))?;
-	Ok(pdf_bytes)
 }
 
 // Re-export for usage by tests in other modules

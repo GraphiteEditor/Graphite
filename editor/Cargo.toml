@@ -21,6 +21,7 @@ graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
 graphene-std = { workspace = true } # NOTE: `core-types` should not be added here because `graphene-std` re-exports its contents
+rendering = { workspace = true }
 preprocessor = { workspace = true }
 
 # Workspace dependencies
@@ -45,9 +46,6 @@ vello = { workspace = true }
 base64 = { workspace = true }
 spin = { workspace = true }
 image = { workspace = true }
-krilla = { workspace = true }
-krilla-svg = { workspace = true }
-usvg-045 = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

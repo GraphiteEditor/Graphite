@@ -16,6 +16,7 @@ gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "wgpu-executor"]
 graphene-std = { workspace = true }
 interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
+rendering = { workspace = true }
 preprocessor = { workspace = true }
 
 # Workspace dependencies
@@ -28,9 +29,6 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
 wgpu-executor = { workspace = true, optional = true }
-krilla = { workspace = true }
-krilla-svg = { workspace = true }
-usvg-045 = { workspace = true }
 
 [package.metadata.cargo-shear]
 ignored = ["wgpu-executor"]
