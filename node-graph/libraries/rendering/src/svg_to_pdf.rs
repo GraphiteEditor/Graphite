@@ -2,10 +2,7 @@ use krilla::page::PageSettings;
 use krilla_svg::{SurfaceExt, SvgSettings};
 
 /// Draw one SVG onto an already-open krilla `Document` as a new page.
-///
-/// This is the shared helper used by both [`svg_to_pdf`] (single page) and
-/// [`svg_pages_to_pdf`] (multi-page). Keeping the drawing logic in one place
-/// avoids code duplication.
+
 fn add_svg_page(document: &mut krilla::Document, svg: &str, page_width: f32, page_height: f32) -> Result<(), String> {
 	let options = usvg_045::Options::default();
 	let tree = usvg_045::Tree::from_str(svg, &options).map_err(|e| format!("Failed to parse SVG for PDF: {e}"))?;
@@ -40,9 +37,7 @@ pub fn svg_to_pdf(svg: &str, page_width: Option<f32>, page_height: Option<f32>) 
 }
 
 /// Convert multiple SVGs into a single multi-page PDF, one page per SVG.
-///
-/// Each entry in `pages` is `(svg_string, page_width, page_height)`.
-/// Pages appear in the PDF in the same order as the input vec.
+
 pub fn svg_pages_to_pdf(pages: &[(String, f32, f32)]) -> Result<Vec<u8>, String> {
 	if pages.is_empty() {
 		return Err("No pages provided for multi-page PDF export".to_string());
