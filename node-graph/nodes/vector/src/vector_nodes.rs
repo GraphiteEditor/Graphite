@@ -903,6 +903,13 @@ async fn auto_tangents(
 
 				for i in 0..manipulators_list.len() {
 					let curr = &manipulators_list[i];
+                   
+					// Changes to the original logic:
+					if preserve_existing && spread == 0.0
+					{
+						new_manipulators_list.push(*curr);
+						continue;
+					}
 
 					if preserve_existing {
 						// Check if this point has handles that are meaningfully different from the anchor
