@@ -478,7 +478,10 @@ impl NodeGraphExecutor {
 							let pages = self.pdf_page_accumulator.remove(&key).unwrap();
 							let output_name = format!("{name}.pdf");
 							match rendering::svg_to_pdf::svg_pages_to_pdf(&pages) {
-								Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name: output_name, content: pdf_data.into() }),
+								Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile {
+									name: output_name,
+									content: pdf_data.into(),
+								}),
 								Err(err) => return Err(format!("Failed to build multi-page PDF: {err}")),
 							}
 						}
@@ -486,7 +489,10 @@ impl NodeGraphExecutor {
 						// Single-page PDF.
 						let size = size.as_dvec2();
 						match rendering::svg_to_pdf::svg_to_pdf(&svg, Some(size.x.max(1.) as f32), Some(size.y.max(1.) as f32)) {
-							Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name: file_name, content: pdf_data.into() }),
+							Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile {
+								name: file_name,
+								content: pdf_data.into(),
+							}),
 							Err(err) => return Err(format!("Failed to convert SVG to PDF: {err}")),
 						}
 					}
@@ -538,7 +544,10 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(FrontendMessage::TriggerSaveFile { name: file_name, content: encoded.into() });
+				responses.add(FrontendMessage::TriggerSaveFile {
+					name: file_name,
+					content: encoded.into(),
+				});
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));

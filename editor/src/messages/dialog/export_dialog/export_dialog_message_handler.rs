@@ -184,10 +184,8 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		if self.file_type == FileType::Pdf && current_bounds == ExportBounds::AllArtwork && self.artboards.len() >= 2 {
 			let checkbox_id = CheckboxId::new();
 			let artboards_as_pages = vec![
-				TextLabel::new("Artboard as Pages")
-					.for_checkbox(checkbox_id)
-					.widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(), 
+				TextLabel::new("Artboard as Pages").for_checkbox(checkbox_id).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				CheckboxInput::new(self.artboards_as_pages)
 					.on_update(move |value: &CheckboxInput| ExportDialogMessage::ArtboardsAsPages { artboards_as_pages: value.checked }.into())
 					.for_label(checkbox_id)
