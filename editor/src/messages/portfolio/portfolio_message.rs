@@ -142,6 +142,7 @@ pub enum PortfolioMessage {
 		transparent_background: bool,
 		artboard_name: Option<String>,
 		artboard_count: usize,
+		artboards_as_pages: bool,
 	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {

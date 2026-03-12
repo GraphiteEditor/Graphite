@@ -17,6 +17,7 @@ pub struct ExportDialogMessageHandler {
 	pub transparent_background: bool,
 	pub artboards: HashMap<LayerNodeIdentifier, String>,
 	pub has_selection: bool,
+	pub artboards_as_pages: bool,
 }
 
 impl Default for ExportDialogMessageHandler {
@@ -28,6 +29,7 @@ impl Default for ExportDialogMessageHandler {
 			transparent_background: false,
 			artboards: Default::default(),
 			has_selection: false,
+			artboards_as_pages: true,
 		}
 	}
 }
@@ -42,6 +44,7 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
 			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
+			ExportDialogMessage::ArtboardsAsPages { artboards_as_pages } => self.artboards_as_pages = artboards_as_pages,
 
 			ExportDialogMessage::Submit => {
 				let artboard_name = match self.bounds {
@@ -56,6 +59,7 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
 					artboard_name,
 					artboard_count: self.artboards.len(),
+					artboards_as_pages: self.artboards_as_pages,
 				})
 			}
 		}
@@ -101,13 +105,13 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).min_width(100).widget_instance(),
+			TextLabel::new("File Type").table_align(true).min_width(120).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_instance(),
 		];
 
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width(100).widget_instance(),
+			TextLabel::new("Scale Factor").table_align(true).min_width(120).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
@@ -154,14 +158,14 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		}
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).min_width(100).widget_instance(),
+			TextLabel::new("Bounds").table_align(true).min_width(120).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id).widget_instance(),
+			TextLabel::new("Transparency").table_align(true).min_width(120).for_checkbox(checkbox_id).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
@@ -170,11 +174,28 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout(vec![
+		let mut rows = vec![
 			LayoutGroup::row(export_type),
 			LayoutGroup::row(resolution),
 			LayoutGroup::row(export_area),
 			LayoutGroup::row(transparent_background),
-		])
+		];
+
+		if self.file_type == FileType::Pdf && current_bounds == ExportBounds::AllArtwork && self.artboards.len() >= 2 {
+			let checkbox_id = CheckboxId::new();
+			let artboards_as_pages = vec![
+				TextLabel::new("Artboard as Pages")
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(), 
+				CheckboxInput::new(self.artboards_as_pages)
+					.on_update(move |value: &CheckboxInput| ExportDialogMessage::ArtboardsAsPages { artboards_as_pages: value.checked }.into())
+					.for_label(checkbox_id)
+					.widget_instance(),
+			];
+			rows.push(LayoutGroup::row(artboards_as_pages));
+		}
+
+		Layout(rows)
 	}
 }

@@ -6,7 +6,7 @@ use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION}
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
+use crate::messages::frontend::utility_types::{DocumentDetails, ExportBounds, FileType, OpenDocument};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -1127,25 +1127,78 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				transparent_background,
 				artboard_name,
 				artboard_count,
+				artboards_as_pages,
 			} => {
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
-				let export_config = ExportConfig {
-					name,
-					file_type,
-					scale_factor,
-					bounds,
-					transparent_background,
-					artboard_name,
-					artboard_count,
-					..Default::default()
-				};
-				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
+				let document_id = self.active_document_id.unwrap();
 
-				if let Err(description) = result {
-					responses.add(DialogMessage::DisplayDialogError {
-						title: "Unable to export document".to_string(),
-						description,
-					});
+				// When exporting All Artwork as a multi-page PDF with 2+ artboards,
+				// submit one export per artboard (in layer-stack order, top = page 1).
+				let artboard_layers: Vec<(LayerNodeIdentifier, String)> = if artboards_as_pages && bounds == ExportBounds::AllArtwork && file_type == FileType::Pdf {
+					document
+						.metadata()
+						.all_layers()
+						.filter(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
+						.map(|layer| {
+							let ab_name = document
+								.network_interface
+								.node_metadata(&layer.to_node(), &[])
+								.map(|m| m.persistent_metadata.display_name.clone())
+								.and_then(|n| if n.is_empty() { None } else { Some(n) })
+								.unwrap_or_else(|| "Artboard".to_string());
+							(layer, ab_name)
+						})
+						.collect()
+				} else {
+					Vec::new()
+				};
+
+				if artboard_layers.len() >= 2 {
+					// Multi-page PDF: one graph execution per artboard
+					let total_pages = artboard_layers.len();
+					let mut first_error: Option<String> = None;
+					for (layer, ab_name) in artboard_layers {
+						let per_artboard_config = ExportConfig {
+							name: name.clone(),
+							file_type,
+							scale_factor,
+							bounds: ExportBounds::Artboard(layer),
+							transparent_background,
+							artboard_name: Some(ab_name),
+							artboard_count: total_pages,
+							is_multipage_pdf: true,
+							pdf_pages_total: total_pages,
+							..Default::default()
+						};
+						if let Err(e) = self.executor.submit_document_export(document, document_id, per_artboard_config) {
+							first_error = Some(e);
+							break;
+						}
+					}
+					if let Some(description) = first_error {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to export document".to_string(),
+							description,
+						});
+					}
+				} else {
+					// Single-page / non-PDF path (unchanged)
+					let export_config = ExportConfig {
+						name,
+						file_type,
+						scale_factor,
+						bounds,
+						transparent_background,
+						artboard_name,
+						artboard_count,
+						..Default::default()
+					};
+					if let Err(description) = self.executor.submit_document_export(document, document_id, export_config) {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to export document".to_string(),
+							description,
+						});
+					}
 				}
 			}
 			PortfolioMessage::SubmitActiveGraphRender => {

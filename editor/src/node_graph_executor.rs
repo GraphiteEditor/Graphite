@@ -55,6 +55,9 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	previous_node_to_inspect: Option<NodeId>,
+	/// Accumulates `(svg_string, width, height)` pages for multi-page PDF exports.
+	/// Key: `(document_name, total_page_count)`. Cleared once the PDF is emitted.
+	pdf_page_accumulator: HashMap<(String, usize), Vec<(String, f32, f32)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +80,7 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: None,
+			pdf_page_accumulator: Default::default(),
 		};
 		(node_runtime, node_executor)
 	}
@@ -424,7 +428,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_export(&mut self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let ExportConfig {
 			file_type,
 			name,
@@ -433,6 +437,8 @@ impl NodeGraphExecutor {
 			transparent_background,
 			artboard_name,
 			artboard_count,
+			is_multipage_pdf,
+			pdf_pages_total,
 			..
 		} = export_config;
 
@@ -442,11 +448,12 @@ impl NodeGraphExecutor {
 			FileType::Jpg => "jpg",
 			FileType::Pdf => "pdf",
 		};
+		// For multi-page PDF the final filename is just "DocName.pdf" (no artboard suffix).
 		let base_name = match (artboard_name, artboard_count) {
-			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
-			_ => name,
+			(Some(artboard_name), count) if count > 1 && !is_multipage_pdf => format!("{name} - {artboard_name}"),
+			_ => name.clone(),
 		};
-		let name = format!("{base_name}.{file_extension}");
+		let file_name = format!("{base_name}.{file_extension}");
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -455,19 +462,38 @@ impl NodeGraphExecutor {
 			}) => {
 				if file_type == FileType::Svg {
 					responses.add(FrontendMessage::TriggerSaveFile {
-						name,
+						name: file_name,
 						content: svg.into_bytes().into(),
 					});
 				} else if file_type == FileType::Pdf {
-					let size = size.as_dvec2();
-					match rendering::svg_to_pdf::svg_to_pdf(&svg, Some(size.x.max(1.) as f32), Some(size.y.max(1.) as f32)) {
-						Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name, content: pdf_data.into() }),
-						Err(err) => return Err(format!("Failed to convert SVG to PDF: {err}")),
+					if is_multipage_pdf {
+						// Accumulate this artboard's SVG; emit the PDF once all pages arrive.
+						let page_size = size.as_dvec2();
+						let key = (name.clone(), pdf_pages_total);
+						let pages = self.pdf_page_accumulator.entry(key.clone()).or_default();
+						pages.push((svg, page_size.x.max(1.) as f32, page_size.y.max(1.) as f32));
+
+						if pages.len() == pdf_pages_total {
+							// All pages collected — stitch into a single multi-page PDF.
+							let pages = self.pdf_page_accumulator.remove(&key).unwrap();
+							let output_name = format!("{name}.pdf");
+							match rendering::svg_to_pdf::svg_pages_to_pdf(&pages) {
+								Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name: output_name, content: pdf_data.into() }),
+								Err(err) => return Err(format!("Failed to build multi-page PDF: {err}")),
+							}
+						}
+					} else {
+						// Single-page PDF.
+						let size = size.as_dvec2();
+						match rendering::svg_to_pdf::svg_to_pdf(&svg, Some(size.x.max(1.) as f32), Some(size.y.max(1.) as f32)) {
+							Ok(pdf_data) => responses.add(FrontendMessage::TriggerSaveFile { name: file_name, content: pdf_data.into() }),
+							Err(err) => return Err(format!("Failed to convert SVG to PDF: {err}")),
+						}
 					}
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = size.as_dvec2().into();
-					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
+					responses.add(FrontendMessage::TriggerExportImage { svg, name: file_name, mime, size });
 				}
 			}
 			#[cfg(feature = "gpu")]
@@ -512,7 +538,7 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
+				responses.add(FrontendMessage::TriggerSaveFile { name: file_name, content: encoded.into() });
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
