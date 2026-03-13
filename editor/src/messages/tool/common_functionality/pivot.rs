@@ -150,7 +150,8 @@ impl PivotGizmo {
 	}
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PivotGizmoType {
 	// Pivot
 	#[default]
@@ -161,7 +162,8 @@ pub enum PivotGizmoType {
 	// TODO: Add "Individual"
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PivotGizmoState {
 	pub enabled: bool,
 	pub gizmo_type: PivotGizmoType,
@@ -241,6 +243,9 @@ impl Pivot {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
+				if transform.matrix2.determinant().abs() <= f64::EPSILON {
+					return None;
+				}
 				document
 					.metadata()
 					.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))

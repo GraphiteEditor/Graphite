@@ -3,7 +3,8 @@ use glam::{DVec2, IVec2};
 use graphene_std::{uuid::NodeId, vector::misc::dvec2_to_point};
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, Point, Shape};
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePath {
 	#[serde(rename = "pathString")]
 	pub path_string: String,
@@ -13,7 +14,8 @@ pub struct WirePath {
 	pub dashed: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePathUpdate {
 	pub id: NodeId,
 	#[serde(rename = "inputIndex")]
@@ -23,7 +25,8 @@ pub struct WirePathUpdate {
 	pub wire_path_update: Option<WirePath>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub enum GraphWireStyle {
 	#[default]
 	Direct = 0,

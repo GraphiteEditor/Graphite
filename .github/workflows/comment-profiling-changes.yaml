@@ -3,9 +3,9 @@ name: Profiling Changes
 on:
   pull_request:
     paths:
-      - 'node-graph/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
+      - "node-graph/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 env:
   CARGO_TERM_COLOR: always
@@ -200,7 +200,7 @@ jobs:
             let commentBody = "";
 
             function formatNumber(num) {
-              return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+              return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
             }
 
             function formatPercentage(pct) {

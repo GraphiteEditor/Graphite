@@ -1,6 +1,6 @@
 <script lang="ts">
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { IconName } from "@graphite/icons";
-	import type { ActionShortcut, KeyRaw, LabeledShortcut, MouseMotion } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -16,7 +16,7 @@
 			if (typeof labeledKeyOrMouseMotion === "string") return { mouseMotion: labeledKeyOrMouseMotion };
 
 			// `key` is the name of the `Key` enum in Rust, while `label` is the localized string to display (if it doesn't become an icon)
-			let key = labeledKeyOrMouseMotion.key;
+			let key: Key | "Option" = labeledKeyOrMouseMotion.key;
 			const label = labeledKeyOrMouseMotion.label;
 
 			// Replace Alt and Accel keys with their Mac-specific equivalents
@@ -57,7 +57,7 @@
 		return consolidatedList;
 	}
 
-	function keyboardHintIcon(input: KeyRaw): IconName | undefined {
+	function keyboardHintIcon(input: Key | "Option"): IconName | undefined {
 		switch (input) {
 			case "ArrowDown":
 				return "KeyboardArrowDown";
@@ -89,7 +89,20 @@
 	}
 
 	function mouseHintIcon(input: MouseMotion): IconName {
-		return `MouseHint${input}` as IconName;
+		return {
+			None: "MouseHintNone" as const,
+			Lmb: "MouseHintLmb" as const,
+			Rmb: "MouseHintRmb" as const,
+			Mmb: "MouseHintMmb" as const,
+			ScrollUp: "MouseHintScrollUp" as const,
+			ScrollDown: "MouseHintScrollDown" as const,
+			Drag: "MouseHintDrag" as const,
+			LmbDouble: "MouseHintLmbDouble" as const,
+			LmbDrag: "MouseHintLmbDrag" as const,
+			RmbDrag: "MouseHintRmbDrag" as const,
+			RmbDouble: "MouseHintRmbDouble" as const,
+			MmbDrag: "MouseHintMmbDrag" as const,
+		}[input];
 	}
 </script>
 

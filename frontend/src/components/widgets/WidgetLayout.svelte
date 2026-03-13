@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type Layout, isWidgetTable, type LayoutTarget } from "@graphite/messages";
+	import type { Layout, LayoutTarget } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
@@ -13,12 +13,14 @@
 </script>
 
 {#each layout as layoutGroup}
-	{#if isWidgetSpanRow(layoutGroup) || isWidgetSpanColumn(layoutGroup)}
-		<WidgetSpan widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
-	{:else if isWidgetSection(layoutGroup)}
-		<WidgetSection widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
-	{:else if isWidgetTable(layoutGroup)}
-		<WidgetTable widgetData={layoutGroup} {layoutTarget} unstyled={layoutGroup.unstyled} />
+	{#if "Row" in layoutGroup}
+		<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} class={className} {classes} />
+	{:else if "Column" in layoutGroup}
+		<WidgetSpan direction="column" widgets={layoutGroup.Column.columnWidgets} {layoutTarget} class={className} {classes} />
+	{:else if "Section" in layoutGroup}
+		<WidgetSection widgetData={layoutGroup.Section} {layoutTarget} class={className} {classes} />
+	{:else if "Table" in layoutGroup}
+		<WidgetTable widgetData={layoutGroup.Table} {layoutTarget} />
 	{/if}
 {/each}
 

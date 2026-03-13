@@ -39,7 +39,8 @@ mod base64_serde {
 	}
 }
 
-#[derive(Clone, Eq, Default, specta::Type, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Image<P: Pixel> {
 	pub width: u32,
 	pub height: u32,
@@ -59,7 +60,8 @@ impl<P: Pixel + PartialEq> PartialEq for Image<P> {
 	}
 }
 
-#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransformImage(pub DAffine2);
 
 impl Hash for TransformImage {
@@ -247,7 +249,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		RasterFrame(RasterFrame),
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 	}
@@ -275,7 +277,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		type Static = ImageFrame<P::Static>;
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
@@ -401,7 +403,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		RasterFrame(RasterFrame),
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 	}
@@ -429,7 +431,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		type Static = ImageFrame<P::Static>;
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,

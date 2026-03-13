@@ -2,7 +2,7 @@
 	import { createEventDispatcher, getContext, onMount } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
 
-	import type { FrontendNodeType } from "@graphite/messages";
+	import type { FrontendNodeType } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

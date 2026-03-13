@@ -1,30 +1,27 @@
+use crate::app::App;
+use crate::cef::CefHandler;
+use crate::cli::Cli;
+use crate::consts::APP_LOCK_FILE_NAME;
+use crate::event::CreateAppEventSchedulerEventLoopExt;
 use clap::Parser;
 use std::io::Write;
-use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
-pub(crate) mod consts;
+pub(crate) use graphite_desktop_wrapper as wrapper;
 
 mod app;
 mod cef;
 mod cli;
 mod dirs;
 mod event;
+mod gpu_context;
 mod persist;
+mod preferences;
 mod render;
 mod window;
 
-mod gpu_context;
-
-pub(crate) use graphite_desktop_wrapper as wrapper;
-
-use app::App;
-use cef::CefHandler;
-use cli::Cli;
-use event::CreateAppEventSchedulerEventLoopExt;
-
-use crate::consts::APP_LOCK_FILE_NAME;
+pub(crate) mod consts;
 
 pub fn start() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -48,8 +45,7 @@ pub fn start() {
 		.truncate(true)
 		.open(dirs::app_data_dir().join(APP_LOCK_FILE_NAME))
 	else {
-		tracing::error!("Failed to open lock file, Exiting.");
-		exit(1);
+		panic!("Failed to open lock file.")
 	};
 	let mut lock = fd_lock::RwLock::new(lock_file);
 	let lock = match lock.try_write() {
@@ -62,9 +58,11 @@ pub fn start() {
 		}
 		Err(_) => {
 			tracing::error!("Another instance is already running, Exiting.");
-			exit(1);
+			std::process::exit(1);
 		}
 	};
+
+	let prefs = preferences::read();
 
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
@@ -77,49 +75,53 @@ pub fn start() {
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	if cli.disable_ui_acceleration {
+	let disable_ui_acceleration = prefs.disable_ui_acceleration || cli.disable_ui_acceleration;
+	if disable_ui_acceleration {
 		println!("UI acceleration is disabled");
 	}
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
+	let cef_context = match cef_context_builder.initialize(cef_handler, disable_ui_acceleration) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context
 		}
-		Err(cef::InitError::AlreadyRunning) => {
-			tracing::error!("Another instance is already running, Exiting.");
-			exit(1);
-		}
-		Err(cef::InitError::InitializationFailed(code)) => {
-			tracing::error!("Cef initialization failed with code: {code}");
-			exit(1);
+		Err(cef::InitError::InitializationFailureCode(code)) => {
+			panic!("CEF initialization failed with code: {code}");
 		}
 		Err(cef::InitError::BrowserCreationFailed) => {
-			tracing::error!("Failed to create CEF browser");
-			exit(1);
+			panic!("Failed to create CEF browser");
 		}
 		Err(cef::InitError::RequestContextCreationFailed) => {
-			tracing::error!("Failed to create CEF request context");
-			exit(1);
+			panic!("Failed to create CEF request context");
 		}
 	};
 
-	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli);
+	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli);
 
 	let exit_reason = app.run(event_loop);
+
+	// If exiting due to a UI acceleration failure, update preferences to disable it for next launch
+	if matches!(exit_reason, app::ExitReason::UiAccelerationFailure) {
+		tracing::error!("Disabling UI acceleration");
+		preferences::modify(|prefs| {
+			prefs.disable_ui_acceleration = true;
+		});
+	}
 
 	// Explicitly drop the instance lock
 	drop(lock);
 
 	match exit_reason {
-		#[cfg(target_os = "linux")]
-		app::ExitReason::UiAccelerationFailure => {
-			use std::os::unix::process::CommandExt;
-
-			tracing::error!("Restarting application without UI acceleration");
-			let _ = std::process::Command::new(std::env::current_exe().unwrap()).arg("--disable-ui-acceleration").exec();
+		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
+			tracing::error!("Restarting application");
+			let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+			#[cfg(target_family = "unix")]
+			let _ = std::os::unix::process::CommandExt::exec(&mut command);
+			#[cfg(target_family = "unix")]
 			tracing::error!("Failed to restart application");
+			#[cfg(not(target_family = "unix"))]
+			let _ = command.spawn();
 		}
 		_ => {}
 	}
@@ -130,7 +132,7 @@ pub fn start() {
 	// Calling `exit` bypasses rust teardown and lets Windows perform process cleanup.
 	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
 	#[cfg(target_os = "windows")]
-	exit(0);
+	std::process::exit(0);
 }
 
 pub fn start_helper() {

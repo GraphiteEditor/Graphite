@@ -142,7 +142,7 @@ impl<'a> ModifyInputsContext<'a> {
 		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
-	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
+	pub fn insert_boolean_data(&mut self, operation: graphene_std::vector::misc::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_network_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
@@ -170,15 +170,6 @@ impl<'a> ModifyInputsContext<'a> {
 			self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 		}
 
-		if include_fill {
-			let fill = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER)
-				.expect("Fill node does not exist")
-				.default_node_template();
-			let fill_id = NodeId::new();
-			self.network_interface.insert_node(fill_id, fill, &[]);
-			self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
-		}
-
 		if include_stroke {
 			let stroke = resolve_proto_node_type(graphene_std::vector_nodes::stroke::IDENTIFIER)
 				.expect("Stroke node does not exist")
@@ -187,16 +178,18 @@ impl<'a> ModifyInputsContext<'a> {
 			self.network_interface.insert_node(stroke_id, stroke, &[]);
 			self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 		}
+
+		if include_fill {
+			let fill = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER)
+				.expect("Fill node does not exist")
+				.default_node_template();
+			let fill_id = NodeId::new();
+			self.network_interface.insert_node(fill_id, fill, &[]);
+			self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+		}
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, typesetting: TypesettingConfig, layer: LayerNodeIdentifier) {
-		let stroke = resolve_proto_node_type(graphene_std::vector_nodes::stroke::IDENTIFIER)
-			.expect("Stroke node does not exist")
-			.default_node_template();
-		let fill = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER)
-			.expect("Fill node does not exist")
-			.default_node_template();
-		let transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let text = resolve_proto_node_type(graphene_std::text::text::IDENTIFIER)
 			.expect("Text node does not exist")
 			.node_template_input_override([
@@ -208,11 +201,18 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_width.unwrap_or(100.)), false)),
-				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.max_width.unwrap_or(100.)), false)),
+				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),
+				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 			]);
+		let transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
+		let stroke = resolve_proto_node_type(graphene_std::vector_nodes::stroke::IDENTIFIER)
+			.expect("Stroke node does not exist")
+			.default_node_template();
+		let fill = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER)
+			.expect("Fill node does not exist")
+			.default_node_template();
 
 		let text_id = NodeId::new();
 		self.network_interface.insert_node(text_id, text, &[]);
@@ -222,13 +222,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
 
-		let fill_id = NodeId::new();
-		self.network_interface.insert_node(fill_id, fill, &[]);
-		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
-
 		let stroke_id = NodeId::new();
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
+
+		let fill_id = NodeId::new();
+		self.network_interface.insert_node(fill_id, fill, &[]);
+		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
 	}
 
 	pub fn insert_image_data(&mut self, image_frame: Table<Raster<CPU>>, layer: LayerNodeIdentifier) {
