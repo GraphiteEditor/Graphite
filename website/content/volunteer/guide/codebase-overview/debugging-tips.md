@@ -3,6 +3,8 @@ title = "Debugging tips"
 
 [extra]
 order = 2 # Page number after chapter intro
+css = ["/page/contributor-guide/bisect-tool.css"]
+js = ["/js/page/contributor-guide/bisect-tool.js"]
 +++
 
 The Wasm-based editor has some unique limitations about how you are able to debug it. This page offers tips and best practices to get the most out of your problem-solving efforts.
@@ -13,7 +15,71 @@ When tracking down a bug, first check if the issue you are noticing also exists 
 
 Use *Help* > *About Graphite* in the editor to view any build's Git commit hash.
 
-Beware of one potential pitfall: all deploys and build links are built with release optimizations enabled. This means some bugs (like crashes from bounds checks or debug assertions) may exist in `master` and would appear if run locally, but not in the deployed version.
+
+## Build bisect tool
+
+This interactive tool helps you binary search through recent commits, test the build links of each, and pinpoint which change introduced a regression or added a feature.
+
+<div class="bisect-tool">
+
+<div class="phase active" data-phase="setup">
+	<div class="setup-section">
+		<div class="section-label">
+			<span><strong>What are you looking for?</strong></span>
+		</div>
+		<label>
+			<input type="radio" name="bisect-mode" value="regression" checked />
+			<span>Find when a regression or bug started</span>
+		</label>
+		<label>
+			<input type="radio" name="bisect-mode" value="feature" />
+			<span>Find when a feature was added or fixed</span>
+		</label>
+	</div>
+	<div class="setup-section">
+		<div class="section-label">
+			<span><strong>When do you estimate this changed?</strong></span>
+		</div>
+		<label>
+			<input type="radio" name="start-method" value="date" checked />
+			<span>Date</span>
+		</label>
+		<label>
+			<input type="radio" name="start-method" value="hash" />
+			<span>Commit</span>
+		</label>
+	</div>
+	<div class="commit-inputs">
+		<div class="start-input" data-input="date">
+			<input type="date" data-commit-date />
+		</div>
+		<div class="start-input hidden" data-input="hash">
+			<input type="text" data-commit-hash placeholder="Commit hash" pattern="[0-9a-fA-F]{7,40}" />
+		</div>
+		<span class="button arrow" data-start-button>Begin bisect</span>
+	</div>
+</div>
+
+<div class="phase" data-phase="bisect">
+	<div class="block feature-box-narrow">
+		<div class="step-header">
+			<span class="step-label" data-step-label><strong>Bisect step 1</strong></span>
+			<span class="go-back hidden" data-go-back-button>(<a>go back</a>)</span>
+		</div>
+		<div class="progress-info" data-progress-info></div>
+		<div class="commit-info" data-commit-info></div>
+		<span class="button arrow" data-test-build-button>Test this build</span>
+		<span class="findings">After testing, what have you found?</span>
+		<div class="bisect-actions">
+			<span class="button" data-issue-present-button></span>
+			<span class="button" data-issue-absent-button></span>
+		</div>
+	</div>
+</div>
+
+<div class="error-message" data-message-box></div>
+
+</div>
 
 ## Printing to the console
 
