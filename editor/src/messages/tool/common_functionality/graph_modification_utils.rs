@@ -264,7 +264,7 @@ pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInt
 
 pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
 	let origin = get_origin(layer, network_interface).unwrap_or_default();
-	network_interface.document_metadata().document_to_viewport.transform_point2(origin)
+	network_interface.document_metadata().downstream_transform_to_viewport(layer).transform_point2(origin)
 }
 
 pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {

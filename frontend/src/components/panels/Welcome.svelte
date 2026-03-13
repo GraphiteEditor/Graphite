@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy } from "svelte";
 
+	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { Layout } from "@graphite/messages";
-	import { patchLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
 	import { pasteFile } from "@graphite/utility-functions/files";
-	import { isDesktop } from "@graphite/utility-functions/platform";
+	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -18,14 +18,14 @@
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
 			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateWelcomeScreenButtonsLayout);
+		editor.subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	});
 
 	function dropFile(e: DragEvent) {
@@ -51,8 +51,8 @@
 	</LayoutCol>
 	<LayoutCol class="bottom-message">
 		<TextLabel italic={true} disabled={true}>
-			{#if isDesktop()}
-				You are testing Release Candidate 3 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
+			{#if isPlatformNative()}
+				You are testing Release Candidate 4 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
 			{/if}
 		</TextLabel>
 	</LayoutCol>

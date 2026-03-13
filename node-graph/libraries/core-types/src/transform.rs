@@ -123,9 +123,15 @@ impl Footprint {
 
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
-		let start = inverse.transform_point2((0., 0.).into());
-		let end = inverse.transform_point2(self.resolution.as_dvec2());
-		AxisAlignedBbox { start, end }
+		let res = self.resolution.as_dvec2();
+		let c0 = inverse.transform_point2(DVec2::ZERO);
+		let c1 = inverse.transform_point2(DVec2::new(res.x, 0.));
+		let c2 = inverse.transform_point2(res);
+		let c3 = inverse.transform_point2(DVec2::new(0., res.y));
+		AxisAlignedBbox {
+			start: c0.min(c1).min(c2).min(c3),
+			end: c0.max(c1).max(c2).max(c3),
+		}
 	}
 
 	pub fn scale(&self) -> DVec2 {

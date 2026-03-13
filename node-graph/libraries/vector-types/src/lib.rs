@@ -8,7 +8,7 @@ pub mod vector;
 
 // Re-export commonly used types at the crate root
 pub use core_types as gcore;
-pub use gradient::{GradientStops, GradientType};
+pub use gradient::{GradientStop, GradientStops, GradientType};
 pub use math::{QuadExt, RectExt};
 pub use subpath::Subpath;
 pub use vector::Vector;

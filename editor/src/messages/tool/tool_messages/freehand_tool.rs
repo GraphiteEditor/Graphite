@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -37,7 +38,8 @@ impl Default for FreehandOptions {
 }
 
 #[impl_message(Message, ToolMessage, Freehand)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FreehandToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
@@ -51,7 +53,8 @@ pub enum FreehandToolMessage {
 	UpdateOptions { options: FreehandOptionsUpdate },
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FreehandOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -151,7 +154,7 @@ impl LayoutHolder for FreehandTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -217,6 +220,9 @@ struct FreehandToolData {
 	dragged: bool,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
+	/// Viewport-space start position for newly created layers, used to compute local-space
+	/// positions before the deferred TransformSet has been reflected in metadata.
+	new_layer_viewport_start: Option<DVec2>,
 }
 
 impl Fsm for FreehandToolFsmState {
@@ -253,6 +259,7 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.dragged = false;
 				tool_data.end_point = None;
 				tool_data.weight = tool_options.line_weight;
+				tool_data.new_layer_viewport_start = None;
 
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
@@ -290,16 +297,45 @@ impl Fsm for FreehandToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.fill.apply_fill(layer, responses);
 				tool_data.layer = Some(layer);
+				tool_data.new_layer_viewport_start = Some(input.mouse.position);
+
+				// Position the layer at the initial mouse position via Transform
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_translation(input.mouse.position),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						}
+						.into(),
+						NodeGraphMessage::RunDocumentGraph.into(),
+					],
+				});
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					let transform = document.metadata().transform_to_viewport(layer);
-					let position = transform.inverse().transform_point2(input.mouse.position);
+
+					// For newly created layers, the deferred TransformSet may not yet be reflected
+					// in the metadata, so compute local position from the known viewport start.
+					// Once the metadata catches up (origin maps to start), switch to using it so
+					// that mid-stroke pan/tilt/zoom works correctly.
+					if let Some(start) = tool_data.new_layer_viewport_start
+						&& transform.transform_point2(DVec2::ZERO).abs_diff_eq(start, 1e-5)
+					{
+						tool_data.new_layer_viewport_start = None;
+					}
+					let position = if let Some(start) = tool_data.new_layer_viewport_start {
+						input.mouse.position - start
+					} else {
+						transform.inverse().transform_point2(input.mouse.position)
+					};
 
 					extend_path_with_next_segment(tool_data, position, true, responses);
 				}
@@ -315,6 +351,7 @@ impl Fsm for FreehandToolFsmState {
 
 				tool_data.end_point = None;
 				tool_data.layer = None;
+				tool_data.new_layer_viewport_start = None;
 
 				FreehandToolFsmState::Ready
 			}
@@ -322,6 +359,7 @@ impl Fsm for FreehandToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.layer = None;
 				tool_data.end_point = None;
+				tool_data.new_layer_viewport_start = None;
 
 				FreehandToolFsmState::Ready
 			}

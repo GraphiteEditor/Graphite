@@ -1,6 +1,7 @@
 name: Build Windows Bundle
 
 on:
+  workflow_dispatch: {}
   push:
     branches:
       - master
@@ -69,9 +70,10 @@ jobs:
           cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
 
       - name: Build Windows Bundle
+        shell: bash # `cargo-about` refuses to run in powershell
         env:
           CARGO_TERM_COLOR: always
-        run: npm run build-desktop
+        run: cargo run build desktop
 
       - name: Stage Artifacts
         shell: bash
@@ -87,6 +89,7 @@ jobs:
           path: target/artifacts
 
       - name: Azure login
+        if: github.ref == 'refs/heads/master'
         uses: azure/login@v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -95,6 +98,7 @@ jobs:
           enable-AzPSSession: true
 
       - name: Sign
+        if: github.ref == 'refs/heads/master'
         uses: azure/artifact-signing-action@v1
         with:
           endpoint: https://eus.codesigning.azure.net/
@@ -115,6 +119,7 @@ jobs:
           correlation-id: ${{ github.sha }}
 
       - name: Verify Signatures
+        if: github.ref == 'refs/heads/master'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -161,6 +166,7 @@ jobs:
           }
 
       - name: Upload Windows Bundle Signed
+        if: github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:
           name: graphite-windows-bundle-signed
