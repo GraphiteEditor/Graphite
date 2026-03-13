@@ -1602,13 +1602,8 @@ impl Fsm for PathToolFsmState {
 
 					let mut children = layer.children(document.metadata());
 					if let Some(first_child) = children.next() {
-						target_layers.remove(i);
-						target_layers.insert(i, first_child);
-						let mut count = 1;
-						for child in children {
-							target_layers.insert(i + count, child);
-							count += 1;
-						}
+                        let children_to_insert: Vec<_> = std::iter::once(first_child).chain(children).collect();
+                        target_layers.splice(i..i + 1, children_to_insert);
 					} else {
 						i += 1;
 					}
