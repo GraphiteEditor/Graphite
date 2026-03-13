@@ -9,7 +9,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
@@ -294,7 +294,8 @@ impl Fsm for FreehandToolFsmState {
 
 				let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
-				let nodes = vec![(NodeId(0), node)];
+				let transform_node_type = resolve_network_node_type("Transform").expect("Transform node does not exist");
+				let nodes = vec![(NodeId(1), node), (NodeId(0), transform_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]))];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);

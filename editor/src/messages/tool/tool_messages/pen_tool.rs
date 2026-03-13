@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::subpath::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
@@ -1287,7 +1287,11 @@ impl PenToolData {
 
 		// New path layer
 		let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
-		let nodes = vec![(NodeId(0), node_type.default_node_template())];
+		let transform_node_type = resolve_network_node_type("Transform").expect("Transform node does not exist");
+		let nodes = vec![
+			(NodeId(1), node_type.default_node_template()),
+			(NodeId(0), transform_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))])),
+		];
 
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
