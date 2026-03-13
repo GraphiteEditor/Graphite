@@ -2891,7 +2891,8 @@ impl NodeGraphMessageHandler {
 
 		if dragging_box_selection {
 			HintData(vec![HintGroup(vec![
-				HintInfo::keys([Key::Escape], "Cancel"),
+				HintInfo::mouse(MouseMotion::Rmb, ""),
+				HintInfo::keys([Key::Escape], "Cancel").prepend_slash(),
 				HintInfo::keys([Key::Shift], "Extend"),
 				HintInfo::keys([Key::Alt], "Subtract"),
 				HintInfo::keys([Key::Control], "Exclude Layers"),
