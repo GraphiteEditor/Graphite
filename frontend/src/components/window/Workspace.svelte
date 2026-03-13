@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { getContext } from "svelte";
+	import { getContext, onDestroy } from "svelte";
 
 	import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
+	import type { PortfolioStore } from "@graphite/stores/portfolio";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -24,6 +24,11 @@
 	let documentPanel: Panel | undefined;
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
+	let activeResizeCleanup: (() => void) | undefined = undefined;
+
+	onDestroy(() => {
+		activeResizeCleanup?.();
+	});
 
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
@@ -37,7 +42,7 @@
 	});
 
 	const editor = getContext<Editor>("editor");
-	const portfolio = getContext<PortfolioState>("portfolio");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = e.target;
@@ -104,6 +109,7 @@
 			gutterResizeRestore = undefined;
 			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
 			removeListeners();
+			activeResizeCleanup = undefined;
 		};
 
 		const onMouseDown = (e: MouseEvent) => {
@@ -130,6 +136,7 @@
 		};
 
 		addListeners();
+		activeResizeCleanup = removeListeners;
 	}
 </script>
 

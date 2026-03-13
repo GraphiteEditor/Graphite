@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-	import { createEventDispatcher, onDestroy } from "svelte";
+	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
 	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Color, GradientStops } from "@graphite/../wasm/pkg/graphite_wasm";
@@ -338,7 +338,9 @@
 		document.removeEventListener("keydown", onKeyDown);
 	}
 
-	document.addEventListener("keydown", deleteStop);
+	onMount(() => {
+		document.addEventListener("keydown", deleteStop);
+	});
 	onDestroy(() => {
 		removeEvents();
 		document.removeEventListener("keydown", deleteStop);

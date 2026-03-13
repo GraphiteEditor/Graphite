@@ -16,6 +16,7 @@ use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
+pub static FRONTEND_READY: AtomicBool = AtomicBool::new(false);
 pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 

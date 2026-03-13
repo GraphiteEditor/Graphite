@@ -2,7 +2,6 @@
 	import { createEventDispatcher } from "svelte";
 
 	import type { Curve, CurveManipulatorGroup, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { clamp } from "@graphite/utility-functions/math";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
@@ -184,6 +183,10 @@
 		clampHandles();
 		dAttribute = recalculateSvgPath();
 		updateCurve();
+	}
+
+	function clamp(value: number, min = 0, max = 1): number {
+		return Math.max(min, Math.min(value, max));
 	}
 </script>
 

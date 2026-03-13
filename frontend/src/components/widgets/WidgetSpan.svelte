@@ -4,7 +4,6 @@
 	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import { parseFillChoice } from "@graphite/utility-functions/colors";
-	import { debouncer } from "@graphite/utility-functions/debounce";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
@@ -137,7 +136,7 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					value: (e: CustomEvent) => debouncer((value: unknown) => widgetValueCommitAndUpdate(index, value, false), { debounceTime: 120 }).debounceUpdateValue(e.detail),
+					value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false),
 				},
 			}),
 		},
@@ -202,7 +201,7 @@
 				incrementCallbackIncrease: () => widgetValueCommitAndUpdate(index, "Increment", false),
 				incrementCallbackDecrease: () => widgetValueCommitAndUpdate(index, "Decrement", false),
 				$$events: {
-					value: (e: CustomEvent) => debouncer((value: unknown) => widgetValueUpdate(index, value, true)).debounceUpdateValue(e.detail),
+					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
 				},
 			}),

@@ -2,9 +2,9 @@
 	import { getContext } from "svelte";
 
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { DialogState } from "@graphite/state-providers/dialog";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import type { AppWindowStore } from "@graphite/stores/app-window";
+	import type { DialogStore } from "@graphite/stores/dialog";
+	import type { TooltipStore } from "@graphite/stores/tooltip";
 
 	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
 	import Tooltip from "@graphite/components/floating-menus/Tooltip.svelte";
@@ -14,9 +14,9 @@
 	import TitleBar from "@graphite/components/window/TitleBar.svelte";
 	import Workspace from "@graphite/components/window/Workspace.svelte";
 
-	const dialog = getContext<DialogState>("dialog");
-	const tooltip = getContext<TooltipState>("tooltip");
-	const appWindow = getContext<AppWindowState>("appWindow");
+	const dialog = getContext<DialogStore>("dialog");
+	const tooltip = getContext<TooltipStore>("tooltip");
+	const appWindow = getContext<AppWindowStore>("appWindow");
 </script>
 
 <LayoutCol class="main-window" classes={{ "viewport-hole-punch": $appWindow.viewportHolePunch }}>
