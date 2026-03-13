@@ -545,13 +545,14 @@ pub struct SlidingPointInfo {
 	connected_segments: [SlidingSegmentData; 2],
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 enum PathToolFsmState {
 	#[default]
 	Ready,
 	Dragging(DraggingState),
 	Drawing {
 		selection_shape: SelectionShapeType,
+		drag_start_document: DVec2,
 	},
 	SlidingPoint,
 }
@@ -619,13 +620,13 @@ impl PathToolData {
 		PathToolFsmState::Dragging(self.dragging_state)
 	}
 
-	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
-		let bbox = self.selection_box(metadata);
+	pub fn selection_quad(&self, drag_start_document: DVec2, metadata: &DocumentMetadata) -> Quad {
+		let bbox = self.selection_box(drag_start_document, metadata);
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_selection_mode_from_direction(&mut self, metadata: &DocumentMetadata) -> SelectionMode {
-		let bbox = self.selection_box(metadata);
+	pub fn calculate_selection_mode_from_direction(&mut self, drag_start_document: DVec2, metadata: &DocumentMetadata) -> SelectionMode {
+		let bbox = self.selection_box(drag_start_document, metadata);
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
 		if self.selection_mode.is_none() && above_threshold {
@@ -641,15 +642,16 @@ impl PathToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
-	pub fn selection_box(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
-		// Convert previous mouse position to viewport space first
+	pub fn selection_box(&self, drag_start_document: DVec2, metadata: &DocumentMetadata) -> [DVec2; 2] {
+		// Transform the document-anchored start point to viewport
 		let document_to_viewport = metadata.document_to_viewport;
+		let start_viewport = document_to_viewport.transform_point2(drag_start_document);
 		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
-		if previous_mouse == self.drag_start_pos {
+		if previous_mouse == start_viewport {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start_pos - tolerance, self.drag_start_pos + tolerance]
+			[start_viewport - tolerance, start_viewport + tolerance]
 		} else {
-			[self.drag_start_pos, previous_mouse]
+			[start_viewport, previous_mouse]
 		}
 	}
 
@@ -900,19 +902,21 @@ impl PathToolData {
 
 			self.started_drawing_from_inside = true;
 
+			let drag_start_document = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.previous_mouse_position = drag_start_document;
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-			PathToolFsmState::Drawing { selection_shape }
+			PathToolFsmState::Drawing { selection_shape, drag_start_document }
 		}
 		// Start drawing
 		else {
+			let drag_start_document = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.previous_mouse_position = drag_start_document;
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-			PathToolFsmState::Drawing { selection_shape }
+			PathToolFsmState::Drawing { selection_shape, drag_start_document }
 		}
 	}
 
@@ -1889,22 +1893,24 @@ impl Fsm for PathToolFsmState {
 							overlay_context.outline(outline, layer_to_viewport, Some(color));
 						}
 					}
-					Self::Drawing { selection_shape } => {
+					Self::Drawing { selection_shape, drag_start_document } => {
 						let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 						let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(drag_start_document, document.metadata()),
 							selection_mode => selection_mode,
 						};
 
-						let quad = tool_data.selection_quad(document.metadata());
+						let quad = tool_data.selection_quad(drag_start_document, document.metadata());
 
 						let select_segments = tool_options.path_editing_mode.segment_editing_mode;
 						let select_points = tool_options.path_editing_mode.point_editing_mode;
 						let (points_inside, segments_inside) = match selection_shape {
 							SelectionShapeType::Box => {
-								let previous_mouse = document.metadata().document_to_viewport.transform_point2(tool_data.previous_mouse_position);
-								let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
+								let document_to_viewport = document.metadata().document_to_viewport;
+								let start_viewport = document_to_viewport.transform_point2(drag_start_document);
+								let previous_mouse = document_to_viewport.transform_point2(tool_data.previous_mouse_position);
+								let bbox = Rect::new(start_viewport.x, start_viewport.y, previous_mouse.x, previous_mouse.y).abs();
 								shape_editor.get_inside_points_and_segments(
 									&document.network_interface,
 									SelectionShape::Box(bbox),
@@ -2031,7 +2037,7 @@ impl Fsm for PathToolFsmState {
 				)
 			}
 			(
-				PathToolFsmState::Drawing { selection_shape },
+				PathToolFsmState::Drawing { selection_shape, drag_start_document },
 				PathToolMessage::PointerMove {
 					equidistant,
 					toggle_colinear,
@@ -2081,7 +2087,7 @@ impl Fsm for PathToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				PathToolFsmState::Drawing { selection_shape }
+				PathToolFsmState::Drawing { selection_shape, drag_start_document }
 			}
 			(
 				PathToolFsmState::Dragging(_),
@@ -2242,13 +2248,20 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
-			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
+			(
+				PathToolFsmState::Drawing {
+					selection_shape: selection_type,
+					drag_start_document,
+				},
+				PathToolMessage::PointerOutsideViewport { .. },
+			) => {
 				// Auto-panning
-				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					tool_data.drag_start_pos += offset;
-				}
+				tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
-				PathToolFsmState::Drawing { selection_shape: selection_type }
+				PathToolFsmState::Drawing {
+					selection_shape: selection_type,
+					drag_start_document,
+				}
 			}
 			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
@@ -2300,7 +2313,7 @@ impl Fsm for PathToolFsmState {
 
 				state
 			}
-			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::Enter { extend_selection, shrink_selection }) => {
+			(PathToolFsmState::Drawing { selection_shape, drag_start_document }, PathToolMessage::Enter { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
@@ -2314,17 +2327,18 @@ impl Fsm for PathToolFsmState {
 
 				let document_to_viewport = document.metadata().document_to_viewport;
 				let previous_mouse = document_to_viewport.transform_point2(tool_data.previous_mouse_position);
-				if tool_data.drag_start_pos == previous_mouse {
+				let start_viewport = document_to_viewport.transform_point2(drag_start_document);
+				if start_viewport == previous_mouse {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(drag_start_document, document.metadata()),
 						selection_mode => selection_mode,
 					};
 
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
+							let bbox = Rect::new(start_viewport.x, start_viewport.y, previous_mouse.x, previous_mouse.y).abs();
 
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
@@ -2337,16 +2351,18 @@ impl Fsm for PathToolFsmState {
 								selection_mode,
 							);
 						}
-						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
-							&document.network_interface,
-							SelectionShape::Lasso(&tool_data.lasso_polygon),
-							selection_change,
-							tool_options.path_overlay_mode,
-							tool_data.frontier_handles_info.as_ref(),
-							tool_options.path_editing_mode.segment_editing_mode,
-							tool_options.path_editing_mode.point_editing_mode,
-							selection_mode,
-						),
+						SelectionShapeType::Lasso => {
+							shape_editor.select_all_in_shape(
+								&document.network_interface,
+								SelectionShape::Lasso(&tool_data.lasso_polygon),
+								selection_change,
+								tool_options.path_overlay_mode,
+								tool_data.frontier_handles_info.as_ref(),
+								tool_options.path_editing_mode.segment_editing_mode,
+								tool_options.path_editing_mode.point_editing_mode,
+								selection_mode,
+							);
+						}
 					}
 				}
 
@@ -2389,7 +2405,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			// Mouse up
-			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
+			(PathToolFsmState::Drawing { selection_shape, drag_start_document }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
@@ -2405,12 +2421,13 @@ impl Fsm for PathToolFsmState {
 				let previous_mouse = document_to_viewport.transform_point2(tool_data.previous_mouse_position);
 
 				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(drag_start_document, document.metadata()),
 					selection_mode => selection_mode,
 				};
 				tool_data.started_drawing_from_inside = false;
 
-				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
+				let start_viewport = document_to_viewport.transform_point2(drag_start_document);
+				if start_viewport.distance(previous_mouse) < 1e-8 {
 					// Clicked inside or outside the shape then deselect all of the points/segments
 					if document.click(input, viewport).is_some() && tool_data.stored_selection.is_none() {
 						tool_data.stored_selection = Some(shape_editor.selected_shape_state.clone());
@@ -2421,7 +2438,7 @@ impl Fsm for PathToolFsmState {
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = Rect::new(tool_data.drag_start_pos.x, tool_data.drag_start_pos.y, previous_mouse.x, previous_mouse.y).abs();
+							let bbox = Rect::new(start_viewport.x, start_viewport.y, previous_mouse.x, previous_mouse.y).abs();
 
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
@@ -2682,7 +2699,7 @@ impl Fsm for PathToolFsmState {
 				let mut end_point_id = None;
 
 				// Get the merged layer's transform to convert local positions to document space
-				let layer_transform = document.metadata().transform_to_document(layer);
+				let layer_transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 				for (i, &local_pos) in positions.iter().enumerate() {
 					// Transform the local position to document space for comparison
@@ -2741,7 +2758,7 @@ impl Fsm for PathToolFsmState {
 					let Some(old_vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 					// Also get the transform node that is applied on the layer if it exists
-					let transform = document.metadata().transform_to_document(layer);
+					let transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 					let mut new_vector = Vector::default();
 
