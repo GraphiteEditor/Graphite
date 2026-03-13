@@ -112,8 +112,10 @@ impl Grid {
 			return;
 		};
 
-		let start = shape_tool_data.data.viewport_drag_start(document);
-		let end = ipp.mouse.position;
+		// Convert to document space for correct dimensions regardless of zoom
+		let document_to_viewport = document.metadata().document_to_viewport;
+		let start = shape_tool_data.data.drag_start;
+		let end = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 
 		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
 
@@ -134,8 +136,8 @@ impl Grid {
 		// Set transform
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., translation),
-			transform_in: TransformIn::Viewport,
+			transform: DAffine2::from_translation(translation),
+			transform_in: TransformIn::Local,
 			skip_rerender: false,
 		});
 	}
