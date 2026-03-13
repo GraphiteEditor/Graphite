@@ -1,0 +1,40 @@
+website/sass/page/contributor-guide/bisect-tool.scss
+  d21011cba73d6d72 1-116,118-120,122-139,142-150,155-262
+website/content/volunteer/guide/codebase-overview/bisect-tool.md
+  d21011cba73d6d72 1-27,30-41,44-51,53-54,56-79
+website/static/js/page/contributor-guide/bisect-tool.js
+  d21011cba73d6d72 1-579
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "099cccebc3d53460f1bb12ada5b1e3fc6a11011b",
+  "prompts": {
+    "131eef5ce8c6ba71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2999a0d-5152-4c1f-840b-29d329510b44",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 509,
+      "total_deletions": 121,
+      "accepted_lines": 274,
+      "overriden_lines": 54
+    },
+    "d21011cba73d6d72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd40f5cf-4a6f-4408-af25-0e7cd7d2cce6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 1615,
+      "total_deletions": 691,
+      "accepted_lines": 906,
+      "overriden_lines": 8
+    }
+  }
+}
