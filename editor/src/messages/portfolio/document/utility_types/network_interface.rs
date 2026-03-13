@@ -1049,7 +1049,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get persistent node metadata in is_collapsed for node {node_id}");
 			return false;
 		};
-		node_metadata.persistent_metadata.collapsed
+		node_metadata.persistent_metadata.collapsed.unwrap_or_else(|| self.implementation_name(node_id, network_path) == "Merge")
 	}
 
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -4522,7 +4522,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		node_metadata.persistent_metadata.collapsed = collapsed;
+		node_metadata.persistent_metadata.collapsed = Some(collapsed);
 		self.transaction_modified();
 	}
 
@@ -6286,9 +6286,8 @@ pub struct DocumentNodePersistentMetadata {
 	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
 	#[serde(default)]
 	pub pinned: bool,
-	/// Whether the properties body is expanded or collapsed. Defaults to `false` when not specified.
 	#[serde(default)]
-	pub collapsed: bool,
+	pub collapsed: Option<bool>,
 	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	/// All fields in NodeTypePersistentMetadata should automatically be updated by using the network interface API
 	pub node_type_metadata: NodeTypePersistentMetadata,

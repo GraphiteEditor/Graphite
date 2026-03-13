@@ -2717,7 +2717,7 @@ impl DocumentNodeDefinition {
 			network.persistent_metadata.reference = Some(self.identifier.to_string());
 		}
 		if self.identifier == MERGE_NODE_IDENTIFIER {
-			template.persistent_node_metadata.collapsed = true;
+			template.persistent_node_metadata.collapsed = Some(true);
 		}
 
 		template

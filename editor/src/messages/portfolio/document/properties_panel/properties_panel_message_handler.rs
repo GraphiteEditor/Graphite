@@ -102,9 +102,12 @@ impl PropertiesPanelMessageHandler {
 	fn update_all_section_expansion_recursive(layout: &mut [LayoutGroup], expanded: bool, responses: &mut VecDeque<Message>) -> Vec<NodeId> {
 		let mut node_ids = Vec::new();
 		for group in layout {
-			if let LayoutGroup::Section {
-				id, layout, expanded: group_expanded, ..
-			} = group
+			if let LayoutGroup::Section(WidgetSection {
+				id,
+				layout,
+				expanded: group_expanded,
+				..
+			}) = group
 			{
 				*group_expanded = expanded;
 				let node_id = NodeId(*id);
