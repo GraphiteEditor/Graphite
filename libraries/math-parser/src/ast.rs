@@ -54,7 +54,11 @@ pub enum BinaryOp {
 	Add,
 	Sub,
 	Mul,
+	/// Logical AND (nonzero treated as true, returns 1.0 or 0.0)
+	And,
 	Div,
+	/// Logical OR (nonzero treated as true, returns 1.0 or 0.0)
+	Or,
 	Modulo,
 	Pow,
 	Leq,
@@ -70,6 +74,7 @@ pub enum UnaryOp {
 	Neg,
 	Sqrt,
 	Fac,
+	Not,
 }
 
 #[derive(Debug, PartialEq)]

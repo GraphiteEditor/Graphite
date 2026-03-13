@@ -71,8 +71,17 @@ lazy_static! {
 			}),
 		);
 
+		// Inverse trig with legacy names and standard aliases
 		map.insert(
 			"invsin",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asin()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asin()))),
+				_ => None,
+			}),
+		);
+		map.insert(
+			"asin",
 			Box::new(|values| match values {
 				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asin()))),
 				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asin()))),
@@ -88,9 +97,25 @@ lazy_static! {
 				_ => None,
 			}),
 		);
+		map.insert(
+			"acos",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.acos()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.acos()))),
+				_ => None,
+			}),
+		);
 
 		map.insert(
 			"invtan",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atan()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atan()))),
+				_ => None,
+			}),
+		);
+		map.insert(
+			"atan",
 			Box::new(|values| match values {
 				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atan()))),
 				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atan()))),
@@ -106,9 +131,25 @@ lazy_static! {
 				_ => None,
 			}),
 		);
+		map.insert(
+			"acsc",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asin()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asin()))),
+				_ => None,
+			}),
+		);
 
 		map.insert(
 			"invsec",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acos()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acos()))),
+				_ => None,
+			}),
+		);
+		map.insert(
+			"asec",
 			Box::new(|values| match values {
 				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acos()))),
 				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acos()))),
@@ -119,8 +160,24 @@ lazy_static! {
 		map.insert(
 			"invcot",
 			Box::new(|values| match values {
-				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real((PI / 2.0 - real).atan()))),
-				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex((Complex::new(PI / 2.0, 0.0) - complex).atan()))),
+				[Value::Number(Number::Real(real))] => {
+					Some(Value::Number(Number::Real(real.recip().atan())))
+				}
+				[Value::Number(Number::Complex(complex))] => {
+					Some(Value::Number(Number::Complex(complex.recip().atan())))
+				}
+				_ => None,
+			}),
+		);
+		map.insert(
+			"acot",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => {
+					Some(Value::Number(Number::Real(real.recip().atan())))
+				}
+				[Value::Number(Number::Complex(complex))] => {
+					Some(Value::Number(Number::Complex(complex.recip().atan())))
+				}
 				_ => None,
 			}),
 		);
@@ -148,6 +205,34 @@ lazy_static! {
 			Box::new(|values| match values {
 				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tanh()))),
 				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tanh()))),
+				_ => None,
+			}),
+		);
+
+		// Reciprocal hyperbolic functions
+		map.insert(
+			"csch",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sinh().recip()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sinh().recip()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"sech",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cosh().recip()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cosh().recip()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"coth",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tanh().recip()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tanh().recip()))),
 				_ => None,
 			}),
 		);
@@ -180,12 +265,79 @@ lazy_static! {
 			}),
 		);
 
+		// Inverse reciprocal hyperbolic functions
+		map.insert(
+			"acsch",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asinh()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asinh()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"asech",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acosh()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acosh()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"acoth",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().atanh()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().atanh()))),
+				_ => None,
+			}),
+		);
+
 		// Logarithm Functions
 		map.insert(
 			"ln",
 			Box::new(|values| match values {
 				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.ln()))),
 				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.ln()))),
+				_ => None,
+			}),
+		);
+
+		// Exponential / power helpers
+		map.insert(
+			"exp",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.exp()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.exp()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"pow",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => {
+					Some(Value::Number(Number::Real(x.powf(*n))))
+				}
+				[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => {
+					Some(Value::Number(Number::Complex(x.powf(*n))))
+				}
+				[Value::Number(Number::Complex(x)), Value::Number(Number::Complex(n))] => {
+					Some(Value::Number(Number::Complex(x.powc(*n))))
+				}
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"root",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => {
+					Some(Value::Number(Number::Real(x.powf(1.0 / *n))))
+				}
+				[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => {
+					Some(Value::Number(Number::Complex(x.powf(1.0 / *n))))
+				}
 				_ => None,
 			}),
 		);
@@ -246,6 +398,16 @@ lazy_static! {
 			}),
 		);
 
+		map.insert(
+			"atan2",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(y)), Value::Number(Number::Real(x))] => {
+					Some(Value::Number(Number::Real(y.atan2(*x))))
+				}
+				_ => None,
+			}),
+		);
+
 		// Mapping Functions
 		map.insert(
 			"abs",
@@ -300,6 +462,105 @@ lazy_static! {
 			}),
 		);
 
+		map.insert(
+			"remap",
+			Box::new(|values| match values {
+				[
+					Value::Number(Number::Real(value)),
+					Value::Number(Number::Real(in_a)),
+					Value::Number(Number::Real(in_b)),
+					Value::Number(Number::Real(out_a)),
+					Value::Number(Number::Real(out_b)),
+				] => {
+					let t = (*value - *in_a) / (*in_b - *in_a);
+					Some(Value::Number(Number::Real(out_a + t * (out_b - out_a))))
+				}
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"trunc",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.trunc()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"fract",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.fract()))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"sign",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(real))] => {
+					let s = if *real > 0.0 {
+						1.0
+					} else if *real < 0.0 {
+						-1.0
+					} else {
+						0.0
+					};
+					Some(Value::Number(Number::Real(s)))
+				}
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"gcd",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
+					let mut x = a.trunc() as i64;
+					let mut y = b.trunc() as i64;
+					if x == 0 && y == 0 {
+						return Some(Value::Number(Number::Real(0.0)));
+					}
+					x = x.abs();
+					y = y.abs();
+					while y != 0 {
+						let r = x % y;
+						x = y;
+						y = r;
+					}
+					Some(Value::Number(Number::Real(x as f64)))
+				}
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"lcm",
+			Box::new(|values| match values {
+				[Value::Number(Number::Real(a)), Value::Number(Number::Real(b))] => {
+					let mut x = a.trunc() as i64;
+					let mut y = b.trunc() as i64;
+					x = x.abs();
+					y = y.abs();
+					if x == 0 || y == 0 {
+						return Some(Value::Number(Number::Real(0.0)));
+					}
+
+					// gcd
+					let mut gx = x;
+					let mut gy = y;
+					while gy != 0 {
+						let r = gx % gy;
+						gx = gy;
+						gy = r;
+					}
+					let lcm = (x / gx) * y;
+					Some(Value::Number(Number::Real(lcm as f64)))
+				}
+				_ => None,
+			}),
+		);
+
 		// Complex Number Functions
 		map.insert(
 			"real",
@@ -315,6 +576,31 @@ lazy_static! {
 			Box::new(|values| match values {
 				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Real(complex.im))),
 				[Value::Number(Number::Real(_))] => Some(Value::Number(Number::Real(0.0))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"conj",
+			Box::new(|values| match values {
+				[Value::Number(Number::Complex(complex))] => {
+					Some(Value::Number(Number::Complex(complex.conj())))
+				}
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(*real))),
+				_ => None,
+			}),
+		);
+
+		map.insert(
+			"arg",
+			Box::new(|values| match values {
+				[Value::Number(Number::Complex(complex))] => {
+					Some(Value::Number(Number::Real(complex.arg())))
+				}
+				[Value::Number(Number::Real(real))] => {
+					let angle = if *real >= 0.0 { 0.0 } else { PI };
+					Some(Value::Number(Number::Real(angle)))
+				}
 				_ => None,
 			}),
 		);

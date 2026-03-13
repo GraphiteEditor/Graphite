@@ -56,6 +56,16 @@ impl Number {
 		match (self, other) {
 			(Number::Real(lhs), Number::Real(rhs)) => {
 				let result = match op {
+					BinaryOp::And => {
+						let l = lhs != 0.0;
+						let r = rhs != 0.0;
+						if l && r { 1.0 } else { 0.0 }
+					}
+					BinaryOp::Or => {
+						let l = lhs != 0.0;
+						let r = rhs != 0.0;
+						if l || r { 1.0 } else { 0.0 }
+					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
@@ -75,6 +85,16 @@ impl Number {
 
 			(Number::Complex(lhs), Number::Complex(rhs)) => {
 				let result = match op {
+					BinaryOp::And => {
+						let l = lhs != Complex::new(0.0, 0.0);
+						let r = rhs != Complex::new(0.0, 0.0);
+						return Some(Number::Real(if l && r { 1.0 } else { 0.0 }));
+					}
+					BinaryOp::Or => {
+						let l = lhs != Complex::new(0.0, 0.0);
+						let r = rhs != Complex::new(0.0, 0.0);
+						return Some(Number::Real(if l || r { 1.0 } else { 0.0 }));
+					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
@@ -135,15 +155,37 @@ impl Number {
 			Number::Real(real) => match op {
 				UnaryOp::Neg => Number::Real(-real),
 				UnaryOp::Sqrt => Number::Real(real.sqrt()),
-
-				UnaryOp::Fac => todo!("Implement factorial"),
+				UnaryOp::Fac => {
+					// n! for real n: use integer semantics when n is a
+					// non-negative integer, otherwise return NaN.
+					if !real.is_finite() {
+						return Number::Real(f64::NAN);
+					}
+					let truncated = real.trunc();
+					if truncated < 0.0 || (real - truncated).abs() > f64::EPSILON {
+						return Number::Real(f64::NAN);
+					}
+					let n = truncated as u64;
+					let mut acc = 1.0_f64;
+					for k in 1..=n {
+						acc *= k as f64;
+					}
+					Number::Real(acc)
+				}
+				UnaryOp::Not => {
+					let is_zero = real == 0.0;
+					Number::Real(if is_zero { 1.0 } else { 0.0 })
+				}
 			},
 
 			Number::Complex(complex) => match op {
 				UnaryOp::Neg => Number::Complex(-complex),
 				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
-
-				UnaryOp::Fac => todo!("Implement factorial"),
+				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
+				UnaryOp::Not => {
+					let is_zero = complex == Complex::new(0.0, 0.0);
+					Number::Real(if is_zero { 1.0 } else { 0.0 })
+				}
 			},
 		}
 	}

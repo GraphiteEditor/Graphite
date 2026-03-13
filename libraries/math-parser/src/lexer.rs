@@ -18,6 +18,10 @@ pub enum Token<'src> {
 	Const(Constant),
 	Ident(&'src str),
 
+	AndAnd,
+	OrOr,
+	Bang,
+
 	LParen,
 	RParen,
 	Comma,
@@ -44,6 +48,10 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Float(x) => write!(f, "{x}"),
 			Token::Const(c) => write!(f, "{c}"),
 			Token::Ident(name) => write!(f, "{name}"),
+
+			Token::AndAnd => f.write_str("&&"),
+			Token::OrOr => f.write_str("||"),
+			Token::Bang => f.write_str("!"),
 
 			Token::LParen => f.write_str("("),
 			Token::RParen => f.write_str(")"),
@@ -218,6 +226,23 @@ impl<'a> Lexer<'a> {
 
 		use Token::*;
 		let tok = match ch {
+			'&' => {
+				if self.peek() == Some('&') {
+					self.bump();
+					AndAnd
+				} else {
+					return None;
+				}
+			}
+			'|' => {
+				if self.peek() == Some('|') {
+					self.bump();
+					OrOr
+				} else {
+					return None;
+				}
+			}
+
 			'(' => LParen,
 			')' => RParen,
 			',' => Comma,
@@ -234,7 +259,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					Neq
 				} else {
-					return None;
+					Bang
 				}
 			}
 

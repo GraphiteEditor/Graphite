@@ -137,6 +137,12 @@ mod tests {
 		exponent_mixed_operations: "2^3 + 4^2" => 24.,
 		exponent_nested: "2^(3+1)" => 16.,
 
+		// Factorial (postfix !)
+		factorial_simple: "5!" => 120.,
+		factorial_nested: "(3 + 2)!" => 120.,
+		factorial_zero: "0!" => 1.,
+		factorial_chain: "3!!" => 720., // (3!)! = 6! = 720
+
 		// Operations with negative values
 		negative_nested_parentheses: "-(5 + 3 * (2 - 1))" => -8.,
 		negative_sqrt_addition: "-(sqrt(16) + sqrt(9))" => -7.,
@@ -149,8 +155,7 @@ mod tests {
 		constant_e: "e" => std::f64::consts::E,
 		constant_phi: "phi" => 1.61803398875,
 		constant_tau: "tau" => 2.0 * std::f64::consts::PI,
-		constant_infinity: "inf" => f64::INFINITY,
-		constant_infinity_symbol: "∞" => f64::INFINITY,
+		constant_infinity: "if(inf == ∞, inf, 0)" => f64::INFINITY,
 		multiply_pi: "2 * pi" => 2.0 * std::f64::consts::PI,
 		add_e_constant: "e + 1" => std::f64::consts::E + 1.0,
 		multiply_phi_constant: "phi * 2" => 1.61803398875 * 2.0,
@@ -163,6 +168,33 @@ mod tests {
 		trig_tan_pi_div_four: "tan(pi/4)" => 1.0,
 		trig_sin_tau: "sin(tau)" => 0.0,
 		trig_cos_tau_div_two: "cos(tau/2)" => -1.0,
+		trig_csc: "csc(pi/2)" => 1.0,
+		trig_sec: "sec(0)" => 1.0,
+		trig_cot: "cot(pi/4)" => 1.0,
+
+		// Inverse trig aliases
+		inverse_trig_asin: "asin(1)" => std::f64::consts::FRAC_PI_2,
+		inverse_trig_acos: "acos(1)" => 0.0,
+		inverse_trig_atan: "atan(1)" => std::f64::consts::FRAC_PI_4,
+		inverse_trig_acsc: "acsc(1)" => std::f64::consts::FRAC_PI_2,
+		inverse_trig_asec: "asec(1)" => 0.0,
+		inverse_trig_acot: "acot(1)" => std::f64::consts::FRAC_PI_4,
+
+		// Hyperbolic and reciprocal hyperbolic
+		hyperbolic_sinh: "sinh(0)" => 0.0,
+		hyperbolic_cosh: "cosh(0)" => 1.0,
+		hyperbolic_tanh: "tanh(0)" => 0.0,
+		hyperbolic_csch: "csch(1)" => 1f64.sinh().recip(),
+		hyperbolic_sech: "sech(0)" => 1.0,
+		hyperbolic_coth: "coth(1)" => 1f64.tanh().recip(),
+
+		// Inverse hyperbolic
+		inverse_hyperbolic_asinh: "asinh(0)" => 0.0,
+		inverse_hyperbolic_acosh: "acosh(1)" => 0.0,
+		inverse_hyperbolic_atanh: "atanh(0)" => 0.0,
+		inverse_hyperbolic_acsch: "acsch(1)" => 1.0f64.asinh(),
+		inverse_hyperbolic_asech: "asech(1)" => 1.0f64.acosh(),
+		inverse_hyperbolic_acoth: "acoth(2)" => 0.5f64.atanh(),
 
 		// Basic if statements
 		if_true_condition: "if(1,5,3)" => 5.,
@@ -185,6 +217,26 @@ mod tests {
 		if_with_sqrt: "if(sqrt(16) == 4, 1, 0)" => 1.,
 		if_with_sin: "if(sin(pi) == 0.0, 1, 0)" => 0.,
 
+		// Logical NOT (prefix !)
+		logical_not_zero: "!0" => 1.0,
+		logical_not_nonzero: "!5" => 0.0,
+		logical_not_expression: "!(2 - 2)" => 1.0,
+
+		// Logical helpers as functions
+		logical_isnan: "isnan(0/0)" => 1.0,
+		logical_eq: "eq(2, 2)" => 1.0,
+		logical_greater: "greater(3, 2)" => 1.0,
+
+		// Log / exp / pow / root
+		log_ln: "ln(e)" => 1.0,
+		log_log10: "log(100)" => 2.0,
+		log_log2: "log2(8)" => 3.0,
+		log_change_of_base: "log(8, 2)" => 3.0,
+		exp_function: "exp(1)" => std::f64::consts::E,
+		pow_real: "pow(2, 3)" => 8.0,
+		root_square: "root(9, 2)" => 3.0,
+		root_cube: "root(8, 3)" => 2.0,
+
 		// Nested if statements
 		nested_if: "if(1, if(0, 1, 2), 3)" => 2.,
 		nested_if_complex: "if(2-2 == 0, if(1, 5, 6), if(1, 7, 8))" => 5.,
@@ -193,12 +245,33 @@ mod tests {
 		if_complex_condition: "if(sqrt(16) + sin(pi) < 5, 2*pi, 3*e)" => 2. * std::f64::consts::PI,
 		if_complex_blocks: "if(1, 2*sqrt(16) + sin(pi/2), 3*cos(0) + 4)" => 9.,
 
-		// TODO: Combine into one test with &&
-		le: "if(1 <= 2, 1., 0.)" => 1.,
-		le_special: "if(1 ≤ 2, 1., 0.)" => 1.,
+		// Mapping helpers
+		mapping_trunc: "trunc(3.7)" => 3.0,
+		mapping_fract: "fract(3.25)" => 0.25,
+		mapping_sign_pos: "sign(5)" => 1.0,
+		mapping_sign_neg: "sign(-5)" => -1.0,
 
-		ge: "if(2 >= 1, 1, 0)" => 1.,
-		ge_special: "if(2 ≥ 1, 1, 0)" => 1.,
+		// Geometry / mapping extras
+		geometry_hypot: "hypot(3, 4)" => 5.0,
+		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.0,
+
+		// GCD / LCM
+		gcd_simple: "gcd(24, 18)" => 6.0,
+		lcm_simple: "lcm(4, 6)" => 12.0,
+
+		// atan2
+		trig_atan2_axis: "atan2(1, 0)" => std::f64::consts::FRAC_PI_2,
+
+		// Comparison operators combined with logical AND
+		comparison_operators: "if(1 <= 2 && 1 ≤ 2 && 2 >= 1 && 2 ≥ 1, 1., 0.)" => 1.,
+
+		// Logical AND / OR
+		logical_and_true: "if(1 <= 2 && 2 < 3, 1., 0.)" => 1.,
+		logical_and_false: "if(1 <= 2 && 3 < 2, 1., 0.)" => 0.,
+		logical_or_true_left: "if(1 > 2 || 2 < 3, 1., 0.)" => 1.,
+		logical_or_true_right: "if(2 < 1 || 2 < 3, 1., 0.)" => 1.,
+		logical_or_false: "if(1 > 2 || 3 < 2, 1., 0.)" => 0.,
+		logical_precedence_and_over_or: "if(0 == 1 || 1 == 1 && 0 == 0, 1., 0.)" => 1.,
 
 		// Edge cases
 		if_zero: "if(0.0, 1, 2)" => 2.,
