@@ -381,7 +381,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.duplicate_selected_nodes_impl(network_interface, selection_network_path, responses, true);
 			}
 			NodeGraphMessage::DuplicateSelectedNodesForDrag => {
+				responses.add(DocumentMessage::StartTransaction);
 				self.duplicate_selected_nodes_impl(network_interface, selection_network_path, responses, false);
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(DocumentMessage::StartTransaction);
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
 				// Do not enter the nested network if the node was dragged
@@ -773,7 +776,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.drag_start.is_some() {
 						self.drag_start = None;
 						self.select_if_not_dragged = None;
-						responses.add(DocumentMessage::AbortTransaction);
+						let undo_count = if self.duplicated_in_drag { 2 } else { 1 };
+						responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count });
 						self.duplicated_in_drag = false;
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
