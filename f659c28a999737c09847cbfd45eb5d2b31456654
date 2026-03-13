@@ -1,0 +1,29 @@
+website/content/learn/tools/artboard.md
+  131eef5ce8c6ba71 1-28,35,41-43,45-52,54-56,59-62,64-68,71-73,75-77,79-80
+website/content/learn/tools/_index.md
+  131eef5ce8c6ba71 1-12,15-51
+node-graph/nodes/path-bool/src/lib.rs
+  131eef5ce8c6ba71 29,31
+website/content/learn/tools/select.md
+  131eef5ce8c6ba71 1-32,34-35,37-42,44-46,50-62,64-65,67,69,71-91,93-97,99-108,110,112-125,127-129,132,134,136,138,140-142,144,149-151,153-154,156-158,160-162,166-168,170-173,175-177,179-184,187-188,190-194,196,198,203-205,207-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "f659c28a999737c09847cbfd45eb5d2b31456654",
+  "prompts": {
+    "131eef5ce8c6ba71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c2999a0d-5152-4c1f-840b-29d329510b44",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 274,
+      "overriden_lines": 0
+    }
+  }
+}
