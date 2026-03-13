@@ -17,7 +17,6 @@ pub struct ExportDialogMessageHandler {
 	pub transparent_background: bool,
 	pub artboards: HashMap<LayerNodeIdentifier, String>,
 	pub has_selection: bool,
-	pub artboards_as_pages: bool,
 }
 
 impl Default for ExportDialogMessageHandler {
@@ -29,7 +28,6 @@ impl Default for ExportDialogMessageHandler {
 			transparent_background: false,
 			artboards: Default::default(),
 			has_selection: false,
-			artboards_as_pages: true,
 		}
 	}
 }
@@ -44,22 +42,23 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
 			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
-			ExportDialogMessage::ArtboardsAsPages { artboards_as_pages } => self.artboards_as_pages = artboards_as_pages,
 
 			ExportDialogMessage::Submit => {
+				let artboards_as_pages = self.bounds == ExportBounds::ArtboardsAsPages;
 				let artboard_name = match self.bounds {
 					ExportBounds::Artboard(layer) => self.artboards.get(&layer).cloned(),
 					_ => None,
 				};
+				let bounds = if artboards_as_pages { ExportBounds::AllArtwork } else { self.bounds };
 				responses.add_front(PortfolioMessage::SubmitDocumentExport {
 					name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 					file_type: self.file_type,
 					scale_factor: self.scale_factor,
-					bounds: self.bounds,
+					bounds,
 					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
 					artboard_name,
 					artboard_count: self.artboards.len(),
-					artboards_as_pages: self.artboards_as_pages,
+					artboards_as_pages,
 				})
 			}
 		}
@@ -124,21 +123,30 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		let standard_bounds = vec![
+		let standard_bounds: Vec<(ExportBounds, String, bool)> = vec![
 			(ExportBounds::AllArtwork, "All Artwork".to_string(), false),
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
 		];
-		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
-		let choices = [standard_bounds, artboards];
+
+		let artboards_as_pages: Vec<(ExportBounds, String, bool)> = if self.file_type == FileType::Pdf && self.artboards.len() >= 2 {
+			vec![(ExportBounds::ArtboardsAsPages, "Artboards as Pages".to_string(), false)]
+		} else {
+			vec![]
+		};
+
+		let artboards: Vec<(ExportBounds, String, bool)> = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
+		let choices = [standard_bounds, artboards_as_pages, artboards];
 
 		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
+			ExportBounds::AllArtwork
+		} else if self.bounds == ExportBounds::ArtboardsAsPages && (self.file_type != FileType::Pdf || self.artboards.len() < 2) {
 			ExportBounds::AllArtwork
 		} else {
 			self.bounds
 		};
 		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap_or(0);
 
-		let mut entries = choices
+		let mut entries: Vec<Vec<_>> = choices
 			.into_iter()
 			.map(|choice| {
 				choice
@@ -153,9 +161,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			})
 			.collect::<Vec<_>>();
 
-		if entries[1].is_empty() {
-			entries.remove(1);
-		}
+		entries.retain(|section| !section.is_empty());
 
 		let export_area = vec![
 			TextLabel::new("Bounds").table_align(true).min_width(120).widget_instance(),
@@ -174,25 +180,12 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		let mut rows = vec![
+		let rows = vec![
 			LayoutGroup::row(export_type),
 			LayoutGroup::row(resolution),
 			LayoutGroup::row(export_area),
 			LayoutGroup::row(transparent_background),
 		];
-
-		if self.file_type == FileType::Pdf && current_bounds == ExportBounds::AllArtwork && self.artboards.len() >= 2 {
-			let checkbox_id = CheckboxId::new();
-			let artboards_as_pages = vec![
-				TextLabel::new("Artboard as Pages").for_checkbox(checkbox_id).widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				CheckboxInput::new(self.artboards_as_pages)
-					.on_update(move |value: &CheckboxInput| ExportDialogMessage::ArtboardsAsPages { artboards_as_pages: value.checked }.into())
-					.for_label(checkbox_id)
-					.widget_instance(),
-			];
-			rows.push(LayoutGroup::row(artboards_as_pages));
-		}
 
 		Layout(rows)
 	}

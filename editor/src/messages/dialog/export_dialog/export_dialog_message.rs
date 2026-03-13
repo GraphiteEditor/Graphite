@@ -8,7 +8,6 @@ pub enum ExportDialogMessage {
 	ScaleFactor { factor: f64 },
 	TransparentBackground { transparent: bool },
 	ExportBounds { bounds: ExportBounds },
-	ArtboardsAsPages { artboards_as_pages: bool },
 
 	Submit,
 }

@@ -68,6 +68,7 @@ pub enum ExportBounds {
 	AllArtwork,
 	Selection,
 	Artboard(LayerNodeIdentifier),
+	ArtboardsAsPages,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
