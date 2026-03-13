@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["serde"]
 wgpu = ["dep:wgpu"]
+wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
@@ -20,10 +21,11 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 base64 = { workspace = true }
 bytemuck = { workspace = true }
-specta = { workspace = true }
 image = { workspace = true }
 serde_json = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }

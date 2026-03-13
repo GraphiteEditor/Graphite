@@ -1,42 +1,36 @@
 {
   info,
   pkgs,
-  inputs,
+  self,
   deps,
-  libs,
-  tools,
+  system,
+  lib,
   ...
 }:
 
 {
-  embeddedResources ? true,
   dev ? false,
 }:
 
 let
-  brandingTar = pkgs.fetchurl (
-    let
-      lockContent = builtins.readFile "${info.src}/.branding";
-      lines = builtins.filter (s: s != [ ]) (builtins.split "\n" lockContent);
-      url = builtins.elemAt lines 0;
-      hash = builtins.elemAt lines 1;
-    in
-    {
-      url = url;
-      sha256 = hash;
-    }
-  );
-  branding = pkgs.runCommand "${info.pname}-branding" { } ''
-    mkdir -p $out
-    tar -xvf ${brandingTar} -C $out --strip-components 1
-  '';
-  cargoVendorDir =  deps.crane.lib.vendorCargoDeps { inherit (info) src; };
+  branding = self.packages.${system}.graphite-branding;
+  cargoVendorDir = deps.crane.lib.vendorCargoDeps { inherit (info) src; };
   resourcesCommon = {
     pname = "${info.pname}-resources";
     inherit (info) version src;
     inherit cargoVendorDir;
     strictDeps = true;
-    nativeBuildInputs = tools.frontend;
+    nativeBuildInputs = [
+      pkgs.pkg-config
+      pkgs.lld
+      pkgs.nodejs
+      pkgs.nodePackages.npm
+      pkgs.binaryen
+      pkgs.wasm-bindgen-cli_0_2_100
+      pkgs.wasm-pack
+      pkgs.cargo-about
+    ];
+    buildInputs = [ pkgs.openssl ];
     env.CARGO_PROFILE = if dev then "dev" else "release";
     cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm --no-default-features --features native";
     doCheck = false;
@@ -54,7 +48,11 @@ let
       npmConfigScript = "setup";
       makeCacheWritable = true;
 
-      nativeBuildInputs = tools.frontend ++ [ pkgs.importNpmLock.npmConfigHook pkgs.removeReferencesTo ];
+      nativeBuildInputs = [
+        pkgs.importNpmLock.npmConfigHook
+        pkgs.removeReferencesTo
+      ]
+      ++ resourcesCommon.nativeBuildInputs;
 
       prePatch = ''
         mkdir branding
@@ -80,18 +78,33 @@ let
       '';
     }
   );
+  libs = [
+    pkgs.wayland
+    pkgs.vulkan-loader
+    pkgs.libGL
+    pkgs.openssl
+    pkgs.libraw
+
+    # X11 Support
+    pkgs.libxkbcommon
+    pkgs.libXcursor
+    pkgs.libxcb
+    pkgs.libX11
+  ];
   common = {
     inherit (info) pname version src;
     inherit cargoVendorDir;
     strictDeps = true;
-    buildInputs = libs.desktop-all;
-    nativeBuildInputs = tools.desktop ++ [ pkgs.makeWrapper pkgs.removeReferencesTo ];
+    buildInputs = libs;
+    nativeBuildInputs = [
+      pkgs.pkg-config
+      pkgs.cargo-about
+      pkgs.removeReferencesTo
+    ];
     env = deps.cef.env // {
       CARGO_PROFILE = if dev then "dev" else "release";
     };
-    cargoExtraArgs = "-p graphite-desktop${
-      if embeddedResources then "" else " --no-default-features --features recommended"
-    }";
+    cargoExtraArgs = "-p graphite-desktop";
     doCheck = false;
   };
 in
@@ -101,31 +114,34 @@ deps.crane.lib.buildPackage (
   // {
     cargoArtifacts = deps.crane.lib.buildDepsOnly common;
 
-    env =
-      common.env
-      // {
-        RASTER_NODES_SHADER_PATH = pkgs.raster-nodes-shaders;
-      }
-      // (
-        if embeddedResources then
-          {
-            EMBEDDED_RESOURCES = resources;
-          }
-        else
-          { }
-      ) // {
-        GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
-        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModified or "unknown";
-      };
+    env = common.env // {
+      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
+      EMBEDDED_RESOURCES = resources;
+      GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
+      GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
+    };
 
-    postUnpack = ''
-      mkdir ./branding
-      cp -r ${branding}/* ./branding
-    '';
+    npmDeps = pkgs.importNpmLock {
+      npmRoot = "${info.src}/frontend";
+    };
+    npmRoot = "frontend";
+    nativeBuildInputs = [
+      pkgs.importNpmLock.npmConfigHook
+      pkgs.nodePackages.npm
+    ]
+    ++ common.nativeBuildInputs;
 
-    preBuild = if inputs.self ? rev then ''
-      export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
-    '' else "";
+    preBuild = ''
+      ${lib.getExe self.packages.${system}.tools.third-party-licenses}
+    ''
+    + (
+      if self ? rev then
+        ''
+          export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
+        ''
+      else
+        ""
+    );
 
     installPhase = ''
       mkdir -p $out/bin
@@ -148,7 +164,7 @@ deps.crane.lib.buildPackage (
       remove-references-to -t "${cargoVendorDir}" $out/bin/graphite
 
       patchelf \
-        --set-rpath "${pkgs.lib.makeLibraryPath libs.desktop-all}:${deps.cef.env.CEF_PATH}" \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs}:${deps.cef.env.CEF_PATH}" \
         --add-needed libGL.so \
         $out/bin/graphite
     '';

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy } from "svelte";
 
+	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import { patchLayout, UpdateDataPanelLayout, type Layout } from "@graphite/messages";
+	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
@@ -12,14 +13,14 @@
 	let dataPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateDataPanelLayout, (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("DataPanel", (data) => {
 			patchLayout(dataPanelLayout, data);
 			dataPanelLayout = dataPanelLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateDataPanelLayout);
+		editor.subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	});
 </script>
 

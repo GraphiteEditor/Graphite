@@ -234,7 +234,8 @@ impl DocumentMetadata {
 // ===================
 
 /// ID of a layer node
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LayerNodeIdentifier(NonZeroU64);
 
 impl core::fmt::Debug for LayerNodeIdentifier {

@@ -1,12 +1,9 @@
 use dyn_any::DynAny;
 pub use uuid_generation::*;
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct Uuid(
-	#[serde(with = "u64_string")]
-	#[specta(type = String)]
-	u64,
-);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct Uuid(#[serde(with = "u64_string")] u64);
 
 mod u64_string {
 	use serde::{self, Deserialize, Deserializer, Serializer};
@@ -70,7 +67,8 @@ mod uuid_generation {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type, DynAny)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct NodeId(pub u64);
 
 impl NodeId {
