@@ -87,7 +87,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 							DocumentNode {
 								inputs,
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
-								visible: true,
+								visible: None,
 								original_location,
 								..Default::default()
 							}
@@ -95,7 +95,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 						_ => DocumentNode {
 							inputs: vec![NodeInput::import(generic!(X), i)],
 							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
-							visible: false,
+							visible: None,
 							..Default::default()
 						},
 					},
@@ -111,7 +111,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			inputs: network_inputs,
 			call_argument: input_type.clone(),
 			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
-			visible: true,
+			visible: None,
 			skip_deduplication: false,
 			context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 			..Default::default()
@@ -131,7 +131,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				scope_injections: Default::default(),
 				generated: true,
 			}),
-			visible: true,
+			visible: None,
 			skip_deduplication: false,
 			..Default::default()
 		};
