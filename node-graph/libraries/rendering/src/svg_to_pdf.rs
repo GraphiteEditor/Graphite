@@ -1,7 +1,6 @@
 use krilla::page::PageSettings;
 use krilla_svg::{SurfaceExt, SvgSettings};
 
-
 fn add_svg_page(document: &mut krilla::Document, tree: &usvg_045::Tree, page_width: f32, page_height: f32) -> Result<(), String> {
 	let page_width = page_width.max(1.);
 	let page_height = page_height.max(1.);
