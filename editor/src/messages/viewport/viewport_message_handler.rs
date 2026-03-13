@@ -530,7 +530,7 @@ impl Sub<PhysicalPoint> for PhysicalPoint {
 	}
 }
 fn assert_scale<T: Scaled>(a: &T, b: &T) {
-	assert_eq!(a.scale(), b.scale(), "Cannot multiply with diffent scale");
+	assert_eq!(a.scale(), b.scale(), "Cannot multiply with different scale");
 }
 
 impl From<(f64, f64)> for Point {
