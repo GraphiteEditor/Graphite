@@ -1,0 +1,47 @@
+editor/src/messages/portfolio/document/overlays/guide_overlays.rs
+  8ec9ea24d30a8048 1-27
+editor/src/messages/frontend/frontend_message.rs
+  8ec9ea24d30a8048 238-243
+frontend/wasm/src/editor_api.rs
+  8ec9ea24d30a8048 923-995
+editor/src/messages/tool/common_functionality/snapping/guide_snapper.rs
+  8ec9ea24d30a8048 1-123
+editor/src/messages/portfolio/document/overlays/mod.rs
+  8ec9ea24d30a8048 2
+frontend/src/state-providers/document.ts
+  8ec9ea24d30a8048 8-9,19-20,29-30,80-88
+frontend/src/io-managers/input.ts
+  8ec9ea24d30a8048 6,40-41,45-78,201-224,254-280,305-312
+editor/src/messages/tool/common_functionality/snapping.rs
+  8ec9ea24d30a8048 4,23,44,403,430
+editor/src/messages/portfolio/document/document_message_handler.rs
+  8ec9ea24d30a8048 3,103-104,142-147,176,190-191,632-749,1447,2318,2626-2646,3123-3159
+editor/src/messages/portfolio/document/utility_types/misc.rs
+  8ec9ea24d30a8048 31-34,37-45,53,66,98,464-468,548-561,629,651,662,670
+editor/src/messages/portfolio/document/overlays/overlays_message_handler.rs
+  8ec9ea24d30a8048 60-66,84
+frontend/src/components/widgets/inputs/RulerInput.svelte
+  8ec9ea24d30a8048 105
+editor/src/messages/portfolio/document/document_message.rs
+  8ec9ea24d30a8048 4,87-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "ec42b100278b3f1e96135f90677addb6fc0e4295",
+  "prompts": {
+    "8ec9ea24d30a8048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0775ecd9-b7ee-4195-be82-4a6531744114",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 610,
+      "total_deletions": 35,
+      "accepted_lines": 604,
+      "overriden_lines": 0
+    }
+  }
+}
