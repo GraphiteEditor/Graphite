@@ -12,7 +12,7 @@ pub struct NewDocumentDialogMessageHandler {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
+impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
 	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			NewDocumentDialogMessage::Name { name } => self.name = name,
@@ -34,7 +34,11 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessa
 					responses.add(ViewportMessage::RepropagateUpdate);
 
 					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
+						messages: vec![
+							DocumentMessage::ZoomCanvasToFitAll.into(),
+							DocumentMessage::DeselectAllLayers.into(),
+							PortfolioMessage::AutoSaveActiveDocument.into(),
+						],
 					});
 				}
 
@@ -45,7 +49,8 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessa
 		self.send_dialog_to_frontend(responses);
 	}
 
-	advertise_actions! {NewDocumentDialogUpdate;}
+	advertise_actions!(NewDocumentDialogUpdate;
+	);
 }
 
 impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
@@ -57,16 +62,16 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 			TextButton::new("OK")
 				.emphasized(true)
 				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![NewDocumentDialogMessage::Submit.into()],
 					}
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -117,6 +122,6 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets: name }, LayoutGroup::Row { widgets: infinite }, LayoutGroup::Row { widgets: scale }])
+		Layout(vec![LayoutGroup::row(name), LayoutGroup::row(infinite), LayoutGroup::row(scale)])
 	}
 }

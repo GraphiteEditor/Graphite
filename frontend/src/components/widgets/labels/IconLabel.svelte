@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@graphite/icons";
-	import type { ActionShortcut } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import { ICONS, ICON_SVG_STRINGS } from "@graphite/icons";
+	import type { IconName } from "@graphite/icons";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 

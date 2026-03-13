@@ -1,18 +1,22 @@
 pub mod any;
+pub mod pixel_preview;
+pub mod render_cache;
 pub mod render_node;
 pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
-
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;
 pub use graphene_application_io as application_io;
 pub use graphene_core;
+pub use graphene_core::debug;
 pub use graphic_nodes;
+pub use graphic_types::{Artboard, Graphic, Vector};
 pub use math_nodes;
-pub use path_bool_nodes as path_bool;
+pub use path_bool_nodes;
 pub use raster_nodes;
+pub use repeat_nodes;
 pub use text_nodes;
 pub use transform_nodes;
 pub use vector_nodes;
@@ -55,12 +59,16 @@ pub mod subpath {
 }
 
 pub mod gradient {
-	pub use vector_types::GradientStops;
+	pub use vector_types::{GradientStop, GradientStops};
 }
 
 pub mod transform {
 	pub use core_types::transform::*;
 	pub use vector_types::ReferencePoint;
+}
+
+pub mod repeat {
+	pub use repeat_nodes::repeat_nodes::*;
 }
 
 pub mod math {
@@ -75,7 +83,9 @@ pub mod logic {
 	pub use graphene_core::logic::*;
 }
 
-pub use graphene_core::debug;
+pub mod context {
+	pub use graphene_core::context::*;
+}
 
 // Re-export graphene_core modules for backward compatibility
 pub mod ops {
@@ -90,9 +100,6 @@ pub mod extract_xy {
 pub mod animation {
 	pub use graphene_core::animation::*;
 }
-
-// Re-export at top level for convenience
-pub use graphic_types::{Artboard, Graphic, Vector};
 
 /// stop gap solutions until all paths have been replaced with their absolute ones
 pub mod renderer {

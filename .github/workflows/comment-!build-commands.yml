@@ -1,7 +1,6 @@
 # USAGE:
 # After reviewing the code, core team members may comment on a PR with the exact text:
-# - `!build-dev` to build with debug symbols and optimizations disabled
-# - `!build-profiling` to build with debug symbols and optimizations enabled
+# - `!build-debug` to build with debug symbols and optimizations disabled
 # - `!build` to build without debug symbols and optimizations enabled
 # The comment may not contain any other text, not even whitespace or newlines.
 name: "!build PR Command"
@@ -21,7 +20,7 @@ jobs:
     if: >
       github.event.issue.pull_request &&
       github.event.comment.author_association == 'MEMBER' &&
-      (github.event.comment.body == '!build-dev' || github.event.comment.body == '!build-profiling' || github.event.comment.body == '!build')
+      (github.event.comment.body == '!build-debug' || github.event.comment.body == '!build')
     runs-on: self-hosted
     permissions:
       contents: read
@@ -82,14 +81,12 @@ jobs:
       - name: ⌨ Set build command based on comment
         id: build_command
         run: |
-          if [[ "${{ github.event.comment.body }}" == "!build-dev" ]]; then
-            echo "command=build-dev" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
-            echo "command=build-profiling" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event.comment.body }}" == "!build-debug" ]]; then
+            echo "command=build web debug" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build" ]]; then
-            echo "command=build" >> $GITHUB_OUTPUT
+            echo "command=build web" >> $GITHUB_OUTPUT
           else
-            echo "Failed to detect if the build command written in the comment should have been '!build-dev', '!build-profiling', or '!build'" >> $GITHUB_OUTPUT
+            echo "Failed to detect if the build command written in the comment should have been '!build-debug', or '!build'" >> $GITHUB_OUTPUT
           fi
 
       - name: 💬 Comment Actions run link
@@ -101,17 +98,15 @@ jobs:
               comment_id: ${{ github.event.comment.id }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '!build ([build link](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
+              body: '!build ([Run ID ' + context.runId + '](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
             });
 
       - name: 🌐 Build Graphite web code
         env:
           NODE_ENV: production
         if: ${{ success() || failure()}}
-        run: |
-          cd frontend
-          mold -run npm run ${{ steps.build_command.outputs.command }}
-      
+        run: mold -run cargo run ${{ steps.build_command.outputs.command }}
+
       - name: ❗ Warn on build failure
         if: ${{ failure() }}
         uses: actions/github-script@v6

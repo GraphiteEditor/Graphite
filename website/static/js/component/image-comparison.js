@@ -19,7 +19,7 @@ function initializeImageComparison() {
 		const leaveHandler = (/** @type {PointerEvent} **/ event) => {
 			moveHandler(event);
 
-			const randomCode = Math.random().toString().substring(2);
+			const randomCode = String(Math.random()).substring(2);
 			element.dataset.lastInteraction = randomCode;
 
 			setTimeout(() => {
