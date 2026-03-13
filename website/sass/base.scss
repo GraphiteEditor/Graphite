@@ -516,6 +516,7 @@ table {
 	thead:not(:has(tr th:not(:empty))) {
 		th {
 			padding: 0;
+			border-bottom: none;
 		}
 
 		+ tbody tr:first-child td {
@@ -523,9 +524,12 @@ table {
 		}
 	}
 
-	tr th,
+	tr th {
+		border-top: none;
+	}
+
 	tr:last-child td {
-		border: none;
+		border-bottom: none;
 	}
 
 	:is(h1, h2, h3, h4, h5, h6) + & {

@@ -26,10 +26,10 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList + 'n + Send + Clone
 	content: I,
 	/// Which boolean operation to perform on the paths.
 	///
-	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
-	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
+	/// Union combines all paths while joining overlapping areas, even the interiors of a single path.
+	/// Subtract Front cuts the frontmost path's area out of all paths behind it; Subtract Back cuts the backmost path's area out of all paths in front of it.
 	/// Intersection cuts away all but the overlapping areas shared by every path.
-	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	/// Difference keeps only areas covered by an odd number of overlapping paths, removing areas of full overlap.
 	operation: BooleanOperation,
 ) -> List<Vector> {
 	let content = content.into_graphic_list();
