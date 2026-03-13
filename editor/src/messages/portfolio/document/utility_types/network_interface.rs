@@ -1049,7 +1049,10 @@ impl NodeNetworkInterface {
 			log::error!("Could not get persistent node metadata in is_collapsed for node {node_id}");
 			return false;
 		};
-		node_metadata.persistent_metadata.collapsed.unwrap_or_else(|| self.implementation_name(node_id, network_path) == "Merge")
+		node_metadata
+			.persistent_metadata
+			.collapsed
+			.unwrap_or_else(|| self.implementation_name(node_id, network_path) == "Merge")
 	}
 
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {

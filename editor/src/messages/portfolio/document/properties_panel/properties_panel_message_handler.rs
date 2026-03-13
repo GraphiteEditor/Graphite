@@ -73,7 +73,6 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context))
 				};
 
-				responses.add(DocumentMessage::AddTransaction);
 				let node_ids = Self::update_all_section_expansion_recursive(&mut layout.0, expanded, responses);
 				if !node_ids.is_empty() {
 					responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
@@ -86,7 +85,6 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			}
 			PropertiesPanelMessage::SetSectionExpanded { node_id, expanded } => {
 				let node_id = NodeId(node_id);
-				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetCollapsed { node_id, collapsed: !expanded });
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
 			}
@@ -103,10 +101,7 @@ impl PropertiesPanelMessageHandler {
 		let mut node_ids = Vec::new();
 		for group in layout {
 			if let LayoutGroup::Section(WidgetSection {
-				id,
-				layout,
-				expanded: group_expanded,
-				..
+				id, layout, expanded: group_expanded, ..
 			}) = group
 			{
 				*group_expanded = expanded;
