@@ -85,7 +85,7 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -113,6 +113,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.unit("")
 				.min(0.)
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+				.increment_step(0.5)
 				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
@@ -170,10 +171,10 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		];
 
 		Layout(vec![
-			LayoutGroup::Row { widgets: export_type },
-			LayoutGroup::Row { widgets: resolution },
-			LayoutGroup::Row { widgets: export_area },
-			LayoutGroup::Row { widgets: transparent_background },
+			LayoutGroup::row(export_type),
+			LayoutGroup::row(resolution),
+			LayoutGroup::row(export_area),
+			LayoutGroup::row(transparent_background),
 		])
 	}
 }

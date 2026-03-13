@@ -76,7 +76,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 			TextButton::new("Graphite")
 				.label("")
 				.flush(true)
-				.icon(Some("GraphiteLogo".into()))
+				.icon("GraphiteLogo")
 				.on_commit(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.art".into() }.into())
 				.widget_instance(),
 			#[cfg(target_os = "macos")]
@@ -750,6 +750,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets: menu_bar_buttons }])
+		Layout(vec![LayoutGroup::row(menu_bar_buttons)])
 	}
 }

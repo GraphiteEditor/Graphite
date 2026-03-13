@@ -1,18 +1,26 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { type IconName } from "@graphite/icons";
-import { DisplayDialog, DialogClose, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchLayout, TriggerDisplayThirdPartyLicensesDialog } from "@graphite/messages";
-import type { Layout } from "@graphite/messages";
+import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { Editor } from "@graphite/editor";
+import type { IconName } from "@graphite/icons";
+import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDialogState(editor: Editor) {
-	const { subscribe, update } = writable({
+	const { subscribe, update } = writable<{
+		visible: boolean;
+		title: string;
+		icon: IconName | undefined;
+		buttons: Layout;
+		column1: Layout;
+		column2: Layout;
+		panicDetails: string;
+	}>({
 		visible: false,
 		title: "",
-		icon: "" as IconName,
-		buttons: [] as Layout,
-		column1: [] as Layout,
-		column2: [] as Layout,
+		icon: undefined,
+		buttons: [],
+		column1: [],
+		column2: [],
 		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 		panicDetails: "",
 	});
@@ -45,7 +53,7 @@ export function createDialogState(editor: Editor) {
 	}
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(DisplayDialog, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
 			state.visible = true;
 
@@ -55,33 +63,32 @@ export function createDialogState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogButtons, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", (data) => {
 		update((state) => {
 			patchLayout(state.buttons, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn1, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", (data) => {
 		update((state) => {
 			patchLayout(state.column1, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn2, (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", (data) => {
 		update((state) => {
 			patchLayout(state.column2, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(DialogClose, dismissDialog);
+	editor.subscriptions.subscribeFrontendMessage("DialogClose", dismissDialog);
 
-	editor.subscriptions.subscribeJsMessage(TriggerDisplayThirdPartyLicensesDialog, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
 		let licenseText = `Content was not able to load. Please check your network connection and try again.\n\nOr visit ${BACKUP_URL} for the license notices.`;
-		if (editor.handle.inDevelopmentMode()) licenseText = `Third-party licenses are not available in development builds.\n\nVisit ${BACKUP_URL} for the license notices.`;
 
 		const response = await fetch("/third-party-licenses.txt");
 		if (response.ok && response.headers.get("Content-Type")?.includes("text/plain")) licenseText = await response.text();

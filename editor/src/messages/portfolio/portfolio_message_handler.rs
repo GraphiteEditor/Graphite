@@ -407,6 +407,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
+					// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
+					// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
+					#[cfg(not(target_family = "wasm"))]
+					responses.add_front(FrontendMessage::UpdateViewportHolePunch {
+						active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
+					});
+
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						*document_id,
@@ -1004,12 +1011,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
-				let table = LayoutGroup::Table {
-					unstyled: true,
-					rows: vec![
+				let table = LayoutGroup::table(
+					vec![
 						vec![
 							TextButton::new("New Document")
-								.icon(Some("File".into()))
+								.icon("File")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 								.widget_instance(),
@@ -1017,7 +1023,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Document")
-								.icon(Some("Folder".into()))
+								.icon("Folder")
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::Open.into())
 								.widget_instance(),
@@ -1025,20 +1031,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
-								.icon(Some("Image".into()))
+								.icon("Image")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into())
 								.widget_instance(),
 						],
 						vec![
 							TextButton::new("Support the Development Fund")
-								.icon(Some("Heart".into()))
+								.icon("Heart")
 								.flush(true)
 								.on_commit(move |_| FrontendMessage::TriggerVisitLink { url: donate.to_string() }.into())
 								.widget_instance(),
 						],
 					],
-				};
+					true,
+				);
 
 				responses.add(LayoutMessage::DestroyLayout {
 					layout_target: LayoutTarget::WelcomeScreenButtons,
@@ -1054,7 +1061,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
-				let row = LayoutGroup::Row { widgets };
+				let row = LayoutGroup::row(widgets);
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),
@@ -1163,6 +1170,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
+				// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
+				// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
+				#[cfg(not(target_family = "wasm"))]
+				responses.add_front(FrontendMessage::UpdateViewportHolePunch {
+					active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
+				});
+
 				let result = self
 					.executor
 					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash, pointer_position);
@@ -1197,7 +1211,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let result = self
 					.executor
-					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, scale, timing_information);
+					.submit_eyedropper_preview(document, document_id, preview_transform, pointer_position, resolution, scale, timing_information);
 
 				match result {
 					Err(description) => {
@@ -1363,12 +1377,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if no_open_documents {
 					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 				}
-			}
-			PortfolioMessage::UpdateVelloPreference => {
-				let active = if cfg!(target_family = "wasm") { false } else { preferences.use_vello };
-				responses.add(FrontendMessage::UpdateViewportHolePunch { active });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				self.persistent_data.use_vello = preferences.use_vello;
 			}
 		}
 	}

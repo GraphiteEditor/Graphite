@@ -1,7 +1,3 @@
-<script lang="ts" context="module">
-	export type ScrollbarDirection = "Horizontal" | "Vertical";
-</script>
-
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
@@ -21,7 +17,7 @@
 
 	const dispatch = createEventDispatcher<{ trackShift: number; thumbPosition: number; thumbDragStart: undefined; thumbDragEnd: undefined; thumbDragAbort: undefined }>();
 
-	export let direction: ScrollbarDirection = "Vertical";
+	export let direction: "Horizontal" | "Vertical" = "Vertical";
 	export let thumbPosition = 0.5;
 	export let thumbLength = 0.5;
 

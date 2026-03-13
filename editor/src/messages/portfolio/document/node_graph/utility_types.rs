@@ -1,9 +1,9 @@
-use glam::{DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FrontendGraphDataType {
 	#[default]
 	General,
@@ -35,14 +35,15 @@ impl FrontendGraphDataType {
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
 			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
@@ -57,21 +58,23 @@ pub struct FrontendGraphInput {
 	pub connected_to: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
-	pub description: String,
 	/// If connected to an export, it is "export index {index}".
 	/// If connected to a node, it is "{node name} input {input_index}".
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "isLayer")]
@@ -95,13 +98,14 @@ pub struct FrontendNode {
 	pub primary_input_connected_to_layer: bool,
 	#[serde(rename = "primaryOutputConnectedToLayer")]
 	pub primary_output_connected_to_layer: bool,
-	pub position: IVec2,
+	pub position: (i32, i32),
 	pub previewed: bool,
 	pub visible: bool,
 	pub locked: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendNodeType {
 	pub identifier: String,
 	pub name: String,
@@ -110,7 +114,8 @@ pub struct FrontendNodeType {
 	pub input_types: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DragStart {
 	pub start_x: f64,
 	pub start_y: f64,
@@ -118,14 +123,8 @@ pub struct DragStart {
 	pub round_y: i32,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct Transform {
-	pub scale: f64,
-	pub x: f64,
-	pub y: f64,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoxSelection {
 	#[serde(rename = "startX")]
 	pub start_x: u32,
@@ -137,7 +136,8 @@ pub struct BoxSelection {
 	pub end_y: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ContextMenuData {
 	ModifyNode {
@@ -147,6 +147,10 @@ pub enum ContextMenuData {
 		can_be_layer: bool,
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
+		#[serde(rename = "hasSelectedLayers")]
+		has_selected_layers: bool,
+		#[serde(rename = "allSelectedLayersLocked")]
+		all_selected_layers_locked: bool,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]
@@ -154,22 +158,25 @@ pub enum ContextMenuData {
 	},
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ContextMenuInformation {
 	// Stores whether the context menu is open and its position in graph coordinates
 	#[serde(rename = "contextMenuCoordinates")]
-	pub context_menu_coordinates: FrontendXY,
+	pub context_menu_coordinates: (i32, i32),
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
 }
 
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphErrorDiagnostic {
-	pub position: FrontendXY,
+	pub position: (i32, i32),
 	pub error: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct FrontendClickTargets {
 	#[serde(rename = "nodeClickTargets")]
 	pub node_click_targets: Vec<String>,
@@ -185,29 +192,11 @@ pub struct FrontendClickTargets {
 	pub modify_import_export: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Direction {
 	Up,
 	Down,
 	Left,
 	Right,
-}
-
-/// Stores node graph coordinates which are then transformed in Svelte based on the node graph transform
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendXY {
-	pub x: i32,
-	pub y: i32,
-}
-
-impl From<DVec2> for FrontendXY {
-	fn from(v: DVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
-	}
-}
-
-impl From<IVec2> for FrontendXY {
-	fn from(v: IVec2) -> Self {
-		FrontendXY { x: v.x, y: v.y }
-	}
 }

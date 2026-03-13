@@ -5,7 +5,6 @@ use crate::consts::APP_LOCK_FILE_NAME;
 use crate::event::CreateAppEventSchedulerEventLoopExt;
 use clap::Parser;
 use std::io::Write;
-use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
@@ -46,8 +45,7 @@ pub fn start() {
 		.truncate(true)
 		.open(dirs::app_data_dir().join(APP_LOCK_FILE_NAME))
 	else {
-		tracing::error!("Failed to open lock file, Exiting.");
-		exit(1);
+		panic!("Failed to open lock file.")
 	};
 	let mut lock = fd_lock::RwLock::new(lock_file);
 	let lock = match lock.try_write() {
@@ -60,7 +58,7 @@ pub fn start() {
 		}
 		Err(_) => {
 			tracing::error!("Another instance is already running, Exiting.");
-			exit(1);
+			std::process::exit(1);
 		}
 	};
 
@@ -86,21 +84,14 @@ pub fn start() {
 			tracing::info!("CEF initialized successfully");
 			context
 		}
-		Err(cef::InitError::AlreadyRunning) => {
-			tracing::error!("Another instance is already running, Exiting.");
-			exit(1);
-		}
-		Err(cef::InitError::InitializationFailed(code)) => {
-			tracing::error!("Cef initialization failed with code: {code}");
-			exit(1);
+		Err(cef::InitError::InitializationFailureCode(code)) => {
+			panic!("CEF initialization failed with code: {code}");
 		}
 		Err(cef::InitError::BrowserCreationFailed) => {
-			tracing::error!("Failed to create CEF browser");
-			exit(1);
+			panic!("Failed to create CEF browser");
 		}
 		Err(cef::InitError::RequestContextCreationFailed) => {
-			tracing::error!("Failed to create CEF request context");
-			exit(1);
+			panic!("Failed to create CEF request context");
 		}
 	};
 
@@ -139,7 +130,7 @@ pub fn start() {
 	// Calling `exit` bypasses rust teardown and lets Windows perform process cleanup.
 	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
 	#[cfg(target_os = "windows")]
-	exit(0);
+	std::process::exit(0);
 }
 
 pub fn start_helper() {

@@ -1,14 +1,14 @@
 import { get } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { TriggerClipboardRead, WindowPointerLockMove } from "@graphite/messages";
-import { type DialogState } from "@graphite/state-providers/dialog";
-import { type DocumentState } from "@graphite/state-providers/document";
-import { type FullscreenState } from "@graphite/state-providers/fullscreen";
-import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { Editor } from "@graphite/editor";
+import type { DialogState } from "@graphite/state-providers/dialog";
+import type { DocumentState } from "@graphite/state-providers/document";
+import type { FullscreenState } from "@graphite/state-providers/fullscreen";
+import type { PortfolioState } from "@graphite/state-providers/portfolio";
 import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
+import { operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
@@ -29,11 +29,12 @@ type EventListenerTarget = {
 };
 
 export function createInputManager(editor: Editor, dialog: DialogState, portfolio: PortfolioState, document: DocumentState, fullscreen: FullscreenState): () => void {
-	const app = window.document.querySelector("[data-app-container]") as HTMLElement | undefined;
+	const appElement = window.document.querySelector("[data-app-container]");
+	const app = appElement instanceof HTMLElement ? appElement : null;
 	app?.focus();
 
 	let viewportPointerInteractionOngoing = false;
-	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
+	let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
 	let canvasFocused = true;
 	let inPointerLock = false;
 	const shakeSamples: { x: number; y: number; time: number }[] = [];
@@ -41,8 +42,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Event listeners
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
+	const listeners: { target: EventListenerTarget; eventName: EventName; action(event: Event): void; options?: AddEventListenerOptions }[] = [
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -84,9 +84,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 
 		// Cut, copy, and paste is handled in the backend on desktop
-		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+		if (isPlatformNative() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
 		// But on web, we want to not redirect paste
-		if (!isDesktop() && key === "KeyV" && accelKey) return false;
+		if (!isPlatformNative() && key === "KeyV" && accelKey) return false;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
@@ -105,7 +105,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
 
 		// Web-only keyboard shortcuts
-		if (!isDesktop()) {
+		if (!isPlatformNative()) {
 			// Don't redirect a fullscreen request, but process it immediately instead
 			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
 				e.preventDefault();
@@ -179,7 +179,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		potentiallyRestoreCanvasFocus(e);
 
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
+		const inFloatingMenu = target instanceof Element && target.closest("[data-floating-menu-content]");
+		const isTargetingCanvas = !inFloatingMenu && target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
@@ -391,15 +392,14 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Frontend message subscriptions
 
-	editor.subscriptions.subscribeJsMessage(TriggerClipboardRead, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardRead", async () => {
 		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {
 			// Attempt to check if the clipboard permission is denied, and throw an error if that is the case
 			// In Firefox, the `clipboard-read` permission isn't supported, so attempting to query it throws an error
 			// In Safari, the entire Permissions API isn't supported, so the query never occurs and this block is skipped without an error and we assume we might have permission
-			const clipboardRead = "clipboard-read" as PermissionName;
-			const permission = await navigator.permissions?.query({ name: clipboardRead });
+			const permission = await navigator.permissions?.query({ name: "clipboard-read" });
 			if (permission?.state === "denied") throw new Error("Permission denied");
 
 			// Read the clipboard contents if the Clipboard API is available
@@ -414,8 +414,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const blob = await item.getType("text/plain");
 						const reader = new FileReader();
 						reader.onload = () => {
-							const text = reader.result as string;
-							editor.handle.pasteText(text);
+							if (typeof reader.result === "string") editor.handle.pasteText(reader.result);
 						};
 						reader.readAsText(blob);
 						return true;
@@ -429,8 +428,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const blob = await item.getType("text/plain");
 						const reader = new FileReader();
 						reader.onload = () => {
-							const text = reader.result as string;
-							editor.handle.pasteSvg(undefined, text);
+							if (typeof reader.result === "string") editor.handle.pasteSvg(undefined, reader.result);
 						};
 						reader.readAsText(blob);
 						return true;
@@ -486,8 +484,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	});
 
 	// Pointer lock movement events on desktop
-	editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
-		const event = new CustomEvent("pointerlockmove", { detail: data });
+	editor.subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
+		const event = new CustomEvent("pointerlockmove", { detail: { x: data.position[0], y: data.position[1] } });
 		window.dispatchEvent(event);
 	});
 

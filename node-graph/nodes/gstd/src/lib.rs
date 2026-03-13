@@ -1,4 +1,5 @@
 pub mod any;
+pub mod render_cache;
 pub mod render_node;
 pub mod text;
 #[cfg(feature = "wasm")]
@@ -57,7 +58,7 @@ pub mod subpath {
 }
 
 pub mod gradient {
-	pub use vector_types::GradientStops;
+	pub use vector_types::{GradientStop, GradientStops};
 }
 
 pub mod transform {

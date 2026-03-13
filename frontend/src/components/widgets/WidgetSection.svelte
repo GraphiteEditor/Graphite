@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -10,7 +10,7 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
-	export let widgetData: WidgetSectionFromJsMessages;
+	export let widgetData: WidgetSectionData;
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";
@@ -72,10 +72,10 @@
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.layout as layoutGroup}
-				{#if isWidgetSpanRow(layoutGroup)}
-					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
-				{:else if isWidgetSection(layoutGroup)}
-					<svelte:self widgetData={layoutGroup} {layoutTarget} />
+				{#if "Row" in layoutGroup}
+					<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
+				{:else if "Section" in layoutGroup}
+					<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
 				{/if}
 			{/each}
 		</LayoutCol>

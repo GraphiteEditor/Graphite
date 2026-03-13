@@ -13,7 +13,8 @@ use glam::DAffine2;
 ///
 /// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum Fill {
 	#[default]
 	None,
@@ -51,7 +52,13 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
-			Self::Gradient(Gradient { stops, .. }) => stops.0[0].1,
+			Self::Gradient(Gradient { stops, .. }) => {
+				if stops.is_empty() {
+					Color::BLACK
+				} else {
+					stops.color[0]
+				}
+			}
 		}
 	}
 
@@ -64,13 +71,13 @@ impl Fill {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
 			(Self::Solid(a), Self::Gradient(b)) => {
 				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.stops.0.iter_mut().for_each(|(_, color)| *color = *a);
+				solid_to_gradient.stops.color.iter_mut().for_each(|color| *color = *a);
 				let a = &solid_to_gradient;
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Solid(b)) => {
 				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.stops.0.iter_mut().for_each(|(_, color)| *color = *b);
+				gradient_to_solid.stops.color.iter_mut().for_each(|color| *color = *b);
 				let b = &gradient_to_solid;
 				Self::Gradient(a.lerp(b, time))
 			}
@@ -99,7 +106,7 @@ impl Fill {
 	pub fn is_opaque(&self) -> bool {
 		match self {
 			Fill::Solid(color) => color.is_opaque(),
-			Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
+			Fill::Gradient(gradient) => gradient.stops.color.iter().all(|color| color.is_opaque()),
 			Fill::None => true,
 		}
 	}
@@ -151,7 +158,8 @@ impl From<Gradient> for Fill {
 ///
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum FillChoice {
 	#[default]
 	None,
@@ -198,7 +206,8 @@ impl From<Fill> for FillChoice {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum FillType {
 	#[default]
@@ -208,7 +217,8 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
@@ -228,7 +238,8 @@ impl StrokeCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
@@ -248,7 +259,8 @@ impl StrokeJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
@@ -264,7 +276,8 @@ impl StrokeAlign {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
@@ -283,7 +296,8 @@ fn daffine2_identity() -> DAffine2 {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 #[serde(default)]
 pub struct Stroke {
 	/// Stroke color
@@ -303,8 +317,6 @@ pub struct Stroke {
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
-	pub non_scaling: bool,
-	#[serde(default)]
 	pub paint_order: PaintOrder,
 }
 
@@ -322,7 +334,6 @@ impl std::hash::Hash for Stroke {
 		self.join_miter_limit.to_bits().hash(state);
 		self.align.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
 }
@@ -339,7 +350,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
@@ -358,7 +368,6 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
-			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
@@ -456,11 +465,6 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
-		self.non_scaling = non_scaling;
-		self
-	}
-
 	pub fn has_renderable_stroke(&self) -> bool {
 		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
 	}
@@ -479,14 +483,14 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::default(),
 		}
 	}
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
@@ -653,7 +657,8 @@ impl PathStyle {
 }
 
 /// Ways the user can choose to view the artwork in the viewport.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
 pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]
@@ -662,6 +667,6 @@ pub enum RenderMode {
 	Outline,
 	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
 	// PixelPreview,
-	// /// Render a preview of how the object would be exported as an SVG.
-	// SvgPreview,
+	/// Render a preview of how the object would be exported as an SVG.
+	SvgPreview,
 }
