@@ -21,13 +21,21 @@ pub struct PreferencesMessageHandler {
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
-	pub disable_ui_acceleration: bool,
 	pub max_render_region_size: u32,
+	pub disable_ui_acceleration: bool,
+	#[cfg(target_os = "macos")]
+	pub vsync: bool,
 }
 
 impl PreferencesMessageHandler {
+	#[cfg(not(target_os = "macos"))]
 	pub fn needs_restart(&self, other: &Self) -> bool {
 		self.disable_ui_acceleration != other.disable_ui_acceleration
+	}
+
+	#[cfg(target_os = "macos")]
+	pub fn needs_restart(&self, other: &Self) -> bool {
+		self.disable_ui_acceleration != other.disable_ui_acceleration || self.vsync != other.vsync
 	}
 
 	pub fn get_selection_mode(&self) -> SelectionMode {
@@ -54,8 +62,10 @@ impl Default for PreferencesMessageHandler {
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
-			disable_ui_acceleration: false,
 			max_render_region_size: EditorPreferences::default().max_render_region_size,
+			disable_ui_acceleration: false,
+			#[cfg(target_os = "macos")]
+			vsync: false,
 		}
 	}
 }
@@ -112,13 +122,17 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
-			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
-				self.disable_ui_acceleration = disable_ui_acceleration;
-			}
 			PreferencesMessage::MaxRenderRegionSize { size } => {
 				self.max_render_region_size = size;
 				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
+				self.disable_ui_acceleration = disable_ui_acceleration;
+			}
+			#[cfg(target_os = "macos")]
+			PreferencesMessage::VSync { vsync } => {
+				self.vsync = vsync;
 			}
 		}
 

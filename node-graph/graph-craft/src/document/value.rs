@@ -267,7 +267,7 @@ tagged_value! {
 	GradientType(vector::style::GradientType),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
-	BooleanOperation(path_bool_nodes::BooleanOperation),
+	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 }
 

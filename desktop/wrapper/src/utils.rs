@@ -19,7 +19,7 @@ pub(crate) mod menu {
 			panic!("Menu bar layout group is supposed to be a row");
 		};
 		widgets
-			.into_iter()
+			.iter()
 			.map(|widget| {
 				let text_button = match widget.widget.as_ref() {
 					Widget::TextButton(text_button) => text_button,
@@ -79,7 +79,7 @@ pub(crate) mod menu {
 		let enabled = !*disabled;
 
 		if !children.is_empty() {
-			let items = convert_menu_bar_entry_children_to_menu_items(&children, root_widget_id, path.clone());
+			let items = convert_menu_bar_entry_children_to_menu_items(children, root_widget_id, path.clone());
 			return MenuItem::SubMenu { id, text, enabled, items };
 		}
 

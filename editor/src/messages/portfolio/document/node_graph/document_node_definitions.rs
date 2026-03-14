@@ -1783,7 +1783,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::import(concrete!(Table<Vector>), 0), NodeInput::import(concrete!(vector::style::Fill), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(path_bool::boolean_operation::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(path_bool_nodes::boolean_operation::IDENTIFIER),
 								call_argument: generic!(T),
 								..Default::default()
 							},
@@ -1802,7 +1802,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
+						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
 					..Default::default()
 				},
