@@ -4,6 +4,7 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct CargoLicenseSource {}
 
@@ -85,12 +86,23 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 }
 
 fn run() -> Result<Output, Error> {
+	// Try normal stdout capture first
 	let output = Command::new("cargo")
 		.args(["about", "generate", "--format", "json", "--frozen"])
 		.current_dir(env!("CARGO_WORKSPACE_DIR"))
 		.output()
 		.map_err(|e| Error::Io(e, "Failed to run cargo about generate".into()))?;
 
+	// On Windows, if cargo-about fails (often due to PowerShell detection in process ancestry),
+	// fall back to using a temporary file to work around the issue.
+	// TODO: Add an option to cargo-about to disable the PowerShell check (see issue: https://discord.com/channels/731730685944922173/731738914812854303/1479960786871779459)
+	#[cfg(target_os = "windows")]
+	if !output.status.success() {
+		eprintln!("cargo-about failed with stdout capture, retrying with temporary file...");
+		return run_with_temp_file_on_windows(&output.stderr);
+	}
+
+	// Handle other error cases
 	if !output.status.success() {
 		return Err(Error::Command(format!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr))));
 	}
@@ -98,4 +110,34 @@ fn run() -> Result<Output, Error> {
 	let stdout = String::from_utf8(output.stdout).map_err(|e| Error::Utf8(e, "cargo about generate returned invalid UTF-8".into()))?;
 
 	serde_json::from_str(&stdout).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON".into()))
+}
+
+#[cfg(target_os = "windows")]
+fn run_with_temp_file_on_windows(original_stderr: &[u8]) -> Result<Output, Error> {
+	// Use the OS temp directory to avoid writing temporary artifacts in the workspace.
+	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+	let pid = std::process::id();
+	let temp_filename = format!("graphite-cargo-about-{pid}-{timestamp}.json");
+	let temp_file = std::env::temp_dir().join(temp_filename);
+
+	let status = Command::new("cargo")
+		.args(["about", "generate", "--format", "json", "--frozen", "--output-file"])
+		.arg(&temp_file)
+		.current_dir(env!("CARGO_WORKSPACE_DIR"))
+		.status()
+		.map_err(|e| Error::Io(e, "Failed to run cargo about generate with temp file".into()))?;
+
+	if !status.success() {
+		let _ = fs::remove_file(&temp_file);
+		return Err(Error::Command(format!(
+			"cargo about generate failed:\nOriginal error: {}\nTemp file error: command exited with non-zero status",
+			String::from_utf8_lossy(original_stderr)
+		)));
+	}
+
+	let json_content_result = fs::read_to_string(&temp_file);
+	let _ = fs::remove_file(&temp_file);
+	let json_content = json_content_result.map_err(|e| Error::Io(e, format!("Failed to read cargo about output from {}", temp_file.display())))?;
+
+	serde_json::from_str(&json_content).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON from temp file".into()))
 }
