@@ -53,11 +53,13 @@ fn circle(
     let mut circle = Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)));
 
     // 2. Register the 4 pairs of colinear handles
-    let len = circle.segment_domain.ids().len();
+    // 2. Register the 4 pairs of colinear handles
+    let ids = circle.segment_domain.ids();
+    let len = ids.len();
     for i in 0..len {
         circle.colinear_manipulators.push([
-            HandleId::end(circle.segment_domain.ids()[i]), 
-            HandleId::primary(circle.segment_domain.ids()[(i + 1) % len])
+            HandleId::end(ids[i]),
+            HandleId::primary(ids[(i + 1) % len]),
         ]);
     }
 
