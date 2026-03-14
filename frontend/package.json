@@ -36,7 +36,7 @@
 		"@eslint/compat": "^2.0.3",
 		"@eslint/eslintrc": "^3.3.5",
 		"@eslint/js": "^9.39.2",
-		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@types/node": "^25.5.0",
 		"buffer": "^6.0.3",
 		"concurrently": "^9.2.1",
@@ -58,7 +58,7 @@
 		"ts-node": "^10.9.2",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.57.1",
-		"vite": "^7.3.1",
+		"vite": "^8.0.1",
 		"vite-multiple-assets": "2.2.6"
 	},
 	"homepage": "https://graphite.art",
