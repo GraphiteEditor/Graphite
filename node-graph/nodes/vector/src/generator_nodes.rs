@@ -105,7 +105,6 @@ fn arc(
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
-/// Generates a spiral shape that winds from an inner to an outer radius.
 #[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
 fn spiral(
 	_: impl Ctx,
