@@ -52,8 +52,7 @@ fn circle(
     // 1. Create the vector
     let mut circle = Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)));
 
-    // 2. Register the 4 pairs of colinear handles
-    // 2. Register the 4 pairs of colinear handles
+    // Created the collinear_manipulators so that all handles are linked, making it easier to edit the circle as a circle instead of a 4 point shape.
     let ids = circle.segment_domain.ids();
     let len = ids.len();
     for i in 0..len {
@@ -80,7 +79,6 @@ fn arc(
     sweep_angle: Angle,
     arc_type: ArcType,
 ) -> Table<Vector> {
-    // 1. Create the arc vector
     let mut arc_vector = Vector::from_subpath(subpath::Subpath::new_arc(
         radius,
         start_angle / 360. * std::f64::consts::TAU,
@@ -118,7 +116,7 @@ fn spiral(
 	#[default(25)] outer_radius: f64,
 	#[default(90.)] angular_resolution: f64,
 ) -> Table<Vector> {
-	// 1. Create the spiral vector
+
 	let mut spiral_vector = Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
@@ -128,7 +126,7 @@ fn spiral(
 		spiral_type,
 	));
 
-	// 2. NEW: Link consecutive curved segments
+
 	let len = spiral_vector.segment_domain.ids().len();
 	for i in 0..len.saturating_sub(1) {
 		// Ensure both segments meeting at the anchor point are cubic beziers
