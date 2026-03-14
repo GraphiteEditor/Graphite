@@ -36,6 +36,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			description,
 			properties,
 			context_features,
+			output_fields: _,
 		} = metadata;
 
 		let Some(implementations) = &node_registry.get(id) else { continue };

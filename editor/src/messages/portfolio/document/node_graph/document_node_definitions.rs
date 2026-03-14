@@ -17,8 +17,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graphene_std::brush::brush_cache::BrushCache;
-use graphene_std::extract_xy::XY;
-use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
 #[allow(unused_imports)]
@@ -1202,104 +1201,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			category: "Raster: Channels",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![
-							NodeInput::value(TaggedValue::None, false),
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::node(NodeId(1), 0),
-							NodeInput::node(NodeId(2), 0),
-							NodeInput::node(NodeId(3), 0),
-						],
-						nodes: [
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
+					implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::split_channels::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
+					call_argument: generic!(T),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
+					network_metadata: None,
 					..Default::default()
 				},
 			},
@@ -1311,61 +1220,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			category: "Math: Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-
-						..Default::default()
-					}),
+					implementation: DocumentNodeImplementation::ProtoNode(extract_xy::split_vec_2::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
+					call_argument: generic!(T),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![("Vec2", "TODO").into()],
-					output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
+					network_metadata: None,
 					..Default::default()
 				},
 			},
@@ -1376,29 +1238,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			properties: None,
 		},
-		// TODO: Remove this and just use the proto node definition directly
+		//TODO: Remove this and just use the proto node definition directly
 		DocumentNodeDefinition {
 			identifier: "Brush",
 			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![
-								NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-								NodeInput::import(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
-								NodeInput::import(concrete!(BrushCache), 2),
-							],
-							implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
+					implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Raster(Default::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),

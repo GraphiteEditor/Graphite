@@ -402,6 +402,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
+	let output_fields = match attributes.deconstruct_output {
+		false => quote!(&[] as &[#core_types::registry::StructField]),
+		true => quote!(<#output_type as #core_types::registry::Destruct>::fields()),
+	};
+
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
@@ -474,6 +479,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					description: #description,
 					properties: #properties,
 					context_features: vec![#(ContextFeature::#context_features,)*],
+					output_fields: #output_fields,
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -548,11 +554,11 @@ fn generate_node_input_references(
 				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
 					const INDEX: usize = #input_index;
 					fn identifier() -> #core_types::ProtoNodeIdentifier {
-						#inputs_module_name::IDENTIFIER.clone()
+						protonode_identifier()
 					}
 					type Result = #ty;
 				}
-			})
+			});
 		}
 	}
 
@@ -560,9 +566,11 @@ fn generate_node_input_references(
 		#cfg
 		pub mod #inputs_module_name {
 			use super::*;
-
-			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
 			pub const IDENTIFIER: #core_types::ProtoNodeIdentifier = #identifier();
+
+			pub fn protonode_identifier() -> #core_types::ProtoNodeIdentifier {
+				IDENTIFIER
+			}
 			#(#generated_input_accessor)*
 		}
 	}
