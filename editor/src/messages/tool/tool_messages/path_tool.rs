@@ -13,7 +13,7 @@ use crate::messages::portfolio::document::overlays::utility_functions::{path_ove
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -24,9 +24,11 @@ use crate::messages::tool::common_functionality::shape_editor::{
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
+use graph_craft::concrete;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::pathseg_points;
+use graphene_std::table::Table;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::algorithms::util::pathseg_tangent;
@@ -1578,7 +1580,34 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
+				let mut target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+
+				let mut i = 0;
+				while i < target_layers.len() {
+					let layer = target_layers[i];
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+					let node_id = graph_layer.horizontal_layer_flow().nth(1);
+					let is_vector_layer = if let Some(node) = node_id {
+						let output_connector = OutputConnector::node(node, 0);
+						let output_type = document.network_interface.output_type(&output_connector, &[]);
+						output_type.compiled_nested_type() == Some(&concrete!(Table<Vector>))
+					} else {
+						false
+					};
+
+					if is_vector_layer {
+						i += 1;
+						continue;
+					}
+
+					let mut children = layer.children(document.metadata());
+					if let Some(first_child) = children.next() {
+                        let children_to_insert: Vec<_> = std::iter::once(first_child).chain(children).collect();
+                        target_layers.splice(i..i + 1, children_to_insert);
+					} else {
+						i += 1;
+					}
+				}
 
 				shape_editor.set_selected_layers(target_layers);
 
