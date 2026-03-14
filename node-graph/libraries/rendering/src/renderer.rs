@@ -854,8 +854,9 @@ impl Render for Table<Vector> {
 				(id, mask_type, vector_row)
 			});
 
-			if vector.is_branching() {
-				for mut face_path in vector.construct_faces().filter(|face| !(face.area() < 0.0)) {
+			let use_face_fill = vector.use_face_fill();
+			if use_face_fill {
+				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 
 					let face_d = face_path.to_svg();
@@ -917,7 +918,7 @@ impl Render for Table<Vector> {
 				render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 
 				let mut style = row.element.style.clone();
-				if needs_separate_alignment_fill || vector.is_branching() {
+				if needs_separate_alignment_fill || use_face_fill {
 					style.clear_fill();
 				}
 
@@ -928,6 +929,10 @@ impl Render for Table<Vector> {
 					attributes.push(mask_type.to_attribute(), selector);
 				}
 				attributes.push_val(fill_and_stroke);
+
+				if vector.is_branching() && !use_face_fill {
+					attributes.push("fill-rule", "evenodd");
+				}
 
 				let opacity = row.alpha_blending.opacity(render_params.for_mask);
 				if opacity < 1. {
@@ -1024,10 +1029,10 @@ impl Render for Table<Vector> {
 			let wants_stroke_below = row.element.style.stroke().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath| match row.element.style.fill() {
+			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match row.element.style.fill() {
 				Fill::Solid(color) => {
 					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
+					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
@@ -1079,25 +1084,27 @@ impl Render for Table<Vector> {
 						Default::default()
 					};
 					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
+					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
 				Fill::None => {}
 			};
 
+			// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
+			let use_face_fill = row.element.use_face_fill();
 			let do_fill = |scene: &mut Scene| {
-				if row.element.is_branching() {
-					// For branching paths, fill each face separately
-					for mut face_path in row.element.construct_faces().filter(|face| !(face.area() < 0.0)) {
+				if use_face_fill {
+					for mut face_path in row.element.construct_faces().filter(|face| face.area() >= 0.) {
 						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 						let mut kurbo_path = kurbo::BezPath::new();
 						for element in face_path {
 							kurbo_path.push(element);
 						}
-						do_fill_path(scene, &kurbo_path);
+						do_fill_path(scene, &kurbo_path, peniko::Fill::NonZero);
 					}
+				} else if row.element.is_branching() {
+					do_fill_path(scene, &path, peniko::Fill::EvenOdd);
 				} else {
-					// Simple fill of the entire path
-					do_fill_path(scene, &path);
+					do_fill_path(scene, &path, peniko::Fill::NonZero);
 				}
 			};
 

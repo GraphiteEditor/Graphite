@@ -31,7 +31,7 @@
 	{#if $tooltip.visible}
 		<Tooltip />
 	{/if}
-	{#if isPlatformNative() && new Date() > new Date("2026-03-15")}
+	{#if isPlatformNative() && new Date() > new Date("2026-04-30")}
 		<LayoutCol class="release-candidate-expiry">
 			<TextLabel>
 				<p>

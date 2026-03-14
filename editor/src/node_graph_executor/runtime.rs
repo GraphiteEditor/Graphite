@@ -59,6 +59,9 @@ pub struct NodeRuntime {
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	current_viewport_texture: Option<ImageTexture>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -144,6 +147,8 @@ impl NodeRuntime {
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_viewport_surface: None,
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			current_viewport_texture: None,
 		}
 	}
 
@@ -275,7 +280,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -299,9 +304,13 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
+							continue;
+						}
+						// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
+						_ if render_config.for_eyedropper => {
 							continue;
 						}
 						#[cfg(all(target_family = "wasm", feature = "gpu"))]
@@ -354,13 +363,22 @@ impl NodeRuntime {
 							);
 
 							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
+							self.current_viewport_texture = Some(image_texture.clone());
 
-							// Blit the rendered texture to the surface
-							surface.surface.blitter.copy(
-								&executor.context.device,
-								&mut encoder,
-								&image_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
-								&surface_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
+							encoder.copy_texture_to_texture(
+								vello::wgpu::TexelCopyTextureInfoBase {
+									texture: image_texture.texture.as_ref(),
+									mip_level: 0,
+									origin: Default::default(),
+									aspect: Default::default(),
+								},
+								vello::wgpu::TexelCopyTextureInfoBase {
+									texture: &surface_texture.texture,
+									mip_level: 0,
+									origin: Default::default(),
+									aspect: Default::default(),
+								},
+								image_texture.texture.size(),
 							);
 
 							executor.context.queue.submit([encoder.finish()]);
