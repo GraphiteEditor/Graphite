@@ -13,6 +13,7 @@ use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::Graphic;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::table::Table;
@@ -572,11 +573,8 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 	for _ in selected_layers {}
 
-	// Must be a layer of type Table<Vector>
-	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
-
-	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
+	// Must be a layer with a path-editable input type.
+	if !layer_can_be_path_editable_input(first_layer, network_interface) {
 		return None;
 	}
 
@@ -589,4 +587,14 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 
 	Some(first_layer)
+}
+
+/// Returns whether the layer's main content input can be made path-editable.
+pub fn layer_can_be_path_editable_input(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
+	let Some(node_id) = NodeGraphLayer::new(layer, network_interface).horizontal_layer_flow().nth(1) else {
+		return false;
+	};
+
+	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
+	output_type.compiled_nested_type() == Some(&concrete!(Table<Vector>)) || output_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>))
 }

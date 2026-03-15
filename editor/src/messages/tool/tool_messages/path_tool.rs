@@ -23,7 +23,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, layer_can_be_path_editable_input, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::pathseg_points;
@@ -1578,7 +1578,25 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
+				let mut target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+
+				let mut i = 0;
+				while i < target_layers.len() {
+					let layer = target_layers[i];
+
+					if layer_can_be_path_editable_input(layer, &mut document.network_interface) {
+						i += 1;
+					} else {
+						let children: Vec<_> = layer.children(document.metadata()).collect();
+
+						if !children.is_empty() {
+							target_layers.splice(i..i + 1, children);
+						} else {
+							// This layer is not path-editable and has no children, so remove it.
+							target_layers.remove(i);
+						}
+					}
+				}
 
 				shape_editor.set_selected_layers(target_layers);
 
