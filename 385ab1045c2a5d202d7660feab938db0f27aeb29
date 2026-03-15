@@ -1,0 +1,25 @@
+website/static/js/page/contributor-guide/bisect-tool.js
+  d21011cba73d6d72 46,50,193,196,198-206,211,222,376-382
+tools/cargo-run/src/lib.rs
+  d21011cba73d6d72 81-84,86,88-91,93-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "385ab1045c2a5d202d7660feab938db0f27aeb29",
+  "prompts": {
+    "d21011cba73d6d72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd40f5cf-4a6f-4408-af25-0e7cd7d2cce6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 47,
+      "total_deletions": 13,
+      "accepted_lines": 44,
+      "overriden_lines": 1
+    }
+  }
+}
