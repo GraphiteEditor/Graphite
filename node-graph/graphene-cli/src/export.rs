@@ -16,6 +16,7 @@ pub enum FileType {
 	Png,
 	Jpg,
 	Gif,
+	Pdf,
 }
 
 pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
@@ -24,7 +25,8 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 		Some("png") => Ok(FileType::Png),
 		Some("jpg" | "jpeg") => Ok(FileType::Jpg),
 		Some("gif") => Ok(FileType::Gif),
-		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .gif".to_string()),
+		Some("pdf") => Ok(FileType::Pdf),
+		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .gif, .pdf".to_string()),
 	}
 }
 
@@ -39,7 +41,7 @@ pub async fn export_document(
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
-		FileType::Svg => ExportFormat::Svg,
+		FileType::Svg | FileType::Pdf => ExportFormat::Svg,
 		_ => ExportFormat::Raster,
 	};
 
@@ -63,9 +65,15 @@ pub async fn export_document(
 	match result {
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => {
-				// Write SVG directly to file
-				std::fs::write(&output_path, svg)?;
-				log::info!("Exported SVG to: {}", output_path.display());
+				if file_type == FileType::Pdf {
+					let pdf_bytes = rendering::svg_to_pdf::svg_to_pdf(&svg, width.map(|w| w as f32), height.map(|h| h as f32))?;
+					std::fs::write(&output_path, pdf_bytes)?;
+					log::info!("Exported PDF to: {}", output_path.display());
+				} else {
+					// Write SVG directly to file
+					std::fs::write(&output_path, svg)?;
+					log::info!("Exported SVG to: {}", output_path.display());
+				}
 			}
 			RenderOutputType::Texture(image_texture) => {
 				// Convert GPU texture to CPU buffer
@@ -114,7 +122,7 @@ fn write_raster_image(output_path: PathBuf, file_type: FileType, data: Vec<u8>, 
 			image.write_to(&mut cursor, ImageFormat::Jpeg)?;
 			log::info!("Exported JPG to: {}", output_path.display());
 		}
-		FileType::Svg | FileType::Gif => unreachable!("SVG and GIF should have been handled in export_document"),
+		FileType::Svg | FileType::Gif | FileType::Pdf => unreachable!("SVG, GIF, and PDF should have been handled in export_document"),
 	}
 
 	std::fs::write(&output_path, cursor.into_inner())?;

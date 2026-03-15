@@ -155,6 +155,9 @@ parley = "0.6"
 skrifa = "0.40"
 polycool = "0.4"
 # Linebender ecosystem (END)
+krilla = "0.6"
+krilla-svg = "0.3"
+usvg-045 = { package = "usvg", version = "0.45" }
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
 glam = { version = "0.29", default-features = false, features = [

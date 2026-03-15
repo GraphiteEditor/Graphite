@@ -109,6 +109,10 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 						self.export_dialog.bounds = ExportBounds::AllArtwork;
 					}
 
+					if self.export_dialog.bounds == ExportBounds::ArtboardsAsPages && self.export_dialog.artboards.len() < 2 {
+						self.export_dialog.bounds = ExportBounds::AllArtwork;
+					}
+
 					self.export_dialog.has_selection = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some();
 					self.export_dialog.send_dialog_to_frontend(responses);
 				}

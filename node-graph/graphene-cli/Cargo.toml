@@ -16,6 +16,7 @@ gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "wgpu-executor"]
 graphene-std = { workspace = true }
 interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
+rendering = { workspace = true }
 preprocessor = { workspace = true }
 
 # Workspace dependencies
