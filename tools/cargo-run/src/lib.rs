@@ -6,6 +6,7 @@ pub mod requirements;
 pub enum Action {
 	Run,
 	Build,
+	Explore(Option<String>),
 }
 
 pub enum Target {
@@ -36,6 +37,7 @@ impl Task {
 		let (action, args) = match args.first() {
 			Some(&"build") => (Action::Build, &args[1..]),
 			Some(&"run") => (Action::Run, &args[1..]),
+			Some(&"explore") => (Action::Explore(args.get(1).map(|s| s.to_string())), &[] as &[&str]),
 			Some(&"help") => return None,
 			_ => (Action::Run, args),
 		};
@@ -72,6 +74,16 @@ pub fn npm_run_in_frontend_dir(args: &str) -> Result<(), Error> {
 	let frontend_dir = workspace_dir.join("frontend");
 	let npm = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
 	run_from(&format!("{npm} run {args}"), Some(&frontend_dir))
+}
+
+pub fn open_url(url: &str) -> Result<(), Error> {
+	#[cfg(target_os = "windows")]
+	let command = format!("cmd /c start {url}");
+	#[cfg(target_os = "macos")]
+	let command = format!("open {url}");
+	#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+	let command = format!("xdg-open {url}");
+	run(&command)
 }
 
 fn run_from(command: &str, dir: Option<&PathBuf>) -> Result<(), Error> {

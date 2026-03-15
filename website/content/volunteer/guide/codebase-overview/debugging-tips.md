@@ -18,6 +18,11 @@ Use *Help* > *About Graphite* in the editor to view any build's Git commit hash.
 
 ## Build bisect tool
 
+```sh
+# Access this quickly in the future:
+cargo run explore bisect
+```
+
 This interactive tool helps you binary search through recent commits, test the build links of each, and pinpoint which change introduced a regression or added a feature.
 
 <div class="bisect-tool">
