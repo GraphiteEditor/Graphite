@@ -78,12 +78,30 @@ pub fn npm_run_in_frontend_dir(args: &str) -> Result<(), Error> {
 
 pub fn open_url(url: &str) -> Result<(), Error> {
 	#[cfg(target_os = "windows")]
-	let command = format!("cmd /c start {url}");
+	let mut cmd = process::Command::new("cmd");
+	#[cfg(target_os = "windows")]
+	cmd.args(["/c", "start", url]);
+
 	#[cfg(target_os = "macos")]
-	let command = format!("open {url}");
+	let mut cmd = process::Command::new("open");
+	#[cfg(target_os = "macos")]
+	cmd.arg(url);
+
 	#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-	let command = format!("xdg-open {url}");
-	run(&command)
+	let mut cmd = process::Command::new("xdg-open");
+	#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+	cmd.arg(url);
+
+	let command_str = format!("{:?}", cmd);
+	let exit_code = cmd
+		.spawn()
+		.map_err(|e| Error::Io(e, format!("Failed to spawn command '{command_str}'")))?
+		.wait()
+		.map_err(|e| Error::Io(e, format!("Failed to wait for command '{command_str}'")))?;
+	if !exit_code.success() {
+		return Err(Error::Command(command_str, exit_code));
+	}
+	Ok(())
 }
 
 fn run_from(command: &str, dir: Option<&PathBuf>) -> Result<(), Error> {

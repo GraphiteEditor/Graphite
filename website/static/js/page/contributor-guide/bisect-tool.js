@@ -43,10 +43,11 @@ document.addEventListener("DOMContentLoaded", () => {
 		return data;
 	}
 
-	async function fetchCommitList(/** @type {string | undefined} */ since, /** @type {string | undefined} */ until) {
+	async function fetchCommitList(/** @type {string | undefined} */ since, /** @type {string | undefined} */ until, /** @type {number | undefined} */ page) {
 		let url = `${API}/repos/${REPO}/commits?sha=master&per_page=100`;
 		if (since) url += `&since=${since}`;
 		if (until) url += `&until=${until}`;
+		if (page && page > 1) url += `&page=${page}`;
 		return fetchJSON(url);
 	}
 
@@ -189,13 +190,25 @@ document.addEventListener("DOMContentLoaded", () => {
 		const since = new Date(targetDate.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 		const until = new Date(targetDate.getTime() + windowDays * 24 * 60 * 60 * 1000).toISOString();
 
-		const page1 = await fetchCommitList(since, until);
-		if (!page1 || page1.length === 0) {
+		// Paginate to load all commits in the window (API returns max 100 per page)
+
+		let /** @type {any[]} */ allRaw = [];
+		let page = 1;
+
+		while (true) {
+			const raw = await fetchCommitList(since, until, page);
+			if (!raw || raw.length === 0) break;
+			allRaw = allRaw.concat(raw);
+			if (raw.length < 100) break;
+			page++;
+		}
+
+		if (allRaw.length === 0) {
 			throw new Error("No commits found near that date. Try a different date.");
 		}
 
 		// GitHub returns newest-first, reverse to oldest-first
-		const fetched = parseCommits(page1);
+		const fetched = parseCommits(allRaw);
 		fetched.reverse();
 
 		commits = fetched;
@@ -206,7 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		const oldest = commits[0];
 		const until = new Date(oldest.date.getTime() - 1000).toISOString();
-		const raw = await fetchCommitList(undefined, until);
+		const raw = await fetchCommitList(undefined, until, undefined);
 		if (!raw || raw.length === 0) return false;
 
 		let fetched = parseCommits(raw);
@@ -358,6 +371,13 @@ document.addEventListener("DOMContentLoaded", () => {
 				break;
 			}
 			targetIndex = startIndex - boundaryOffset;
+		}
+
+		// If we've hit the oldest commit and it's already marked bad, we can't narrow further
+		if (targetIndex <= 0 && badIndex === 0) {
+			goodIndex = 0;
+			showResult();
+			return;
 		}
 
 		await presentCommit(targetIndex);
