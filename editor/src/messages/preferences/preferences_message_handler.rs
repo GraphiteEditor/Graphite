@@ -35,7 +35,7 @@ impl PreferencesMessageHandler {
 		}
 		#[cfg(target_os = "macos")]
 		if self.vsync != other.vsync {
-			requiring_restart.push("V-Sync");
+			requiring_restart.push("Enable V-Sync");
 		}
 		requiring_restart.into_iter().map(String::from).collect()
 	}
