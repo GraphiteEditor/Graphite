@@ -30,7 +30,7 @@ pub struct PreferencesMessageHandler {
 impl PreferencesMessageHandler {
 	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
 		let mut requiring_restart = Vec::new();
-		if disable_ui_acceleration != other.disable_ui_acceleration {
+		if self.disable_ui_acceleration != other.disable_ui_acceleration {
 			requiring_restart.push("Disable UI Acceleration");
 		}
 		#[cfg(target_os = "macos")]
