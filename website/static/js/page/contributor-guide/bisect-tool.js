@@ -373,10 +373,14 @@ document.addEventListener("DOMContentLoaded", () => {
 			targetIndex = startIndex - boundaryOffset;
 		}
 
-		// If we've hit the oldest commit and it's already marked bad, we can't narrow further
+		// If we've hit the oldest commit and it's still marked bad, we've exhausted history
 		if (targetIndex <= 0 && badIndex === 0) {
-			goodIndex = 0;
 			showResult();
+			// Override the result message — we never confirmed a good baseline, so we can't pinpoint the introducing commit
+			if (elements.progressInfo) {
+				const label = mode === "regression" ? "regression" : "feature";
+				elements.progressInfo.innerHTML = `<em>The ${label} was already present in the oldest available commit</em>`;
+			}
 			return;
 		}
 
