@@ -1,0 +1,23 @@
+website/static/js/page/contributor-guide/bisect-tool.js
+  86202d6c9938aa4a 376,379-381,383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "414b30f7c9442c0005a12660681d89e0b9a71fd9",
+  "prompts": {
+    "86202d6c9938aa4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff68ec2e-b9df-4c32-b168-630d360a9ce3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 2,
+      "accepted_lines": 5,
+      "overriden_lines": 1
+    }
+  }
+}
