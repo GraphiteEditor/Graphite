@@ -1583,19 +1583,18 @@ impl Fsm for PathToolFsmState {
 				let mut i = 0;
 				while i < target_layers.len() {
 					let layer = target_layers[i];
-					let is_path_editable_input = layer_can_be_path_editable_input(layer, &mut document.network_interface);
 
-					if is_path_editable_input {
+					if layer_can_be_path_editable_input(layer, &mut document.network_interface) {
 						i += 1;
-						continue;
-					}
-
-					let mut children = layer.children(document.metadata());
-					if let Some(first_child) = children.next() {
-						let children_to_insert: Vec<_> = std::iter::once(first_child).chain(children).collect();
-						target_layers.splice(i..i + 1, children_to_insert);
 					} else {
-						i += 1;
+						let children: Vec<_> = layer.children(document.metadata()).collect();
+
+						if !children.is_empty() {
+							target_layers.splice(i..i + 1, children);
+						} else {
+							// This layer is not path-editable and has no children, so remove it.
+							target_layers.remove(i);
+						}
 					}
 				}
 
