@@ -12,17 +12,20 @@ jobs:
   rust-fmt:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v4
 
       - name: 🚦 Check if CI can be skipped
         id: skip-check
         uses: cariad-tech/merge-queue-ci-skipper@main
 
-      - name: 🦀 Install the latest Rust
+      - name: 🦀 Install Rust
         if: steps.skip-check.outputs.skip-check != 'true'
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable
+          override: true
+          rustflags: ""
           components: rustfmt
 
       - name: 🔬 Check Rust formatting
@@ -33,8 +36,8 @@ jobs:
   cargo-deny:
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v4
 
       - name: 📜 Check crate license compatibility for root workspace
         uses: EmbarkStudios/cargo-deny-action@v2
@@ -61,8 +64,8 @@ jobs:
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v4
 
       - name: 🚦 Check if CI can be skipped
         id: skip-check
@@ -72,11 +75,11 @@ jobs:
         if: steps.skip-check.outputs.skip-check != 'true'
         run: rm -r ~/.cache/.wasm-pack || true
 
-      - name: 🟢 Install the latest Node.js
+      - name: 🟢 Install Node.js
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: "latest"
+          node-version-file: .nvmrc
 
       - name: 🚧 Install build dependencies
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -84,10 +87,14 @@ jobs:
           cd frontend
           npm run setup
 
-      - name: 🦀 Install the latest Rust
+      - name: 🦀 Install Rust
         if: steps.skip-check.outputs.skip-check != 'true'
-        run: |
-          rustup update stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          rustflags: ""
+          target: wasm32-unknown-unknown
 
       - name: 🦀 Fetch Rust dependencies
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -102,14 +109,12 @@ jobs:
 
       - name: 📤 Publish to Cloudflare Pages
         if: steps.skip-check.outputs.skip-check != 'true'
-        uses: cloudflare/pages-action@1
         continue-on-error: true
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          projectName: graphite-dev
-          directory: frontend/dist
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler@3 pages deploy "frontend/dist" --project-name="graphite-dev" --commit-dirty=true
 
       - name: 👕 Lint Graphite web formatting
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -128,17 +133,20 @@ jobs:
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v4
 
       - name: 🚦 Check if CI can be skipped
         id: skip-check
         uses: cariad-tech/merge-queue-ci-skipper@main
 
-      - name: 🦀 Install the latest Rust
+      - name: 🦀 Install Rust
         if: steps.skip-check.outputs.skip-check != 'true'
-        run: |
-          rustup update stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          rustflags: ""
 
       - name: 🦀 Fetch Rust dependencies
         if: steps.skip-check.outputs.skip-check != 'true'

@@ -1,4 +1,4 @@
-name: Build Windows Bundle
+name: "Build Windows Bundle"
 
 on:
   workflow_dispatch: {}
@@ -6,22 +6,21 @@ on:
     branches:
       - master
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
 
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.100"
 
     steps:
-      - name: Checkout
+      - name: 📥 Clone repository
         uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: 🦀 Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
@@ -29,7 +28,7 @@ jobs:
           rustflags: ""
           target: wasm32-unknown-unknown
 
-      - name: Cache Cargo
+      - name: 💾 Set up Cargo cache
         uses: actions/cache@v4
         with:
           path: |
@@ -38,7 +37,7 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Setup Node
+      - name: 🟢 Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -47,10 +46,10 @@ jobs:
             package-lock.json
             frontend/package-lock.json
 
-      - name: Setup Cargo Binstall
+      - name: 📦 Install Cargo-binstall
         uses: cargo-bins/cargo-binstall@main
 
-      - name: Install Native Dependencies
+      - name: 🚧 Install native dependencies
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -69,26 +68,27 @@ jobs:
           cargo binstall --no-confirm --force cargo-about
           cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
 
-      - name: Build Windows Bundle
+      - name: 🏗 Build Windows bundle
         shell: bash # `cargo-about` refuses to run in powershell
         env:
           CARGO_TERM_COLOR: always
         run: cargo run build desktop
 
-      - name: Stage Artifacts
+      - name: 📁 Stage artifacts
         shell: bash
         run: |
           rm -rf target/artifacts
           mkdir -p target/artifacts
           cp -R target/release/Graphite target/artifacts/Graphite
 
-      - name: Upload Windows Bundle
+      - name: 📦 Upload Windows bundle
+        if: github.ref != 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:
           name: graphite-windows-bundle
           path: target/artifacts
 
-      - name: Azure login
+      - name: 🔑 Azure login
         if: github.ref == 'refs/heads/master'
         uses: azure/login@v1
         with:
@@ -97,7 +97,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           enable-AzPSSession: true
 
-      - name: Sign
+      - name: 🔏 Sign
         if: github.ref == 'refs/heads/master'
         uses: azure/artifact-signing-action@v1
         with:
@@ -118,7 +118,7 @@ jobs:
           timestamp-digest: SHA256
           correlation-id: ${{ github.sha }}
 
-      - name: Verify Signatures
+      - name: ✅ Verify signatures
         if: github.ref == 'refs/heads/master'
         shell: pwsh
         run: |
@@ -165,7 +165,7 @@ jobs:
                   Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
-      - name: Upload Windows Bundle Signed
+      - name: 📦 Upload signed Windows bundle
         if: github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:

@@ -1,4 +1,4 @@
-name: Build Mac Bundle
+name: "Build Mac Bundle"
 
 on:
   workflow_dispatch: {}
@@ -14,10 +14,10 @@ jobs:
       WASM_BINDGEN_CLI_VERSION: "0.2.100"
 
     steps:
-      - name: Checkout
+      - name: 📥 Clone repository
         uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: 🦀 Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
@@ -25,7 +25,7 @@ jobs:
           rustflags: ""
           target: wasm32-unknown-unknown
 
-      - name: Cache Cargo
+      - name: 💾 Set up Cargo cache
         uses: actions/cache@v4
         with:
           path: |
@@ -34,7 +34,7 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Setup Node
+      - name: 🟢 Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -43,7 +43,7 @@ jobs:
             package-lock.json
             frontend/package-lock.json
 
-      - name: Install Native Dependencies
+      - name: 🚧 Install native dependencies
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BINSTALL_DISABLE_TELEMETRY: "true"
@@ -64,25 +64,26 @@ jobs:
           cargo binstall --no-confirm --force cargo-about
           cargo binstall --no-confirm --force "wasm-bindgen-cli@${WASM_BINDGEN_CLI_VERSION}"
 
-      - name: Build Mac Bundle
+      - name: 🏗 Build Mac bundle
         env:
           CARGO_TERM_COLOR: always
         run: cargo run build desktop
 
-      - name: Stage Artifacts
+      - name: 📁 Stage artifacts
         shell: bash
         run: |
           rm -rf target/artifacts
           mkdir -p target/artifacts
           cp -R target/release/Graphite.app target/artifacts/Graphite.app
 
-      - name: Upload Mac Bundle
+      - name: 📦 Upload Mac bundle
+        if: github.ref != 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:
           name: graphite-mac-bundle
           path: target/artifacts
 
-      - name: Sign and Notarize Mac Bundle Preparation
+      - name: 🔏 Sign and notarize (preparation)
         if: github.ref == 'refs/heads/master'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
@@ -116,7 +117,7 @@ jobs:
           </plist>
           EOF
 
-      - name: Sign and Notarize Mac Bundle
+      - name: 🔏 Sign and notarize
         if: github.ref == 'refs/heads/master'
         env:
           APPLE_EMAIL: ${{ secrets.APPLE_EMAIL }}
@@ -149,7 +150,7 @@ jobs:
 
           spctl -a -vv "$APP_PATH"
 
-      - name: Upload Mac Bundle Signed
+      - name: 📦 Upload signed Mac bundle
         if: github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:

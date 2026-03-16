@@ -1,9 +1,6 @@
-name: Build Linux Bundle
+name: "Build Linux Bundle"
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
     inputs:
       push_to_cache:
@@ -11,6 +8,9 @@ on:
         required: false
         type: boolean
         default: false
+  push:
+    branches:
+      - master
 
 jobs:
   build:
@@ -18,16 +18,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
+      - name: 📥 Clone repository
+        uses: actions/checkout@v4
 
-      - name: Free disk space
+      - name: ❄ Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: 🗑 Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
 
-      - name: Build Nix Package
+      - name: 📦 Build Nix package
         run: nix build --no-link --print-out-paths
 
-      - name: Push to Nix Cache
+      - name: 📤 Push to Nix cache
         if: github.ref == 'refs/heads/master' || inputs.push_to_cache == true
         env:
           NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN }}
@@ -35,23 +38,23 @@ jobs:
           nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
           nix build --no-link --print-out-paths | nix run nixpkgs#cachix -- push graphite
 
-      - name: Build Linux Bundle
+      - name: 🏗 Build Linux bundle
         run: nix build .#graphite-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
 
-      - name: Upload Linux Bundle
+      - name: 📦 Upload Linux bundle
         uses: actions/upload-artifact@v4
         with:
           name: graphite-linux-bundle
           path: graphite-linux-bundle.tar.xz
           compression-level: 0
 
-      - name: Setup Flatpak Tooling
+      - name: 🔧 Install Flatpak tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
           flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Build Flatpak
+      - name: 🏗 Build Flatpak
         run: |
           nix build .#graphite-flatpak-manifest
 
@@ -67,7 +70,7 @@ jobs:
 
           flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Upload Flatpak
+      - name: 📦 Upload Flatpak package
         uses: actions/upload-artifact@v4
         with:
           name: graphite-flatpak

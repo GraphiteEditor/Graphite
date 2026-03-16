@@ -1,4 +1,4 @@
-name: Clippy Check
+name: "Clippy Check"
 
 on:
   pull_request:

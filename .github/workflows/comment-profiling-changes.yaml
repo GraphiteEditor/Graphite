@@ -1,4 +1,4 @@
-name: Profiling Changes
+name: "Profiling Changes"
 
 on:
   pull_request:
