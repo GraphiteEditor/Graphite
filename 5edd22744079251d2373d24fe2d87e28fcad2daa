@@ -1,0 +1,29 @@
+.github/workflows/comment-!build-commands.yml
+  8ec9ea24d30a8048 8,22,29-30,33-40,43-44,46,48-49,51-55,57-100,102-107,109,111-112,115,122,125-127,129-137
+.nix/default.nix
+  8ec9ea24d30a8048 62-63
+.github/workflows/build.yml
+  8ec9ea24d30a8048 25,45-46,138-139,142-144,149,151-154,157-162,297,300,462,465,568,571,579
+.nix/pkgs/graphite-bundle.nix
+  8ec9ea24d30a8048 7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "5edd22744079251d2373d24fe2d87e28fcad2daa",
+  "prompts": {
+    "8ec9ea24d30a8048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0775ecd9-b7ee-4195-be82-4a6531744114",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 289,
+      "total_deletions": 306,
+      "accepted_lines": 125,
+      "overriden_lines": 7
+    }
+  }
+}
