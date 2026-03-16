@@ -1,0 +1,58 @@
+.github/workflows/build-nix-package.yml
+  8ec9ea24d30a8048 12,15,17-18,21
+.github/workflows/build-web-bundle.yml
+  8ec9ea24d30a8048 4,27,35,43-48,50-53,61-65,67-85,89,91-94,101,103-112,123,144
+.github/workflows/provide-shaders.yml
+  8ec9ea24d30a8048 15,18,20-21,24,27
+.github/workflows/build-production.yml
+  8ec9ea24d30a8048 25,33,41-46,58-62
+.github/workflows/build-mac-bundle.yml
+  8ec9ea24d30a8048 17,20,28,37,46,67,72,79
+.github/workflows/ci.yml
+  8ec9ea24d30a8048 16,24,26-28,40,68,82,92-97,113-117,137,145-149
+.github/workflows/cargo-deny.yml
+  8ec9ea24d30a8048 4,6,14-15
+.github/workflows/comment-!build-commands.yml
+  8ec9ea24d30a8048 47,59,67-72,124-135,146
+.github/workflows/build-windows-bundle.yml
+  8ec9ea24d30a8048 20,23,31,40,52,71,77,84,91,100,121
+.github/workflows/library-rawkit.yml
+  8ec9ea24d30a8048 28-29,31-36
+.github/workflows/website.yml
+  8ec9ea24d30a8048 4,26-27,29,32,54,99-103
+.github/workflows/build-linux-bundle.yml
+  8ec9ea24d30a8048 21,24-25,27,30,33,41,44,51,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "4419fde91602fd280de994026b7776b1d43c5d79",
+  "prompts": {
+    "8ec9ea24d30a8048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0775ecd9-b7ee-4195-be82-4a6531744114",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 396,
+      "total_deletions": 237,
+      "accepted_lines": 272,
+      "overriden_lines": 7
+    },
+    "d21011cba73d6d72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd40f5cf-4a6f-4408-af25-0e7cd7d2cce6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 362,
+      "total_deletions": 52,
+      "accepted_lines": 308,
+      "overriden_lines": 4
+    }
+  }
+}
