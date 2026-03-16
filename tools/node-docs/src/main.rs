@@ -8,6 +8,11 @@ use convert_case::{Case, Casing};
 use std::collections::HashMap;
 
 fn main() {
+	let output_path = std::env::args().nth(1).unwrap_or_else(|| {
+		eprintln!("Usage: node-docs <output-directory>");
+		std::process::exit(1);
+	});
+
 	// TODO: Also obtain document nodes, not only proto nodes
 	let nodes = graphene_std::registry::NODE_METADATA.lock().unwrap();
 
@@ -22,7 +27,7 @@ fn main() {
 	categories.sort();
 
 	// Create _index.md for the node catalog page
-	page_catalog::write_catalog_index_page(&categories);
+	page_catalog::write_catalog_index_page(&output_path, &categories);
 
 	// Create node category pages and individual node pages
 	for (index, category) in categories.iter().map(|c| if !OMIT_HIDDEN && c.is_empty() { "Hidden" } else { c }).filter(|c| !c.is_empty()).enumerate() {
@@ -32,7 +37,7 @@ fn main() {
 
 		// Create _index.md file for category
 		let category_path_part = sanitize_path(&category.to_case(Case::Kebab));
-		let category_path = format!("{NODE_CATALOG_PATH}/{category_path_part}");
+		let category_path = format!("{output_path}/{category_path_part}");
 		page_category::write_category_index_page(index, category, &nodes, &category_path);
 
 		// Create individual node pages

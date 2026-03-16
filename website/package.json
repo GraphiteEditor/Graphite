@@ -13,6 +13,7 @@
 	"scripts": {
 		"postinstall": "node .build-scripts/install.ts",
 		"generate-editor-structure": "node .build-scripts/generate-editor-structure.ts generated/hierarchical_message_system_tree.txt generated/hierarchical_message_system_tree.html",
+		"generate-crate-hierarchy": "node .build-scripts/generate-crate-hierarchy.ts generated/crate_hierarchy.dot generated/crate_hierarchy.svg",
 		"check": "tsc --noEmit && eslint",
 		"fix": "eslint --fix"
 	},
@@ -21,11 +22,12 @@
 		"@eslint/eslintrc": "^3.3.3",
 		"@eslint/js": "^9.39.2",
 		"@types/node": "^25.0.9",
+		"@viz-js/viz": "^3.25.0",
+		"eslint": "^9.39.2",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import": "^2.32.0",
 		"eslint-plugin-prettier": "^5.5.5",
-		"eslint": "^9.39.2",
 		"prettier": "^3.8.0",
 		"sass": "1.97.2",
 		"tar": "^7.5.6",

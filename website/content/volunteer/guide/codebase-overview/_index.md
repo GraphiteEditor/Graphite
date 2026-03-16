@@ -5,8 +5,8 @@ page_template = "book.html"
 
 [extra]
 order = 2 # Chapter number
-js = ["/js/component/youtube-embed.js"]
-css = ["/component/youtube-embed.css"]
+js = ["/js/component/youtube-embed.js", "/js/page/contributor-guide/crate-hierarchy.js"]
+css = ["/component/youtube-embed.css", "/page/contributor-guide/crate-hierarchy.css"]
 +++
 
 The best introduction for getting up-to-speed with Graphite contribution comes from watching this webcast recording. Before asking questions in Discord, please watch the full video because it gives a comprehensive overview of most things you will need to know.
@@ -36,6 +36,16 @@ The frontend is the GUI for Graphite which users see and interact with. It is bu
 *Location: [`/node-graph`](https://github.com/GraphiteEditor/Graphite/tree/master/node-graph)*
 
 [Graphene](../graphene/) is the node graph engine which manages and renders the documents. It is itself a programming language, where Graphene programs are compiled while being edited live by the user, and where executing the program renders the document.
+
+## Crate dependency graph
+
+This diagram shows the structure of the crates that comprise the Graphite codebase and how they depend on each other. Every Arrow points from a crate to another which it depends on.
+
+<div class="crate-hierarchy">
+
+<!-- replacements::crate_hierarchy() -->
+
+</div>
 
 ## Frontend/backend communication
 

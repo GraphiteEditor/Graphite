@@ -45,9 +45,20 @@
 
 TO TEST IT LOCALLY, FROM THE ROOT OF THE PROJECT, RUN:
 
-cd tools/editor-message-tree
-cargo run
-cd ../../website
+cargo run -p editor-message-tree -- website/generated/hierarchical_message_system_tree.txt
+cd website
 npm run generate-editor-structure</pre>" -%}
 {{ content | default(value = fallback) | safe }}
 {% endmacro hierarchical_message_system_tree %}
+
+{% macro crate_hierarchy() %}
+{%- set content = load_data(path = "../generated/crate_hierarchy.svg", format = "plain", required = false) -%}
+{%- set fallback = "<pre>THIS CONTENT IS FILLED IN WHEN CI BUILDS THE WEBSITE.
+
+TO TEST IT LOCALLY, FROM THE ROOT OF THE PROJECT, RUN:
+
+cargo run -p crate-hierarchy-viz -- website/generated/crate_hierarchy.dot
+cd website
+npm run generate-crate-hierarchy</pre>" -%}
+{{ content | default(value = fallback) | safe }}
+{% endmacro crate_hierarchy %}

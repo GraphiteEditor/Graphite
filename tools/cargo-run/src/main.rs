@@ -59,6 +59,7 @@ fn explore_usage() {
 	println!("OPTIONS:");
 	println!("<tool>:");
 	println!("  bisect    Binary search through recent commits to find which introduced a bug or feature");
+	println!("  deps      View the crate dependency graph for the workspace");
 	println!("  editor    View an interactive outline of the editor's message system architecture");
 	println!();
 }
@@ -67,6 +68,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 	if let Action::Explore(tool) = &task.action {
 		match tool.as_deref() {
 			Some("bisect") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/debugging-tips/#build-bisect-tool"),
+			Some("deps") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/#crate-dependency-graph"),
 			Some("editor") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/editor-structure/#editor-outline"),
 			None | Some("--help") => {
 				explore_usage();
