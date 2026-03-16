@@ -1,158 +1,137 @@
 # USAGE:
-# After reviewing the code, core team members may comment on a PR with the exact text:
-# - `!build-debug` to build with debug symbols and optimizations disabled
-# - `!build` to build without debug symbols and optimizations enabled
-# The comment may not contain any other text, not even whitespace or newlines.
+# After reviewing the code, core team members may comment on a PR with `!build` followed by optional `<target>` and `<profile>` arguments.
+# This matches the syntax of the `cargo run build` CLI command, but allows platforms to be specified.
+#
+# `<target>`: `web` (default), `desktop` (all platforms), or `desktop:<platforms>` (subset of `windows+mac+linux`)
+# `<profile>`: `release` (default) or `debug`
+#
+# Examples:
+# - !build
+# - !build debug
+# - !build desktop
+# - !build desktop:windows+mac
+# - !build desktop:linux debug
 name: "!build PR Command"
 
 on:
   issue_comment:
     types:
       - created
-env:
-  CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  setup:
     # Command should be limited to core team members (those in the organization) for security.
     # From the GitHub Actions docs:
     # author_association = 'MEMBER': Author is a member of the organization that owns the repository.
     if: >
       github.event.issue.pull_request &&
       github.event.comment.author_association == 'MEMBER' &&
-      (github.event.comment.body == '!build-debug' || github.event.comment.body == '!build')
-    runs-on: self-hosted
+      startsWith(github.event.comment.body, '!build')
+    runs-on: ubuntu-latest
     permissions:
-      contents: read
-      deployments: write
       pull-requests: write
-    env:
-      RUSTC_WRAPPER: /usr/bin/sccache
-      CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
+    outputs:
+      repo: ${{ steps.pr_info.outputs.repo }}
+      ref: ${{ steps.pr_info.outputs.ref }}
+      web: ${{ steps.pr_info.outputs.web }}
+      windows: ${{ steps.pr_info.outputs.windows }}
+      mac: ${{ steps.pr_info.outputs.mac }}
+      linux: ${{ steps.pr_info.outputs.linux }}
+      debug: ${{ steps.pr_info.outputs.debug }}
 
     steps:
-      - name: 🔎 Find branch for this PR
-        id: commit_info
+      - name: 🔎 Parse command, find branch, and set build flags
+        id: pr_info
         run: |
-          RESPONSE=$(curl -L -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
-          REPO=$(echo $RESPONSE | jq -r '.head.repo.full_name')
-          REF=$(echo $RESPONSE | jq -r '.head.ref')
-          SHA=$(echo $RESPONSE | jq -r '.head.sha')
-          echo "repo=$REPO" >> $GITHUB_OUTPUT
-          echo "ref=$REF" >> $GITHUB_OUTPUT
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          COMMENT="${{ github.event.comment.body }}"
 
-      - name: 📥 Clone repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ steps.commit_info.outputs.repo }}
-          ref: ${{ steps.commit_info.outputs.ref }}
+          # Split into space-separated words
+          read -ra WORDS <<< "$COMMENT"
 
-      - name: 🗑 Clear wasm-bindgen cache
-        continue-on-error: true
-        run: rm -r ~/.cache/.wasm-pack
-
-      - name: 🟢 Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-
-      - name: 🚧 Install build dependencies
-        run: |
-          cd frontend
-          npm run setup
-
-      - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          rustflags: ""
-          target: wasm32-unknown-unknown
-
-      - name: ✂ Replace template in <head> of index.html
-        env:
-          INDEX_HTML_HEAD_REPLACEMENT: ""
-        run: |
-          # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
-          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
-
-      - name: ⌨ Set build command based on comment
-        id: build_command
-        run: |
-          if [[ "${{ github.event.comment.body }}" == "!build-debug" ]]; then
-            echo "command=build web debug" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event.comment.body }}" == "!build" ]]; then
-            echo "command=build web" >> $GITHUB_OUTPUT
-          else
-            echo "Failed to detect if the build command written in the comment should have been '!build-debug', or '!build'" >> $GITHUB_OUTPUT
+          # First word must be "!build"
+          if [[ "${WORDS[0]}" != "!build" ]]; then
+            echo "::error::Expected comment to start with !build"
+            exit 1
           fi
 
-      - name: 💬 Comment Actions run link
-        id: comment_actions_run_link
-        uses: actions/github-script@v6
+          # Initialize build flags (web defaults to true, matching the CLI default target)
+          WEB="true"
+          WINDOWS="false"
+          MAC="false"
+          LINUX="false"
+          DEBUG="false"
+
+          # Parse target (optional, defaults to `web` if omitted)
+          IDX=1
+          case "${WORDS[$IDX]:-}" in
+            # Target: `web` enables just the web build (already the default, but accepted explicitly)
+            "web")
+              ((IDX++)) ;;
+            # Target: `desktop` enables all three desktop platforms
+            "desktop")
+              WEB="false"; WINDOWS="true"; MAC="true"; LINUX="true"; ((IDX++)) ;;
+            # Target: `desktop:<platforms>` enables a subset of desktop platforms, split by `+`
+            desktop:*)
+              WEB="false"
+              PLATFORMS="${WORDS[$IDX]#desktop:}"
+              IFS='+' read -ra PARTS <<< "$PLATFORMS"
+              for PART in "${PARTS[@]}"; do
+                case "$PART" in
+                  "windows") WINDOWS="true" ;;
+                  "mac")     MAC="true" ;;
+                  "linux")   LINUX="true" ;;
+                  *) echo "::error::Unrecognized platform: $PART"; exit 1 ;;
+                esac
+              done
+              ((IDX++))
+              ;;
+          esac
+
+          # Parse profile (optional, defaults to `release` if omitted)
+          case "${WORDS[$IDX]:-}" in
+            "debug")   DEBUG="true"; ((IDX++)) ;;
+            "release") ((IDX++)) ;;
+          esac
+
+          # Reject any unexpected trailing words
+          if [[ $IDX -lt ${#WORDS[@]} ]]; then
+            echo "::error::Unexpected argument: ${WORDS[$IDX]}"
+            exit 1
+          fi
+
+          # Write parsed build flags to job outputs
+          echo "web=$WEB" >> $GITHUB_OUTPUT
+          echo "windows=$WINDOWS" >> $GITHUB_OUTPUT
+          echo "mac=$MAC" >> $GITHUB_OUTPUT
+          echo "linux=$LINUX" >> $GITHUB_OUTPUT
+          echo "debug=$DEBUG" >> $GITHUB_OUTPUT
+
+          # Fetch the PR's head branch and repo (needed for forked PRs where the code lives in another repo)
+          RESPONSE=$(curl -L -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
+          echo "repo=$(echo $RESPONSE | jq -r '.head.repo.full_name')" >> $GITHUB_OUTPUT
+          echo "ref=$(echo $RESPONSE | jq -r '.head.ref')" >> $GITHUB_OUTPUT
+
+      - name: 💬 Edit comment with workflow run link
+        uses: actions/github-script@v8
         with:
           script: |
             github.rest.issues.updateComment({
               comment_id: ${{ github.event.comment.id }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '!build ([Run ID ' + context.runId + '](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
+              body: '${{ github.event.comment.body }} ([Run ID ' + context.runId + '](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
             });
 
-      - name: 🌐 Build Graphite web code
-        env:
-          NODE_ENV: production
-        if: ${{ success() || failure()}}
-        run: mold -run cargo run ${{ steps.build_command.outputs.command }}
-
-      - name: ❗ Warn on build failure
-        if: ${{ failure() }}
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'The build process has failed. Please check the [build logs](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + ') for details.'
-            });
-
-      - name: 📤 Publish to Cloudflare Pages
-        id: cloudflare
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if OUTPUT=$(npx wrangler@3 pages deploy "frontend/dist" --project-name="graphite-dev" --commit-dirty=true 2>&1); then
-            URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+\.pages\.dev' | tail -1)
-            echo "url=$URL" >> "$GITHUB_OUTPUT"
-            echo "Published successfully: $URL"
-          else
-            echo "$OUTPUT"
-            exit 1
-          fi
-
-      - name: ❗ Warn on publish failure
-        if: ${{ failure() }}
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'The deployment to Cloudflare Pages has failed. Please check the [build logs](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + ') for details.'
-            });
-
-      - name: 💬 Comment build link
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '| 📦 **Build Complete for** ${{ steps.commit_info.outputs.sha }} |\n|-|\n| ${{ steps.cloudflare.outputs.url }} |'
-            })
+  invoke-build:
+    needs: setup
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      web: ${{ needs.setup.outputs.web == 'true' }}
+      windows: ${{ needs.setup.outputs.windows == 'true' }}
+      mac: ${{ needs.setup.outputs.mac == 'true' }}
+      linux: ${{ needs.setup.outputs.linux == 'true' }}
+      debug: ${{ needs.setup.outputs.debug == 'true' }}
+      checkout_repo: ${{ needs.setup.outputs.repo }}
+      checkout_ref: ${{ needs.setup.outputs.ref }}
+      pr_number: ${{ github.event.issue.number }}

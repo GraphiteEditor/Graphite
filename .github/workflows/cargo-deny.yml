@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔒 Check crate security advisories for root workspace
         uses: EmbarkStudios/cargo-deny-action@v2

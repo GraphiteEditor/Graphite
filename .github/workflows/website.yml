@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🟢 Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: 💿 Obtain cache of auto-generated code docs artifacts
         id: cache-website-code-docs
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: artifacts
           key: website-code-docs
