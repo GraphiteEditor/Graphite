@@ -389,7 +389,7 @@ impl TableRowLayout for Vector {
 				}
 
 				if let Some(stroke) = self.style.stroke.clone() {
-					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
+					let color = if let Some(color) = stroke.color() { FillChoice::Solid(color) } else { FillChoice::None };
 					table_rows.push(vec![
 						TextLabel::new("Stroke").narrow(true).widget_instance(),
 						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),

@@ -49,12 +49,12 @@ impl Fill {
 	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.
 	pub fn color(&self) -> Color {
 		match self {
-			Self::None => Color::BLACK,
+			Self::None => Color::TRANSPARENT,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
 			Self::Gradient(Gradient { stops, .. }) => {
 				if stops.is_empty() {
-					Color::BLACK
+					Color::TRANSPARENT
 				} else {
 					stops.color[0]
 				}
@@ -151,6 +151,7 @@ impl From<Gradient> for Fill {
 		Fill::Gradient(gradient)
 	}
 }
+
 
 /// Describes the fill of a layer, but unlike [`Fill`], this doesn't store a [`Gradient`] directly but just its [`GradientStops`].
 ///
@@ -300,8 +301,8 @@ fn daffine2_identity() -> DAffine2 {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 #[serde(default)]
 pub struct Stroke {
-	/// Stroke color
-	pub color: Option<Color>,
+	/// Stroke paint (solid color or gradient)
+	pub paint: Fill,
 	/// Line thickness
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
@@ -322,7 +323,7 @@ pub struct Stroke {
 
 impl std::hash::Hash for Stroke {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.color.hash(state);
+		self.paint.hash(state);
 		self.weight.to_bits().hash(state);
 		{
 			self.dash_lengths.len().hash(state);
@@ -339,9 +340,9 @@ impl std::hash::Hash for Stroke {
 }
 
 impl Stroke {
-	pub const fn new(color: Option<Color>, weight: f64) -> Self {
+	pub fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
-			color,
+			paint: color.map_or(Fill::None, Fill::Solid),
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -356,7 +357,7 @@ impl Stroke {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
-			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
+			paint: self.paint.lerp(&other.paint, time),
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
@@ -374,7 +375,11 @@ impl Stroke {
 
 	/// Get the current stroke color.
 	pub fn color(&self) -> Option<Color> {
-		self.color
+		match &self.paint {
+			Fill::None => None,
+			Fill::Solid(color) => Some(*color),
+			Fill::Gradient(gradient) => gradient.stops.color.first().copied(),
+		}
 	}
 
 	/// Get the current stroke weight.
@@ -417,7 +422,7 @@ impl Stroke {
 	}
 
 	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {
-		self.color = *color;
+		self.paint = color.map_or(Fill::None, Fill::Solid);
 
 		Some(self)
 	}
@@ -466,7 +471,14 @@ impl Stroke {
 	}
 
 	pub fn has_renderable_stroke(&self) -> bool {
-		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
+		if self.weight <= 0. {
+			return false;
+		}
+		match &self.paint {
+			Fill::None => false,
+			Fill::Solid(color) => color.a() != 0.,
+			Fill::Gradient(_) => true,
+		}
 	}
 }
 
@@ -475,7 +487,7 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			weight: 0.,
-			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
+			paint: Fill::Solid(Color::from_rgba8_srgb(0, 0, 0, 255)),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			cap: StrokeCap::Butt,
@@ -508,7 +520,7 @@ impl std::fmt::Display for PathStyle {
 		let fill = &self.fill;
 
 		let stroke = match &self.stroke {
-			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| c.to_rgba_hex_srgb()), stroke.weight),
+			Some(stroke) => format!("{} (Weight: {} px)", stroke.paint, stroke.weight),
 			None => "None".to_string(),
 		};
 

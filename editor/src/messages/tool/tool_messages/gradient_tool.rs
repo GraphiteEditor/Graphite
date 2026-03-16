@@ -1579,7 +1579,7 @@ mod test_gradient {
 		let layers = document.metadata().all_layers();
 		layers
 			.filter_map(|layer| {
-				let fill = instrumented.grab_input_from_layer::<fill::FillInput<Fill>>(layer, &document.network_interface, &editor.runtime)?;
+				let fill = instrumented.grab_input_from_layer::<fill::ColorInput<Fill>>(layer, &document.network_interface, &editor.runtime)?;
 				let transform = gradient_space_transform(layer, document);
 				Some((fill, transform))
 			})

@@ -1077,9 +1077,61 @@ impl Render for Table<Vector> {
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
 				if let Some(stroke) = row.element.style.stroke() {
-					let color = match stroke.color {
-						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-						None => peniko::Color::TRANSPARENT,
+					let (brush, brush_transform) = match &stroke.paint {
+						Fill::Solid(color) => (peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])), None),
+						Fill::Gradient(gradient) => {
+							let mut stops = peniko::ColorStops::new();
+							for (position, color, _) in gradient.stops.interpolated_samples() {
+								stops.push(peniko::ColorStop {
+									offset: position as f32,
+									color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+								});
+							}
+
+							let bounds = row.element.nonzero_bounding_box();
+							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+							let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+								parent_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
+
+							let start = mod_points.transform_point2(gradient.start);
+							let end = mod_points.transform_point2(gradient.end);
+
+							let fill = peniko::Brush::Gradient(peniko::Gradient {
+								kind: match gradient.gradient_type {
+									GradientType::Linear => peniko::LinearGradientPosition {
+										start: to_point(start),
+										end: to_point(end),
+									}
+									.into(),
+									GradientType::Radial => {
+										let radius = start.distance(end);
+										peniko::RadialGradientPosition {
+											start_center: to_point(start),
+											start_radius: 0.,
+											end_center: to_point(start),
+											end_radius: radius as f32,
+										}
+										.into()
+									}
+								},
+								stops,
+								interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+								..Default::default()
+							});
+							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+								element_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							(fill, Some(brush_transform))
+						}
+						Fill::None => (peniko::Brush::Solid(peniko::Color::TRANSPARENT), None),
 					};
 					let cap = match stroke.cap {
 						StrokeCap::Butt => Cap::Butt,
@@ -1092,7 +1144,7 @@ impl Render for Table<Vector> {
 						StrokeJoin::Round => Join::Round,
 					};
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
-					let stroke = kurbo::Stroke {
+					let kurbo_stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
 						join,
@@ -1102,8 +1154,8 @@ impl Render for Table<Vector> {
 						dash_offset: stroke.dash_offset,
 					};
 
-					if stroke.width > 0. {
-						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+					if stroke.weight > 0. {
+						scene.stroke(&kurbo_stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, brush_transform, &path);
 					}
 				}
 			};

@@ -27,7 +27,7 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::QRCodeErrorCorrectionLevel;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, FillChoice, FillType, Gradient, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -1817,7 +1817,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::fill::*;
 
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, true, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, ColorInput::<Color>::INDEX, true, context));
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1828,7 +1828,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
-		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
+		&document_node.inputs[ColorInput::<Color>::INDEX].as_value(),
 		&document_node.inputs[BackupColorInput::INDEX].as_value(),
 		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
 	) {
@@ -1842,9 +1842,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
-		ColorInput::default()
+		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default()
 			.value(fill.clone().into())
-			.on_update(move |x: &ColorInput| Message::Batched {
+			.on_update(move |x: &crate::messages::layout::utility_types::widgets::button_widgets::ColorInput| Message::Batched {
 				messages: Box::new([
 					match &fill2 {
 						Fill::None => NodeGraphMessage::SetInputValue {
@@ -1868,7 +1868,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					},
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: FillInput::<Color>::INDEX,
+						input_index: ColorInput::<Color>::INDEX,
 						value: TaggedValue::Fill(x.value.to_fill(fill2.as_gradient())),
 					}
 					.into(),
@@ -1896,7 +1896,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							}
 						},
 						node_id,
-						FillInput::<Color>::INDEX,
+						ColorInput::<Color>::INDEX,
 					))
 					.widget_instance();
 				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -1907,11 +1907,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, FillInput::<Color>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, ColorInput::<Color>::INDEX))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, FillInput::<Color>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, ColorInput::<Color>::INDEX))
 				.on_commit(commit_value),
 		];
 
@@ -1946,7 +1946,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							}
 						},
 						node_id,
-						FillInput::<Color>::INDEX,
+						ColorInput::<Color>::INDEX,
 					))
 					.widget_instance();
 				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -1967,7 +1967,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
-					FillInput::<Color>::INDEX,
+					ColorInput::<Color>::INDEX,
 				);
 				RadioEntryData::new(format!("{:?}", grad_type))
 					.label(format!("{:?}", grad_type))
@@ -2009,18 +2009,201 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		Some(TaggedValue::StrokeJoin(x)) => x,
 		_ => &StrokeJoin::Miter,
 	};
-
 	let dash_lengths_val = match &document_node.inputs[DashLengthsInput::<Vec<f64>>::INDEX].as_value() {
 		Some(TaggedValue::VecF64(x)) => x,
 		_ => &vec![],
 	};
+
 	let has_dash_lengths = dash_lengths_val.is_empty();
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
-	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, ColorInput::INDEX, true, context),
-		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
+	let fill = document_node
+		.inputs
+		.get(ColorInput::<Fill>::INDEX)
+		.and_then(|i| i.as_non_exposed_value())
+		.and_then(|t| match t {
+			TaggedValue::Fill(f) => Some(f.clone()),
+			_ => None,
+		})
+		.unwrap_or(Fill::None);
+	let backup_color = document_node
+		.inputs
+		.get(BackupColorInput::INDEX)
+		.and_then(|i| i.as_non_exposed_value())
+		.and_then(|t| match t {
+			TaggedValue::Color(c) => Some(c.clone()),
+			_ => None,
+		})
+		.unwrap_or(Table::new());
+	let backup_gradient = document_node
+		.inputs
+		.get(BackupGradientInput::INDEX)
+		.and_then(|i| i.as_non_exposed_value())
+		.and_then(|t| match t {
+			TaggedValue::Gradient(g) => Some(g.clone()),
+			_ => None,
+		})
+		.unwrap_or(Gradient::default());
+
+	let mut widgets = Vec::new();
+
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, ColorInput::<Fill>::INDEX, true, context));
+	let fill2 = fill.clone();
+	let backup_color_fill: Fill = backup_color.clone().into();
+	let backup_gradient_fill: Fill = backup_gradient.clone().into();
+
+	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	widgets_first_row.push(
+		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default()
+			.value(fill.clone().into())
+			.on_update(move |x: &crate::messages::layout::utility_types::widgets::button_widgets::ColorInput| {
+				let new_fill = x.value.to_fill(fill2.as_gradient());
+				let backup_msg = match &new_fill {
+					Fill::None => NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: BackupColorInput::INDEX,
+						value: TaggedValue::Color(Table::new()),
+					}
+					.into(),
+					Fill::Solid(color) => NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: BackupColorInput::INDEX,
+						value: TaggedValue::Color(Table::new_from_element(*color)),
+					}
+					.into(),
+					Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: BackupGradientInput::INDEX,
+						value: TaggedValue::Gradient(gradient.clone()),
+					}
+					.into(),
+				};
+				Message::Batched {
+					messages: Box::new([
+						backup_msg,
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: ColorInput::<Fill>::INDEX,
+							value: TaggedValue::Fill(new_fill),
+						}
+						.into(),
+					]),
+				}
+			})
+			.on_commit(commit_value)
+			.widget_instance(),
 	);
+	widgets.push(LayoutGroup::row(widgets_first_row));
+
+	let mut fill_type_row = vec![TextLabel::new("").widget_instance()];
+	match fill {
+		Fill::Solid(_) | Fill::None => add_blank_assist(&mut fill_type_row),
+		Fill::Gradient(ref gradient) => {
+			let reverse_button = IconButton::new("Reverse", 24)
+				.tooltip_description("Reverse the gradient color stops.")
+				.on_update(update_value(
+					{
+						let gradient = gradient.clone();
+						move |_| {
+							let mut gradient = gradient.clone();
+							gradient.stops = gradient.stops.reversed();
+							TaggedValue::Fill(Fill::Gradient(gradient))
+						}
+					},
+					node_id,
+					ColorInput::<Color>::INDEX,
+				))
+				.widget_instance();
+			fill_type_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			fill_type_row.push(reverse_button);
+		}
+	}
+
+	let entries = vec![
+		RadioEntryData::new("solid")
+			.label("Solid")
+			.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, ColorInput::<Color>::INDEX))
+			.on_commit(commit_value),
+		RadioEntryData::new("gradient")
+			.label("Gradient")
+			.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, ColorInput::<Color>::INDEX))
+			.on_commit(commit_value),
+	];
+
+	fill_type_row.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		RadioInput::new(entries).selected_index(Some(if fill.as_gradient().is_some() { 1 } else { 0 })).widget_instance(),
+	]);
+	widgets.push(LayoutGroup::row(fill_type_row));
+
+	if let Fill::Gradient(gradient) = fill.clone() {
+		let mut row = vec![TextLabel::new("").widget_instance()];
+		match gradient.gradient_type {
+			GradientType::Linear => add_blank_assist(&mut row),
+			GradientType::Radial => {
+				let orientation = if (gradient.end.x - gradient.start.x).abs() > f64::EPSILON * 1e6 {
+					gradient.end.x > gradient.start.x
+				} else {
+					(gradient.start.x + gradient.start.y) < (gradient.end.x + gradient.end.y)
+				};
+				let reverse_radial_gradient_button = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+					.tooltip_description("Reverse which end the gradient radiates from.")
+					.on_update(update_value(
+						{
+							let gradient = gradient.clone();
+							move |_| {
+								let mut gradient = gradient.clone();
+								std::mem::swap(&mut gradient.start, &mut gradient.end);
+								TaggedValue::Fill(Fill::Gradient(gradient))
+							}
+						},
+						node_id,
+						ColorInput::<Fill>::INDEX,
+					))
+					.widget_instance();
+				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+				row.push(reverse_radial_gradient_button);
+			}
+		}
+
+		let gradient_for_closure = gradient.clone();
+
+		let entries = [GradientType::Linear, GradientType::Radial]
+			.iter()
+			.map(|&grad_type| {
+				let gradient = gradient_for_closure.clone();
+				let set_input_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient.clone();
+						new_gradient.gradient_type = grad_type;
+						TaggedValue::Fill(Fill::Gradient(new_gradient))
+					},
+					node_id,
+					ColorInput::<Fill>::INDEX,
+				);
+				RadioEntryData::new(format!("{:?}", grad_type))
+					.label(format!("{:?}", grad_type))
+					.on_update(move |_| Message::Batched {
+						messages: Box::new([
+							set_input_value(&()),
+							GradientToolMessage::UpdateOptions {
+								options: GradientOptionsUpdate::Type(grad_type),
+							}
+							.into(),
+						]),
+					})
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			RadioInput::new(entries).selected_index(Some(gradient.gradient_type as u32)).widget_instance(),
+		]);
+
+		widgets.push(LayoutGroup::row(row));
+	}
+
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));
 	let align = enum_choice::<StrokeAlign>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, AlignInput::INDEX, true, context))
@@ -2029,7 +2212,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let join = enum_choice::<StrokeJoin>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, JoinInput::INDEX, true, context))
 		.property_row();
-
 	let miter_limit = number_widget(
 		ParameterWidgetsInfo::new(node_id, MiterLimitInput::INDEX, true, context),
 		NumberInput::default().min(0.).disabled(miter_limit_disabled),
@@ -2037,16 +2219,16 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let paint_order = enum_choice::<PaintOrder>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, PaintOrderInput::INDEX, true, context))
 		.property_row();
-	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = array_of_number_widget(
 		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<Vec<f64>>::INDEX, true, context),
 		TextInput::default().centered(true),
 	);
-	let number_input = disabled_number_input;
-	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context), number_input);
+	let dash_offset = number_widget(
+		ParameterWidgetsInfo::new(node_id, DashOffsetInput::INDEX, true, context),
+		NumberInput::default().unit(" px").disabled(has_dash_lengths),
+	);
 
-	vec![
-		color,
+	widgets.extend([
 		LayoutGroup::row(weight),
 		align,
 		cap,
@@ -2055,7 +2237,9 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		paint_order,
 		LayoutGroup::row(dash_lengths),
 		LayoutGroup::row(dash_offset),
-	]
+	]);
+
+	widgets
 }
 
 pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
