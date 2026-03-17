@@ -277,13 +277,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .archive_download_url')
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
-          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_URL" ]; then
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
             gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Windows Build Complete for** $(git rev-parse HEAD) |
           |-|
           | [Download artifact]($ARTIFACT_URL) |"
@@ -463,13 +464,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .archive_download_url')
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
-          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_URL" ]; then
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
             gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Mac Build Complete for** $(git rev-parse HEAD) |
           |-|
           | [Download artifact]($ARTIFACT_URL) |"
@@ -595,13 +597,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .archive_download_url')
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
-          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_URL" ]; then
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
             gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Linux Build Complete for** $(git rev-parse HEAD) |
           |-|
           | [Download artifact]($ARTIFACT_URL) |"
