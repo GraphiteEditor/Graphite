@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Debug, Deserialize)]
 struct WorkspaceToml {
@@ -173,15 +175,74 @@ fn main() -> Result<()> {
 
 	remove_transitive_dependencies(&mut crates);
 
-	// Generate DOT format and write to output file
+	// Generate DOT format, convert to SVG, and write to output file
 	let dot_content = generate_dot(&crates);
+	let svg_content = dot_to_svg(&dot_content)?;
 
 	if let Some(parent) = output_path.parent() {
 		fs::create_dir_all(parent).with_context(|| format!("Failed to create directory {:?}", parent))?;
 	}
-	fs::write(&output_path, &dot_content).with_context(|| format!("Failed to write to {:?}", output_path))?;
+	fs::write(&output_path, &svg_content).with_context(|| format!("Failed to write to {:?}", output_path))?;
 
 	Ok(())
+}
+
+/// Convert a DOT graph string to SVG by shelling out to @viz-js/viz via Node.js
+fn dot_to_svg(dot: &str) -> Result<String> {
+	let temp_dir = std::env::temp_dir().join("crate-hierarchy-viz");
+	fs::create_dir_all(&temp_dir).with_context(|| "Failed to create temp directory")?;
+
+	// Install @viz-js/viz into the temp directory if not already present
+	let node_modules = temp_dir.join("node_modules").join("@viz-js");
+	if !node_modules.exists() {
+		let npm = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
+		let status = Command::new(npm)
+			.args(["install", "--prefix", &temp_dir.to_string_lossy(), "@viz-js/viz"])
+			.stdout(std::process::Stdio::null())
+			.stderr(std::process::Stdio::piped())
+			.status()
+			.with_context(|| "Failed to run `npm install`. Is Node.js installed?")?;
+		if !status.success() {
+			anyhow::bail!("Executing `npm install @viz-js/viz` failed");
+		}
+	}
+
+	// Write a small script that reads DOT from stdin and outputs SVG
+	let script_path = temp_dir.join("convert.mjs");
+	fs::write(
+		&script_path,
+		r#"
+		import { instance } from "@viz-js/viz";
+		let dot = "";
+		for await (const chunk of process.stdin) dot += chunk;
+		const viz = await instance();
+		process.stdout.write(viz.renderString(dot, { format: "svg" }));
+		"#
+		.trim(),
+	)?;
+
+	let mut child = Command::new("node")
+		.arg(&script_path)
+		.stdin(std::process::Stdio::piped())
+		.stdout(std::process::Stdio::piped())
+		.stderr(std::process::Stdio::piped())
+		.spawn()
+		.with_context(|| "Failed to spawn `node`. Is Node.js installed?")?;
+
+	// Write DOT content to stdin then close the pipe
+	child.stdin.take().unwrap().write_all(dot.as_bytes()).with_context(|| "Failed to write DOT content to stdin")?;
+
+	let output = child.wait_with_output().with_context(|| "Failed to wait for `node` process")?;
+
+	// Clean up the temp script (node_modules is intentionally kept as a cache)
+	let _ = fs::remove_file(&script_path);
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		anyhow::bail!("DOT to SVG conversion failed (exit code {:?}):\n{}", output.status.code(), stderr);
+	}
+
+	String::from_utf8(output.stdout).with_context(|| "SVG output was not valid UTF-8")
 }
 
 fn generate_dot(crates: &[CrateInfo]) -> String {

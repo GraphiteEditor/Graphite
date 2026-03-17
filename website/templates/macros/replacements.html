@@ -57,8 +57,6 @@ npm run generate-editor-structure</pre>" -%}
 
 TO TEST IT LOCALLY, FROM THE ROOT OF THE PROJECT, RUN:
 
-cargo run -p crate-hierarchy-viz -- website/generated/crate_hierarchy.dot
-cd website
-npm run generate-crate-hierarchy</pre>" -%}
+cargo run -p crate-hierarchy-viz -- website/generated/crate_hierarchy.svg</pre>" -%}
 {{ content | default(value = fallback) | safe }}
 {% endmacro crate_hierarchy %}
