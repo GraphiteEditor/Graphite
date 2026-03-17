@@ -135,10 +135,8 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Gradient,
 	)]
 	color: F,
-	#[default(Table::new())]
-	_backup_color: Table<Color>,
-	#[default(Gradient::default())]
-	_backup_gradient: Gradient,
+	#[default(Table::new())] _backup_color: Table<Color>,
+	#[default(Gradient::default())] _backup_gradient: Gradient,
 ) -> V {
 	let fill: Fill = color.into();
 	for vector in content.vector_iter_mut() {

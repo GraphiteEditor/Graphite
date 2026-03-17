@@ -2,7 +2,9 @@
 
 pub use crate::gradient::*;
 use core_types::Color;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::Alpha;
+use core_types::render_complexity::RenderComplexity;
 use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -28,6 +30,25 @@ impl std::fmt::Display for Fill {
 			Self::None => write!(f, "None"),
 			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", color.to_rgb_hex_srgb(), color.a() * 100.),
 			Self::Gradient(gradient) => write!(f, "{gradient}"),
+		}
+	}
+}
+
+impl BoundingBox for Fill {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		match self {
+			Self::None => RenderBoundingBox::None,
+			Self::Solid(_) | Self::Gradient(_) => RenderBoundingBox::Infinite,
+		}
+	}
+}
+
+impl RenderComplexity for Fill {
+	fn render_complexity(&self) -> usize {
+		match self {
+			Self::None => 0,
+			Self::Solid(_) => 1,
+			Self::Gradient(g) => g.stops.len(),
 		}
 	}
 }
@@ -151,7 +172,6 @@ impl From<Gradient> for Fill {
 		Fill::Gradient(gradient)
 	}
 }
-
 
 /// Describes the fill of a layer, but unlike [`Fill`], this doesn't store a [`Gradient`] directly but just its [`GradientStops`].
 ///

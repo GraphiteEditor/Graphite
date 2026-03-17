@@ -181,7 +181,7 @@ mod test_fill {
 		};
 
 		instrumented.grab_all_input::<fill::ColorInput<Fill>>(&editor.runtime).collect()
-}	
+	}
 
 	#[tokio::test]
 	async fn ignore_artboard() {

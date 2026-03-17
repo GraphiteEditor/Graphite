@@ -306,10 +306,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					.into_iter()
 					.map(|row| {
 						let mut element = Vector::default();
-						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient {
-							stops: row.element,
-							..Default::default()
-						}));
+						element.style.set_fill(row.element.clone());
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
 						TableRow {
