@@ -172,40 +172,16 @@ jobs:
           name: graphite-web-bundle
           path: frontend/dist
 
-      - name: 📃 Generate code documentation info for website
+      - name: 📃 Trigger website rebuild if auto-generated code docs are stale
         if: github.event_name == 'push'
-        run: |
-          cargo run -p crate-hierarchy-viz -- website/generated-new
-          cargo run -p editor-message-tree -- website/generated-new
-
-      - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
-        if: github.event_name == 'push'
-        id: cache-website-code-docs
-        uses: actions/cache/restore@v5
-        with:
-          path: website/generated
-          key: website-code-docs
-
-      - name: 🔍 Check if auto-generated code docs artifacts changed
-        if: github.event_name == 'push'
-        id: website-code-docs-changed
-        run: |
-          diff --brief --recursive website/generated-new website/generated || echo "changed=true" >> $GITHUB_OUTPUT
-          rm -rf website/generated
-          mv website/generated-new website/generated
-
-      - name: 💾 Save cache of auto-generated code docs artifacts
-        if: github.event_name == 'push' && steps.website-code-docs-changed.outputs.changed == 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: website/generated
-          key: ${{ steps.cache-website-code-docs.outputs.cache-primary-key }}
-
-      - name: ♻️ Trigger website rebuild if the auto-generated code docs artifacts have changed
-        if: github.event_name == 'push' && steps.website-code-docs-changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run website.yml --ref master
+        run: |
+          cargo run -p editor-message-tree -- website/generated
+          TREE=volunteer/guide/codebase-overview/hierarchical-message-system-tree
+          curl -sf "https://graphite.art/$TREE.txt" -o "website/static/$TREE.live.txt" \
+            && diff -q "website/static/$TREE.txt" "website/static/$TREE.live.txt" > /dev/null \
+            || gh workflow run website.yml --ref master
 
   windows:
     if: github.event_name == 'push' || inputs.windows

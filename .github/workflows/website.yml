@@ -49,21 +49,9 @@ jobs:
           # Remove the INDEX_HTML_HEAD_INCLUSION environment variable for build links (not master deploys)
           git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_INCLUSION=""
 
-      - name: 💿 Obtain cache of auto-generated code docs artifacts
-        id: cache-website-code-docs
-        uses: actions/cache/restore@v5
-        with:
-          path: website/generated
-          key: website-code-docs
-
-      - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
-        if: steps.cache-website-code-docs.outputs.cache-hit != 'true'
+      - name: 🦀 Produce auto-generated code docs data
         run: |
-          echo "🦀 Initial system version of Rust:"
-          rustc --version
           rustup update stable
-          echo "🦀 Latest updated version of Rust:"
-          rustc --version
           cargo run -p crate-hierarchy-viz -- website/generated
           cargo run -p editor-message-tree -- website/generated
 
