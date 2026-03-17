@@ -139,25 +139,26 @@ impl ClickTracker {
 
 		let prev_time = record.time;
 		let prev_position = record.position;
+		let prev_count: ClickCount = record.down_count;
 
 		let now = Instant::now();
 		record.time = now;
 		record.position = position;
 
 		match state {
-			ElementState::Pressed if record.down_count == ClickCount::Double => {
+			ElementState::Pressed if record.down_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					down_count: ClickCount::Single,
+					down_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
-			ElementState::Released if record.up_count == ClickCount::Double => {
+			ElementState::Released if record.up_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					up_count: ClickCount::Single,
+					up_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
 			_ => {}
 		}
@@ -167,7 +168,11 @@ impl ClickTracker {
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
 
-		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
+		let count = match (prev_count, within_time, within_dist) {
+			(ClickCount::Double, true, true) => ClickCount::Triple,
+			(_, true, true) => ClickCount::Double,
+			_ => ClickCount::Single,
+		};
 
 		*record = match state {
 			ElementState::Pressed => ClickRecord { down_count: count, ..*record },
@@ -182,12 +187,14 @@ pub(crate) enum ClickCount {
 	#[default]
 	Single,
 	Double,
+	Triple,
 }
 impl From<ClickCount> for i32 {
 	fn from(count: ClickCount) -> i32 {
 		match count {
 			ClickCount::Single => 1,
 			ClickCount::Double => 2,
+			ClickCount::Triple => 3,
 		}
 	}
 }

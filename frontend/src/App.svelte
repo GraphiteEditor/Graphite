@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 
-	import { type Editor as GraphiteEditor, initWasm, createEditor } from "@graphite/editor";
+	import { initWasm, createEditor } from "@graphite/editor";
+	import type { Editor as GraphiteEditor } from "@graphite/editor";
 
 	import Editor from "@graphite/components/Editor.svelte";
 
@@ -14,7 +15,7 @@
 	});
 
 	onDestroy(() => {
-		// Destroy the WASM editor handle
+		// Destroy the Wasm editor handle
 		editor?.handle.free();
 	});
 </script>

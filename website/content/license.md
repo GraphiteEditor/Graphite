@@ -12,7 +12,7 @@ css = ["/layout/reading-material.css"]
 
 <article>
 
-Graphite is open source software made by its community and distributed by *Graphite Labs, LLC*, the official [organization](/about#organization) that operates the project. Builds of the application are free to use by anyone for any purpose, even commercially. The artwork you produce is solely yours.
+Graphite is open source software made by its community and distributed by *Graphite Labs, LLC*, the official [organization](/about#organization) that operates the project. Builds of the application are free to use and redistribute, even for commercial purposes. The artwork you create always belongs to you.
 
 ## Source code
 

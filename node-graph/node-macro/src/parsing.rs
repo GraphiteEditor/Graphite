@@ -480,13 +480,13 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						"ExtractFootprint"
 						| "ExtractRealTime"
 						| "ExtractAnimationTime"
-						| "ExtractPointer"
+						| "ExtractPointerPosition"
 						| "ExtractIndex"
 						| "ExtractVarArgs"
 						| "InjectFootprint"
 						| "InjectRealTime"
 						| "InjectAnimationTime"
-						| "InjectPointer"
+						| "InjectPointerPosition"
 						| "InjectIndex"
 						| "InjectVarArgs" => {
 							features.push(segment.ident.clone());
@@ -1455,11 +1455,9 @@ mod tests {
 					() -> Table<Raster<CPU>>,
 					() -> Table<Color>,
 					() -> Table<GradientStops>,
-					() -> GradientStops,
 					Footprint -> Table<Raster<CPU>>,
 					Footprint -> Table<Color>,
 					Footprint -> Table<GradientStops>,
-					Footprint -> GradientStops,
 				)]
 				image: impl Node<F, Output = T>,
 			) -> T {

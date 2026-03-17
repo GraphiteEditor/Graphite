@@ -3,12 +3,12 @@ use convert_case::{Case, Casing};
 use indoc::formatdoc;
 use std::io::Write;
 
-pub fn write_catalog_index_page(categories: &[String]) {
-	if std::path::Path::new(NODE_CATALOG_PATH).exists() {
-		std::fs::remove_dir_all(NODE_CATALOG_PATH).expect("Failed to remove existing node catalog directory");
+pub fn write_catalog_index_page(output_path: &str, categories: &[String]) {
+	if std::path::Path::new(output_path).exists() {
+		std::fs::remove_dir_all(output_path).expect("Failed to remove existing node catalog directory");
 	}
-	std::fs::create_dir_all(NODE_CATALOG_PATH).expect("Failed to create node catalog directory");
-	let page_path = format!("{NODE_CATALOG_PATH}/_index.md");
+	std::fs::create_dir_all(output_path).expect("Failed to create node catalog directory");
+	let page_path = format!("{output_path}/_index.md");
 	let mut page = std::fs::File::create(&page_path).expect("Failed to create index file");
 
 	write_frontmatter(&mut page);

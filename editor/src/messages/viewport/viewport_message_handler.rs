@@ -3,7 +3,8 @@ use std::ops::{Add, Div, Mul, Sub};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::DVec2;
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct ViewportMessageHandler {
 	bounds: Bounds,
 	// Ratio of logical pixels to physical pixels
@@ -13,8 +14,8 @@ impl Default for ViewportMessageHandler {
 	fn default() -> Self {
 		Self {
 			bounds: Bounds {
-				offset: Point { x: 0.0, y: 0.0 },
-				size: Point { x: 0.0, y: 0.0 },
+				offset: Point { x: 0., y: 0. },
+				size: Point { x: 0., y: 0. },
 			},
 			scale: 1.0,
 		}
@@ -26,7 +27,7 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 	fn process_message(&mut self, message: ViewportMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			ViewportMessage::Update { x, y, width, height, scale } => {
-				assert_ne!(scale, 0.0, "Viewport scale cannot be zero");
+				assert!(scale > 0., "Viewport scale must be greater than zero");
 				self.scale = scale;
 
 				self.bounds = Bounds {
@@ -51,14 +52,16 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 
 		responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
 
-		responses.add(DeferMessage::AfterGraphRun {
-			messages: vec![
-				DeferMessage::AfterGraphRun {
-					messages: vec![DeferMessage::TriggerNavigationReady.into()],
-				}
-				.into(),
-			],
-		});
+		if self.is_valid() {
+			responses.add(DeferMessage::AfterGraphRun {
+				messages: vec![
+					DeferMessage::AfterGraphRun {
+						messages: vec![DeferMessage::TriggerNavigationReady.into()],
+					}
+					.into(),
+				],
+			});
+		}
 	}
 
 	advertise_actions!(ViewportMessageDiscriminant;);
@@ -94,7 +97,7 @@ impl ViewportMessageHandler {
 	pub fn center_in_viewport_space(&self) -> LogicalPoint {
 		let size = self.size();
 		LogicalPoint {
-			inner: Point { x: size.x() / 2.0, y: size.y() / 2.0 },
+			inner: Point { x: size.x() / 2., y: size.y() / 2. },
 			scale: size.scale,
 		}
 	}
@@ -104,11 +107,15 @@ impl ViewportMessageHandler {
 		let offset = self.offset();
 		LogicalPoint {
 			inner: Point {
-				x: (size.x() / 2.0) + offset.x(),
-				y: (size.y() / 2.0) + offset.y(),
+				x: (size.x() / 2.) + offset.x(),
+				y: (size.y() / 2.) + offset.y(),
 			},
 			scale: size.scale,
 		}
+	}
+
+	pub fn is_valid(&self) -> bool {
+		self.scale > 0. && self.bounds.size.x() > 0. && self.bounds.size.y() > 0. && self.bounds.offset.x() >= 0. && self.bounds.offset.y() >= 0.
 	}
 
 	pub(crate) fn is_in_bounds(&self, point: LogicalPoint) -> bool {
@@ -151,7 +158,8 @@ pub trait Position {
 	fn y(&self) -> f64;
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 struct Point {
 	x: f64,
 	y: f64,
@@ -177,7 +185,8 @@ impl Position for Point {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LogicalPoint {
 	inner: Point,
 	scale: f64,
@@ -211,7 +220,8 @@ impl FromWithScale<Point> for LogicalPoint {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct PhysicalPoint {
 	inner: Point,
 	scale: f64,
@@ -252,7 +262,8 @@ pub trait Rect<P: Position>: Position {
 	fn height(&self) -> f64;
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, ExtractField)]
 struct Bounds {
 	offset: Point,
 	size: Point,
@@ -280,7 +291,8 @@ impl Rect<Point> for Bounds {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LogicalBounds {
 	offset: Point,
 	size: Point,
@@ -332,7 +344,8 @@ impl FromWithScale<Bounds> for LogicalBounds {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct PhysicalBounds {
 	offset: Point,
 	size: Point,

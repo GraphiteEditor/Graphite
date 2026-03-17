@@ -20,7 +20,8 @@
 
 	onMount(() => {
 		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
-		const emphasizedOrFirstButton = (self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		const button = self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]");
+		const emphasizedOrFirstButton = button instanceof HTMLButtonElement ? button : undefined;
 		emphasizedOrFirstButton?.focus();
 	});
 </script>
@@ -28,8 +29,9 @@
 <!-- TODO: Use https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog for improved accessibility -->
 <FloatingMenu open={true} class="dialog" type="Dialog" direction="Center" bind:this={self} data-dialog>
 	<LayoutRow class="header-area">
-		<!-- `$dialog.icon` class exists to provide special sizing in CSS to specific icons -->
-		<IconLabel icon={$dialog.icon} class={$dialog.icon.toLowerCase()} />
+		{#if $dialog.icon}
+			<IconLabel icon={$dialog.icon} />
+		{/if}
 		<TextLabel>{$dialog.title}</TextLabel>
 	</LayoutRow>
 	<LayoutRow class={`content ${$dialog.title === "Demo Artwork" ? "center" : "" /* TODO: Replace this with a less hacky approach that's compatible with localization/translation */}`}>
@@ -104,10 +106,13 @@
 			.icon-label {
 				width: 24px;
 				height: 24px;
+
+				+ .text-label {
+					margin-left: 12px;
+				}
 			}
 
 			.text-label {
-				margin-left: 12px;
 				line-height: 24px;
 			}
 		}
@@ -134,7 +139,7 @@
 			}
 
 			.text-label.multiline {
-				-webkit-user-select: text; // Still required by Safari as of 2025
+				-webkit-user-select: text; // Still required by Safari as of 2026
 				user-select: text;
 			}
 

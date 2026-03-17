@@ -5,7 +5,7 @@ use std::path::PathBuf;
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	env_logger::builder().filter_level(log::LevelFilter::Debug).init();
 
-	// Skip building the shader if they are provided externally
+	// Skip building the shaders if they are provided externally
 	println!("cargo:rerun-if-env-changed=RASTER_NODES_SHADER_PATH");
 	if !std::env::var("RASTER_NODES_SHADER_PATH").unwrap_or_default().is_empty() {
 		return Ok(());

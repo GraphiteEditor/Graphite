@@ -1,18 +1,26 @@
 use editor::messages::message::Message;
 use editor::utility_types::DebugMessageTree;
 use std::io::Write;
+use std::path::PathBuf;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let output_path = std::env::args_os().nth(1).map(PathBuf::from).ok_or("Usage: editor-message-tree <output-file>")?;
+
+	if let Some(parent) = output_path.parent() {
+		std::fs::create_dir_all(parent).unwrap();
+	}
+
 	let result = Message::message_tree();
-	std::fs::create_dir_all("../../website/generated").unwrap();
-	let mut file = std::fs::File::create("../../website/generated/hierarchical_message_system_tree.txt").unwrap();
-	file.write_all(format!("{} `{}`\n", result.name(), result.path()).as_bytes()).unwrap();
+	let mut file = std::fs::File::create(&output_path).unwrap();
+	file.write_all(format!("{} `{}#L{}`\n", result.name(), result.path(), result.line_number()).as_bytes()).unwrap();
 	if let Some(variants) = result.variants() {
 		for (i, variant) in variants.iter().enumerate() {
 			let is_last = i == variants.len() - 1;
 			print_tree_node(variant, "", is_last, &mut file);
 		}
 	}
+
+	Ok(())
 }
 
 fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {
@@ -28,7 +36,8 @@ fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &
 	if tree.path().is_empty() {
 		file.write_all(format!("{}{}{}\n", prefix, branch, tree.name()).as_bytes()).unwrap();
 	} else {
-		file.write_all(format!("{}{}{} `{}`\n", prefix, branch, tree.name(), tree.path()).as_bytes()).unwrap();
+		file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, tree.name(), tree.path(), tree.line_number()).as_bytes())
+			.unwrap();
 	}
 
 	// Print children if any
@@ -64,7 +73,8 @@ fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &
 		if data.name().is_empty() && tree.name() != FRONTEND_MESSAGE_STR {
 			panic!("{}'s MessageHandler is missing #[message_handler_data]", tree.name());
 		} else if tree.name() != FRONTEND_MESSAGE_STR {
-			file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
+			file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, data.name(), data.path(), data.line_number()).as_bytes())
+				.unwrap();
 
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
@@ -81,7 +91,8 @@ fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &
 		if data.path().is_empty() {
 			file.write_all(format!("{}{}{}\n", prefix, "└── ", data.name()).as_bytes()).unwrap();
 		} else {
-			file.write_all(format!("{}{}{} `{}`\n", prefix, "└── ", data.name(), data.path()).as_bytes()).unwrap();
+			file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, "└── ", data.name(), data.path(), data.line_number()).as_bytes())
+				.unwrap();
 		}
 		for (i, field) in data.fields().iter().enumerate() {
 			let is_last_field = i == len - 1;
