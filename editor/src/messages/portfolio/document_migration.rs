@@ -1281,11 +1281,34 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 
-		// Copy over old inputs
+		// Copy over old inputs (tilt, align)
 		#[allow(clippy::needless_range_loop)]
-		for i in 10..=12 {
+		for i in 10..=11 {
 			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i - 2].clone(), network_path);
 		}
+
+		// vertical_align at index 12 gets its default from the template
+
+		// Copy over separate_glyph_elements from old index 10 to new index 13
+		document.network_interface.set_input(&InputConnector::node(*node_id, 13), old_inputs[10].clone(), network_path);
+	}
+
+	// Insert vertical_align parameter between align and separate_glyph_elements:
+	// https://github.com/GraphiteEditor/Graphite/issues/3883
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 13 {
+		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+
+		#[allow(clippy::needless_range_loop)]
+		for i in 0..=11 {
+			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i].clone(), network_path);
+		}
+
+		// vertical_align at index 12 gets its default from the template
+
+		// Shift separate_glyph_elements from old index 12 to new index 13
+		document.network_interface.set_input(&InputConnector::node(*node_id, 13), old_inputs[12].clone(), network_path);
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default

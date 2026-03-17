@@ -1111,6 +1111,7 @@ impl OverlayContextInternal {
 			max_height: None,
 			tilt: 0.,
 			align: TextAlign::Left, // We'll handle alignment manually via pivot
+			..Default::default()
 		};
 
 		// Load Source Sans Pro font data

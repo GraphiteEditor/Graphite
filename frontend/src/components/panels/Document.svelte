@@ -366,6 +366,31 @@
 		textInput.style.color = data.color;
 		textInput.style.textAlign = data.align;
 
+		// Apply vertical alignment using padding-top to offset text within the container
+		if (data.maxHeight !== undefined) {
+			if (data.verticalAlign === "Center" || data.verticalAlign === "Bottom") {
+				// Reset any existing padding first
+				textInput.style.paddingTop = "0px";
+
+				// Wait for layout to settle so we can measure the content height
+				await tick();
+
+				const contentHeight = textInput.scrollHeight;
+				const containerHeight = Math.floor(data.maxHeight / (data.lineHeightRatio * data.fontSize)) * (data.lineHeightRatio * data.fontSize);
+				const freeSpace = Math.max(containerHeight - contentHeight, 0);
+
+				if (data.verticalAlign === "Center") {
+					textInput.style.paddingTop = `${freeSpace / 2}px`;
+				} else {
+					textInput.style.paddingTop = `${freeSpace}px`;
+				}
+			} else {
+				textInput.style.paddingTop = "0px";
+			}
+		} else {
+			textInput.style.paddingTop = "0px";
+		}
+
 		textInput.oninput = () => {
 			if (!textInput) return;
 			editor.handle.updateBounds(textInputCleanup(textInput.innerText));

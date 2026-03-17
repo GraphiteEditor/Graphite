@@ -19,7 +19,7 @@ use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
+use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, VerticalAlign, lines_clipping};
 use graphene_std::vector::style::Fill;
 use graphene_std::{Color, NodeInputDecleration};
 
@@ -38,6 +38,7 @@ pub struct TextOptions {
 	fill: ToolColorOptions,
 	tilt: f64,
 	align: TextAlign,
+	vertical_align: VerticalAlign,
 }
 
 impl Default for TextOptions {
@@ -50,6 +51,7 @@ impl Default for TextOptions {
 			fill: ToolColorOptions::new_primary(),
 			tilt: 0.,
 			align: TextAlign::default(),
+			vertical_align: VerticalAlign::default(),
 		}
 	}
 }
@@ -85,6 +87,7 @@ pub enum TextOptionsUpdate {
 	FontSize(f64),
 	LineHeightRatio(f64),
 	Align(TextAlign),
+	VerticalAlign(VerticalAlign),
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
@@ -216,6 +219,20 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		})
 		.collect();
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
+
+	let vertical_align_entries: Vec<_> = [VerticalAlign::Top, VerticalAlign::Center, VerticalAlign::Bottom]
+		.into_iter()
+		.map(|va| {
+			RadioEntryData::new(format!("{va:?}")).label(va.to_string()).on_update(move |_| {
+				TextToolMessage::UpdateOptions {
+					options: TextOptionsUpdate::VerticalAlign(va),
+				}
+				.into()
+			})
+		})
+		.collect();
+	let vertical_align = RadioInput::new(vertical_align_entries).selected_index(Some(tool.options.vertical_align as u32)).widget_instance();
+
 	vec![
 		font,
 		Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -226,6 +243,8 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		line_height_ratio,
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 		align,
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		vertical_align,
 	]
 }
 
@@ -291,6 +310,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
 			TextOptionsUpdate::Align(align) => self.options.align = align,
+			TextOptionsUpdate::VerticalAlign(vertical_align) => self.options.vertical_align = vertical_align,
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -420,6 +440,7 @@ impl TextToolData {
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
 				align: editing_text.typesetting.align,
+				vertical_align: editing_text.typesetting.vertical_align,
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue
@@ -904,6 +925,7 @@ impl Fsm for TextToolFsmState {
 						max_height: constraint_size.map(|size| size.y),
 						tilt: tool_options.tilt,
 						align: tool_options.align,
+						vertical_align: tool_options.vertical_align,
 					},
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),

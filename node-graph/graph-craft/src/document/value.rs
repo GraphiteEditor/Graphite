@@ -269,6 +269,7 @@ tagged_value! {
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
+	VerticalAlign(text_nodes::VerticalAlign),
 }
 
 impl TaggedValue {

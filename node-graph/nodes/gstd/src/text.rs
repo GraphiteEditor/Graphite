@@ -59,6 +59,9 @@ fn text<'i: 'n>(
 	/// To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
+	/// The vertical alignment of text within the text box. Requires *Max Height* to be set.
+	#[widget(ParsedWidgetOverride::Custom = "text_vertical_align")]
+	vertical_align: VerticalAlign,
 	/// Whether to split every letterform into its own vector path element. Otherwise, a single compound path is produced.
 	separate_glyph_elements: bool,
 ) -> Table<Vector> {
@@ -70,6 +73,7 @@ fn text<'i: 'n>(
 		max_height: has_max_height.then_some(max_height),
 		tilt,
 		align,
+		vertical_align,
 	};
 
 	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyph_elements)
