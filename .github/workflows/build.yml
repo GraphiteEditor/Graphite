@@ -285,9 +285,10 @@ jobs:
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
           if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
-            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Windows Build Complete for** $(git rev-parse HEAD) |
-          |-|
-          | [Download artifact]($ARTIFACT_URL) |"
+            BODY="| 📦 **Windows Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
           fi
 
       - name: 🔑 Azure login
@@ -472,9 +473,10 @@ jobs:
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
           if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
-            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Mac Build Complete for** $(git rev-parse HEAD) |
-          |-|
-          | [Download artifact]($ARTIFACT_URL) |"
+            BODY="| 📦 **Mac Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
           fi
 
       - name: 🔏 Sign and notarize (preparation)
@@ -593,6 +595,7 @@ jobs:
           compression-level: 0
 
       - name: 💬 Comment artifact link on PR
+        id: linux-comment
         if: github.event_name != 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -605,9 +608,11 @@ jobs:
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
           if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
-            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Linux Build Complete for** $(git rev-parse HEAD) |
-          |-|
-          | [Download artifact]($ARTIFACT_URL) |"
+            BODY="| 📦 **Linux Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$BODY" --jq '.id')
+            echo "comment_id=$COMMENT_ID" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🔧 Install Flatpak tooling
@@ -638,3 +643,18 @@ jobs:
           name: graphite-flatpak
           path: .flatpak/Graphite.flatpak
           compression-level: 0
+
+      - name: 💬 Update PR comment with Flatpak artifact link
+        if: github.event_name != 'push' && steps.linux-comment.outputs.comment_id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-flatpak") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+          COMMENT_ID="${{ steps.linux-comment.outputs.comment_id }}"
+          if [ -n "$ARTIFACT_ID" ]; then
+            EXISTING_BODY=$(gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID --jq '.body')
+            BODY="$EXISTING_BODY"$'\n'
+            BODY+="| [Download Flatpak]($ARTIFACT_URL) |"
+            gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID -X PATCH -f body="$BODY"
+          fi
