@@ -64,14 +64,13 @@ jobs:
           rustup update stable
           echo "🦀 Latest updated version of Rust:"
           rustc --version
-          cargo run -p crate-hierarchy-viz -- website/generated/crate_hierarchy.svg
-          cargo run -p editor-message-tree -- website/generated/hierarchical_message_system_tree.txt
+          cargo run -p crate-hierarchy-viz -- website/generated
+          cargo run -p editor-message-tree -- website/generated
 
-      - name: 🔧 Build auto-generated code docs artifacts into HTML
+      - name: 🔧 Install website npm dependencies
         run: |
           cd website
           npm ci
-          npm run generate-editor-structure
 
       - name: 📃 Generate node catalog documentation
         run: cargo run -p node-docs -- website/content/learn/node-catalog

@@ -12,7 +12,6 @@
 	"type": "module",
 	"scripts": {
 		"postinstall": "node .build-scripts/install.ts",
-		"generate-editor-structure": "node .build-scripts/generate-editor-structure.ts generated/hierarchical_message_system_tree.txt generated/hierarchical_message_system_tree.html",
 		"check": "tsc --noEmit && eslint",
 		"fix": "eslint --fix"
 	},

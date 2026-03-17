@@ -85,10 +85,11 @@ fn collect_all_dependencies(crate_name: &str, dep_map: &HashMap<String, HashSet<
 }
 
 fn main() -> Result<()> {
-	let output_path = std::env::args_os()
+	let output_dir = std::env::args_os()
 		.nth(1)
 		.map(PathBuf::from)
-		.ok_or_else(|| anyhow::anyhow!("Usage: crate-hierarchy-viz <output-file>"))?;
+		.ok_or_else(|| anyhow::anyhow!("Usage: crate-hierarchy-viz <output-directory>"))?;
+	let output_path = output_dir.join("crate-hierarchy.svg");
 
 	let workspace_root = std::env::current_dir().unwrap();
 	let workspace_toml_path = workspace_root.join("Cargo.toml");
@@ -179,9 +180,7 @@ fn main() -> Result<()> {
 	let dot_content = generate_dot(&crates);
 	let svg_content = dot_to_svg(&dot_content)?;
 
-	if let Some(parent) = output_path.parent() {
-		fs::create_dir_all(parent).with_context(|| format!("Failed to create directory {:?}", parent))?;
-	}
+	fs::create_dir_all(&output_dir).with_context(|| format!("Failed to create directory {:?}", output_dir))?;
 	fs::write(&output_path, &svg_content).with_context(|| format!("Failed to write to {:?}", output_path))?;
 
 	Ok(())

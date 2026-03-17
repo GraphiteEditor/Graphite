@@ -175,9 +175,8 @@ jobs:
       - name: 📃 Generate code documentation info for website
         if: github.event_name == 'push'
         run: |
-          mkdir -p website/generated-new
-          cargo run -p crate-hierarchy-viz -- website/generated-new/crate_hierarchy.svg
-          cargo run -p editor-message-tree -- website/generated-new/hierarchical_message_system_tree.txt
+          cargo run -p crate-hierarchy-viz -- website/generated-new
+          cargo run -p editor-message-tree -- website/generated-new
 
       - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
         if: github.event_name == 'push'
