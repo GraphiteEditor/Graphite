@@ -145,7 +145,7 @@ jobs:
             gh api \
               -X POST \
               -H "Accept: application/vnd.github+json" \
-              /repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
+              repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
               -f body="$COMMENT_BODY"
           else
             # Comment on the PR (use provided PR number from !build, or look it up by branch name)
@@ -277,7 +277,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .archive_download_url')
+          ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .archive_download_url')
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -463,7 +463,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .archive_download_url')
+          ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .archive_download_url')
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -595,7 +595,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .archive_download_url')
+          ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .archive_download_url')
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
