@@ -1,0 +1,29 @@
+tools/node-docs/src/main.rs
+  d21011cba73d6d72 10-11,45-46
+tools/editor-message-tree/src/main.rs
+  d21011cba73d6d72 6-7,22-23
+tools/crate-hierarchy-viz/src/main.rs
+  d21011cba73d6d72 86
+website/static/js/page/contributor-guide/crate-hierarchy.js
+  d21011cba73d6d72 27,29-32,34-35,103-104,127,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "b15b5e474ff952cd5570893e887834b7c13b9a73",
+  "prompts": {
+    "d21011cba73d6d72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd40f5cf-4a6f-4408-af25-0e7cd7d2cce6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 21,
+      "accepted_lines": 21,
+      "overriden_lines": 3
+    }
+  }
+}
