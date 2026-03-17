@@ -59,6 +59,7 @@ pub struct TypesettingConfig {
 	pub max_height: Option<f64>,
 	pub tilt: f64,
 	pub align: TextAlign,
+	#[serde(default)]
 	pub vertical_align: VerticalAlign,
 }
 

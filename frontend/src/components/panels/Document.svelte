@@ -376,7 +376,7 @@
 				await tick();
 
 				const contentHeight = textInput.scrollHeight;
-				const containerHeight = Math.floor(data.maxHeight / (data.lineHeightRatio * data.fontSize)) * (data.lineHeightRatio * data.fontSize);
+				const containerHeight = data.maxHeight;
 				const freeSpace = Math.max(containerHeight - contentHeight, 0);
 
 				if (data.verticalAlign === "Center") {

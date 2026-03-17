@@ -94,19 +94,17 @@ impl TextContext {
 
 		let mut path_builder = PathBuilder::new(per_glyph_instances, layout.scale() as f64);
 
-		let vertical_offset = match typesetting.vertical_align {
-			VerticalAlign::Top => 0.,
-			VerticalAlign::Center | VerticalAlign::Bottom => {
-				let layout_height = layout.height() as f64;
-				let container_height = typesetting.max_height.unwrap_or(layout_height);
-				let free_space = (container_height - layout_height).max(0.);
+		let vertical_offset = if let Some(container_height) = typesetting.max_height {
+			let layout_height = layout.height() as f64;
+			let free_space = (container_height - layout_height).max(0.);
 
-				match typesetting.vertical_align {
-					VerticalAlign::Center => free_space / 2.,
-					VerticalAlign::Bottom => free_space,
-					_ => unreachable!(),
-				}
+			match typesetting.vertical_align {
+				VerticalAlign::Top => 0.,
+				VerticalAlign::Center => free_space / 2.,
+				VerticalAlign::Bottom => free_space,
 			}
+		} else {
+			0.
 		};
 
 		for line in layout.lines() {
