@@ -623,7 +623,7 @@ jobs:
 
       - name: 🏗 Build Flatpak
         run: |
-          nix build .#graphite-flatpak-manifest
+          nix build .#graphite${{ inputs.debug && '-dev' || '' }}-flatpak-manifest
 
           rm -rf .flatpak
           mkdir -p .flatpak
