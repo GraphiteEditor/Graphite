@@ -91,7 +91,7 @@ fn main() -> Result<()> {
 		.ok_or_else(|| anyhow::anyhow!("Usage: crate-hierarchy-viz <output-directory>"))?;
 	let output_path = output_dir.join("crate-hierarchy.svg");
 
-	let workspace_root = std::env::current_dir().unwrap();
+	let workspace_root = std::env::current_dir()?;
 	let workspace_toml_path = workspace_root.join("Cargo.toml");
 
 	// Parse workspace Cargo.toml
@@ -192,8 +192,8 @@ fn dot_to_svg(dot: &str) -> Result<String> {
 	fs::create_dir_all(&temp_dir).with_context(|| "Failed to create temp directory")?;
 
 	// Install @viz-js/viz into the temp directory if not already present
-	let node_modules = temp_dir.join("node_modules").join("@viz-js");
-	if !node_modules.exists() {
+	let viz_package = temp_dir.join("node_modules").join("@viz-js").join("viz");
+	if !viz_package.exists() {
 		let npm = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
 		let status = Command::new(npm)
 			.args(["install", "--prefix", &temp_dir.to_string_lossy(), "@viz-js/viz"])
@@ -229,7 +229,12 @@ fn dot_to_svg(dot: &str) -> Result<String> {
 		.with_context(|| "Failed to spawn `node`. Is Node.js installed?")?;
 
 	// Write DOT content to stdin then close the pipe
-	child.stdin.take().unwrap().write_all(dot.as_bytes()).with_context(|| "Failed to write DOT content to stdin")?;
+	child
+		.stdin
+		.take()
+		.context("Failed to get stdin handle for node process")?
+		.write_all(dot.as_bytes())
+		.with_context(|| "Failed to write DOT content to stdin")?;
 
 	let output = child.wait_with_output().with_context(|| "Failed to wait for `node` process")?;
 

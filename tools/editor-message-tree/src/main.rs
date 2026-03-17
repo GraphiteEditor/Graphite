@@ -3,6 +3,8 @@ use editor::utility_types::DebugMessageTree;
 use std::io::Write;
 use std::path::PathBuf;
 
+const FRONTEND_MESSAGE_STR: &str = "FrontendMessage";
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let output_dir = std::env::args_os().nth(1).map(PathBuf::from).ok_or("Usage: editor-message-tree <output-directory>")?;
 	std::fs::create_dir_all(&output_dir)?;
@@ -13,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let static_dir = output_dir.join("../static/volunteer/guide/codebase-overview");
 	std::fs::create_dir_all(&static_dir)?;
 	let mut txt_file = std::fs::File::create(static_dir.join("hierarchical-message-system-tree.txt"))?;
-	write_tree_txt(&tree, &mut txt_file);
+	write_tree_txt(&tree, &mut txt_file)?;
 
 	// Write the .html file (structured HTML embedded in the website page)
 	let mut html = String::new();
@@ -27,22 +29,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // PLAIN TEXT OUTPUT
 // =================
 
-fn write_tree_txt(tree: &DebugMessageTree, file: &mut std::fs::File) {
+fn write_tree_txt(tree: &DebugMessageTree, file: &mut std::fs::File) -> std::io::Result<()> {
 	if tree.path().is_empty() {
-		let _ = file.write_all(format!("{}\n", tree.name()).as_bytes());
+		file.write_all(format!("{}\n", tree.name()).as_bytes())?;
 	} else {
-		let _ = file.write_all(format!("{} `{}#L{}`\n", tree.name(), tree.path(), tree.line_number()).as_bytes());
+		file.write_all(format!("{} `{}#L{}`\n", tree.name(), tree.path(), tree.line_number()).as_bytes())?;
 	}
 
 	if let Some(variants) = tree.variants() {
 		for (i, variant) in variants.iter().enumerate() {
 			let is_last = i == variants.len() - 1;
-			write_tree_txt_node(variant, "", is_last, file);
+			write_tree_txt_node(variant, "", is_last, file)?;
 		}
 	}
+
+	Ok(())
 }
 
-fn write_tree_txt_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {
+fn write_tree_txt_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) -> std::io::Result<()> {
 	let (branch, child_prefix) = if tree.message_handler_data_fields().is_some() || tree.message_handler_fields().is_some() {
 		("├── ", format!("{prefix}│   "))
 	} else if is_last {
@@ -52,16 +56,16 @@ fn write_tree_txt_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, fil
 	};
 
 	if tree.path().is_empty() {
-		let _ = file.write_all(format!("{}{}{}\n", prefix, branch, tree.name()).as_bytes());
+		file.write_all(format!("{}{}{}\n", prefix, branch, tree.name()).as_bytes())?;
 	} else {
-		let _ = file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, tree.name(), tree.path(), tree.line_number()).as_bytes());
+		file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, tree.name(), tree.path(), tree.line_number()).as_bytes())?;
 	}
 
 	if let Some(variants) = tree.variants() {
 		let len = variants.len();
 		for (i, variant) in variants.iter().enumerate() {
 			let is_last_child = i == len - 1;
-			write_tree_txt_node(variant, &child_prefix, is_last_child, file);
+			write_tree_txt_node(variant, &child_prefix, is_last_child, file)?;
 		}
 	}
 
@@ -70,7 +74,7 @@ fn write_tree_txt_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, fil
 		for (i, field) in fields.iter().enumerate() {
 			let is_last_field = i == len - 1;
 			let branch = if is_last_field { "└── " } else { "├── " };
-			let _ = file.write_all(format!("{child_prefix}{branch}{field}\n").as_bytes());
+			file.write_all(format!("{child_prefix}{branch}{field}\n").as_bytes())?;
 		}
 	}
 
@@ -82,16 +86,15 @@ fn write_tree_txt_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, fil
 			("└── ", format!("{prefix}    "))
 		};
 
-		const FRONTEND_MESSAGE_STR: &str = "FrontendMessage";
 		if data.name().is_empty() && tree.name() != FRONTEND_MESSAGE_STR {
 			panic!("{}'s MessageHandler is missing #[message_handler_data]", tree.name());
 		} else if tree.name() != FRONTEND_MESSAGE_STR {
-			let _ = file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, data.name(), data.path(), data.line_number()).as_bytes());
+			file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, branch, data.name(), data.path(), data.line_number()).as_bytes())?;
 
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
-				let _ = file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes());
+				file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes())?;
 			}
 		}
 	}
@@ -99,17 +102,19 @@ fn write_tree_txt_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, fil
 	if let Some(data) = tree.message_handler_data_fields() {
 		let len = data.fields().len();
 		if data.path().is_empty() {
-			let _ = file.write_all(format!("{}{}{}\n", prefix, "└── ", data.name()).as_bytes());
+			file.write_all(format!("{}{}{}\n", prefix, "└── ", data.name()).as_bytes())?;
 		} else {
-			let _ = file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, "└── ", data.name(), data.path(), data.line_number()).as_bytes());
+			file.write_all(format!("{}{}{} `{}#L{}`\n", prefix, "└── ", data.name(), data.path(), data.line_number()).as_bytes())?;
 		}
 		for (i, field) in data.fields().iter().enumerate() {
 			let is_last_field = i == len - 1;
 			let branch = if is_last_field { "└── " } else { "├── " };
 			let field = &field.0;
-			let _ = file.write_all(format!("{prefix}    {branch}{field}\n").as_bytes());
+			file.write_all(format!("{prefix}    {branch}{field}\n").as_bytes())?;
 		}
 	}
+
+	Ok(())
 }
 
 // ===========
@@ -191,7 +196,6 @@ fn write_tree_html_node(tree: &DebugMessageTree, out: &mut String) {
 		}
 	}
 
-	const FRONTEND_MESSAGE_STR: &str = "FrontendMessage";
 	if let Some(data) = tree.message_handler_fields()
 		&& (!data.name().is_empty() || tree.name() == FRONTEND_MESSAGE_STR)
 		&& tree.name() != FRONTEND_MESSAGE_STR
