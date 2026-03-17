@@ -92,8 +92,7 @@ jobs:
 
       - name: ✂ Replace template in <head> of index.html
         if: github.event_name == 'push'
-        run: |
-          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+        run: sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
       - name: 🌐 Build Graphite web code
         env:
@@ -165,8 +164,7 @@ jobs:
 
       - name: ✂ Strip analytics script from built output for clean artifact
         if: github.event_name == 'push'
-        run: |
-          sed -i "s|$INDEX_HTML_HEAD_REPLACEMENT||" frontend/dist/index.html
+        run: sed -i "s|$INDEX_HTML_HEAD_REPLACEMENT||" frontend/dist/index.html
 
       - name: 📦 Upload web bundle artifact
         uses: actions/upload-artifact@v6
@@ -177,49 +175,38 @@ jobs:
       - name: 📃 Generate code documentation info for website
         if: github.event_name == 'push'
         run: |
-          cd tools/editor-message-tree
-          cargo run
-          cd ../..
-          mkdir -p artifacts-generated
-          mv website/generated/hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
+          mkdir -p website/generated-new
+          cargo run -p crate-hierarchy-viz -- website/generated-new/crate_hierarchy.dot
+          cargo run -p editor-message-tree -- website/generated-new/hierarchical_message_system_tree.txt
 
       - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
         if: github.event_name == 'push'
         id: cache-website-code-docs
         uses: actions/cache/restore@v5
         with:
-          path: artifacts
+          path: website/generated
           key: website-code-docs
 
       - name: 🔍 Check if auto-generated code docs artifacts changed
         if: github.event_name == 'push'
         id: website-code-docs-changed
         run: |
-          if ! diff --brief --recursive artifacts-generated artifacts; then
-            echo "Auto-generated code docs artifacts have changed."
-            rm -rf artifacts
-            mv artifacts-generated artifacts
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "Auto-generated code docs artifacts have not changed."
-            rm -rf artifacts
-            rm -rf artifacts-generated
-          fi
+          diff --brief --recursive website/generated-new website/generated || echo "changed=true" >> $GITHUB_OUTPUT
+          rm -rf website/generated
+          mv website/generated-new website/generated
 
       - name: 💾 Save cache of auto-generated code docs artifacts
         if: github.event_name == 'push' && steps.website-code-docs-changed.outputs.changed == 'true'
         uses: actions/cache/save@v5
         with:
-          path: artifacts
+          path: website/generated
           key: ${{ steps.cache-website-code-docs.outputs.cache-primary-key }}
 
       - name: ♻️ Trigger website rebuild if the auto-generated code docs artifacts have changed
         if: github.event_name == 'push' && steps.website-code-docs-changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          rm -rf artifacts
-          gh workflow run website.yml --ref master
+        run: gh workflow run website.yml --ref master
 
   windows:
     if: github.event_name == 'push' || inputs.windows

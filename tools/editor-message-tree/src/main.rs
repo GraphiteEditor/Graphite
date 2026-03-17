@@ -1,11 +1,17 @@
 use editor::messages::message::Message;
 use editor::utility_types::DebugMessageTree;
 use std::io::Write;
+use std::path::PathBuf;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let output_path = std::env::args_os().nth(1).map(PathBuf::from).ok_or("Usage: editor-message-tree <output-file>")?;
+
+	if let Some(parent) = output_path.parent() {
+		std::fs::create_dir_all(parent).unwrap();
+	}
+
 	let result = Message::message_tree();
-	std::fs::create_dir_all("../../website/generated").unwrap();
-	let mut file = std::fs::File::create("../../website/generated/hierarchical_message_system_tree.txt").unwrap();
+	let mut file = std::fs::File::create(&output_path).unwrap();
 	file.write_all(format!("{} `{}#L{}`\n", result.name(), result.path(), result.line_number()).as_bytes()).unwrap();
 	if let Some(variants) = result.variants() {
 		for (i, variant) in variants.iter().enumerate() {
@@ -13,6 +19,8 @@ fn main() {
 			print_tree_node(variant, "", is_last, &mut file);
 		}
 	}
+
+	Ok(())
 }
 
 fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {

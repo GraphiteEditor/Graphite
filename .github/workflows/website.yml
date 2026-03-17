@@ -53,7 +53,7 @@ jobs:
         id: cache-website-code-docs
         uses: actions/cache/restore@v5
         with:
-          path: artifacts
+          path: website/generated
           key: website-code-docs
 
       - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
@@ -64,33 +64,24 @@ jobs:
           rustup update stable
           echo "🦀 Latest updated version of Rust:"
           rustc --version
-          cd tools/editor-message-tree
-          cargo run
-          cd ../..
-          mkdir artifacts
-          mv website/generated/hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
+          cargo run -p crate-hierarchy-viz -- website/generated/crate_hierarchy.dot
+          cargo run -p editor-message-tree -- website/generated/hierarchical_message_system_tree.txt
 
-      - name: 🚚 Move `artifacts` contents to website/generated
-        run: |
-          mkdir -p website/generated
-          mv artifacts/* website/generated/
-
-      - name: 🔧 Build auto-generated code docs artifacts into HTML
+      - name: 🔧 Build auto-generated code docs artifacts into HTML/SVG
         run: |
           cd website
+          npm ci
           npm run generate-editor-structure
+          npm run generate-crate-hierarchy
 
       - name: 📃 Generate node catalog documentation
-        run: |
-          cd tools/node-docs
-          cargo run
+        run: cargo run -p node-docs -- website/content/learn/node-catalog
 
       - name: 🌐 Build Graphite website with Zola
         env:
           MODE: prod
         run: |
           cd website
-          npm ci
           npm run check
           zola --config config.toml build --minify
 
@@ -99,5 +90,4 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          npx wrangler@3 pages deploy "website/public" --project-name="graphite-website" --commit-dirty=true
+        run: npx wrangler@3 pages deploy "website/public" --project-name="graphite-website" --commit-dirty=true

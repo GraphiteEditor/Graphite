@@ -42,8 +42,7 @@ jobs:
 
       - name: Install iai-callgrind
         if: steps.cache-iai.outputs.cache-hit != 'true'
-        run: |
-          cargo install iai-callgrind-runner@0.16.1
+        run: cargo install iai-callgrind-runner@0.16.1
 
       - name: Checkout master branch
         run: |
@@ -84,8 +83,7 @@ jobs:
           cargo bench --bench run_cached_iai -- --save-baseline=master
 
       - name: Checkout PR branch
-        run: |
-          git checkout ${{ github.event.pull_request.head.sha }}
+        run: git checkout ${{ github.event.pull_request.head.sha }}
 
       - name: Run PR benchmarks
         run: |
