@@ -1,4 +1,4 @@
-name: "Editor: Production (Latest Stable)"
+name: "Release"
 
 on:
   push:
@@ -22,13 +22,13 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🗑 Clear wasm-bindgen cache
         run: rm -r ~/.cache/.wasm-pack
 
       - name: 🟢 Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
@@ -42,6 +42,7 @@ jobs:
         with:
           toolchain: stable
           override: true
+          cache: false
           rustflags: ""
           target: wasm32-unknown-unknown
 

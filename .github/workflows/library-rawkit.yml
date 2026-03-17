@@ -26,13 +26,14 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🦀 Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
           override: true
+          cache: false
           rustflags: ""
 
       - name: 📦 Run sccache-cache
