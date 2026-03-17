@@ -32,7 +32,10 @@ document.addEventListener("DOMContentLoaded", () => {
 		svg.style.transform = prevTransform;
 	};
 	updateViewportHeight();
-	window.addEventListener("resize", updateViewportHeight);
+	window.addEventListener("resize", () => {
+		updateViewportHeight();
+		applyTransform();
+	});
 
 	const MIN_SCALE = 1;
 	const MAX_SCALE = 4;

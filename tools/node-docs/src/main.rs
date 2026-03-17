@@ -8,7 +8,11 @@ use convert_case::{Case, Casing};
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let output_path = std::env::args().nth(1).ok_or("Usage: node-docs <output-directory>")?;
+	let output_path = std::env::args_os()
+		.nth(1)
+		.ok_or("Usage: node-docs <output-directory>")?
+		.into_string()
+		.map_err(|_| "Output path is not valid UTF-8")?;
 
 	// TODO: Also obtain document nodes, not only proto nodes
 	let nodes = graphene_std::registry::NODE_METADATA.lock().unwrap();

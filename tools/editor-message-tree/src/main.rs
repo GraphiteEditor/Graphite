@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let output_path = std::env::args().nth(1).map(PathBuf::from).ok_or("Usage: editor-message-tree <output-file>")?;
+	let output_path = std::env::args_os().nth(1).map(PathBuf::from).ok_or("Usage: editor-message-tree <output-file>")?;
 
 	if let Some(parent) = output_path.parent() {
 		std::fs::create_dir_all(parent).unwrap();

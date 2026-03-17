@@ -83,7 +83,10 @@ fn collect_all_dependencies(crate_name: &str, dep_map: &HashMap<String, HashSet<
 }
 
 fn main() -> Result<()> {
-	let output_path = std::env::args().nth(1).map(PathBuf::from).ok_or_else(|| anyhow::anyhow!("Usage: crate-hierarchy-viz <output-file>"))?;
+	let output_path = std::env::args_os()
+		.nth(1)
+		.map(PathBuf::from)
+		.ok_or_else(|| anyhow::anyhow!("Usage: crate-hierarchy-viz <output-file>"))?;
 
 	let workspace_root = std::env::current_dir().unwrap();
 	let workspace_toml_path = workspace_root.join("Cargo.toml");
