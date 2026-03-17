@@ -1,0 +1,33 @@
+website/templates/macros/replacements.html
+  d21011cba73d6d72 48
+.github/workflows/build.yml
+  d21011cba73d6d72 179
+.github/workflows/website.yml
+  d21011cba73d6d72 68,70
+tools/editor-message-tree/src/main.rs
+  d21011cba73d6d72 7-8,10-21,24-34,37,40,55,102,110-190,192-201,203-273,275
+website/content/volunteer/guide/codebase-overview/editor-structure.md
+  d21011cba73d6d72 25
+tools/crate-hierarchy-viz/src/main.rs
+  d21011cba73d6d72 88,91-92,183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "bfcb7d526ced84c01f306c80f81e4b2ad1693a08",
+  "prompts": {
+    "d21011cba73d6d72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd40f5cf-4a6f-4408-af25-0e7cd7d2cce6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 262,
+      "total_deletions": 105,
+      "accepted_lines": 214,
+      "overriden_lines": 2
+    }
+  }
+}
