@@ -1,0 +1,25 @@
+tools/editor-message-tree/src/main.rs
+  d21011cba73d6d72 6-7,18,32,34,36,42,45-46,49,59,61,68,77,92,97,105,107,113,116-117
+tools/crate-hierarchy-viz/src/main.rs
+  d21011cba73d6d72 94,195-196,232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "dfdc512064582fd24646e058f9a0cd922bf8ff69",
+  "prompts": {
+    "d21011cba73d6d72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd40f5cf-4a6f-4408-af25-0e7cd7d2cce6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 40,
+      "total_deletions": 34,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}
