@@ -83,10 +83,7 @@ fn collect_all_dependencies(crate_name: &str, dep_map: &HashMap<String, HashSet<
 }
 
 fn main() -> Result<()> {
-	let output_path = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {
-		eprintln!("Usage: crate-hierarchy-viz <output-file>");
-		std::process::exit(1);
-	});
+	let output_path = std::env::args().nth(1).map(PathBuf::from).ok_or_else(|| anyhow::anyhow!("Usage: crate-hierarchy-viz <output-file>"))?;
 
 	let workspace_root = std::env::current_dir().unwrap();
 	let workspace_toml_path = workspace_root.join("Cargo.toml");
@@ -217,7 +214,12 @@ fn generate_dot(crates: &[CrateInfo]) -> String {
 			"lightblue",
 			Box::new(|c| c.path.to_string_lossy().replace('\\', "/").contains("node-graph/nodes")),
 		),
-		("cluster_desktop", "Desktop", "lightgreen", Box::new(|c| c.path.to_string_lossy().contains("desktop"))),
+		(
+			"cluster_desktop",
+			"Desktop",
+			"lightgreen",
+			Box::new(|c| c.path.to_string_lossy().replace('\\', "/").contains("desktop")),
+		),
 	];
 
 	for (id, label, color, filter) in clusters {

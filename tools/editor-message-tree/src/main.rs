@@ -3,11 +3,8 @@ use editor::utility_types::DebugMessageTree;
 use std::io::Write;
 use std::path::PathBuf;
 
-fn main() {
-	let output_path = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {
-		eprintln!("Usage: editor-message-tree <output-file>");
-		std::process::exit(1);
-	});
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let output_path = std::env::args().nth(1).map(PathBuf::from).ok_or("Usage: editor-message-tree <output-file>")?;
 
 	if let Some(parent) = output_path.parent() {
 		std::fs::create_dir_all(parent).unwrap();
@@ -22,6 +19,8 @@ fn main() {
 			print_tree_node(variant, "", is_last, &mut file);
 		}
 	}
+
+	Ok(())
 }
 
 fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {

@@ -24,11 +24,18 @@ document.addEventListener("DOMContentLoaded", () => {
 	const zoomOutBtn = controls.querySelector(".zoom-out");
 	if (!(zoomInBtn instanceof HTMLButtonElement) || !(zoomOutBtn instanceof HTMLButtonElement)) return;
 
-	// Lock the viewport height to the SVG's natural rendered height
-	viewport.style.height = `${svg.getBoundingClientRect().height}px`;
+	// Lock the viewport height to the SVG's natural rendered height (ignoring any zoom transform)
+	const updateViewportHeight = () => {
+		const prevTransform = svg.style.transform;
+		svg.style.transform = "";
+		viewport.style.height = `${svg.getBoundingClientRect().height}px`;
+		svg.style.transform = prevTransform;
+	};
+	updateViewportHeight();
+	window.addEventListener("resize", updateViewportHeight);
 
 	const MIN_SCALE = 1;
-	const MAX_SCALE = 2.5;
+	const MAX_SCALE = 4;
 	const ZOOM_STEP = 0.15;
 	const BUTTON_ZOOM_STEP = 0.5;
 	const ANIMATION_DURATION = 200;
@@ -36,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	let scale = MIN_SCALE;
 	let panX = 0;
 	let panY = 0;
+	let animationFrameId = 0;
 	let isDragging = false;
 	let dragStartX = 0;
 	let dragStartY = 0;
@@ -92,6 +100,8 @@ document.addEventListener("DOMContentLoaded", () => {
 	}
 
 	function animateZoomAt(/** @type {number} */ clientX, /** @type {number} */ clientY, /** @type {number} */ newTargetScale) {
+		cancelAnimationFrame(animationFrameId);
+
 		const targetScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newTargetScale));
 		const startScale = scale;
 		const startPanX = panX;
@@ -107,16 +117,16 @@ document.addEventListener("DOMContentLoaded", () => {
 		const targetPanY = pointY - contentY * targetScale;
 
 		const startTime = performance.now();
-		function step(/** @type {number} */ now) {
+		const step = (/** @type {number} */ now) => {
 			const t = Math.min(1, (now - startTime) / ANIMATION_DURATION);
 			const ease = t * (2 - t); // ease-out quadratic
 			scale = startScale + (targetScale - startScale) * ease;
 			panX = startPanX + (targetPanX - startPanX) * ease;
 			panY = startPanY + (targetPanY - startPanY) * ease;
 			applyTransform();
-			if (t < 1) requestAnimationFrame(step);
-		}
-		requestAnimationFrame(step);
+			if (t < 1) animationFrameId = requestAnimationFrame(step);
+		};
+		animationFrameId = requestAnimationFrame(step);
 	}
 
 	// Scroll wheel zoom

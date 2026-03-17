@@ -7,11 +7,8 @@ use crate::utility::*;
 use convert_case::{Case, Casing};
 use std::collections::HashMap;
 
-fn main() {
-	let output_path = std::env::args().nth(1).unwrap_or_else(|| {
-		eprintln!("Usage: node-docs <output-directory>");
-		std::process::exit(1);
-	});
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let output_path = std::env::args().nth(1).ok_or("Usage: node-docs <output-directory>")?;
 
 	// TODO: Also obtain document nodes, not only proto nodes
 	let nodes = graphene_std::registry::NODE_METADATA.lock().unwrap();
@@ -45,4 +42,6 @@ fn main() {
 			page_node::write_node_page(index, id, metadata, &category_path);
 		}
 	}
+
+	Ok(())
 }
