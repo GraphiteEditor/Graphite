@@ -348,11 +348,13 @@ impl NodeRuntime {
 							// Configure the surface at physical resolution (for HiDPI displays)
 							let surface_inner = &surface.surface.inner;
 							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
+							// Use the surface's preferred format (Firefox WebGL prefers Bgra8Unorm, Chrome prefers Rgba8Unorm)
+							let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
 							surface_inner.configure(
 								&executor.context.device,
 								&vello::wgpu::SurfaceConfiguration {
 									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
-									format: vello::wgpu::TextureFormat::Rgba8Unorm,
+									format: surface_format,
 									width: physical_resolution.x,
 									height: physical_resolution.y,
 									present_mode: surface_caps.present_modes[0],
@@ -365,21 +367,11 @@ impl NodeRuntime {
 							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
 							self.current_viewport_texture = Some(image_texture.clone());
 
-							encoder.copy_texture_to_texture(
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: image_texture.texture.as_ref(),
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: &surface_texture.texture,
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								image_texture.texture.size(),
-							);
+							// Use the blitter to copy the texture to the surface, handling format conversion
+							// (e.g., Rgba8Unorm source to Bgra8Unorm surface on Firefox)
+							let source_view = image_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default());
+							let target_view = surface_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default());
+							surface.surface.blitter.copy(&executor.context.device, &mut encoder, &source_view, &target_view);
 
 							executor.context.queue.submit([encoder.finish()]);
 							surface_texture.present();
