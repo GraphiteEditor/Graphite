@@ -1246,7 +1246,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 					let new_size = new_bounds[1] - new_bounds[0];
 
 					// Only remap if new_size is non-zero to avoid division by zero
-					if new_size != 0. {
+					if new_size != DVec2::ZERO {
 						// Transform: old_bounds normalized → world → new_bounds normalized
 						// point_world = old_bounds[0] + point_normalized * old_size
 						// point_new_normalized = (point_world - new_bounds[0]) / new_size
