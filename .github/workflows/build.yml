@@ -145,7 +145,7 @@ jobs:
             gh api \
               -X POST \
               -H "Accept: application/vnd.github+json" \
-              /repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
+              repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
               -f body="$COMMENT_BODY"
           else
             # Comment on the PR (use provided PR number from !build, or look it up by branch name)
@@ -172,41 +172,16 @@ jobs:
           name: graphite-web-bundle
           path: frontend/dist
 
-      - name: 📃 Generate code documentation info for website
+      - name: 📃 Trigger website rebuild if auto-generated code docs are stale
         if: github.event_name == 'push'
-        run: |
-          mkdir -p website/generated-new
-          cargo run -p crate-hierarchy-viz -- website/generated-new/crate_hierarchy.dot
-          cargo run -p editor-message-tree -- website/generated-new/hierarchical_message_system_tree.txt
-
-      - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
-        if: github.event_name == 'push'
-        id: cache-website-code-docs
-        uses: actions/cache/restore@v5
-        with:
-          path: website/generated
-          key: website-code-docs
-
-      - name: 🔍 Check if auto-generated code docs artifacts changed
-        if: github.event_name == 'push'
-        id: website-code-docs-changed
-        run: |
-          diff --brief --recursive website/generated-new website/generated || echo "changed=true" >> $GITHUB_OUTPUT
-          rm -rf website/generated
-          mv website/generated-new website/generated
-
-      - name: 💾 Save cache of auto-generated code docs artifacts
-        if: github.event_name == 'push' && steps.website-code-docs-changed.outputs.changed == 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: website/generated
-          key: ${{ steps.cache-website-code-docs.outputs.cache-primary-key }}
-
-      - name: ♻️ Trigger website rebuild if the auto-generated code docs artifacts have changed
-        if: github.event_name == 'push' && steps.website-code-docs-changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run website.yml --ref master
+        run: |
+          cargo run -p editor-message-tree -- website/generated
+          TREE=volunteer/guide/codebase-overview/hierarchical-message-system-tree
+          curl -sf "https://graphite.art/$TREE.txt" -o "website/static/$TREE.live.txt" \
+            && diff -q "website/static/$TREE.txt" "website/static/$TREE.live.txt" > /dev/null \
+            || gh workflow run website.yml --ref master
 
   windows:
     if: github.event_name == 'push' || inputs.windows
@@ -302,16 +277,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .archive_download_url')
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
-          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_URL" ]; then
-            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Windows Build Complete for** $(git rev-parse HEAD) |
-          |-|
-          | [Download artifact]($ARTIFACT_URL) |"
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
+            BODY="| 📦 **Windows Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
           fi
 
       - name: 🔑 Azure login
@@ -488,16 +465,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .archive_download_url')
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
-          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_URL" ]; then
-            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Mac Build Complete for** $(git rev-parse HEAD) |
-          |-|
-          | [Download artifact]($ARTIFACT_URL) |"
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
+            BODY="| 📦 **Mac Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
           fi
 
       - name: 🔏 Sign and notarize (preparation)
@@ -616,20 +595,24 @@ jobs:
           compression-level: 0
 
       - name: 💬 Comment artifact link on PR
+        id: linux-comment
         if: github.event_name != 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARTIFACT_URL=$(gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .archive_download_url')
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
           PR_NUMBER="${{ inputs.pr_number }}"
           if [ -z "$PR_NUMBER" ]; then
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           fi
-          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_URL" ]; then
-            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "| 📦 **Linux Build Complete for** $(git rev-parse HEAD) |
-          |-|
-          | [Download artifact]($ARTIFACT_URL) |"
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
+            BODY="| 📦 **Linux Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$BODY" --jq '.id')
+            echo "comment_id=$COMMENT_ID" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🔧 Install Flatpak tooling
@@ -640,7 +623,7 @@ jobs:
 
       - name: 🏗 Build Flatpak
         run: |
-          nix build .#graphite-flatpak-manifest
+          nix build .#graphite${{ inputs.debug && '-dev' || '' }}-flatpak-manifest
 
           rm -rf .flatpak
           mkdir -p .flatpak
@@ -660,3 +643,18 @@ jobs:
           name: graphite-flatpak
           path: .flatpak/Graphite.flatpak
           compression-level: 0
+
+      - name: 💬 Update PR comment with Flatpak artifact link
+        if: github.event_name != 'push' && steps.linux-comment.outputs.comment_id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-flatpak") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+          COMMENT_ID="${{ steps.linux-comment.outputs.comment_id }}"
+          if [ -n "$ARTIFACT_ID" ]; then
+            EXISTING_BODY=$(gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID --jq '.body')
+            BODY="$EXISTING_BODY"$'\n'
+            BODY+="| [Download Flatpak]($ARTIFACT_URL) |"
+            gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID -X PATCH -f body="$BODY"
+          fi
