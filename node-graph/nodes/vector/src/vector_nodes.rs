@@ -1245,11 +1245,14 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 					let old_size = old_bounds[1] - old_bounds[0];
 					let new_size = new_bounds[1] - new_bounds[0];
 
-					// Transform: old_bounds normalized → world → new_bounds normalized
-					// point_world = old_bounds[0] + point_normalized * old_size
-					// point_new_normalized = (point_world - new_bounds[0]) / new_size
-					gradient.start = (old_bounds[0] + gradient.start * old_size - new_bounds[0]) / new_size;
-					gradient.end = (old_bounds[0] + gradient.end * old_size - new_bounds[0]) / new_size;
+					// Only remap if new_size is non-zero to avoid division by zero
+					if new_size != 0. {
+						// Transform: old_bounds normalized → world → new_bounds normalized
+						// point_world = old_bounds[0] + point_normalized * old_size
+						// point_new_normalized = (point_world - new_bounds[0]) / new_size
+						gradient.start = (old_bounds[0] + gradient.start * old_size - new_bounds[0]) / new_size;
+						gradient.end = (old_bounds[0] + gradient.end * old_size - new_bounds[0]) / new_size;
+					}
 				}
 
 				result.style.set_fill(paint);

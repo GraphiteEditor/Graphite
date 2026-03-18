@@ -97,7 +97,7 @@ impl RenderExt for Stroke {
 	type Output = String;
 
 	/// Provide the SVG attributes for the stroke.
-	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, _transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output {
+	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output {
 		if !self.has_renderable_stroke() {
 			return String::new();
 		}
@@ -123,7 +123,7 @@ impl RenderExt for Stroke {
 				result
 			}
 			Fill::Gradient(gradient) => {
-				let gradient_id = gradient.render(svg_defs, element_transform, stroke_transform, bounds, _transformed_bounds, render_params);
+				let gradient_id = gradient.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!(r##" stroke="url('#{gradient_id}')""##)
 			}
 		};
