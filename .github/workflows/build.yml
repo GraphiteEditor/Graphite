@@ -577,12 +577,12 @@ jobs:
         run: nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths
 
       - name: 📤 Push to Nix cache
-        if: (github.event_name == 'push' || inputs.push_to_nix_cache) && !inputs.debug
         env:
-          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN }}
+          NIX_CACHE_AUTH_TOKEN: ${{ (!inputs.debug && github.ref == 'refs/heads/master') && secrets.NIX_CACHE_AUTH_TOKEN || secrets.NIX_CACHE_AUTH_TOKEN_DEV }}
+          NIX_CACHE_NAME: ${{ (!inputs.debug && github.ref == 'refs/heads/master') && 'graphite' || 'graphite-dev' }}
         run: |
           nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
-          nix build --no-link --print-out-paths | nix run nixpkgs#cachix -- push graphite
+          nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths | nix run nixpkgs#cachix -- push $NIX_CACHE_NAME
 
       - name: 🏗 Build Linux bundle
         run: nix build .#graphite${{ inputs.debug && '-dev' || '' }}-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
