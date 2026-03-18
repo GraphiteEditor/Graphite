@@ -1,0 +1,23 @@
+frontend/src/components/layout/FloatingMenu.svelte
+  b520d3041af6f75b 324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "7f6571ee528aafe0039b227ebf1f2ed71ff6f655",
+  "prompts": {
+    "b520d3041af6f75b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e2f11e4-47c0-4f1f-be14-bd8ceb9de3c5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 35,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    }
+  }
+}
