@@ -49,6 +49,7 @@ pub struct Surface {
 	pub inner: wgpu::Surface<'static>,
 	pub target_texture: Mutex<Option<TargetTexture>>,
 	pub blitter: TextureBlitter,
+	pub format: wgpu::TextureFormat,
 }
 
 #[derive(Clone, Debug)]
@@ -183,6 +184,7 @@ impl WgpuExecutor {
 				inner: surface,
 				target_texture: Mutex::new(None),
 				blitter,
+				format: surface_format,
 			},
 		})
 	}

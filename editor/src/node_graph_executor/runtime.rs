@@ -348,13 +348,11 @@ impl NodeRuntime {
 							// Configure the surface at physical resolution (for HiDPI displays)
 							let surface_inner = &surface.surface.inner;
 							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
-							// Use the surface's preferred format (Firefox WebGL prefers Bgra8Unorm, Chrome prefers Rgba8Unorm)
-							let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
 							surface_inner.configure(
 								&executor.context.device,
 								&vello::wgpu::SurfaceConfiguration {
 									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
-									format: surface_format,
+									format: surface.surface.format,
 									width: physical_resolution.x,
 									height: physical_resolution.y,
 									present_mode: surface_caps.present_modes[0],
