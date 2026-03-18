@@ -18,9 +18,6 @@ on:
       linux:
         description: "Linux"
         type: boolean
-      push_to_nix_cache:
-        description: "Linux: push to Nix cache"
-        type: boolean
       debug:
         description: "Debug build"
         type: boolean
@@ -33,8 +30,6 @@ on:
       mac:
         type: boolean
       linux:
-        type: boolean
-      push_to_nix_cache:
         type: boolean
       debug:
         type: boolean
