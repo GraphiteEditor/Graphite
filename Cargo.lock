@@ -1106,7 +1106,7 @@ name = "crate-hierarchy-viz"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "clap",
+ "glob",
  "serde",
  "toml 0.8.23",
 ]
@@ -2063,6 +2063,12 @@ dependencies = [
  "libm",
  "serde",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "glow"

@@ -1,4 +1,4 @@
-name: Profiling Changes
+name: "Profiling Changes"
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -35,15 +35,14 @@ jobs:
 
       - name: Cache iai-callgrind binary
         id: cache-iai
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/iai-callgrind-runner
           key: ${{ runner.os }}-iai-callgrind-runner-0.16.1
 
       - name: Install iai-callgrind
         if: steps.cache-iai.outputs.cache-hit != 'true'
-        run: |
-          cargo install iai-callgrind-runner@0.16.1
+        run: cargo install iai-callgrind-runner@0.16.1
 
       - name: Checkout master branch
         run: |
@@ -65,7 +64,7 @@ jobs:
 
       - name: Cache benchmark baselines
         id: cache-benchmark-baselines
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: target/iai
           key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
@@ -84,8 +83,7 @@ jobs:
           cargo bench --bench run_cached_iai -- --save-baseline=master
 
       - name: Checkout PR branch
-        run: |
-          git checkout ${{ github.event.pull_request.head.sha }}
+        run: git checkout ${{ github.event.pull_request.head.sha }}
 
       - name: Run PR benchmarks
         run: |

@@ -1,4 +1,4 @@
-name: Clippy Check
+name: "Clippy Check"
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1

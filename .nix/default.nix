@@ -59,8 +59,10 @@ in
       graphite-dev = (lib.call ./pkgs/graphite.nix) { dev = true; };
       graphite-raster-nodes-shaders = lib.call ./pkgs/graphite-raster-nodes-shaders.nix;
       graphite-branding = lib.call ./pkgs/graphite-branding.nix;
-      graphite-bundle = lib.call ./pkgs/graphite-bundle.nix;
-      graphite-flatpak-manifest = lib.call ./pkgs/graphite-flatpak-manifest.nix;
+      graphite-bundle = (lib.call ./pkgs/graphite-bundle.nix) { };
+      graphite-dev-bundle = (lib.call ./pkgs/graphite-bundle.nix) { graphite = graphite-dev; };
+      graphite-flatpak-manifest = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { };
+      graphite-dev-flatpak-manifest = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { graphite-bundle = graphite-dev-bundle; };
 
       # TODO: graphene-cli = lib.call ./pkgs/graphene-cli.nix;
 
