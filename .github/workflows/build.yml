@@ -126,6 +126,33 @@ jobs:
           echo "All $MAX_ATTEMPTS Cloudflare Pages publish attempts failed."
           exit 1
 
+      - name: 🚀 Create GitHub Deployment for "View deployment" button
+        if: inputs.checkout_repo == '' || inputs.checkout_repo == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_URL: ${{ steps.cloudflare.outputs.url }}
+        run: |
+          if [ -z "$CF_URL" ]; then
+            echo "No Cloudflare URL available, skipping deployment."
+            exit 0
+          fi
+          DEPLOY_ID=$(gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/deployments \
+            -f ref="$(git rev-parse HEAD)" \
+            -f environment="graphite-dev (Preview)" \
+            -F auto_merge=false \
+            -f required_contexts="[]" \
+            --jq '.id')
+          gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/deployments/$DEPLOY_ID/statuses \
+            -f state=success \
+            -f environment_url="$CF_URL" \
+            -f log_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - name: 💬 Comment with the build link
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
