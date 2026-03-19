@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
@@ -63,14 +63,9 @@ export async function exitFullscreen() {
 }
 
 export async function toggleFullscreen() {
-	return new Promise((resolve, reject) => {
-		update((state) => {
-			if (state.windowFullscreen) exitFullscreen().then(resolve).catch(reject);
-			else enterFullscreen().then(resolve).catch(reject);
-
-			return state;
-		});
-	});
+	const state = get(store);
+	if (state.windowFullscreen) await exitFullscreen();
+	else await enterFullscreen();
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code

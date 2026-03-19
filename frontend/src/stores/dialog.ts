@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
@@ -43,21 +44,27 @@ export function createDialogStore(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", async (data) => {
+		await tick();
+
 		update((state) => {
 			patchLayout(state.buttons, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", async (data) => {
+		await tick();
+
 		update((state) => {
 			patchLayout(state.column1, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", async (data) => {
+		await tick();
+
 		update((state) => {
 			patchLayout(state.column2, data);
 
@@ -77,8 +84,12 @@ export function createDialogStore(editor: Editor) {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
 		let licenseText = `Content was not able to load. Please check your network connection and try again.\n\nOr visit ${BACKUP_URL} for the license notices.`;
 
-		const response = await fetch("/third-party-licenses.txt");
-		if (response.ok && response.headers.get("Content-Type")?.includes("text/plain")) licenseText = await response.text();
+		try {
+			const response = await fetch("/third-party-licenses.txt");
+			if (response.ok && response.headers.get("Content-Type")?.includes("text/plain")) licenseText = await response.text();
+		} catch {
+			// Do nothing on network error
+		}
 
 		editor.handle.requestLicensesThirdPartyDialogWithLicenseText(licenseText);
 	});

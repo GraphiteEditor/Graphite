@@ -15,6 +15,7 @@ export function createFontsManager(editor: Editor) {
 	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		try {
 			const response = await fetch(FONT_LIST_API, { signal: abortController.signal });
+			if (!response.ok) throw new Error(`Font catalog request failed with status ${response.status}`);
 			const fontListResponse: { items: ApiResponse } = await response.json();
 			const fontListData = fontListResponse.items;
 
@@ -42,6 +43,7 @@ export function createFontsManager(editor: Editor) {
 		try {
 			if (!data.url) throw new Error("No URL provided for font data load");
 			const response = await fetch(data.url, { signal: abortController.signal });
+			if (!response.ok) throw new Error(`Font data request failed with status ${response.status}`);
 			const buffer = await response.arrayBuffer();
 			const bytes = new Uint8Array(buffer);
 

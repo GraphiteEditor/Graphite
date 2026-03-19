@@ -70,7 +70,9 @@ export function createDocumentStore(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", async (data) => {
+		await tick();
+
 		update((state) => {
 			patchLayout(state.nodeGraphControlBarLayout, data);
 			return state;
