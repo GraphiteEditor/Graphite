@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+    tags:
+      - latest-stable
   workflow_dispatch:
     inputs:
       web:
@@ -59,9 +61,19 @@ jobs:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
-      INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.art" data-api="https://graphite.art/visit/event" src="https://graphite.art/visit/script.hash.js"></script>
-
     steps:
+      - name: 🔀 Set deploy target
+        id: deploy-target
+        run: |
+          if [[ "${{ github.ref }}" == "refs/tags/latest-stable" ]]; then
+            echo "cf_project=graphite-editor" >> $GITHUB_OUTPUT
+            DOMAIN="editor.graphite.art"
+          else
+            echo "cf_project=graphite-dev" >> $GITHUB_OUTPUT
+            DOMAIN="dev.graphite.art"
+          fi
+          echo "head_replacement=<script defer data-domain=\"$DOMAIN\" data-api=\"https://graphite.art/visit/event\" src=\"https://graphite.art/visit/script.hash.js\"></script>" >> $GITHUB_OUTPUT
+
       - name: 📥 Clone repository
         uses: actions/checkout@v6
         with:
@@ -92,7 +104,7 @@ jobs:
 
       - name: ✂ Replace template in <head> of index.html
         if: github.event_name == 'push'
-        run: sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+        run: sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|${{ steps.deploy-target.outputs.head_replacement }}|" frontend/index.html
 
       - name: 🌐 Build Graphite web code
         env:
@@ -109,7 +121,7 @@ jobs:
           DELAY=30
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
-            if OUTPUT=$(npx wrangler@3 pages deploy "frontend/dist" --project-name="graphite-dev" --commit-dirty=true 2>&1); then
+            if OUTPUT=$(npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.deploy-target.outputs.cf_project }}" --commit-dirty=true 2>&1); then
               URL=$(echo "$OUTPUT" | grep -oP 'https://[^\s]+\.pages\.dev' | head -1)
               echo "url=$URL" >> "$GITHUB_OUTPUT"
               echo "Published successfully: $URL"
@@ -167,15 +179,18 @@ jobs:
           |-|
           | $CF_URL |"
 
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # Comment on the commit hash page
+          if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
+            # Push tag: skip commenting (commit was already commented on master merge)
+            echo "Tag push, skipping comment."
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # Push master: comment on the commit hash page
             gh api \
               -X POST \
               -H "Accept: application/vnd.github+json" \
               repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
               -f body="$COMMENT_BODY"
           else
-            # Comment on the PR (use provided PR number from !build, or look it up by branch name)
+            # Non-push (workflow_dispatch, !build): comment on the PR
             PR_NUMBER="${{ inputs.pr_number }}"
             if [ -z "$PR_NUMBER" ]; then
               BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -189,9 +204,9 @@ jobs:
             fi
           fi
 
-      - name: ✂ Strip analytics script from built output for clean artifact
+      - name: ✂ Strip injected script from built output for clean artifact
         if: github.event_name == 'push'
-        run: sed -i "s|$INDEX_HTML_HEAD_REPLACEMENT||" frontend/dist/index.html
+        run: sed -i "s|${{ steps.deploy-target.outputs.head_replacement }}||" frontend/dist/index.html
 
       - name: 📦 Upload web bundle artifact
         uses: actions/upload-artifact@v6
@@ -200,7 +215,7 @@ jobs:
           path: frontend/dist
 
       - name: 📃 Trigger website rebuild if auto-generated code docs are stale
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref != 'refs/tags/latest-stable'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -211,7 +226,7 @@ jobs:
             || gh workflow run website.yml --ref master
 
   windows:
-    if: github.event_name == 'push' || inputs.windows
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.windows
     runs-on: windows-latest
     permissions:
       contents: read
@@ -403,7 +418,7 @@ jobs:
           path: target/artifacts
 
   mac:
-    if: github.event_name == 'push' || inputs.mac
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.mac
     runs-on: macos-latest
     permissions:
       contents: read
@@ -581,7 +596,7 @@ jobs:
           path: target/artifacts
 
   linux:
-    if: github.event_name == 'push' || inputs.linux
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux
     runs-on: ubuntu-latest
     permissions:
       contents: read
