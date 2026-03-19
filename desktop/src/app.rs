@@ -1,6 +1,7 @@
 use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
+use std::io::Read;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -20,7 +21,7 @@ use crate::persist::PersistentData;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -45,6 +46,8 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
+	#[cfg_attr(not(target_os = "macos"), expect(unused))]
+	preferences: Preferences,
 	cli: Cli,
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
@@ -62,6 +65,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
+		preferences: Preferences,
 		cli: Cli,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
@@ -115,6 +119,7 @@ impl App {
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
+			preferences,
 			cli,
 			startup_time: None,
 			exiting,
@@ -416,6 +421,18 @@ impl App {
 			DesktopFrontendMessage::Restart => {
 				self.exit(Some(ExitReason::Restart));
 			}
+			DesktopFrontendMessage::LoadThirdPartyLicenses => {
+				let compressed = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/third-party-licenses.txt.xz"));
+				let mut reader = lzma_rust2::XzReader::new(compressed.as_slice(), false);
+				let mut text = String::new();
+				if let Err(e) = reader.read_to_string(&mut text) {
+					tracing::error!("Failed to decompress third-party licenses: {e}");
+					return;
+				}
+
+				let message = DesktopWrapperMessage::LoadThirdPartyLicenses { text };
+				responses.push(message);
+			}
 		}
 	}
 
@@ -503,7 +520,12 @@ impl ApplicationHandler for App {
 		let window = Window::new(event_loop, self.app_event_scheduler.clone());
 		self.window = Some(window);
 
-		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
+		#[cfg(not(target_os = "macos"))]
+		let present_mode = None;
+		#[cfg(target_os = "macos")]
+		let present_mode = if !self.preferences.vsync { Some(wgpu::PresentMode::Immediate) } else { None };
+
+		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone(), present_mode);
 		self.render_state = Some(render_state);
 
 		if let Some(window) = &self.window.as_ref() {

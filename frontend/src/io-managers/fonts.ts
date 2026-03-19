@@ -1,5 +1,4 @@
-import { type Editor } from "@graphite/editor";
-import { TriggerFontCatalogLoad, TriggerFontDataLoad } from "@graphite/messages";
+import type { Editor } from "@graphite/editor";
 
 type ApiResponse = { family: string; variants: string[]; files: Record<string, string> }[];
 
@@ -7,9 +6,9 @@ const FONT_LIST_API = "https://api.graphite.art/font-list";
 
 export function createFontsManager(editor: Editor) {
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(TriggerFontCatalogLoad, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		const response = await fetch(FONT_LIST_API);
-		const fontListResponse = (await response.json()) as { items: ApiResponse };
+		const fontListResponse: { items: ApiResponse } = await response.json();
 		const fontListData = fontListResponse.items;
 
 		const catalog = fontListData.map((font) => {
@@ -26,7 +25,7 @@ export function createFontsManager(editor: Editor) {
 		editor.handle.onFontCatalogLoad(catalog);
 	});
 
-	editor.subscriptions.subscribeJsMessage(TriggerFontDataLoad, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerFontDataLoad", async (data) => {
 		const { fontFamily, fontStyle } = data.font;
 
 		try {

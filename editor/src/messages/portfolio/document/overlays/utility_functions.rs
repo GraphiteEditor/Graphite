@@ -249,3 +249,15 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 	let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 	bounds.x
 }
+
+pub fn hex_to_rgba_u8(hex: &str) -> [u8; 4] {
+	let hex = hex.trim().trim_start_matches('#');
+	if hex.len() != 6 && hex.len() != 8 {
+		return [0, 0, 0, 255];
+	}
+	let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+	let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+	let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+	let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
+	[r, g, b, a]
+}

@@ -82,7 +82,7 @@ pub fn is_platform_native() -> bool {
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct EditorHandle {
-	/// This callback is called by the editor's dispatcher when directing FrontendMessages from Rust to JS
+	/// This callback is called by the editor's dispatcher when directing `FrontendMessage`s from Rust to JS
 	frontend_message_handler_callback: js_sys::Function,
 }
 
@@ -167,7 +167,7 @@ impl EditorHandle {
 			log::error!("Failed to serialize message");
 			return;
 		};
-		crate::native_communcation::send_message_to_cef(serialized_message)
+		crate::native_communication::send_message_to_cef(serialized_message)
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -203,7 +203,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
-		crate::native_communcation::initialize_native_communication();
+		crate::native_communication::initialize_native_communication();
 
 		self.dispatch(PortfolioMessage::Init);
 
@@ -663,6 +663,34 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Update the color of the currently-edited gradient stop
+	#[wasm_bindgen(js_name = updateGradientStopColor)]
+	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
+		Ok(())
+	}
+
+	/// Start a new undo transaction for gradient stop color editing
+	#[wasm_bindgen(js_name = startGradientStopColorTransaction)]
+	pub fn start_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::StartTransactionForColorStop);
+	}
+
+	/// Commit the current gradient stop color transaction (called on pointer-up after each drag/click)
+	#[wasm_bindgen(js_name = commitGradientStopColorTransaction)]
+	pub fn commit_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::CommitTransactionForColorStop);
+	}
+
+	/// Close the gradient stop color picker and commit any pending transaction
+	#[wasm_bindgen(js_name = closeGradientStopColorPicker)]
+	pub fn close_gradient_stop_color_picker(&self) {
+		self.dispatch(GradientToolMessage::CloseStopColorPicker);
+	}
+
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);
@@ -743,6 +771,13 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
 		let message = NodeGraphMessage::MergeSelectedNodes;
+		self.dispatch(message);
+	}
+
+	/// Toggle lock state of all selected layers
+	#[wasm_bindgen(js_name = toggleSelectedLocked)]
+	pub fn toggle_selected_locked(&self) {
+		let message = NodeGraphMessage::ToggleSelectedLocked;
 		self.dispatch(message);
 	}
 
@@ -965,16 +1000,11 @@ pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, colo
 }
 
 #[wasm_bindgen(js_name = evaluateGradientAtPosition)]
-pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> Object {
+pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> JsValue {
 	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
 	let color = GradientStops { position, midpoint, color }.evaluate(t);
 
-	let obj = Object::new();
-	Reflect::set(&obj, &JsValue::from_str("red"), &JsValue::from_f64(color.r() as f64)).unwrap();
-	Reflect::set(&obj, &JsValue::from_str("green"), &JsValue::from_f64(color.g() as f64)).unwrap();
-	Reflect::set(&obj, &JsValue::from_str("blue"), &JsValue::from_f64(color.b() as f64)).unwrap();
-	Reflect::set(&obj, &JsValue::from_str("alpha"), &JsValue::from_f64(color.a() as f64)).unwrap();
-	obj
+	serde_wasm_bindgen::to_value(&color).unwrap()
 }
 
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure

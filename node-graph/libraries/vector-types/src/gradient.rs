@@ -2,7 +2,8 @@ use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum GradientType {
 	#[default]
@@ -13,7 +14,8 @@ pub enum GradientType {
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 // TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny)]
 pub struct GradientStops {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
@@ -232,7 +234,7 @@ impl GradientStops {
 
 	pub fn sort(&mut self) {
 		let mut indices: Vec<usize> = (0..self.position.len()).collect();
-		indices.sort_unstable_by(|&a, &b| self.position[a].partial_cmp(&self.position[b]).unwrap());
+		indices.sort_unstable_by(|&a, &b| self.position[a].total_cmp(&self.position[b]));
 		self.position = indices.iter().map(|&i| self.position[i]).collect();
 		self.midpoint = indices.iter().map(|&i| self.midpoint[i]).collect();
 		self.color = indices.iter().map(|&i| self.color[i]).collect();
@@ -336,7 +338,8 @@ impl GradientStops {
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct Gradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
@@ -437,13 +440,32 @@ impl Gradient {
 			index += 1;
 		}
 
-		// Insert the new stop
+		// Insert the new stop, duplicating the midpoint ratio of the interval being split
+		let inherited_midpoint = if index > 0 { self.stops.midpoint[index - 1] } else { 0.5 };
 		self.stops.position.insert(index, new_position);
-		self.stops.midpoint.insert(index, 0.5);
+		self.stops.midpoint.insert(index, inherited_midpoint);
 		self.stops.color.insert(index, new_color);
 
 		Some(index)
 	}
+}
+
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<core_types::table::Table<GradientStops>, D::Error> {
+	use core_types::table::Table;
+	use serde::Deserialize;
+
+	#[derive(serde::Deserialize)]
+	#[serde(untagged)]
+	enum GradientStopsFormat {
+		GradientStops(GradientStops),
+		GradientTable(Table<GradientStops>),
+	}
+
+	Ok(match GradientStopsFormat::deserialize(deserializer)? {
+		GradientStopsFormat::GradientStops(stops) => Table::new_from_element(stops),
+		GradientStopsFormat::GradientTable(table) => table,
+	})
 }
 
 impl core_types::bounds::BoundingBox for GradientStops {

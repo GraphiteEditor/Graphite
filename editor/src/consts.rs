@@ -114,6 +114,12 @@ pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
+// GRADIENT TOOL
+pub const GRADIENT_MIDPOINT_DIAMOND_RADIUS: f64 = 4.;
+pub const GRADIENT_MIDPOINT_MIN: f64 = 0.01;
+pub const GRADIENT_MIDPOINT_MAX: f64 = 0.99;
+pub const GRADIENT_STOP_MIN_VIEWPORT_GAP: f64 = 10.;
+
 // PEN TOOL
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
 
@@ -149,13 +155,18 @@ pub const SCALE_EFFECT: f64 = 0.5;
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_BLUE_50: &str = "#00a8ff80";
+pub const COLOR_OVERLAY_BLUE_25: &str = "#00a8ff40";
+pub const COLOR_OVERLAY_BLUE_05: &str = "#00a8ff0d";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_YELLOW_DULL: &str = "#d7ba8b";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
+pub const COLOR_OVERLAY_GREEN_25: &str = "#63ce6340";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
+pub const COLOR_OVERLAY_RED_25: &str = "#ef545440";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_WHITE_05: &str = "#ffffff0d";
 pub const COLOR_OVERLAY_BLACK: &str = "#000000";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 

@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "linux", allow(unused))] // TODO: Remove this when bundling for linux is implemented
+
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,8 +29,7 @@ pub(crate) fn cef_path() -> PathBuf {
 }
 
 pub(crate) fn build_bin(package: &str, bin: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
-	let profile = &profile_name();
-	let mut args = vec!["build", "--package", package, "--profile", profile];
+	let mut args = vec!["build", "--package", package, "--profile", profile_name()];
 	if let Some(bin) = bin {
 		args.push("--bin");
 		args.push(bin);
@@ -45,7 +46,7 @@ pub(crate) fn build_bin(package: &str, bin: Option<&str>) -> Result<PathBuf, Box
 pub(crate) fn run_command(program: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
 	let status = Command::new(program).args(args).stdout(Stdio::inherit()).stderr(Stdio::inherit()).status()?;
 	if !status.success() {
-		std::process::exit(1);
+		return Err(format!("Command '{}' with args {:?} failed with status: {}", program, args, status).into());
 	}
 	Ok(())
 }

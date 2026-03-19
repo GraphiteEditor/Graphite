@@ -25,11 +25,11 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use glam::DMat2;
 use graph_craft::document::NodeId;
-use graphene_std::path_bool::BooleanOperation;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
 #[derive(Default, ExtractField)]
@@ -44,7 +44,8 @@ pub struct SelectOptions {
 	nested_selection_behavior: NestedSelectionBehavior,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	PivotGizmoType(PivotGizmoType),
@@ -52,7 +53,8 @@ pub enum SelectOptionsUpdate {
 	TogglePivotPinned,
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum NestedSelectionBehavior {
 	#[default]
 	Shallowest,
@@ -68,7 +70,8 @@ impl fmt::Display for NestedSelectionBehavior {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SelectToolPointerKeys {
 	pub axis_align: Key,
 	pub snap_angle: Key,
@@ -77,7 +80,8 @@ pub struct SelectToolPointerKeys {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
@@ -267,7 +271,7 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -729,13 +733,7 @@ impl Fsm for SelectToolFsmState {
 										.parent(document.metadata())
 										.is_some_and(|parent| selected.selected_layers_contains(parent, document.metadata()))
 								}) {
-									let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-										.unwrap()
-										.with_alpha(0.5)
-										.to_rgba_hex_srgb();
-									fill_color.insert(0, '#');
-									let fill_color = Some(fill_color.as_str());
-									hover_overlay_draw(new_selected, fill_color);
+									hover_overlay_draw(new_selected, Some(COLOR_OVERLAY_BLUE_50));
 								}
 							}
 						}
@@ -932,20 +930,15 @@ impl Fsm for SelectToolFsmState {
 							.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-						let (direction, color) = match axis {
-							Axis::X => (e0, COLOR_OVERLAY_RED),
-							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+						let (direction, color, color_faded) = match axis {
+							Axis::X => (e0, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25),
+							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25),
 							_ => unreachable!(),
 						};
 
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
-						let color = if !hover {
-							color
-						} else {
-							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-							&format!("#{color_string}")
-						};
+						let color = if !hover { color } else { color_faded };
 						let line_center = tool_data.line_center;
 						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 					}
@@ -963,13 +956,10 @@ impl Fsm for SelectToolFsmState {
 						let perp = edge.perp();
 
 						let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
-							(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
+							(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN_25)
 						} else {
-							(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
+							(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED_25)
 						};
-						let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-						perp_color.insert(0, '#');
-						let perp_color = perp_color.as_str();
 						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
 						overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
 					}
@@ -1012,12 +1002,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					// Update the selection box
-					let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-						.unwrap()
-						.with_alpha(0.05)
-						.to_rgba_hex_srgb();
-					fill_color.insert(0, '#');
-					let fill_color = Some(fill_color.as_str());
+					let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 					let polygon = &tool_data.lasso_polygon;
 

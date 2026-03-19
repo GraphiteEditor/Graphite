@@ -1011,12 +1011,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
-				let table = LayoutGroup::Table {
-					unstyled: true,
-					rows: vec![
+				let table = LayoutGroup::table(
+					vec![
 						vec![
 							TextButton::new("New Document")
-								.icon(Some("File".into()))
+								.icon("File")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 								.widget_instance(),
@@ -1024,7 +1023,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Document")
-								.icon(Some("Folder".into()))
+								.icon("Folder")
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::Open.into())
 								.widget_instance(),
@@ -1032,20 +1031,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
-								.icon(Some("Image".into()))
+								.icon("Image")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into())
 								.widget_instance(),
 						],
 						vec![
 							TextButton::new("Support the Development Fund")
-								.icon(Some("Heart".into()))
+								.icon("Heart")
 								.flush(true)
 								.on_commit(move |_| FrontendMessage::TriggerVisitLink { url: donate.to_string() }.into())
 								.widget_instance(),
 						],
 					],
-				};
+					true,
+				);
 
 				responses.add(LayoutMessage::DestroyLayout {
 					layout_target: LayoutTarget::WelcomeScreenButtons,
@@ -1057,11 +1057,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC4").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
-				let row = LayoutGroup::Row { widgets };
+				let row = LayoutGroup::row(widgets);
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),
@@ -1191,7 +1191,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
-			#[cfg(not(target_family = "wasm"))]
 			PortfolioMessage::SubmitEyedropperPreviewRender => {
 				use crate::consts::EYEDROPPER_PREVIEW_AREA_RESOLUTION;
 
@@ -1222,10 +1221,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 					Ok(message) => responses.add_front(message),
 				}
-			}
-			#[cfg(target_family = "wasm")]
-			PortfolioMessage::SubmitEyedropperPreviewRender => {
-				// TODO: Currently for Wasm, this is implemented through SVG rendering but the Eyedropper tool doesn't work at all when Vello is enabled as the renderer
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;

@@ -142,7 +142,7 @@ impl<'a> ModifyInputsContext<'a> {
 		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
-	pub fn insert_boolean_data(&mut self, operation: graphene_std::path_bool::BooleanOperation, layer: LayerNodeIdentifier) {
+	pub fn insert_boolean_data(&mut self, operation: graphene_std::vector::misc::BooleanOperation, layer: LayerNodeIdentifier) {
 		let boolean = resolve_network_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
@@ -201,8 +201,8 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::F64(typesetting.character_spacing), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_width.unwrap_or(100.)), false)),
-				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.max_width.unwrap_or(100.)), false)),
+				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),
+				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 			]);

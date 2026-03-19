@@ -166,7 +166,7 @@ Adam is a pragmatic problem solver with a talent for simplifying complexity. He 
 </section>
 
 <section>
-<div class="triptych">
+<div class="triptych" id="extras">
 
 <div class="block">
 

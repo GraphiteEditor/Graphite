@@ -1,68 +1,86 @@
-import { plainToInstance } from "class-transformer";
+import type { FrontendMessage, LayoutTarget, WidgetDiff } from "@graphite/../wasm/pkg/graphite_wasm";
 
-import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import { type JsMessageType, messageMakers, type JsMessage } from "@graphite/messages";
+// Type convert a union of messages into a map of messages
+export type ToMessageMap<T> = {
+	[K in T extends string ? T : T extends object ? keyof T : never]: K extends T ? Record<string, never> : T extends Record<K, infer Payload> ? Payload : never;
+};
 
-type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
-// Don't know a better way of typing this since it can be any subclass of JsMessage
-// The functions interacting with this map are strongly typed though around JsMessage
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
+export type MessageMap = ToMessageMap<FrontendMessage>;
+export type MessageName = keyof MessageMap;
+export type MessageBody<T extends MessageName> = Extract<FrontendMessage, Record<T, unknown>>[T];
 
 export function createSubscriptionRouter() {
-	const subscriptions: JsMessageCallbackMap = {};
+	// Callbacks are wrapped at subscription time to capture their type-specific data extraction in a closure,
+	// so the stored function has a uniform signature and the map doesn't need per-key generic value types.
+	const subscriptions: Partial<Record<MessageName, (taggedMessage: MessageMap) => void>> = {};
+	const layoutCallbacks: Partial<Record<LayoutTarget, (diffs: WidgetDiff[]) => void>> = {};
 
-	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>) => {
-		subscriptions[messageType.name] = callback;
+	const subscribeFrontendMessage = <T extends MessageName>(messageType: T, callback: (data: MessageMap[T]) => void) => {
+		subscriptions[messageType] = (taggedMessage: MessageMap) => callback(taggedMessage[messageType]);
 	};
 
-	const unsubscribeJsMessage = <T extends JsMessage>(messageType: new () => T) => {
-		delete subscriptions[messageType.name];
+	const unsubscribeFrontendMessage = (messageType: MessageName) => {
+		delete subscriptions[messageType];
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WebAssembly.Memory, handle: EditorHandle) => {
-		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
-		const messageMaker = messageMakers[messageType];
-		if (!messageMaker) {
-			// eslint-disable-next-line no-console
-			console.error(
-				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
-					"(Perhaps this message parser isn't exported in `messageMakers` at the bottom of `messages.ts`.)",
-			);
-			return;
+	const subscribeLayoutUpdate = (target: LayoutTarget, callback: (diffs: WidgetDiff[]) => void) => {
+		layoutCallbacks[target] = callback;
+	};
+
+	const unsubscribeLayoutUpdate = (target: LayoutTarget) => {
+		delete layoutCallbacks[target];
+	};
+
+	function normalizeMessage<T extends string | object>(message: T): ToMessageMap<T>;
+	function normalizeMessage(message: string | Record<string, unknown>): Record<string, unknown> {
+		// If it's a bare string, convert it to an object with an empty payload
+		if (typeof message === "string") {
+			const result: Record<string, Record<string, never>> = { [message]: {} };
+			return result;
 		}
 
-		// Checks if the provided `messageMaker` is a class extending `JsMessage`. All classes inheriting from `JsMessage` will have a static readonly `jsMessageMarker` which is `true`.
-		const isJsMessageMaker = (fn: typeof messageMaker): fn is typeof JsMessage => "jsMessageMarker" in fn;
-		const messageIsClass = isJsMessageMaker(messageMaker);
+		// If it's already an object, it matches the structure of our map
+		return message;
+	}
 
-		// Messages with non-empty data are provided by wasm-bindgen as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
-		// Messages with empty data are provided by wasm-bindgen as a string with the message name, like: "NameOfThisMessage"
-		// Here we extract the payload object or use an empty object depending on the situation.
-		const unwrappedMessageData = messageData[messageType] || {};
+	const handleFrontendMessage = (messageType: MessageName, messageData: FrontendMessage) => {
+		// Messages with non-empty data are provided by Serde JSON as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
+		// Messages with empty data are provided by Serde JSON as a string with the message name, like: "NameOfThisMessage"
+		// Here we extract the payload object or create an empty payload object, as needed.
+		const taggedMessage = normalizeMessage(messageData);
 
-		// Converts to a `JsMessage` object by turning the JSON message data into an instance of the message class, either automatically or by calling the function that builds it.
-		// If the `messageMaker` is a `JsMessage` class then we use the class-transformer library's `plainToInstance` function in order to convert the JSON data into the destination class.
-		// If it is not a `JsMessage` then it should be a custom function that creates a JsMessage from a JSON, so we call the function itself with the raw JSON as an argument.
-		// The resulting `message` is an instance of a class that extends `JsMessage`.
-		const message = messageIsClass ? plainToInstance(messageMaker, unwrappedMessageData) : messageMaker(unwrappedMessageData, wasm, handle);
+		// Resolve the dispatch thunk, depending on whether this is a layout update or a regular message.
+		// UpdateLayout messages are dispatched to layout-specific callbacks based on the layout target.
+		// The thunk is re-evaluated on each retry because the callback may not be registered yet.
+		let getHandler: () => ((taggedMessage: MessageMap) => void) | undefined = () => subscriptions[messageType];
 
-		// If we have constructed a valid message, then we try and execute the callback that the frontend has associated with this message.
-		// The frontend should always have a callback for all messages, but due to message ordering, we might have to delay a few stack frames until we do.
+		// Handle layout updates specially to route them to layout-specific callbacks and extract the diffs as the data to pass
+		let target: LayoutTarget | undefined;
+		if ("UpdateLayout" in taggedMessage) {
+			const { layoutTarget, diff } = taggedMessage["UpdateLayout"];
+			target = layoutTarget;
+
+			getHandler = () => {
+				const layoutCallback = layoutCallbacks[layoutTarget];
+				if (!layoutCallback) return undefined;
+				return () => layoutCallback(diff);
+			};
+		}
+
+		// Try to execute the callback. Due to message ordering, the callback may not be registered yet,
+		// so we retry a few times on the next stack frame to give onMount a chance to run.
 		let retries = 0;
 		const callCallback = () => {
-			// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
-			const callback = subscriptions[message.constructor.name];
+			const handler = getHandler();
 
-			// Attempt to call the callback, but try again several times on the next stack frame if it is not yet registered due to message ordering.
-			if (callback) {
-				callback(message);
+			if (handler) {
+				handler(taggedMessage);
 			} else if (retries <= 3) {
 				retries += 1;
 				setTimeout(callCallback, 0);
 			} else {
 				// eslint-disable-next-line no-console
-				console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
+				console.error(`Received a frontend message of type ${messageType}${target ? ` (${target})` : ""} but no handler was registered for it from the client.`);
 			}
 		};
 
@@ -70,9 +88,11 @@ export function createSubscriptionRouter() {
 	};
 
 	return {
-		subscribeJsMessage,
-		unsubscribeJsMessage,
-		handleJsMessage,
+		subscribeFrontendMessage,
+		unsubscribeFrontendMessage,
+		subscribeLayoutUpdate,
+		unsubscribeLayoutUpdate,
+		handleFrontendMessage,
 	};
 }
 export type SubscriptionRouter = ReturnType<typeof createSubscriptionRouter>;

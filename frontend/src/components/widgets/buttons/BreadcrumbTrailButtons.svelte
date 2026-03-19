@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionShortcut } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";

@@ -1,57 +1,53 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import type { NodeGraphError } from "@graphite/messages";
-import {
-	type Box,
-	type FrontendClickTargets,
-	type ContextMenuInformation,
-	type FrontendNode,
-	type FrontendNodeType,
-	type WirePath,
-	ClearAllNodeGraphWires,
-	SendUIMetadata,
-	UpdateBox,
-	UpdateClickTargets,
-	UpdateContextMenuInformation,
-	UpdateInSelectedNetwork,
-	UpdateImportReorderIndex,
-	UpdateExportReorderIndex,
-	UpdateImportsExports,
-	UpdateLayerWidths,
-	UpdateNodeGraphNodes,
-	UpdateVisibleNodes,
-	UpdateNodeGraphWires,
-	UpdateNodeGraphSelection,
-	UpdateNodeGraphTransform,
-	UpdateNodeThumbnail,
-	UpdateWirePathInProgress,
-	UpdateNodeGraphErrorDiagnostic,
-} from "@graphite/messages";
+import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { Editor } from "@graphite/editor";
+import type { MessageBody } from "@graphite/subscription-router";
 
 export function createNodeGraphState(editor: Editor) {
-	const { subscribe, update } = writable({
-		box: undefined as Box | undefined,
-		clickTargets: undefined as FrontendClickTargets | undefined,
-		contextMenuInformation: undefined as ContextMenuInformation | undefined,
-		error: undefined as NodeGraphError | undefined,
-		layerWidths: new Map<bigint, number>(),
-		chainWidths: new Map<bigint, number>(),
-		hasLeftInputWire: new Map<bigint, boolean>(),
-		updateImportsExports: undefined as UpdateImportsExports | undefined,
-		nodes: new Map<bigint, FrontendNode>(),
-		visibleNodes: new Set<bigint>(),
+	const { subscribe, update } = writable<{
+		box: BoxSelection | undefined;
+		clickTargets: FrontendClickTargets | undefined;
+		contextMenuInformation: ContextMenuInformation | undefined;
+		error: NodeGraphErrorDiagnostic | undefined;
+		layerWidths: Map<bigint, number>;
+		chainWidths: Map<bigint, number>;
+		hasLeftInputWire: Map<bigint, boolean>;
+		updateImportsExports: MessageBody<"UpdateImportsExports"> | undefined;
+		nodes: Map<bigint, FrontendNode>;
+		visibleNodes: Set<bigint>;
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
-		wires: new Map<bigint, Map<number, WirePath>>(),
-		wirePathInProgress: undefined as WirePath | undefined,
-		nodeDescriptions: new Map<string, string>(),
-		nodeTypes: [] as FrontendNodeType[],
-		thumbnails: new Map<bigint, string>(),
-		selected: [] as bigint[],
+		wires: Map<bigint, Map<number, WirePath>>;
+		wirePathInProgress: WirePath | undefined;
+		nodeDescriptions: Map<string, string>;
+		nodeTypes: FrontendNodeType[];
+		thumbnails: Map<bigint, string>;
+		selected: bigint[];
+		transform: { scale: number; x: number; y: number };
+		inSelectedNetwork: boolean;
+		reorderImportIndex: number | undefined;
+		reorderExportIndex: number | undefined;
+	}>({
+		box: undefined,
+		clickTargets: undefined,
+		contextMenuInformation: undefined,
+		error: undefined,
+		layerWidths: new Map(),
+		chainWidths: new Map(),
+		hasLeftInputWire: new Map(),
+		updateImportsExports: undefined,
+		nodes: new Map(),
+		visibleNodes: new Set(),
+		wires: new Map(),
+		wirePathInProgress: undefined,
+		nodeDescriptions: new Map(),
+		nodeTypes: [],
+		thumbnails: new Map(),
+		selected: [],
 		transform: { scale: 1, x: 0, y: 0 },
 		inSelectedNetwork: true,
-		reorderImportIndex: undefined as number | undefined,
-		reorderExportIndex: undefined as number | undefined,
+		reorderImportIndex: undefined,
+		reorderExportIndex: undefined,
 	});
 
 	function closeContextMenu() {
@@ -62,56 +58,56 @@ export function createNodeGraphState(editor: Editor) {
 	}
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
-			state.nodeDescriptions = data.nodeDescriptions;
+			state.nodeDescriptions = new Map(data.nodeDescriptions);
 			state.nodeTypes = data.nodeTypes;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateBox, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateBox", (data) => {
 		update((state) => {
 			state.box = data.box;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateClickTargets", (data) => {
 		update((state) => {
 			state.clickTargets = data.clickTargets;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateContextMenuInformation", (data) => {
 		update((state) => {
 			state.contextMenuInformation = data.contextMenuInformation;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateImportReorderIndex, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateImportReorderIndex", (data) => {
 		update((state) => {
 			state.reorderImportIndex = data.importIndex;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateExportReorderIndex, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateExportReorderIndex", (data) => {
 		update((state) => {
 			state.reorderExportIndex = data.exportIndex;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateImportsExports, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateImportsExports", (data) => {
 		update((state) => {
 			state.updateImportsExports = data;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateInSelectedNetwork, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateInSelectedNetwork", (data) => {
 		update((state) => {
 			state.inSelectedNetwork = data.inSelectedNetwork;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateLayerWidths", (data) => {
 		update((state) => {
 			state.layerWidths = data.layerWidths;
 			state.chainWidths = data.chainWidths;
@@ -119,7 +115,7 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphNodes", (data) => {
 		update((state) => {
 			state.nodes.clear();
 			data.nodes.forEach((node) => {
@@ -128,19 +124,19 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphErrorDiagnostic, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic", (data) => {
 		update((state) => {
 			state.error = data.error;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateVisibleNodes", (data) => {
 		update((state) => {
 			state.visibleNodes = new Set<bigint>(data.nodes);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphWires, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
 		update((state) => {
 			data.wires.forEach((wireUpdate) => {
 				let inputMap = state.wires.get(wireUpdate.id);
@@ -158,31 +154,31 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, () => {
+	editor.subscriptions.subscribeFrontendMessage("ClearAllNodeGraphWires", () => {
 		update((state) => {
 			state.wires.clear();
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphSelection", (data) => {
 		update((state) => {
 			state.selected = data.selected;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphTransform, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphTransform", (data) => {
 		update((state) => {
-			state.transform = data.transform;
+			state.transform = { scale: data.scale, x: data.translation[0], y: data.translation[1] };
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateNodeThumbnail", (data) => {
 		update((state) => {
 			state.thumbnails.set(data.id, data.value);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateWirePathInProgress", (data) => {
 		update((state) => {
 			state.wirePathInProgress = data.wirePath;
 			return state;
