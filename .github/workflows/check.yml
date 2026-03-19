@@ -8,8 +8,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Check if CI can be skipped (for merge queue deduplication)
+  skip-check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip-check }}
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 🚦 Check if CI can be skipped
+        id: check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
   # Build the web app via the shared build workflow
   build:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
@@ -17,6 +32,8 @@ jobs:
 
   # Run the Rust tests on the self-hosted native runner
   test:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
     runs-on: [self-hosted, target/native]
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
@@ -26,12 +43,7 @@ jobs:
       - name: 📥 Clone repository
         uses: actions/checkout@v6
 
-      - name: 🚦 Check if CI can be skipped
-        id: skip-check
-        uses: cariad-tech/merge-queue-ci-skipper@main
-
       - name: 🦀 Install Rust
-        if: steps.skip-check.outputs.skip-check != 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
@@ -40,28 +52,23 @@ jobs:
           rustflags: ""
 
       - name: 🦀 Fetch Rust dependencies
-        if: steps.skip-check.outputs.skip-check != 'true'
         run: cargo fetch --locked
 
       - name: 🧪 Run Rust tests
-        if: steps.skip-check.outputs.skip-check != 'true'
         env:
           RUSTFLAGS: -Dwarnings
         run: mold -run cargo test --all-features
 
   # Rust format check on GitHub runner
   rust-fmt:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Clone repository
         uses: actions/checkout@v6
 
-      - name: 🚦 Check if CI can be skipped
-        id: skip-check
-        uses: cariad-tech/merge-queue-ci-skipper@main
-
       - name: 🦀 Install Rust
-        if: steps.skip-check.outputs.skip-check != 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
@@ -71,11 +78,12 @@ jobs:
           components: rustfmt
 
       - name: 🔬 Check Rust formatting
-        if: steps.skip-check.outputs.skip-check != 'true'
         run: cargo fmt --all -- --check
 
   # License compatibility check on GitHub runner
   check-licenses:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Clone repository

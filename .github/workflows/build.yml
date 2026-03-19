@@ -112,6 +112,7 @@ jobs:
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
+        continue-on-error: ${{ github.event_name != 'push' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -220,7 +221,9 @@ jobs:
 
       - name: ✂ Strip template from completed build for a clean artifact
         if: github.event_name == 'push'
-        run: sed -i "s|${{ steps.production-env.outputs.template }}||" frontend/dist/index.html
+        env:
+          TEMPLATE: ${{ steps.production-env.outputs.template }}
+        run: sed -i "s|$TEMPLATE||" frontend/dist/index.html
 
       - name: 📦 Upload web bundle artifact
         if: github.event_name != 'pull_request'
