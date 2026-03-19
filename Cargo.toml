@@ -4,6 +4,7 @@ members = [
 	"desktop/wrapper",
 	"desktop/embedded-resources",
 	"desktop/bundle",
+	"desktop/store",
 	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
@@ -211,6 +212,7 @@ lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "e
 scraper = "0.25"
 linesweeper = "0.3"
 smallvec = "1.13.2"
+blake3 = "1.8"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }

@@ -1,0 +1,12 @@
+[package]
+name = "graphite-desktop-store"
+description = "Graphite Desktop Content Addressable Blob Store"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+blake3 = { workspace = true }
