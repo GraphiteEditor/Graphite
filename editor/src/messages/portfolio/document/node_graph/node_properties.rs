@@ -1865,7 +1865,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							node_id,
 							input_index: BackupGradientInput::INDEX,
 							value: {
-								let mut backup_gradient_new = backup_gradient2.clone();
+								let mut backup_gradient_new = fill2.as_gradient().cloned().unwrap_or_else(|| backup_gradient2.clone());
 								backup_gradient_new.stops = gradient.clone();
 								TaggedValue::Gradient(backup_gradient_new)
 							},
