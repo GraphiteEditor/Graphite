@@ -1,0 +1,25 @@
+.github/workflows/build.yml
+  8ec9ea24d30a8048 93-94,108,129,214,217,272-273
+.github/workflows/ci.yml
+  8ec9ea24d30a8048 11,13-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "a234f638cbcea2b462963f31eed4cda23efd866c",
+  "prompts": {
+    "8ec9ea24d30a8048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0775ecd9-b7ee-4195-be82-4a6531744114",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 83,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}
