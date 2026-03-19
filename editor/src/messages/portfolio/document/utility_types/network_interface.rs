@@ -1044,6 +1044,17 @@ impl NodeNetworkInterface {
 		node_metadata.persistent_metadata.pinned
 	}
 
+	pub fn is_collapsed(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
+			log::error!("Could not get persistent node metadata in is_collapsed for node {node_id}");
+			return false;
+		};
+		node_metadata
+			.persistent_metadata
+			.collapsed
+			.unwrap_or_else(|| self.implementation_name(node_id, network_path) == "Merge")
+	}
+
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		let Some(node) = self.document_node(node_id, network_path) else {
 			log::error!("Could not get node in is_visible");
@@ -4508,6 +4519,16 @@ impl NodeNetworkInterface {
 		self.transaction_modified();
 	}
 
+	pub fn set_collapsed(&mut self, node_id: &NodeId, network_path: &[NodeId], collapsed: bool) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node {node_id} in set_collapsed");
+			return;
+		};
+
+		node_metadata.persistent_metadata.collapsed = Some(collapsed);
+		self.transaction_modified();
+	}
+
 	pub fn set_visibility(&mut self, node_id: &NodeId, network_path: &[NodeId], is_visible: bool) {
 		let Some(network) = self.network_mut(network_path) else {
 			return;
@@ -6268,6 +6289,8 @@ pub struct DocumentNodePersistentMetadata {
 	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
 	#[serde(default)]
 	pub pinned: bool,
+	#[serde(default)]
+	pub collapsed: Option<bool>,
 	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	/// All fields in NodeTypePersistentMetadata should automatically be updated by using the network interface API
 	pub node_type_metadata: NodeTypePersistentMetadata,
