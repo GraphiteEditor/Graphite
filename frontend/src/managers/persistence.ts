@@ -186,24 +186,25 @@ async function loadRestDocuments(editor: Editor) {
 
 	const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-	if (currentDocumentId !== undefined) {
-		const currentIndex = orderedSavedDocuments.findIndex((doc) => doc.documentId === currentDocumentId);
-		const beforeCurrentIndex = currentIndex - 1;
-		const afterCurrentIndex = currentIndex + 1;
+	const currentIndex = currentDocumentId !== undefined ? orderedSavedDocuments.findIndex((doc) => doc.documentId === currentDocumentId) : -1;
 
-		for (let i = beforeCurrentIndex; i >= 0; i--) {
+	// Open documents in order around the current document, placing earlier ones before it and later ones after
+	if (currentIndex !== -1 && currentDocumentId !== undefined) {
+		for (let i = currentIndex - 1; i >= 0; i--) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
 			const { name, isSaved } = details;
 			editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, true);
 		}
-		for (let i = afterCurrentIndex; i < orderedSavedDocuments.length; i++) {
+		for (let i = currentIndex + 1; i < orderedSavedDocuments.length; i++) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
 			const { name, isSaved } = details;
 			editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, false);
 		}
 
 		editor.handle.selectDocument(currentDocumentId);
-	} else {
+	}
+	// No valid current document: open all remaining documents and select the last one
+	else {
 		const length = orderedSavedDocuments.length;
 
 		for (let i = length - 2; i >= 0; i--) {
