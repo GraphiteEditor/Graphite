@@ -19,7 +19,7 @@ jobs:
 
       - name: 🚦 Check if CI can be skipped
         id: check
-        uses: cariad-tech/merge-queue-ci-skipper@main
+        uses: cariad-tech/merge-queue-ci-skipper@cf80db21fc70244e36487acc531b3f1118889b0a
 
   # Build the web app via the shared build workflow
   build:
