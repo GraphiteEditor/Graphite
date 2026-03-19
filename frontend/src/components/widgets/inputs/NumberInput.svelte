@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
-	import { evaluateMathExpression, isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import { browserVersion } from "@graphite/utility-functions/platform";
+	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
+	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
@@ -43,8 +43,8 @@
 	export let isInteger = false;
 	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
 	/// "Add"/"Multiply": The value is added or multiplied by `step`.
-	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
 	/// "None": the increment arrows are not shown.
+	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
 	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
@@ -364,7 +364,7 @@
 		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
 		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
 		const isSafari = browserVersion().toLowerCase().includes("safari");
-		const usePointerLock = !isSafari && !isPlatformNative();
+		const usePointerLock = !isSafari && !isDesktop();
 
 		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
 		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
@@ -377,7 +377,7 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
-		if (isPlatformNative()) {
+		if (isDesktop()) {
 			editor.handle.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
@@ -386,13 +386,18 @@
 		// Tell the backend that we are beginning a transaction for the history system
 		startDragging();
 
-		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
-		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
-		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
-		// TODO: On rarer occasions, it isn't sufficient to ignore just the first event, so this solution is imperfect.
-		// TODO: Using a counter to ignore more frames helps progressively decrease—but not eliminate—the issue, but it makes drag initiation feel delayed so we don't do that.
-		// TODO: A better solution will need to discard outlier movement values across multiple frames by basically implementing a time-series data analysis filtering algorithm.
-		let ignoredFirstMovement = false;
+		// The first few `movementX` values reported after entering pointer lock are often wildly wrong in Chrome
+		// (and occasionally in Firefox). We used to skip just the first event, but that wasn't enough — sometimes
+		// 2 or 3 bogus events come through with deltas around ±1000px even when the mouse barely moved.
+		// So now we skip the first event entirely and clamp any suspiciously large deltas during a short settling
+		// window after that. 50px is way more than a real human moves in one event frame at drag start, but way
+		// less than the garbage values the API spits out. We also have a time-based fallback for high-polling-rate
+		// mice that might burn through the event count in just a few ms.
+		const SETTLING_EVENTS = 5;
+		const SETTLING_MS = 80;
+		const MAX_DELTA = 50;
+		let moveEvents = 0;
+		const dragStart = performance.now();
 
 		const pointerUp = () => {
 			// Confirm on release by setting the reset value to the current value, so once the pointer lock ends,
@@ -422,19 +427,31 @@
 			}
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
+			moveEvents += 1;
+			if (moveEvents === 1) return;
+
+			if (initialValueBeforeDragging !== undefined) {
+				let delta = e.movementX;
+				const settling = moveEvents <= SETTLING_EVENTS || performance.now() - dragStart < SETTLING_MS;
+				// Don't clamp to the sign — bogus values point in random directions so that would still be wrong
+				if (settling && Math.abs(delta) > MAX_DELTA) delta = 0;
+
+				pointerLockMoveUpdate(delta, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
 			}
-			ignoredFirstMovement = true;
 		};
-		// On desktop we don't get `pointermove` events while in pointer lock (CEF doesn't support pointer lock).
+		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
 		// We have to listen for our custom `pointerlockmove` events instead.
-		const pointerLockMove = ({ detail }: WindowEventMap["pointerlockmove"]) => {
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const delta = detail.x;
+		const pointerLockMove = (e: Event) => {
+			moveEvents += 1;
+			if (moveEvents === 1) return;
+
+			if (initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
+				let delta = (e.detail as { x: number }).x;
+				const settling = moveEvents <= SETTLING_EVENTS || performance.now() - dragStart < SETTLING_MS;
+				if (settling && Math.abs(delta) > MAX_DELTA) delta = 0;
+
 				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
-			ignoredFirstMovement = true;
 		};
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
@@ -469,7 +486,7 @@
 		cumulativeDragDelta += dragDelta;
 
 		const combined = initialValue + cumulativeDragDelta;
-		const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
+		const combineSnapped = snapping ? Math.round(combined) : combined;
 
 		const newValue = updateValue(combineSnapped);
 
