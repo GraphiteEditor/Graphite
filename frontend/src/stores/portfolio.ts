@@ -1,27 +1,34 @@
 import { writable } from "svelte/store";
+import type { Writable } from "svelte/store";
 
 import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
-export function createPortfolioState(editor: Editor) {
-	const { subscribe, update } = writable<{
-		unsaved: boolean;
-		documents: OpenDocument[];
-		activeDocumentIndex: number;
-		dataPanelOpen: boolean;
-		propertiesPanelOpen: boolean;
-		layersPanelOpen: boolean;
-	}>({
-		unsaved: false,
-		documents: [],
-		activeDocumentIndex: 0,
-		dataPanelOpen: false,
-		propertiesPanelOpen: true,
-		layersPanelOpen: true,
-	});
+type PortfolioStoreState = {
+	unsaved: boolean;
+	documents: OpenDocument[];
+	activeDocumentIndex: number;
+	dataPanelOpen: boolean;
+	propertiesPanelOpen: boolean;
+	layersPanelOpen: boolean;
+};
+const initialState: PortfolioStoreState = {
+	unsaved: false,
+	documents: [],
+	activeDocumentIndex: 0,
+	dataPanelOpen: false,
+	propertiesPanelOpen: true,
+	layersPanelOpen: true,
+};
 
+// Store state persisted across HMR to maintain reactive subscriptions in the component tree
+const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
+if (import.meta.hot) import.meta.hot.data.store = store;
+const { subscribe, update } = store;
+
+export function createPortfolioStore(editor: Editor) {
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
@@ -99,8 +106,33 @@ export function createPortfolioState(editor: Editor) {
 		});
 	});
 
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerOpen");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerImport");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDataPanelState");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdatePropertiesPanelState");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateLayersPanelState");
+	}
+
+	currentCleanup = destroy;
+	currentArgs = [editor];
 	return {
 		subscribe,
+		destroy,
 	};
 }
-export type PortfolioState = ReturnType<typeof createPortfolioState>;
+export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createPortfolioStore(...currentArgs);
+});

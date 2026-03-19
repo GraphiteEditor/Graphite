@@ -5,8 +5,9 @@
 
 	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { DocumentState } from "@graphite/state-providers/document";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import type { DocumentStore } from "@graphite/stores/document";
+	import { closeContextMenu } from "@graphite/stores/node-graph";
+	import type { NodeGraphStore } from "@graphite/stores/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -20,8 +21,8 @@
 	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
 
 	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const documentState = getContext<DocumentState>("document");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const documentState = getContext<DocumentStore>("document");
 
 	let graph: HTMLDivElement | undefined;
 
@@ -29,7 +30,7 @@
 	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	// Close the context menu when the graph view overlay is closed
-	$: if (!$documentState.graphViewOverlayOpen) nodeGraph.closeContextMenu();
+	$: if (!$documentState.graphViewOverlayOpen) closeContextMenu();
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;
@@ -220,7 +221,7 @@
 						label="Merge Selected Nodes"
 						action={() => {
 							editor.handle.mergeSelectedNodes();
-							nodeGraph.closeContextMenu();
+							closeContextMenu();
 						}}
 						flush={true}
 					/>
@@ -231,7 +232,7 @@
 							if ($nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode") {
 								editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, currentlyIsNode);
 							}
-							nodeGraph.closeContextMenu();
+							closeContextMenu();
 						}}
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 						flush={true}
@@ -247,7 +248,7 @@
 								} else {
 									editor.handle.toggleLayerLock(nodeId);
 								}
-								nodeGraph.closeContextMenu();
+								closeContextMenu();
 							}}
 							flush={true}
 						/>

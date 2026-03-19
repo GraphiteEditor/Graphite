@@ -5,7 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -189,6 +189,11 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self) {
+		// Enforce idempotency, so if this is called again during an HMR re-mount, we don't initialize the editor backend twice
+		if FRONTEND_READY.swap(true, Ordering::SeqCst) {
+			return;
+		}
+
 		#[cfg(feature = "native")]
 		crate::native_communication::initialize_native_communication();
 
