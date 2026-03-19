@@ -1,24 +1,7 @@
-import type { Editor } from "@graphite/editor";
-import type { DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
-export function createPanicManager(editor: Editor, dialogState: DialogState) {
-	// Code panic dialog and console error
-	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
-		// `Error.stackTraceLimit` is only available in V8/Chromium
-		Error.stackTraceLimit = Infinity;
-		const stackTrace = new Error().stack || "";
-		const panicDetails = `${data.panicInfo}${stackTrace ? `\n\n${stackTrace}` : ""}`;
-
-		// eslint-disable-next-line no-console
-		console.error(panicDetails);
-
-		dialogState.createCrashDialog(panicDetails);
-	});
-}
-
-export function githubUrl(panicDetails: string): string {
+export function crashReportUrl(panicDetails: string): string {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");
 
 	const buildUrl = (includeCrashReport: boolean) => {
@@ -28,11 +11,11 @@ export function githubUrl(panicDetails: string): string {
 
 			**Steps To Reproduce**
 			Describe precisely how the crash occurred, step by step, starting with a new editor window.
-			1. Open the Graphite editor at https://editor.graphite.art
-			2. 
-			3. 
-			4. 
-			5. 
+			1. Open the Graphite editor at https://dev.graphite.art — IMPORTANT! Confirm you have tested in this development version. It may have already been fixed since the last stable release.
+			2.
+			3.
+			4.
+			5.
 
 			**Additional Details**
 			Provide any further information or context that you think would be helpful in fixing the issue. Screenshots or video can be linked or attached to this issue.

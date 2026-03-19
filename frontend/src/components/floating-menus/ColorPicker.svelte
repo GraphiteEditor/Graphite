@@ -3,7 +3,7 @@
 
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { FillChoice, MenuDirection, Color } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import type { TooltipStore } from "@graphite/stores/tooltip";
 	import {
 		contrastingOutlineFactor,
 		fillChoiceColor,
@@ -22,7 +22,6 @@
 		gradientFirstColor,
 	} from "@graphite/utility-functions/colors";
 	import type { HSV, RGB } from "@graphite/utility-functions/colors";
-	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -57,7 +56,7 @@
 	];
 
 	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
-	const tooltip = getContext<TooltipState>("tooltip");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	export let colorOrGradient: FillChoice;
 	export let allowNone = false;
@@ -436,6 +435,10 @@
 
 		setNewHSVA(hsv.h, hsv.s, hsv.v, color.alpha, false);
 		setOldHSVA(hsv.h, hsv.s, hsv.v, color.alpha, false);
+	}
+
+	function clamp(value: number, min = 0, max = 1): number {
+		return Math.max(min, Math.min(value, max));
 	}
 
 	export function div(): HTMLDivElement | undefined {

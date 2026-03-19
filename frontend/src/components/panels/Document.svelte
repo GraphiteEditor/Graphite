@@ -3,14 +3,14 @@
 
 	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { DocumentState } from "@graphite/state-providers/document";
+	import type { AppWindowStore } from "@graphite/stores/app-window";
+	import type { DocumentStore } from "@graphite/stores/document";
 	import type { MessageBody } from "@graphite/subscription-router";
 	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
+	import { setupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -27,8 +27,8 @@
 	let gradientStopPicker: ColorPicker | undefined;
 
 	const editor = getContext<Editor>("editor");
-	const appWindow = getContext<AppWindowState>("appWindow");
-	const document = getContext<DocumentState>("document");
+	const appWindow = getContext<AppWindowStore>("appWindow");
+	const document = getContext<DocumentStore>("document");
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
@@ -74,6 +74,10 @@
 	let canvasHeight: number | undefined = undefined;
 
 	let devicePixelRatio: number | undefined;
+	let removeUpdatePixelRatio: (() => void) | undefined;
+	let viewportResizeObserver: ResizeObserver | undefined;
+	let cleanupViewportResizeObserver: (() => void) | undefined;
+	let addedFontFaces: FontFace[] = [];
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
@@ -375,7 +379,9 @@
 
 		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
 			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
-			window.document.fonts.add(new FontFace("text-font", fontView));
+			const face = new FontFace("text-font", fontView);
+			window.document.fonts.add(face);
+			addedFontFaces.push(face);
 			textInput.style.fontFamily = "text-font";
 		}
 
@@ -436,7 +442,6 @@
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
 		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
-		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
 		const updatePixelRatio = () => {
 			removeUpdatePixelRatio?.();
 			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
@@ -510,7 +515,9 @@
 
 			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
 				const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
-				window.document.fonts.add(new FontFace("text-font", fontView));
+				const face = new FontFace("text-font", fontView);
+				window.document.fonts.add(face);
+				addedFontFaces.push(face);
 				textInput.style.fontFamily = "text-font";
 			}
 		});
@@ -525,18 +532,32 @@
 
 		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
 		// This must happen in onMount to ensure the viewport container element exists
-		setupViewportResizeObserver(editor);
+		cleanupViewportResizeObserver = setupViewportResizeObserver(editor);
 
 		// Also observe the inner viewport for canvas sizing and ruler updates
-		const viewportResizeObserver = new ResizeObserver(() => {
+		viewportResizeObserver = new ResizeObserver(() => {
 			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});
 
 	onDestroy(() => {
-		// Cleanup the viewport resize observer
-		cleanupViewportResizeObserver();
+		cleanupViewportResizeObserver?.();
+		viewportResizeObserver?.disconnect();
+		removeUpdatePixelRatio?.();
+		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
+
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
+		editor.subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
 	});
 </script>
 

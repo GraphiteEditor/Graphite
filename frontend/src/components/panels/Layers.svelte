@@ -4,8 +4,8 @@
 
 	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import type { NodeGraphStore } from "@graphite/stores/node-graph";
+	import type { TooltipStore } from "@graphite/stores/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
@@ -42,8 +42,8 @@
 	};
 
 	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let list: LayoutCol | undefined;
 

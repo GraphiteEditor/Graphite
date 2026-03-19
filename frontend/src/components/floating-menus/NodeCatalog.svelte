@@ -3,7 +3,7 @@
 	import { SvelteMap } from "svelte/reactivity";
 
 	import type { FrontendNodeType } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import type { NodeGraphStore } from "@graphite/stores/node-graph";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -11,7 +11,7 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 
 	// Content
 	export let disabled = false;

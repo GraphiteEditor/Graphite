@@ -1,6 +1,11 @@
 import type { Editor } from "@graphite/editor";
 
+let currentCleanup: (() => void) | undefined;
+let currentArgs: [Editor] | undefined;
+
 export function createClipboardManager(editor: Editor) {
+	currentArgs = [editor];
+
 	// Subscribe to process backend event
 	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
@@ -12,7 +17,17 @@ export function createClipboardManager(editor: Editor) {
 	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
+
+	function destroy() {
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
+		editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
+	}
+
+	currentCleanup = destroy;
+	return { destroy };
 }
+export type ClipboardManager = ReturnType<typeof createClipboardManager>;
 
 function readAtCaret(cut: boolean): string | undefined {
 	const element = window.document.activeElement;
@@ -94,3 +109,9 @@ function insertAtCaret(text: string) {
 
 	element.dispatchEvent(new Event("input", { bubbles: true }));
 }
+
+// Self-accepting HMR: tear down the old instance and re-create with the new module's code
+import.meta.hot?.accept((newModule) => {
+	currentCleanup?.();
+	if (currentArgs) newModule?.createClipboardManager(...currentArgs);
+});
