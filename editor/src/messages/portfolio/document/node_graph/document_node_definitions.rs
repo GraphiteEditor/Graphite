@@ -2586,6 +2586,13 @@ fn static_input_properties() -> InputProperties {
 			Ok(vec![choices])
 		}),
 	);
+	map.insert(
+		"text_vertical_align".to_string(),
+		Box::new(|node_id, index, context| {
+			let choices = enum_choice::<text::VerticalAlign>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
+			Ok(vec![choices])
+		}),
+	);
 	map
 }
 

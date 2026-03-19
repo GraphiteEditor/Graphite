@@ -1,4 +1,4 @@
-use super::{Font, FontCache, TypesettingConfig};
+use super::{Font, FontCache, TypesettingConfig, VerticalAlign};
 use core::cell::RefCell;
 use core_types::table::Table;
 use glam::DVec2;
@@ -94,12 +94,25 @@ impl TextContext {
 
 		let mut path_builder = PathBuilder::new(per_glyph_instances, layout.scale() as f64);
 
+		let vertical_offset = if let Some(container_height) = typesetting.max_height {
+			let layout_height = layout.height() as f64;
+			let free_space = (container_height - layout_height).max(0.);
+
+			match typesetting.vertical_align {
+				VerticalAlign::Top => 0.,
+				VerticalAlign::Center => free_space / 2.,
+				VerticalAlign::Bottom => free_space,
+			}
+		} else {
+			0.
+		};
+
 		for line in layout.lines() {
 			for item in line.items() {
 				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
 					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
 				{
-					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
+					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances, vertical_offset);
 				}
 			}
 		}

@@ -64,7 +64,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		}
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool) {
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool, vertical_offset: f64) {
 		let mut run_x = glyph_run.offset();
 		let run_y = glyph_run.baseline();
 
@@ -105,7 +105,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		let outlines = font_ref.outline_glyphs();
 
 		for glyph in glyph_run.glyphs() {
-			let glyph_offset = DVec2::new((run_x + glyph.x) as f64, (run_y - glyph.y) as f64);
+			let glyph_offset = DVec2::new((run_x + glyph.x) as f64, (run_y - glyph.y) as f64 + vertical_offset);
 			run_x += glyph.advance;
 
 			let glyph_id = GlyphId::from(glyph.id);

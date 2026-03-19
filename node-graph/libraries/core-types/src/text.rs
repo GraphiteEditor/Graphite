@@ -34,6 +34,18 @@ impl From<TextAlign> for parley::Alignment {
 	}
 }
 
+/// Vertical alignment of text within its bounding box.
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum VerticalAlign {
+	#[default]
+	Top,
+	Center,
+	Bottom,
+}
+
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TypesettingConfig {
 	pub font_size: f64,
@@ -43,6 +55,8 @@ pub struct TypesettingConfig {
 	pub max_height: Option<f64>,
 	pub tilt: f64,
 	pub align: TextAlign,
+	#[serde(default)]
+	pub vertical_align: VerticalAlign,
 }
 
 impl Default for TypesettingConfig {
@@ -55,6 +69,7 @@ impl Default for TypesettingConfig {
 			max_height: None,
 			tilt: 0.,
 			align: TextAlign::default(),
+			vertical_align: VerticalAlign::default(),
 		}
 	}
 }
