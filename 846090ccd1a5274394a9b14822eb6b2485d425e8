@@ -1,0 +1,65 @@
+frontend/src/managers/persistence.ts
+  6b36d5d8de564fca 6,10,13,51-52,66
+frontend/src/stores/tooltip.ts
+  6b36d5d8de564fca 5,39,47,50
+frontend/src/managers/panic.ts
+  6b36d5d8de564fca 4,6,9,28-29,36
+frontend/src/stores/dialog.ts
+  6b36d5d8de564fca 8,33,40,43
+frontend/src/components/window/StatusBar.svelte
+  6b36d5d8de564fca 5,12,30
+frontend/src/App.svelte
+  6b36d5d8de564fca 6,10,16-17
+frontend/src/managers/input.ts
+  6b36d5d8de564fca 54,60,63,89-90,101
+frontend/src/stores/fullscreen.ts
+  6b36d5d8de564fca 4,17,24,27
+frontend/src/managers/hyperlink.ts
+  6b36d5d8de564fca 1,3,5,8,16-17,24
+frontend/src/stores/portfolio.ts
+  6b36d5d8de564fca 6,29,36,39
+frontend/src/components/Editor.svelte
+  6b36d5d8de564fca 19,23-24,26,30-36,41-47
+frontend/src/managers/fonts.ts
+  6b36d5d8de564fca 2,8,12,15,64-65,68,74
+frontend/src/components/window/TitleBar.svelte
+  6b36d5d8de564fca 21
+frontend/src/stores/node-graph.ts
+  6b36d5d8de564fca 5,56,63,66
+frontend/src/stores/app-window.ts
+  6b36d5d8de564fca 5,24,36
+frontend/src/stores/document.ts
+  6b36d5d8de564fca 6,30,37,40
+frontend/src/editor.ts
+  6b36d5d8de564fca 9,28,69-70
+frontend/src/managers/localization.ts
+  6b36d5d8de564fca 2,5,8,11,21-22,29
+frontend/src/components/panels/Welcome.svelte
+  6b36d5d8de564fca 7,17
+frontend/src/managers/clipboard.ts
+  6b36d5d8de564fca 2,5,8,11,29-30,32-33,39
+frontend/src/components/panels/Properties.svelte
+  6b36d5d8de564fca 5,11
+frontend/src/components/panels/Data.svelte
+  6b36d5d8de564fca 5,11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "846090ccd1a5274394a9b14822eb6b2485d425e8",
+  "prompts": {
+    "6b36d5d8de564fca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3ac985-a4c8-4fbe-8b59-4fa1f29e4ec3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 331,
+      "total_deletions": 299,
+      "accepted_lines": 118,
+      "overriden_lines": 0
+    }
+  }
+}
