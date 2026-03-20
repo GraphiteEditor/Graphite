@@ -1,0 +1,49 @@
+frontend/src/managers/hyperlink.ts
+  6b36d5d8de564fca 6
+frontend/src/stores/dialog.ts
+  6b36d5d8de564fca 40
+frontend/src/stores/document.ts
+  6b36d5d8de564fca 38
+frontend/src/stores/tooltip.ts
+  6b36d5d8de564fca 39
+frontend/src/managers/clipboard.ts
+  6b36d5d8de564fca 6
+frontend/src/stores/app-window.ts
+  6b36d5d8de564fca 32
+frontend/src/stores/portfolio.ts
+  6b36d5d8de564fca 36
+frontend/src/managers/localization.ts
+  6b36d5d8de564fca 6
+frontend/src/stores/node-graph.ts
+  6b36d5d8de564fca 64
+frontend/src/managers/fonts.ts
+  6b36d5d8de564fca 11
+frontend/src/managers/panic.ts
+  6b36d5d8de564fca 7
+frontend/src/managers/persistence.ts
+  6b36d5d8de564fca 12
+frontend/src/stores/fullscreen.ts
+  6b36d5d8de564fca 25
+frontend/src/managers/input.ts
+  6b36d5d8de564fca 63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "be0bef7dd95a8463e6639be6bf4f5041b3925530",
+  "prompts": {
+    "6b36d5d8de564fca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3ac985-a4c8-4fbe-8b59-4fa1f29e4ec3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 7,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}
