@@ -1,0 +1,25 @@
+frontend/src/managers/persistence.ts
+  6b36d5d8de564fca 8-9
+frontend/src/managers/fonts.ts
+  6b36d5d8de564fca 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "55d6a3afe319d20f6969fde263e2db931b557fdf",
+  "prompts": {
+    "6b36d5d8de564fca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3ac985-a4c8-4fbe-8b59-4fa1f29e4ec3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 22,
+      "accepted_lines": 3,
+      "overriden_lines": 1
+    }
+  }
+}
