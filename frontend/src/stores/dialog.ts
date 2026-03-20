@@ -37,6 +37,8 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createDialogStore(editor: Editor) {
+	destroyDialogStore();
+
 	editorRef = editor;
 
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
@@ -49,6 +51,7 @@ export function createDialogStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", async (data) => {
 		await tick();
 
@@ -58,6 +61,7 @@ export function createDialogStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", async (data) => {
 		await tick();
 
@@ -67,6 +71,7 @@ export function createDialogStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", async (data) => {
 		await tick();
 

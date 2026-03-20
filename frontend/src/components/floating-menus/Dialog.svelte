@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import { wipeDocuments } from "@graphite/managers/persistence";
 	import type { DialogStore } from "@graphite/stores/dialog";
 	import { crashReportUrl } from "@graphite/utility-functions/crash-report";
+	import { wipeDocuments } from "@graphite/utility-functions/persistence";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

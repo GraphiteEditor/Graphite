@@ -61,9 +61,10 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createNodeGraphStore(editor: Editor) {
+	destroyNodeGraphStore();
+
 	editorRef = editor;
 
-	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
 			state.nodeDescriptions = new Map(data.nodeDescriptions);

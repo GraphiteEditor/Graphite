@@ -8,6 +8,8 @@ let editorRef: Editor | undefined = undefined;
 let abortController: AbortController | undefined = undefined;
 
 export function createFontsManager(editor: Editor) {
+	destroyFontsManager();
+
 	editorRef = editor;
 	abortController = new AbortController();
 
@@ -66,6 +68,5 @@ export function destroyFontsManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	destroyFontsManager();
 	if (editorRef) newModule?.createFontsManager(editorRef);
 });
