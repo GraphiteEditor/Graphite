@@ -1111,8 +1111,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-
-
 	// Upgrade the old "Spline" node to the new "Spline" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER)
 		|| reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::SplineNode"))

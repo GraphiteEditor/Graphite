@@ -294,7 +294,6 @@ where
 		paint_order,
 	};
 
-
 	for vector in content.vector_iter_mut() {
 		let mut stroke = stroke.clone();
 		stroke.transform *= *vector.transform;

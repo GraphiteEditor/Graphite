@@ -520,7 +520,6 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 	}
 }
 
-
 fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),

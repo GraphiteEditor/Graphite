@@ -351,7 +351,6 @@ mod stroke_paint_migration {
 		paint_order: PaintOrder,
 	}
 
-
 	fn default_miter_limit() -> f64 {
 		4.
 	}
@@ -384,7 +383,6 @@ mod stroke_paint_migration {
 			paint_order: old.paint_order,
 		})
 	}
-
 }
 
 #[repr(C)]
@@ -411,7 +409,6 @@ pub struct Stroke {
 	pub paint_order: PaintOrder,
 }
 
-
 impl<'de> serde::Deserialize<'de> for Stroke {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		stroke_paint_migration::deserialize_stroke(deserializer)
@@ -435,7 +432,6 @@ impl std::hash::Hash for Stroke {
 		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
-
 }
 
 impl Stroke {
@@ -455,7 +451,6 @@ impl Stroke {
 		}
 	}
 
-
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
 			paint: self.paint.lerp(&other.paint, time),
@@ -474,7 +469,6 @@ impl Stroke {
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
-
 
 	/// Get the current stroke color.
 	pub fn color(&self) -> Option<Color> {
