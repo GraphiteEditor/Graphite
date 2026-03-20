@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 
+	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { initWasm, createEditor } from "@graphite/editor";
-	import type { Editor as GraphiteEditor } from "@graphite/editor";
 	import type { SubscriptionRouter } from "@graphite/subscription-router";
 
 	import Editor from "@graphite/components/Editor.svelte";
 
 	let subscriptions: SubscriptionRouter | undefined = undefined;
-	let editor: GraphiteEditor | undefined = undefined;
+	let editor: EditorHandle | undefined = undefined;
 	let destroy: (() => void) | undefined = undefined;
 
 	onMount(async () => {

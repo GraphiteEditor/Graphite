@@ -1,11 +1,11 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { insertAtCaret, readAtCaret } from "@graphite/utility-functions/clipboard";
 
 let subscriptionsRef: SubscriptionRouter | undefined = undefined;
-let editorRef: Editor | undefined = undefined;
+let editorRef: EditorHandle | undefined = undefined;
 
-export function createClipboardManager(subscriptions: SubscriptionRouter, editor: Editor) {
+export function createClipboardManager(subscriptions: SubscriptionRouter, editor: EditorHandle) {
 	destroyClipboardManager();
 
 	subscriptionsRef = subscriptions;

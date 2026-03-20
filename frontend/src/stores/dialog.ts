@@ -2,8 +2,7 @@ import { tick } from "svelte";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
-import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { IconName } from "@graphite/icons";
 import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { patchLayout } from "@graphite/utility-functions/widgets";
@@ -37,7 +36,7 @@ const store: Writable<DialogStoreState> = import.meta.hot?.data?.store || writab
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createDialogStore(subscriptions: SubscriptionRouter, editor: Editor) {
+export function createDialogStore(subscriptions: SubscriptionRouter, editor: EditorHandle) {
 	destroyDialogStore();
 
 	subscriptionsRef = subscriptions;

@@ -2,8 +2,7 @@
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
 	import { evaluateMathExpression, isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { ActionShortcut, EditorHandle, NumberInputIncrementBehavior, NumberInputMode } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/managers/input";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
@@ -17,7 +16,7 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 
 	// Content
 	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.

@@ -1,4 +1,4 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 export function downloadFileURL(filename: string, url: string) {
@@ -66,7 +66,7 @@ export async function upload(accept: string, textOrData: "text" | "data" | "both
 }
 export type UploadResult<T> = { filename: string; type: string; content: T };
 
-export async function pasteFile(item: DataTransferItem, editor: Editor, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
+export async function pasteFile(item: DataTransferItem, editor: EditorHandle, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
 	const file = item.getAsFile();
 	if (!file) return;
 

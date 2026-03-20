@@ -1,7 +1,7 @@
 import { get } from "svelte/store";
 
 import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { DialogStore } from "@graphite/stores/dialog";
 import type { DocumentStore } from "@graphite/stores/document";
 import { toggleFullscreen } from "@graphite/stores/fullscreen";
@@ -79,7 +79,7 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	return true;
 }
 
-export async function onKeyDown(e: KeyboardEvent, editor: Editor, dialogStore: DialogStore) {
+export async function onKeyDown(e: KeyboardEvent, editor: EditorHandle, dialogStore: DialogStore) {
 	const key = await getLocalizedScanCode(e);
 
 	const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -97,7 +97,7 @@ export async function onKeyDown(e: KeyboardEvent, editor: Editor, dialogStore: D
 	}
 }
 
-export async function onKeyUp(e: KeyboardEvent, editor: Editor, dialogStore: DialogStore) {
+export async function onKeyUp(e: KeyboardEvent, editor: EditorHandle, dialogStore: DialogStore) {
 	const key = await getLocalizedScanCode(e);
 
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
@@ -110,7 +110,7 @@ export async function onKeyUp(e: KeyboardEvent, editor: Editor, dialogStore: Dia
 // Pointer events
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-export function onPointerMove(e: PointerEvent, editor: Editor, documentStore: DocumentStore) {
+export function onPointerMove(e: PointerEvent, editor: EditorHandle, documentStore: DocumentStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
@@ -128,7 +128,7 @@ export function onPointerMove(e: PointerEvent, editor: Editor, documentStore: Do
 	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-export function onPointerDown(e: PointerEvent, editor: Editor, dialogStore: DialogStore) {
+export function onPointerDown(e: PointerEvent, editor: EditorHandle, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
@@ -158,7 +158,7 @@ export function onPointerDown(e: PointerEvent, editor: Editor, dialogStore: Dial
 	}
 }
 
-export function onPointerUp(e: PointerEvent, editor: Editor) {
+export function onPointerUp(e: PointerEvent, editor: EditorHandle) {
 	potentiallyRestoreCanvasFocus(e);
 
 	// Don't let the browser navigate back or forward when using the buttons on some mice
@@ -177,7 +177,7 @@ export function onPointerUp(e: PointerEvent, editor: Editor) {
 
 // Mouse events
 
-export function onPotentialDoubleClick(e: MouseEvent, editor: Editor) {
+export function onPotentialDoubleClick(e: MouseEvent, editor: EditorHandle) {
 	if (textToolInteractiveInputElement || inPointerLock) return;
 
 	// Allow only events within the viewport or node graph boundaries
@@ -216,7 +216,7 @@ export function onPointerLockChange() {
 
 // Wheel events
 
-export function onWheelScroll(e: WheelEvent, editor: Editor) {
+export function onWheelScroll(e: WheelEvent, editor: EditorHandle) {
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 
 	// Prevent zooming the entire page when using Ctrl + scroll wheel outside of the viewport
@@ -247,7 +247,7 @@ export function onModifyInputField(e: CustomEvent) {
 
 // Window events
 
-export async function onBeforeUnload(e: BeforeUnloadEvent, editor: Editor, portfolioStore: PortfolioStore) {
+export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorHandle, portfolioStore: PortfolioStore) {
 	const activeDocument = get(portfolioStore).documents[get(portfolioStore).activeDocumentIndex];
 	if (activeDocument && !activeDocument.details.isAutoSaved) editor.triggerAutoSave(activeDocument.id);
 
@@ -264,7 +264,7 @@ export async function onBeforeUnload(e: BeforeUnloadEvent, editor: Editor, portf
 	}
 }
 
-export function onPaste(e: ClipboardEvent, editor: Editor) {
+export function onPaste(e: ClipboardEvent, editor: EditorHandle) {
 	const dataTransfer = e.clipboardData;
 	if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 	e.preventDefault();

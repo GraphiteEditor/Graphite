@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext, onDestroy } from "svelte";
 
-	import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { PortfolioStore } from "@graphite/stores/portfolio";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -41,7 +40,7 @@
 		return { name, unsaved, tooltipLabel: name, tooltipDescription };
 	});
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function resizePanel(e: PointerEvent) {

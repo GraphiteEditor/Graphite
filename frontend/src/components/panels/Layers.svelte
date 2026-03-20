@@ -2,8 +2,7 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
 
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { NodeGraphStore } from "@graphite/stores/node-graph";
 	import type { TooltipStore } from "@graphite/stores/tooltip";
 	import type { SubscriptionRouter } from "@graphite/subscription-router";
@@ -43,7 +42,7 @@
 	};
 
 	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
 

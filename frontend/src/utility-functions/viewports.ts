@@ -1,6 +1,6 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 
-export function setupViewportResizeObserver(editor: Editor): () => void {
+export function setupViewportResizeObserver(editor: EditorHandle): () => void {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
 	if (viewports.length <= 0) return () => {};
 

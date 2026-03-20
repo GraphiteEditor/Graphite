@@ -1,4 +1,4 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionRouter } from "@graphite/subscription-router";
 
 type ApiResponse = { family: string; variants: string[]; files: Record<string, string> }[];
@@ -6,10 +6,10 @@ type ApiResponse = { family: string; variants: string[]; files: Record<string, s
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
 let subscriptionsRef: SubscriptionRouter | undefined = undefined;
-let editorRef: Editor | undefined = undefined;
+let editorRef: EditorHandle | undefined = undefined;
 let abortController: AbortController | undefined = undefined;
 
-export function createFontsManager(subscriptions: SubscriptionRouter, editor: Editor) {
+export function createFontsManager(subscriptions: SubscriptionRouter, editor: EditorHandle) {
 	destroyFontsManager();
 
 	subscriptionsRef = subscriptions;

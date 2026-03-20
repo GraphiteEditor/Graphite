@@ -1,8 +1,7 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
-import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle, OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
@@ -33,7 +32,7 @@ const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || wri
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createPortfolioStore(subscriptions: SubscriptionRouter, editor: Editor) {
+export function createPortfolioStore(subscriptions: SubscriptionRouter, editor: EditorHandle) {
 	destroyPortfolioStore();
 
 	subscriptionsRef = subscriptions;

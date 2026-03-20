@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { createClipboardManager, destroyClipboardManager } from "@graphite/managers/clipboard";
 	import { createFontsManager, destroyFontsManager } from "@graphite/managers/fonts";
 	import { createHyperlinkManager, destroyHyperlinkManager } from "@graphite/managers/hyperlink";
@@ -22,7 +22,7 @@
 
 	// Graphite Wasm editor and subscription router
 	export let subscriptions: SubscriptionRouter;
-	export let editor: Editor;
+	export let editor: EditorHandle;
 	setContext("subscriptions", subscriptions);
 	setContext("editor", editor);
 

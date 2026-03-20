@@ -1,11 +1,11 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { localizeTimestamp } from "@graphite/utility-functions/time";
 
 let subscriptionsRef: SubscriptionRouter | undefined = undefined;
-let editorRef: Editor | undefined = undefined;
+let editorRef: EditorHandle | undefined = undefined;
 
-export function createLocalizationManager(subscriptions: SubscriptionRouter, editor: Editor) {
+export function createLocalizationManager(subscriptions: SubscriptionRouter, editor: EditorHandle) {
 	destroyLocalizationManager();
 
 	subscriptionsRef = subscriptions;

@@ -2,8 +2,7 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { AppWindowStore } from "@graphite/stores/app-window";
 	import { enterFullscreen, exitFullscreen } from "@graphite/stores/fullscreen";
 	import type { FullscreenStore } from "@graphite/stores/fullscreen";
@@ -17,7 +16,7 @@
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const fullscreen = getContext<FullscreenStore>("fullscreen");

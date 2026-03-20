@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -18,7 +17,7 @@
 
 	let expanded = true;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->

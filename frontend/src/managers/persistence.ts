@@ -1,13 +1,13 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { PortfolioStore } from "@graphite/stores/portfolio";
 import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { saveEditorPreferences, loadEditorPreferences, storeDocument, removeDocument, loadFirstDocument, loadRestDocuments, saveActiveDocument } from "@graphite/utility-functions/persistence";
 
 let subscriptionsRef: SubscriptionRouter | undefined = undefined;
-let editorRef: Editor | undefined = undefined;
+let editorRef: EditorHandle | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 
-export function createPersistenceManager(subscriptions: SubscriptionRouter, editor: Editor, portfolio: PortfolioStore) {
+export function createPersistenceManager(subscriptions: SubscriptionRouter, editor: EditorHandle, portfolio: PortfolioStore) {
 	destroyPersistenceManager();
 
 	subscriptionsRef = subscriptions;

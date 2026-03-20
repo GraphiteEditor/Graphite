@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -25,7 +25,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;

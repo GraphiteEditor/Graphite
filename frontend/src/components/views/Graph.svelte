@@ -3,8 +3,7 @@
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 
-	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { DocumentStore } from "@graphite/stores/document";
 	import { closeContextMenu } from "@graphite/stores/node-graph";
 	import type { NodeGraphStore } from "@graphite/stores/node-graph";
@@ -20,7 +19,7 @@
 	const GRID_SIZE = 24;
 	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const documentState = getContext<DocumentStore>("document");
 

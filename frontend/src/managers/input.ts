@@ -1,4 +1,4 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { DialogStore } from "@graphite/stores/dialog";
 import type { DocumentStore } from "@graphite/stores/document";
 import { fullscreenModeChanged } from "@graphite/stores/fullscreen";
@@ -52,12 +52,12 @@ const listeners: Listener[] = [
 ];
 
 let subscriptionsRef: SubscriptionRouter | undefined = undefined;
-let editorRef: Editor | undefined = undefined;
+let editorRef: EditorHandle | undefined = undefined;
 let dialogStore: DialogStore | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 let documentStore: DocumentStore | undefined = undefined;
 
-export function createInputManager(subscriptions: SubscriptionRouter, editor: Editor, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
+export function createInputManager(subscriptions: SubscriptionRouter, editor: EditorHandle, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
 	destroyInputManager();
 
 	subscriptionsRef = subscriptions;

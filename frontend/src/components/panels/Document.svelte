@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
-	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { Color, EditorHandle, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { AppWindowStore } from "@graphite/stores/app-window";
 	import type { DocumentStore } from "@graphite/stores/document";
 	import type { SubscriptionRouter } from "@graphite/subscription-router";
@@ -28,7 +27,7 @@
 	let gradientStopPicker: ColorPicker | undefined;
 
 	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
 
