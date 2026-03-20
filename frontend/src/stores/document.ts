@@ -35,6 +35,8 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createDocumentStore(editor: Editor) {
+	destroyDocumentStore();
+
 	editorRef = editor;
 
 	// Update layouts

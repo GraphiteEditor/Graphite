@@ -29,6 +29,8 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createAppWindowStore(editor: Editor) {
+	destroyAppWindowStore();
+
 	editorRef = editor;
 
 	editor.subscriptions.subscribeFrontendMessage("UpdatePlatform", (data) => {

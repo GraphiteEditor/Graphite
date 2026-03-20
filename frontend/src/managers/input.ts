@@ -60,6 +60,8 @@ const listeners: { target: EventListenerTarget; eventName: EventName; action(eve
 ];
 
 export function createInputManager(editor: Editor, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
+	destroyInputManager();
+
 	editorRef = editor;
 	dialogStore = dialog;
 	portfolioStore = portfolio;
@@ -564,6 +566,5 @@ function potentiallyRestoreCanvasFocus(e: Event) {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	destroyInputManager();
 	if (editorRef && dialogStore && portfolioStore && documentStore) newModule?.createInputManager(editorRef, dialogStore, portfolioStore, documentStore);
 });

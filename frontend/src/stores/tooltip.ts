@@ -36,6 +36,8 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createTooltipStore(editor: Editor) {
+	destroyTooltipStore();
+
 	editorRef = editor;
 
 	document.addEventListener("mouseover", onMouseOver);

@@ -4,6 +4,8 @@ import { createCrashDialog } from "@graphite/stores/dialog";
 let editorRef: Editor | undefined = undefined;
 
 export function createPanicManager(editor: Editor) {
+	destroyPanicManager();
+
 	editorRef = editor;
 
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
@@ -31,6 +33,5 @@ export function destroyPanicManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	destroyPanicManager();
 	if (editorRef) newModule?.createPanicManager(editorRef);
 });

@@ -33,6 +33,8 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createPortfolioStore(editor: Editor) {
+	destroyPortfolioStore();
+
 	editorRef = editor;
 
 	editor.subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {

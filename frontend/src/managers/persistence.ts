@@ -9,6 +9,8 @@ let editorRef: Editor | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 
 export function createPersistenceManager(editor: Editor, portfolio: PortfolioStore) {
+	destroyPersistenceManager();
+
 	editorRef = editor;
 	portfolioStore = portfolio;
 
@@ -244,6 +246,5 @@ export async function wipeDocuments() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	destroyPersistenceManager();
 	if (editorRef && portfolioStore) newModule?.createPersistenceManager(editorRef, portfolioStore);
 });

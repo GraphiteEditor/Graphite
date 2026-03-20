@@ -37,6 +37,8 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createDialogStore(editor: Editor) {
+	destroyDialogStore();
+
 	editorRef = editor;
 
 	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
