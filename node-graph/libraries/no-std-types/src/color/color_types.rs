@@ -893,6 +893,18 @@ impl Color {
 		[(gamma.red * 255.) as u8, (gamma.green * 255.) as u8, (gamma.blue * 255.) as u8, (gamma.alpha * 255.) as u8]
 	}
 
+	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in gamma space.
+	/// # Examples
+	/// ```
+	/// use core_types::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// // TODO: Add test
+	/// ```
+	#[inline(always)]
+	pub fn to_rgba8(&self) -> [u8; 4] {
+		[(self.red * 255.) as u8, (self.green * 255.) as u8, (self.blue * 255.) as u8, (self.alpha * 255.) as u8]
+	}
+
 	/// Return the all RGB components as a u8 slice, first component is red, followed by green, followed by blue. Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
@@ -905,6 +917,18 @@ impl Color {
 	pub fn to_rgb8_srgb(&self) -> [u8; 3] {
 		let gamma = self.to_gamma_srgb();
 		[(gamma.red * 255.) as u8, (gamma.green * 255.) as u8, (gamma.blue * 255.) as u8]
+	}
+
+	/// Return the all RGB components as a u8 slice, first component is red, followed by green, followed by blue. Use this if the [`Color`] is in gamma space.
+	/// # Examples
+	/// ```
+	/// use core_types::color::Color;
+	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
+	/// // TODO: Add test
+	/// ```
+	#[inline(always)]
+	pub fn to_rgb8(&self) -> [u8; 3] {
+		[(self.red * 255.) as u8, (self.green * 255.) as u8, (self.blue * 255.) as u8]
 	}
 
 	// https://www.niwa.nu/2013/05/math-behind-colorspace-conversions-rgb-hsl/
