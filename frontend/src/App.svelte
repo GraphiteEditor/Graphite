@@ -9,6 +9,7 @@
 
 	let subscriptions: SubscriptionRouter | undefined = undefined;
 	let editor: GraphiteEditor | undefined = undefined;
+	let destroy: (() => void) | undefined = undefined;
 
 	onMount(async () => {
 		await initWasm();
@@ -16,10 +17,11 @@
 		const created = createEditor();
 		subscriptions = created.subscriptions;
 		editor = created.editor;
+		destroy = created.destroy;
 	});
 
 	onDestroy(() => {
-		editor?.destroy();
+		destroy?.();
 	});
 </script>
 
