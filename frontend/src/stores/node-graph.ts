@@ -65,7 +65,6 @@ export function createNodeGraphStore(editor: Editor) {
 
 	editorRef = editor;
 
-	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
 			state.nodeDescriptions = new Map(data.nodeDescriptions);

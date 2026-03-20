@@ -39,13 +39,13 @@ export function createDocumentStore(editor: Editor) {
 
 	editorRef = editor;
 
-	// Update layouts
 	editor.subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
 			state.fadeArtwork = data.percentage;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
 		await tick();
 
@@ -54,6 +54,7 @@ export function createDocumentStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
 		await tick();
 
@@ -62,6 +63,7 @@ export function createDocumentStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
 		await tick();
 
@@ -70,6 +72,7 @@ export function createDocumentStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
 		await tick();
 
@@ -78,6 +81,7 @@ export function createDocumentStore(editor: Editor) {
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", async (data) => {
 		await tick();
 
@@ -87,7 +91,6 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	// Show or hide the graph view overlay
 	editor.subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;

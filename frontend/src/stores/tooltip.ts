@@ -9,8 +9,6 @@ export type TooltipStore = ReturnType<typeof createTooltipStore>;
 
 const SHOW_TOOLTIP_DELAY_MS = 500;
 
-let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
-
 type TooltipStoreState = {
 	visible: boolean;
 	element: Element | undefined;
@@ -28,7 +26,18 @@ const initialState: TooltipStoreState = {
 	fullscreenShortcut: undefined,
 };
 
+type Listener = { eventName: keyof DocumentEventMap; action(event: Event): void };
+const tooltipEventListeners: Listener[] = [
+	{ eventName: "mouseover", action: onMouseOver },
+	{ eventName: "mousemove", action: onMouseMove },
+	{ eventName: "mouseleave", action: onMouseLeave },
+	{ eventName: "mousedown", action: closeTooltip },
+	{ eventName: "keydown", action: closeTooltip },
+	{ eventName: "wheel", action: closeTooltip },
+];
+
 let editorRef: Editor | undefined = undefined;
+let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<TooltipStoreState> = import.meta.hot?.data?.store || writable<TooltipStoreState>(initialState);
@@ -40,31 +49,28 @@ export function createTooltipStore(editor: Editor) {
 
 	editorRef = editor;
 
-	document.addEventListener("mouseover", onMouseOver);
-	document.addEventListener("mousemove", onMouseMove);
-	document.addEventListener("mouseleave", onMouseLeave);
-	document.addEventListener("mousedown", closeTooltip);
-	document.addEventListener("keydown", closeTooltip);
-	document.addEventListener("wheel", closeTooltip);
-
 	editor.subscriptions.subscribeFrontendMessage("SendShortcutShiftClick", async (data) => {
 		update((state) => {
 			state.shiftClickShortcut = data.shortcut;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("SendShortcutAltClick", async (data) => {
 		update((state) => {
 			state.altClickShortcut = data.shortcut;
 			return state;
 		});
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("SendShortcutFullscreen", async (data) => {
 		update((state) => {
 			state.fullscreenShortcut = operatingSystem() === "Mac" ? data.shortcutMac : data.shortcut;
 			return state;
 		});
 	});
+
+	tooltipEventListeners.forEach(({ eventName, action }) => document.addEventListener(eventName, action));
 
 	return { subscribe };
 }
@@ -75,16 +81,11 @@ export function destroyTooltipStore() {
 
 	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
-	document.removeEventListener("mouseover", onMouseOver);
-	document.removeEventListener("mousemove", onMouseMove);
-	document.removeEventListener("mouseleave", onMouseLeave);
-	document.removeEventListener("mousedown", closeTooltip);
-	document.removeEventListener("keydown", closeTooltip);
-	document.removeEventListener("wheel", closeTooltip);
-
 	editor.subscriptions.unsubscribeFrontendMessage("SendShortcutShiftClick");
 	editor.subscriptions.unsubscribeFrontendMessage("SendShortcutAltClick");
 	editor.subscriptions.unsubscribeFrontendMessage("SendShortcutFullscreen");
+
+	tooltipEventListeners.forEach(({ eventName, action }) => document.removeEventListener(eventName, action));
 }
 
 // Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip
