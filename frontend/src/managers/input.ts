@@ -552,7 +552,6 @@ function targetIsTextField(target: EventTarget | HTMLElement | undefined): boole
 function potentiallyRestoreCanvasFocus(e: Event) {
 	const appElement = window.document.querySelector("[data-app-container]");
 	const app = appElement instanceof HTMLElement ? appElement : null;
-	app?.focus();
 
 	const newInCanvasArea =
 		(e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&

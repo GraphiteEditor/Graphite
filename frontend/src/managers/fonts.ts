@@ -5,15 +5,15 @@ type ApiResponse = { family: string; variants: string[]; files: Record<string, s
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
 let editorRef: Editor | undefined = undefined;
-
-const abortController = new AbortController();
+let abortController: AbortController | undefined = undefined;
 
 export function createFontsManager(editor: Editor) {
 	editorRef = editor;
+	abortController = new AbortController();
 
 	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		try {
-			const response = await fetch(FONT_LIST_API, { signal: abortController.signal });
+			const response = await fetch(FONT_LIST_API, abortController ? { signal: abortController.signal } : undefined);
 			if (!response.ok) throw new Error(`Font catalog request failed with status ${response.status}`);
 			const fontListResponse: { items: ApiResponse } = await response.json();
 			const fontListData = fontListResponse.items;
@@ -41,7 +41,7 @@ export function createFontsManager(editor: Editor) {
 
 		try {
 			if (!data.url) throw new Error("No URL provided for font data load");
-			const response = await fetch(data.url, { signal: abortController.signal });
+			const response = await fetch(data.url, abortController ? { signal: abortController.signal } : undefined);
 			if (!response.ok) throw new Error(`Font data request failed with status ${response.status}`);
 			const buffer = await response.arrayBuffer();
 			const bytes = new Uint8Array(buffer);
@@ -59,7 +59,7 @@ export function destroyFontsManager() {
 	const editor = editorRef;
 	if (!editor) return;
 
-	abortController.abort();
+	abortController?.abort();
 	editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
 	editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
 }
