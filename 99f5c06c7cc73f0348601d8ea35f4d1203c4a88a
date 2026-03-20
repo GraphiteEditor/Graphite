@@ -1,0 +1,51 @@
+frontend/src/stores/dialog.ts
+  6b36d5d8de564fca 5
+frontend/src/components/window/Workspace.svelte
+  6b36d5d8de564fca 4
+frontend/src/components/panels/Layers.svelte
+  6b36d5d8de564fca 5
+frontend/src/editor.ts
+  6b36d5d8de564fca 22,28
+frontend/src/components/panels/Document.svelte
+  6b36d5d8de564fca 4
+frontend/src/components/widgets/inputs/NumberInput.svelte
+  6b36d5d8de564fca 5
+frontend/src/components/widgets/inputs/WorkingColorsInput.svelte
+  6b36d5d8de564fca 4
+frontend/src/components/floating-menus/Tooltip.svelte
+  6b36d5d8de564fca 4
+frontend/src/components/views/Graph.svelte
+  6b36d5d8de564fca 6
+frontend/src/App.svelte
+  6b36d5d8de564fca 11
+frontend/src/stores/portfolio.ts
+  6b36d5d8de564fca 4
+frontend/src/components/panels/Welcome.svelte
+  6b36d5d8de564fca 5
+frontend/src/components/widgets/WidgetSection.svelte
+  6b36d5d8de564fca 4
+frontend/src/components/window/TitleBar.svelte
+  6b36d5d8de564fca 5
+frontend/src/components/widgets/WidgetSpan.svelte
+  6b36d5d8de564fca 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "99f5c06c7cc73f0348601d8ea35f4d1203c4a88a",
+  "prompts": {
+    "6b36d5d8de564fca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3ac985-a4c8-4fbe-8b59-4fa1f29e4ec3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 53,
+      "total_deletions": 67,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    }
+  }
+}
