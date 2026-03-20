@@ -5,6 +5,7 @@
 	import type { Editor } from "@graphite/editor";
 	import type { AppWindowStore } from "@graphite/stores/app-window";
 	import type { DocumentStore } from "@graphite/stores/document";
+	import type { SubscriptionRouter } from "@graphite/subscription-router";
 	import type { MessageBody } from "@graphite/subscription-router";
 	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
@@ -26,6 +27,7 @@
 	let viewport: HTMLDivElement | undefined;
 	let gradientStopPicker: ColorPicker | undefined;
 
+	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
 	const editor = getContext<Editor>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
@@ -454,12 +456,12 @@
 		updatePixelRatio();
 
 		// Update rendered SVGs
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
 			await tick();
 
 			updateDocumentArtwork(data.svg);
 		});
-		editor.subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
 			await tick();
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
@@ -473,19 +475,19 @@
 		});
 
 		// Gradient stop color picker
-		editor.subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
 			gradientStopPickerColor = data.color;
 			gradientStopPickerPosition = { x: data.position[0], y: data.position[1] };
 		});
 
 		// Update scrollbars and rulers
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
 			await tick();
 
 			const { position, size, multiplier } = data;
 			updateDocumentScrollbars(position, size, multiplier);
 		});
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
 			const { origin, spacing, interval, visible } = data;
@@ -493,24 +495,24 @@
 		});
 
 		// Update mouse cursor icon
-		editor.subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
 			await tick();
 
 			updateMouseCursor(data.cursor);
 		});
 
 		// Text entry
-		editor.subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
+		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
 
 			triggerTextCommit();
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
 			await tick();
 
 			displayEditableTextbox(data);
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
 			await tick();
 
 			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
@@ -521,10 +523,10 @@
 				textInput.style.fontFamily = "text-font";
 			}
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
 			textInputMatrix = data.transform;
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
+		subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
 			await tick();
 
 			displayRemoveEditableTextbox();
@@ -547,17 +549,17 @@
 		removeUpdatePixelRatio?.();
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
 
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
+		subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
+		subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
+		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
+		subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
 	});
 </script>
 

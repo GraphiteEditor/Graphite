@@ -3,6 +3,7 @@ import type { DialogStore } from "@graphite/stores/dialog";
 import type { DocumentStore } from "@graphite/stores/document";
 import { fullscreenModeChanged } from "@graphite/stores/fullscreen";
 import type { PortfolioStore } from "@graphite/stores/portfolio";
+import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { triggerClipboardRead } from "@graphite/utility-functions/clipboard";
 import {
 	onBeforeUnload,
@@ -50,24 +51,26 @@ const listeners: Listener[] = [
 	{ target: window.document, eventName: "pointerlockerror", action: onPointerLockChange },
 ];
 
+let subscriptionsRef: SubscriptionRouter | undefined = undefined;
 let editorRef: Editor | undefined = undefined;
 let dialogStore: DialogStore | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 let documentStore: DocumentStore | undefined = undefined;
 
-export function createInputManager(editor: Editor, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
+export function createInputManager(subscriptions: SubscriptionRouter, editor: Editor, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
 	destroyInputManager();
 
+	subscriptionsRef = subscriptions;
 	editorRef = editor;
 	dialogStore = dialog;
 	portfolioStore = portfolio;
 	documentStore = doc;
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardRead", () => {
+	subscriptions.subscribeFrontendMessage("TriggerClipboardRead", () => {
 		triggerClipboardRead(editor);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
+	subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
 		// Desktop app only: dispatch custom pointer lock movement events
 		const event = new CustomEvent("pointerlockmove", { detail: { x: data.position[0], y: data.position[1] } });
 		window.dispatchEvent(event);
@@ -83,11 +86,11 @@ export function createInputManager(editor: Editor, dialog: DialogStore, portfoli
 
 // Return the destructor
 export function destroyInputManager() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRef;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
-	editor.subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
+	subscriptions.unsubscribeFrontendMessage("TriggerClipboardRead");
+	subscriptions.unsubscribeFrontendMessage("WindowPointerLockMove");
 
 	// Remove event bindings after the lifetime of the application (or on hot-module replacement during development)
 	listeners.forEach(({ target, eventName, action, options }) => target.removeEventListener(eventName, action, options));
@@ -95,5 +98,5 @@ export function destroyInputManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (editorRef && dialogStore && portfolioStore && documentStore) newModule?.createInputManager(editorRef, dialogStore, portfolioStore, documentStore);
+	if (subscriptionsRef && editorRef && dialogStore && portfolioStore && documentStore) newModule?.createInputManager(subscriptionsRef, editorRef, dialogStore, portfolioStore, documentStore);
 });

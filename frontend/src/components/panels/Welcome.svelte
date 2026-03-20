@@ -4,6 +4,7 @@
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
+	import type { SubscriptionRouter } from "@graphite/subscription-router";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
@@ -13,19 +14,20 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
+	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
 	const editor = getContext<Editor>("editor");
 
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
+		subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
 			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
+		subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	});
 
 	function dropFile(e: DragEvent) {

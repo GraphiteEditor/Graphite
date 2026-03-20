@@ -1,19 +1,22 @@
 import type { Editor } from "@graphite/editor";
+import type { SubscriptionRouter } from "@graphite/subscription-router";
 
 type ApiResponse = { family: string; variants: string[]; files: Record<string, string> }[];
 
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
+let subscriptionsRef: SubscriptionRouter | undefined = undefined;
 let editorRef: Editor | undefined = undefined;
 let abortController: AbortController | undefined = undefined;
 
-export function createFontsManager(editor: Editor) {
+export function createFontsManager(subscriptions: SubscriptionRouter, editor: Editor) {
 	destroyFontsManager();
 
+	subscriptionsRef = subscriptions;
 	editorRef = editor;
 	abortController = new AbortController();
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		try {
 			const response = await fetch(FONT_LIST_API, abortController ? { signal: abortController.signal } : undefined);
 			if (!response.ok) throw new Error(`Font catalog request failed with status ${response.status}`);
@@ -38,7 +41,7 @@ export function createFontsManager(editor: Editor) {
 		}
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerFontDataLoad", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerFontDataLoad", async (data) => {
 		const { fontFamily, fontStyle } = data.font;
 
 		try {
@@ -58,15 +61,15 @@ export function createFontsManager(editor: Editor) {
 }
 
 export function destroyFontsManager() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRef;
+	if (!subscriptions) return;
 
 	abortController?.abort();
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
+	subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
+	subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (editorRef) newModule?.createFontsManager(editorRef);
+	if (subscriptionsRef && editorRef) newModule?.createFontsManager(subscriptionsRef, editorRef);
 });

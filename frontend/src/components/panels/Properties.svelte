@@ -2,25 +2,25 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { SubscriptionRouter } from "@graphite/subscription-router";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
 
 	let propertiesPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("PropertiesPanel", (data) => {
+		subscriptions.subscribeLayoutUpdate("PropertiesPanel", (data) => {
 			patchLayout(propertiesPanelLayout, data);
 			propertiesPanelLayout = propertiesPanelLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+		subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
 	});
 </script>
 

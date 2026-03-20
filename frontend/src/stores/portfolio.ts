@@ -3,6 +3,7 @@ import type { Writable } from "svelte/store";
 
 import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
+import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
@@ -25,26 +26,26 @@ const initialState: PortfolioStoreState = {
 	layersPanelOpen: true,
 };
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRef: SubscriptionRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createPortfolioStore(editor: Editor) {
+export function createPortfolioStore(subscriptions: SubscriptionRouter, editor: Editor) {
 	destroyPortfolioStore();
 
-	editorRef = editor;
+	subscriptionsRef = subscriptions;
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
 			state.documents = data.openDocuments;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateActiveDocument", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateActiveDocument", (data) => {
 		update((state) => {
 			// Assume we receive a correct document id
 			const activeId = state.documents.findIndex((doc) => doc.id === data.documentId);
@@ -53,7 +54,7 @@ export function createPortfolioStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerFetchAndOpenDocument", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerFetchAndOpenDocument", async (data) => {
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
@@ -66,26 +67,26 @@ export function createPortfolioStore(editor: Editor) {
 		}
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
 		const data = await upload(`image/*,.${editor.handle.fileExtension()}`, "data");
 		editor.handle.openFile(data.filename, data.content);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerImport", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerImport", async () => {
 		// TODO: Use the same `accept` string as in the `TriggerOpen` handler once importing Graphite documents as nodes is supported
 		const data = await upload("image/*", "data");
 		editor.handle.importFile(data.filename, data.content);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
 		downloadFile(data.name, data.content);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerSaveFile", (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerSaveFile", (data) => {
 		downloadFile(data.name, data.content);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerExportImage", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerExportImage", async (data) => {
 		const { svg, name, mime, size } = data;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
@@ -102,21 +103,21 @@ export function createPortfolioStore(editor: Editor) {
 		}
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateDataPanelState", async (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateDataPanelState", async (data) => {
 		update((state) => {
 			state.dataPanelOpen = data.open;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdatePropertiesPanelState", async (data) => {
+	subscriptions.subscribeFrontendMessage("UpdatePropertiesPanelState", async (data) => {
 		update((state) => {
 			state.propertiesPanelOpen = data.open;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateLayersPanelState", async (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateLayersPanelState", async (data) => {
 		update((state) => {
 			state.layersPanelOpen = data.open;
 			return state;
@@ -127,18 +128,18 @@ export function createPortfolioStore(editor: Editor) {
 }
 
 export function destroyPortfolioStore() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRef;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerOpen");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerImport");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateDataPanelState");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdatePropertiesPanelState");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateLayersPanelState");
+	subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");
+	subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerOpen");
+	subscriptions.unsubscribeFrontendMessage("TriggerImport");
+	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
+	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
+	subscriptions.unsubscribeFrontendMessage("UpdateDataPanelState");
+	subscriptions.unsubscribeFrontendMessage("UpdatePropertiesPanelState");
+	subscriptions.unsubscribeFrontendMessage("UpdateLayersPanelState");
 }

@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { AppWindowPlatform } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
+import type { SubscriptionRouter } from "@graphite/subscription-router";
 
 export type AppWindowStore = ReturnType<typeof createAppWindowStore>;
 
@@ -21,47 +21,47 @@ const initialState: AppWindowStoreState = {
 	uiScale: 1,
 };
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRef: SubscriptionRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<AppWindowStoreState> = import.meta.hot?.data?.store || writable<AppWindowStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createAppWindowStore(editor: Editor) {
+export function createAppWindowStore(subscriptions: SubscriptionRouter) {
 	destroyAppWindowStore();
 
-	editorRef = editor;
+	subscriptionsRef = subscriptions;
 
-	editor.subscriptions.subscribeFrontendMessage("UpdatePlatform", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdatePlatform", (data) => {
 		update((state) => {
 			state.platform = data.platform;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateMaximized", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateMaximized", (data) => {
 		update((state) => {
 			state.maximized = data.maximized;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateFullscreen", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateFullscreen", (data) => {
 		update((state) => {
 			state.fullscreen = data.fullscreen;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateViewportHolePunch", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateViewportHolePunch", (data) => {
 		update((state) => {
 			state.viewportHolePunch = data.active;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateUIScale", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateUIScale", (data) => {
 		update((state) => {
 			state.uiScale = data.scale;
 			return state;
@@ -72,12 +72,12 @@ export function createAppWindowStore(editor: Editor) {
 }
 
 export function destroyAppWindowStore() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRef;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("UpdatePlatform");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateMaximized");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateFullscreen");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateViewportHolePunch");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateUIScale");
+	subscriptions.unsubscribeFrontendMessage("UpdatePlatform");
+	subscriptions.unsubscribeFrontendMessage("UpdateMaximized");
+	subscriptions.unsubscribeFrontendMessage("UpdateFullscreen");
+	subscriptions.unsubscribeFrontendMessage("UpdateViewportHolePunch");
+	subscriptions.unsubscribeFrontendMessage("UpdateUIScale");
 }

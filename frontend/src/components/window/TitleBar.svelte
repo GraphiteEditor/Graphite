@@ -8,6 +8,7 @@
 	import { enterFullscreen, exitFullscreen } from "@graphite/stores/fullscreen";
 	import type { FullscreenStore } from "@graphite/stores/fullscreen";
 	import type { TooltipStore } from "@graphite/stores/tooltip";
+	import type { SubscriptionRouter } from "@graphite/subscription-router";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -16,8 +17,9 @@
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
-	const appWindow = getContext<AppWindowStore>("appWindow");
 	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
+	const appWindow = getContext<AppWindowStore>("appWindow");
 	const fullscreen = getContext<FullscreenStore>("fullscreen");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
@@ -29,14 +31,14 @@
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
 			patchLayout(menuBarLayout, data);
 			menuBarLayout = menuBarLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("MenuBar");
+		subscriptions.unsubscribeLayoutUpdate("MenuBar");
 	});
 </script>
 

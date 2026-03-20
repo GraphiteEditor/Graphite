@@ -5,6 +5,7 @@ import type { Writable } from "svelte/store";
 import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import type { IconName } from "@graphite/icons";
+import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export type DialogStore = ReturnType<typeof createDialogStore>;
@@ -29,19 +30,19 @@ const initialState: DialogStoreState = {
 	panicDetails: "",
 };
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRef: SubscriptionRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DialogStoreState> = import.meta.hot?.data?.store || writable<DialogStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createDialogStore(editor: Editor) {
+export function createDialogStore(subscriptions: SubscriptionRouter, editor: Editor) {
 	destroyDialogStore();
 
-	editorRef = editor;
+	subscriptionsRef = subscriptions;
 
-	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
+	subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
 			state.visible = true;
 
@@ -52,7 +53,7 @@ export function createDialogStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", async (data) => {
+	subscriptions.subscribeLayoutUpdate("DialogButtons", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -62,7 +63,7 @@ export function createDialogStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", async (data) => {
+	subscriptions.subscribeLayoutUpdate("DialogColumn1", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -72,7 +73,7 @@ export function createDialogStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", async (data) => {
+	subscriptions.subscribeLayoutUpdate("DialogColumn2", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -82,7 +83,7 @@ export function createDialogStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("DialogClose", () => {
+	subscriptions.subscribeFrontendMessage("DialogClose", () => {
 		update((state) => {
 			// Disallow dismissing the crash dialog since it should remain as the final notification
 			if (state.panicDetails === "") state.visible = false;
@@ -91,7 +92,7 @@ export function createDialogStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
 		let licenseText = `Content was not able to load. Please check your network connection and try again.\n\nOr visit ${BACKUP_URL} for the license notices.`;
 
@@ -109,15 +110,15 @@ export function createDialogStore(editor: Editor) {
 }
 
 export function destroyDialogStore() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRef;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("DisplayDialog");
-	editor.subscriptions.unsubscribeFrontendMessage("DialogClose");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog");
-	editor.subscriptions.unsubscribeLayoutUpdate("DialogButtons");
-	editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn1");
-	editor.subscriptions.unsubscribeLayoutUpdate("DialogColumn2");
+	subscriptions.unsubscribeFrontendMessage("DisplayDialog");
+	subscriptions.unsubscribeFrontendMessage("DialogClose");
+	subscriptions.unsubscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog");
+	subscriptions.unsubscribeLayoutUpdate("DialogButtons");
+	subscriptions.unsubscribeLayoutUpdate("DialogColumn1");
+	subscriptions.unsubscribeLayoutUpdate("DialogColumn2");
 }
 
 // Creates a crash dialog from JS once the editor has panicked.

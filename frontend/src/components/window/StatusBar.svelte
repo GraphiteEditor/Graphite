@@ -2,32 +2,33 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { SubscriptionRouter } from "@graphite/subscription-router";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
 
 	let statusBarHintsLayout: Layout = [];
 	let statusBarInfoLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("StatusBarHints", (data) => {
+		subscriptions.subscribeLayoutUpdate("StatusBarHints", (data) => {
 			patchLayout(statusBarHintsLayout, data);
 			statusBarHintsLayout = statusBarHintsLayout;
 		});
-		editor.subscriptions.subscribeLayoutUpdate("StatusBarInfo", (data) => {
+
+		subscriptions.subscribeLayoutUpdate("StatusBarInfo", (data) => {
 			patchLayout(statusBarInfoLayout, data);
 			statusBarInfoLayout = statusBarInfoLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("StatusBarHints");
-		editor.subscriptions.unsubscribeLayoutUpdate("StatusBarInfo");
+		subscriptions.unsubscribeLayoutUpdate("StatusBarHints");
+		subscriptions.unsubscribeLayoutUpdate("StatusBarInfo");
 	});
 </script>
 

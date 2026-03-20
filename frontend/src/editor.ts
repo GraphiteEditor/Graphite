@@ -6,10 +6,9 @@ import { createSubscriptionRouter } from "@graphite/subscription-router";
 import type { MessageName, SubscriptionRouter } from "@graphite/subscription-router";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
-// TODO: Split out `subscriptions`, and unwrap the remaining `handle` so `EditorHandle` can replace `Editor` and then it can also be renamed to `Editor` to fully remove `EditorHandle`.
+// TODO: Unwrap the remaining `handle` so `EditorHandle` can replace `Editor` and then it can also be renamed to `Editor` to fully remove `EditorHandle`.
 export type Editor = {
 	handle: EditorHandle;
-	subscriptions: SubscriptionRouter;
 	destroy: () => void;
 };
 
@@ -26,7 +25,7 @@ export async function initWasm() {
 }
 
 // Should be called after running `initWasm()` and its promise resolving.
-export function createEditor(): Editor {
+export function createEditor(): { editor: Editor; subscriptions: SubscriptionRouter } {
 	// Provide a random starter seed which must occur after initializing the Wasm module, since Wasm can't generate its own random numbers
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	const randomSeed = BigInt(randomSeedFloat);
@@ -67,7 +66,8 @@ export function createEditor(): Editor {
 		demoArtworkAbortController.abort();
 	}
 
-	return { handle, subscriptions, destroy };
+	const editor: Editor = { handle, destroy };
+	return { editor, subscriptions };
 }
 
 // Wasm state can't be hot-replaced, so we tell Vite to do a full page reload when this module changes
