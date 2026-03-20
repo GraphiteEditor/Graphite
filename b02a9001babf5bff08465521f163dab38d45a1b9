@@ -1,0 +1,25 @@
+frontend/src/App.svelte
+  6b36d5d8de564fca 4-9,17-23,25-32,36
+frontend/src/utility-functions/network.ts
+  6b36d5d8de564fca 1-2,37-40,42-45,47-49,51-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "b02a9001babf5bff08465521f163dab38d45a1b9",
+  "prompts": {
+    "6b36d5d8de564fca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d3ac985-a4c8-4fbe-8b59-4fa1f29e4ec3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 66,
+      "total_deletions": 63,
+      "accepted_lines": 42,
+      "overriden_lines": 0
+    }
+  }
+}
