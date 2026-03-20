@@ -440,8 +440,6 @@ impl NodeGraphExecutor {
 			file_type,
 			name,
 			size,
-			#[cfg(feature = "gpu")]
-			transparent_background,
 			artboard_name,
 			artboard_count,
 			..
@@ -491,12 +489,7 @@ impl NodeGraphExecutor {
 
 				match file_type {
 					FileType::Png => {
-						let result = if transparent_background {
-							image.write_to(&mut cursor, ImageFormat::Png)
-						} else {
-							let image: RgbImage = image.convert();
-							image.write_to(&mut cursor, ImageFormat::Png)
-						};
+						let result = image.write_to(&mut cursor, ImageFormat::Png);
 						if let Err(err) = result {
 							return Err(format!("Failed to encode PNG: {err}"));
 						}
