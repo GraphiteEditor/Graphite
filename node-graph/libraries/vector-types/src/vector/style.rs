@@ -365,7 +365,7 @@ mod stroke_paint_migration {
 			Some(paint) => paint,
 			None => match old.color {
 				Some(color) => Fill::Solid(color),
-				None => Fill::Solid(Color::from_rgba8_srgb(0, 0, 0, 255)),
+				None => Fill::None,
 			},
 		};
 
