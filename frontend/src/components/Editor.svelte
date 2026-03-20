@@ -46,6 +46,9 @@
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
 		// The backend handles idempotency, so this is safe to call again during HMR re-mounts.
 		editor.handle.initAfterFrontendReady();
+
+		// Re-send all UI layouts from Rust so the frontend has them after an HMR re-mount
+		editor.handle.resendAllLayouts();
 	});
 
 	onDestroy(() => {
