@@ -187,6 +187,12 @@ impl EditorHandle {
 	// the backend from the web frontend.
 	// ========================================================================
 
+	/// Re-sends all UI layouts to the frontend. Called during HMR re-mounts when the frontend has lost its layout state.
+	#[wasm_bindgen(js_name = resendAllLayouts)]
+	pub fn resend_all_layouts(&self) {
+		self.dispatch(LayoutMessage::ResendAllLayouts);
+	}
+
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self) {
 		// Enforce idempotency, so if this is called again during an HMR re-mount, we don't initialize the editor backend twice

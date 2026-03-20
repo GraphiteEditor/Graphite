@@ -6,6 +6,8 @@ import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { Editor } from "@graphite/editor";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
+export type DocumentStore = ReturnType<typeof createDocumentStore>;
+
 type DocumentStoreState = {
 	toolOptionsLayout: Layout;
 	documentBarLayout: Layout;
@@ -25,12 +27,16 @@ const initialState: DocumentStoreState = {
 	fadeArtwork: 100,
 };
 
+let editorRef: Editor | undefined = undefined;
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DocumentStoreState> = import.meta.hot?.data?.store || writable<DocumentStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createDocumentStore(editor: Editor) {
+	editorRef = editor;
+
 	// Update layouts
 	editor.subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
@@ -87,29 +93,18 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	function destroy() {
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
-		editor.subscriptions.unsubscribeLayoutUpdate("ToolOptions");
-		editor.subscriptions.unsubscribeLayoutUpdate("DocumentBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("ToolShelf");
-		editor.subscriptions.unsubscribeLayoutUpdate("WorkingColors");
-		editor.subscriptions.unsubscribeLayoutUpdate("NodeGraphControlBar");
-	}
-
-	currentCleanup = destroy;
-	currentArgs = [editor];
-	return {
-		subscribe,
-		destroy,
-	};
+	return { subscribe };
 }
-export type DocumentStore = ReturnType<typeof createDocumentStore>;
 
-// Self-accepting HMR: tear down the old instance and re-create with the new module's code
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor] | undefined;
-import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createDocumentStore(...currentArgs);
-});
+export function destroyDocumentStore() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
+	editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
+	editor.subscriptions.unsubscribeLayoutUpdate("ToolOptions");
+	editor.subscriptions.unsubscribeLayoutUpdate("DocumentBar");
+	editor.subscriptions.unsubscribeLayoutUpdate("ToolShelf");
+	editor.subscriptions.unsubscribeLayoutUpdate("WorkingColors");
+	editor.subscriptions.unsubscribeLayoutUpdate("NodeGraphControlBar");
+}

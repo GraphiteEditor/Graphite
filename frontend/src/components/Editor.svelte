@@ -2,20 +2,20 @@
 	import { onMount, onDestroy, setContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { createClipboardManager } from "@graphite/managers/clipboard";
-	import { createFontsManager } from "@graphite/managers/fonts";
-	import { createHyperlinkManager } from "@graphite/managers/hyperlink";
-	import { createInputManager } from "@graphite/managers/input";
-	import { createLocalizationManager } from "@graphite/managers/localization";
-	import { createPanicManager } from "@graphite/managers/panic";
-	import { createPersistenceManager } from "@graphite/managers/persistence";
-	import { createAppWindowStore } from "@graphite/stores/app-window";
-	import { createDialogStore } from "@graphite/stores/dialog";
-	import { createDocumentStore } from "@graphite/stores/document";
-	import { createFullscreenStore } from "@graphite/stores/fullscreen";
-	import { createNodeGraphStore } from "@graphite/stores/node-graph";
-	import { createPortfolioStore } from "@graphite/stores/portfolio";
-	import { createTooltipStore } from "@graphite/stores/tooltip";
+	import { createClipboardManager, destroyClipboardManager } from "@graphite/managers/clipboard";
+	import { createFontsManager, destroyFontsManager } from "@graphite/managers/fonts";
+	import { createHyperlinkManager, destroyHyperlinkManager } from "@graphite/managers/hyperlink";
+	import { createInputManager, destroyInputManager } from "@graphite/managers/input";
+	import { createLocalizationManager, destroyLocalizationManager } from "@graphite/managers/localization";
+	import { createPanicManager, destroyPanicManager } from "@graphite/managers/panic";
+	import { createPersistenceManager, destroyPersistenceManager } from "@graphite/managers/persistence";
+	import { createAppWindowStore, destroyAppWindowStore } from "@graphite/stores/app-window";
+	import { createDialogStore, destroyDialogStore } from "@graphite/stores/dialog";
+	import { createDocumentStore, destroyDocumentStore } from "@graphite/stores/document";
+	import { createFullscreenStore, destroyFullscreenStore } from "@graphite/stores/fullscreen";
+	import { createNodeGraphStore, destroyNodeGraphStore } from "@graphite/stores/node-graph";
+	import { createPortfolioStore, destroyPortfolioStore } from "@graphite/stores/portfolio";
+	import { createTooltipStore, destroyTooltipStore } from "@graphite/stores/tooltip";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -34,24 +34,41 @@
 	};
 	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
 
-	const managers = {
-		clipboard: createClipboardManager(editor),
-		hyperlink: createHyperlinkManager(editor),
-		localization: createLocalizationManager(editor),
-		panic: createPanicManager(editor),
-		persistence: createPersistenceManager(editor, stores.portfolio),
-		fonts: createFontsManager(editor),
-		input: createInputManager(editor, stores.dialog, stores.portfolio, stores.document, stores.fullscreen),
-	};
-
 	onMount(() => {
+		createClipboardManager(editor);
+		createHyperlinkManager(editor);
+		createLocalizationManager(editor);
+		createPanicManager(editor);
+		createPersistenceManager(editor, stores.portfolio);
+		createFontsManager(editor);
+		createInputManager(editor, stores.dialog, stores.portfolio, stores.document);
+
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
 		// The backend handles idempotency, so this is safe to call again during HMR re-mounts.
 		editor.handle.initAfterFrontendReady();
+
+		// Re-send all UI layouts from Rust so the frontend has them after an HMR re-mount
+		editor.handle.resendAllLayouts();
 	});
 
 	onDestroy(() => {
-		[...Object.values(stores), ...Object.values(managers)].forEach(({ destroy }) => destroy());
+		// Stores
+		destroyDialogStore();
+		destroyTooltipStore();
+		destroyDocumentStore();
+		destroyFullscreenStore();
+		destroyNodeGraphStore();
+		destroyPortfolioStore();
+		destroyAppWindowStore();
+
+		// Managers
+		destroyClipboardManager();
+		destroyHyperlinkManager();
+		destroyLocalizationManager();
+		destroyPanicManager();
+		destroyPersistenceManager();
+		destroyFontsManager();
+		destroyInputManager();
 	});
 </script>
 

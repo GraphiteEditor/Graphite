@@ -1,46 +1,51 @@
-import { createStore, del, get, set, update } from "idb-keyval";
-import { get as getFromStore } from "svelte/store";
+import * as idb from "idb-keyval";
+import { get } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
 import type { PortfolioStore } from "@graphite/stores/portfolio";
 import type { MessageBody } from "@graphite/subscription-router";
 
-const graphiteStore = createStore("graphite", "store");
-
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor, PortfolioStore] | undefined;
+let editorRef: Editor | undefined = undefined;
+let portfolioStore: PortfolioStore | undefined = undefined;
 
 export function createPersistenceManager(editor: Editor, portfolio: PortfolioStore) {
-	currentArgs = [editor, portfolio];
-	// DOCUMENTS
+	editorRef = editor;
+	portfolioStore = portfolio;
 
-	// FRONTEND MESSAGE SUBSCRIPTIONS
-
-	// Subscribe to process backend events
 	editor.subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
 		await saveEditorPreferences(data.preferences);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", async () => {
 		await loadEditorPreferences(editor);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
 		await storeDocument(data, portfolio);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerPersistenceRemoveDocument", async (data) => {
 		await removeDocument(String(data.documentId), portfolio);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument", async () => {
 		await loadFirstDocument(editor);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments", async () => {
 		await loadRestDocuments(editor);
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch
 	});
+
 	editor.subscriptions.subscribeFrontendMessage("TriggerSaveActiveDocument", async (data) => {
+		const indexedDbStorage = idb.createStore("graphite", "store");
+
+		const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
+
 		const documentId = String(data.documentId);
-		const previouslySavedDocuments = await get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", graphiteStore);
 
 		// TODO: Eventually remove this document upgrade code
 		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
@@ -55,89 +60,86 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSto
 			await storeCurrentDocumentId(documentId);
 		}
 	});
-
-	function destroy() {
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
-	}
-
-	currentCleanup = destroy;
-	return { destroy };
-}
-export type PersistenceManager = ReturnType<typeof createPersistenceManager>;
-
-export async function wipeDocuments() {
-	await del("documents_tab_order", graphiteStore);
-	await del("current_document_id", graphiteStore);
-	await del("documents", graphiteStore);
 }
 
-async function storeDocumentOrder(portfolio: PortfolioStore) {
-	const documentOrder = getFromStore(portfolio).documents.map((doc) => String(doc.id));
-	await set("documents_tab_order", documentOrder, graphiteStore);
+export function destroyPersistenceManager() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
 }
 
-async function storeCurrentDocumentId(documentId: string) {
-	await set("current_document_id", String(documentId), graphiteStore);
+export async function storeCurrentDocumentId(documentId: string) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	await idb.set("current_document_id", String(documentId), indexedDbStorage);
 }
 
-async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersistenceWriteDocument">, portfolio: PortfolioStore) {
-	await update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
+export async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersistenceWriteDocument">, portfolio: PortfolioStore) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	await idb.update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
 		"documents",
 		(old) => {
 			const documents = old || {};
 			documents[String(autoSaveDocument.documentId)] = autoSaveDocument;
 			return documents;
 		},
-		graphiteStore,
+		indexedDbStorage,
 	);
 
-	await storeDocumentOrder(portfolio);
+	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
+	await idb.set("documents_tab_order", documentOrder, indexedDbStorage);
 	await storeCurrentDocumentId(String(autoSaveDocument.documentId));
 }
 
-async function removeDocument(id: string, portfolio: PortfolioStore) {
-	await update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
+export async function removeDocument(id: string, portfolio: PortfolioStore) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	await idb.update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
 		"documents",
 		(old) => {
 			const documents = old || {};
 			delete documents[id];
 			return documents;
 		},
-		graphiteStore,
+		indexedDbStorage,
 	);
 
-	await update<string[]>(
+	await idb.update<string[]>(
 		"documents_tab_order",
 		(old) => {
 			const order = old || [];
 			return order.filter((docId) => docId !== id);
 		},
-		graphiteStore,
+		indexedDbStorage,
 	);
 
-	const documentCount = getFromStore(portfolio).documents.length;
+	const documentCount = get(portfolio).documents.length;
 	if (documentCount > 0) {
-		const documentIndex = getFromStore(portfolio).activeDocumentIndex;
-		const documentId = String(getFromStore(portfolio).documents[documentIndex].id);
+		const documentIndex = get(portfolio).activeDocumentIndex;
+		const documentId = String(get(portfolio).documents[documentIndex].id);
 
-		const tabOrder = (await get<string[]>("documents_tab_order", graphiteStore)) || [];
+		const tabOrder = (await idb.get<string[]>("documents_tab_order", indexedDbStorage)) || [];
 		if (tabOrder.includes(documentId)) {
 			await storeCurrentDocumentId(documentId);
 		}
 	} else {
-		await del("current_document_id", graphiteStore);
+		await idb.del("current_document_id", indexedDbStorage);
 	}
 }
 
-async function loadFirstDocument(editor: Editor) {
-	const previouslySavedDocuments = await get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", graphiteStore);
+export async function loadFirstDocument(editor: Editor) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
 
 	// TODO: Eventually remove this document upgrade code
 	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if the browser is storing the old format as strings
@@ -147,8 +149,8 @@ async function loadFirstDocument(editor: Editor) {
 		});
 	}
 
-	const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
-	const currentDocumentIdString = await get<string>("current_document_id", graphiteStore);
+	const documentOrder = await idb.get<string[]>("documents_tab_order", indexedDbStorage);
+	const currentDocumentIdString = await idb.get<string>("current_document_id", indexedDbStorage);
 	const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
 	if (!previouslySavedDocuments || !documentOrder) return;
 
@@ -168,8 +170,10 @@ async function loadFirstDocument(editor: Editor) {
 	}
 }
 
-async function loadRestDocuments(editor: Editor) {
-	const previouslySavedDocuments = await get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", graphiteStore);
+export async function loadRestDocuments(editor: Editor) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
 
 	// TODO: Eventually remove this document upgrade code
 	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
@@ -179,8 +183,8 @@ async function loadRestDocuments(editor: Editor) {
 		});
 	}
 
-	const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
-	const currentDocumentIdString = await get<string>("current_document_id", graphiteStore);
+	const documentOrder = await idb.get<string[]>("documents_tab_order", indexedDbStorage);
+	const currentDocumentIdString = await idb.get<string>("current_document_id", indexedDbStorage);
 	const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
 	if (!previouslySavedDocuments || !documentOrder) return;
 
@@ -217,19 +221,29 @@ async function loadRestDocuments(editor: Editor) {
 	}
 }
 
-// PREFERENCES
+export async function saveEditorPreferences(preferences: unknown) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
 
-async function saveEditorPreferences(preferences: unknown) {
-	await set("preferences", preferences, graphiteStore);
+	await idb.set("preferences", preferences, indexedDbStorage);
 }
 
-async function loadEditorPreferences(editor: Editor) {
-	const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
+export async function loadEditorPreferences(editor: Editor) {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	const preferences = await idb.get<Record<string, unknown>>("preferences", indexedDbStorage);
 	editor.handle.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
+}
+
+export async function wipeDocuments() {
+	const indexedDbStorage = idb.createStore("graphite", "store");
+
+	await idb.del("documents_tab_order", indexedDbStorage);
+	await idb.del("current_document_id", indexedDbStorage);
+	await idb.del("documents", indexedDbStorage);
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createPersistenceManager(...currentArgs);
+	destroyPersistenceManager();
+	if (editorRef && portfolioStore) newModule?.createPersistenceManager(editorRef, portfolioStore);
 });

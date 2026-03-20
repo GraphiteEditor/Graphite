@@ -4,17 +4,16 @@ type ApiResponse = { family: string; variants: string[]; files: Record<string, s
 
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor] | undefined;
+let editorRef: Editor | undefined = undefined;
+let abortController: AbortController | undefined = undefined;
 
 export function createFontsManager(editor: Editor) {
-	currentArgs = [editor];
-	const abortController = new AbortController();
+	editorRef = editor;
+	abortController = new AbortController();
 
-	// Subscribe to process backend events
 	editor.subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
 		try {
-			const response = await fetch(FONT_LIST_API, { signal: abortController.signal });
+			const response = await fetch(FONT_LIST_API, abortController ? { signal: abortController.signal } : undefined);
 			if (!response.ok) throw new Error(`Font catalog request failed with status ${response.status}`);
 			const fontListResponse: { items: ApiResponse } = await response.json();
 			const fontListData = fontListResponse.items;
@@ -42,7 +41,7 @@ export function createFontsManager(editor: Editor) {
 
 		try {
 			if (!data.url) throw new Error("No URL provided for font data load");
-			const response = await fetch(data.url, { signal: abortController.signal });
+			const response = await fetch(data.url, abortController ? { signal: abortController.signal } : undefined);
 			if (!response.ok) throw new Error(`Font data request failed with status ${response.status}`);
 			const buffer = await response.arrayBuffer();
 			const bytes = new Uint8Array(buffer);
@@ -54,20 +53,19 @@ export function createFontsManager(editor: Editor) {
 			console.error("Failed to load font:", error);
 		}
 	});
-
-	function destroy() {
-		abortController.abort();
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
-	}
-
-	currentCleanup = destroy;
-	return { destroy };
 }
-export type FontsManager = ReturnType<typeof createFontsManager>;
+
+export function destroyFontsManager() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	abortController?.abort();
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
+	editor.subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
+}
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createFontsManager(...currentArgs);
+	destroyFontsManager();
+	if (editorRef) newModule?.createFontsManager(editorRef);
 });

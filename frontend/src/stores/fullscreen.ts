@@ -3,6 +3,8 @@ import type { Writable } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
 
+export type FullscreenStore = ReturnType<typeof createFullscreenStore>;
+
 type FullscreenStoreState = {
 	windowFullscreen: boolean;
 	keyboardLocked: boolean;
@@ -12,28 +14,29 @@ const initialState: FullscreenStoreState = {
 	keyboardLocked: false,
 };
 
+let editorRef: Editor | undefined = undefined;
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<FullscreenStoreState> = import.meta.hot?.data?.store || writable<FullscreenStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export function createFullscreenStore(editor: Editor) {
+	editorRef = editor;
+
 	editor.subscriptions.subscribeFrontendMessage("WindowFullscreen", () => {
 		toggleFullscreen();
 	});
 
-	function destroy() {
-		editor.subscriptions.unsubscribeFrontendMessage("WindowFullscreen");
-	}
-
-	currentCleanup = destroy;
-	currentArgs = [editor];
-	return {
-		subscribe,
-		destroy,
-	};
+	return { subscribe };
 }
-export type FullscreenStore = ReturnType<typeof createFullscreenStore>;
+
+export function destroyFullscreenStore() {
+	const editor = editorRef;
+	if (!editor) return;
+
+	editor.subscriptions.unsubscribeFrontendMessage("WindowFullscreen");
+}
 
 export function fullscreenModeChanged() {
 	update((state) => {
@@ -67,11 +70,3 @@ export async function toggleFullscreen() {
 	if (state.windowFullscreen) await exitFullscreen();
 	else await enterFullscreen();
 }
-
-// Self-accepting HMR: tear down the old instance and re-create with the new module's code
-let currentCleanup: (() => void) | undefined;
-let currentArgs: [Editor] | undefined;
-import.meta.hot?.accept((newModule) => {
-	currentCleanup?.();
-	if (currentArgs) newModule?.createFullscreenStore(...currentArgs);
-});
