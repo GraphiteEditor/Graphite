@@ -35,7 +35,7 @@
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
 		const unsaved = !doc.details.isSaved;
-		if (!editor.handle.inDevelopmentMode()) return { name, unsaved };
+		if (!editor.inDevelopmentMode()) return { name, unsaved };
 
 		const tooltipDescription = `Document ID: ${doc.id}`;
 		return { name, unsaved, tooltipLabel: name, tooltipDescription };
@@ -151,9 +151,9 @@
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
-					emptySpaceAction={() => editor.handle.newDocumentDialog()}
-					clickAction={(tabIndex) => editor.handle.selectDocument($portfolio.documents[tabIndex].id)}
-					closeAction={(tabIndex) => editor.handle.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
+					emptySpaceAction={() => editor.newDocumentDialog()}
+					clickAction={(tabIndex) => editor.selectDocument($portfolio.documents[tabIndex].id)}
+					closeAction={(tabIndex) => editor.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 					tabActiveIndex={$portfolio.activeDocumentIndex}
 					bind:this={documentPanel}
 				/>

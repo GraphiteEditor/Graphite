@@ -50,7 +50,7 @@
 		{/if}
 	</LayoutRow>
 	<!-- Window frame -->
-	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.handle.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.handle.appWindowMaximize()} />
+	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.appWindowMaximize()} />
 	<!-- Window buttons -->
 	<LayoutRow class="window-buttons" classes={{ fullscreen: showFullscreenButton, windows: $appWindow.platform === "Windows", linux: $appWindow.platform === "Linux" }}>
 		{#if $appWindow.platform !== "Mac"}
@@ -62,20 +62,20 @@
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
-						if (isPlatformNative()) editor.handle.appWindowFullscreen();
+						if (isPlatformNative()) editor.appWindowFullscreen();
 						else ($fullscreen.windowFullscreen ? exitFullscreen : enterFullscreen)();
 					}}
 				>
 					<IconLabel icon={isFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
 				</LayoutRow>
 			{:else}
-				<LayoutRow tooltipLabel="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
+				<LayoutRow tooltipLabel="Minimize" on:click={() => editor.appWindowMinimize()}>
 					<IconLabel icon="WindowButtonWinMinimize" />
 				</LayoutRow>
-				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
+				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.appWindowMaximize()}>
 					<IconLabel icon={$appWindow.maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 				</LayoutRow>
-				<LayoutRow tooltipLabel="Close" on:click={() => editor.handle.appWindowClose()}>
+				<LayoutRow tooltipLabel="Close" on:click={() => editor.appWindowClose()}>
 					<IconLabel icon="WindowButtonWinClose" />
 				</LayoutRow>
 			{/if}

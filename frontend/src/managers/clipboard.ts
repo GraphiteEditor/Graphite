@@ -17,7 +17,7 @@ export function createClipboardManager(subscriptions: SubscriptionRouter, editor
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
-		editor.handle.readSelection(readAtCaret(data.cut), data.cut);
+		editor.readSelection(readAtCaret(data.cut), data.cut);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {

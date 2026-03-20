@@ -58,24 +58,24 @@ export function createPortfolioStore(subscriptions: SubscriptionRouter, editor: 
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
-			editor.handle.openFile(data.filename, await response.bytes());
+			editor.openFile(data.filename, await response.bytes());
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
-				editor.handle.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
+				editor.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
 			}, 0);
 		}
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
-		const data = await upload(`image/*,.${editor.handle.fileExtension()}`, "data");
-		editor.handle.openFile(data.filename, data.content);
+		const data = await upload(`image/*,.${editor.fileExtension()}`, "data");
+		editor.openFile(data.filename, data.content);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerImport", async () => {
 		// TODO: Use the same `accept` string as in the `TriggerOpen` handler once importing Graphite documents as nodes is supported
 		const data = await upload("image/*", "data");
-		editor.handle.importFile(data.filename, data.content);
+		editor.importFile(data.filename, data.content);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {

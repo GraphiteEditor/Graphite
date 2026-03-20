@@ -31,7 +31,7 @@
 			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
-				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
+				editor.setNodePinned(widgetData.id, !widgetData.pinned);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -41,7 +41,7 @@
 			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
-				editor.handle.deleteNode(widgetData.id);
+				editor.deleteNode(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -52,7 +52,7 @@
 			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
-				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
+				editor.toggleNodeVisibilityLayerPanel(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class={widgetData.visible ? "show-only-on-hover" : ""}

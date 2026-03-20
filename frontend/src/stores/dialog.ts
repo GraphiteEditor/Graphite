@@ -103,7 +103,7 @@ export function createDialogStore(subscriptions: SubscriptionRouter, editor: Edi
 			// Do nothing on network error
 		}
 
-		editor.handle.requestLicensesThirdPartyDialogWithLicenseText(licenseText);
+		editor.requestLicensesThirdPartyDialogWithLicenseText(licenseText);
 	});
 
 	return { subscribe };

@@ -34,7 +34,7 @@ export function createFontsManager(subscriptions: SubscriptionRouter, editor: Ed
 				return { name: font.family, styles };
 			});
 
-			editor.handle.onFontCatalogLoad(catalog);
+			editor.onFontCatalogLoad(catalog);
 		} catch (error) {
 			if (error instanceof DOMException && error.name === "AbortError") return;
 			throw error;
@@ -51,7 +51,7 @@ export function createFontsManager(subscriptions: SubscriptionRouter, editor: Ed
 			const buffer = await response.arrayBuffer();
 			const bytes = new Uint8Array(buffer);
 
-			editor.handle.onFontLoad(fontFamily, fontStyle, bytes);
+			editor.onFontLoad(fontFamily, fontStyle, bytes);
 		} catch (error) {
 			if (error instanceof DOMException && error.name === "AbortError") return;
 			// eslint-disable-next-line no-console

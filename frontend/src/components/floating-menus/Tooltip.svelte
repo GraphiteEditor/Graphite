@@ -32,7 +32,7 @@
 
 	// TODO: Once all TODOs are replaced with real text, remove this function
 	function filterTodo(text: string | undefined): string | undefined {
-		if (text?.trim().toUpperCase() === "TODO" && !editor.handle.inDevelopmentMode()) return "";
+		if (text?.trim().toUpperCase() === "TODO" && !editor.inDevelopmentMode()) return "";
 		return text;
 	}
 

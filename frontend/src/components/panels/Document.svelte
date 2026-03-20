@@ -144,13 +144,13 @@
 	function panCanvasX(newValue: number) {
 		const delta = newValue - scrollbarPos.x;
 		scrollbarPos.x = newValue;
-		editor.handle.panCanvas(-delta * scrollbarMultiplier.x, 0);
+		editor.panCanvas(-delta * scrollbarMultiplier.x, 0);
 	}
 
 	function panCanvasY(newValue: number) {
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
-		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
+		editor.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -344,7 +344,7 @@
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned, false);
+		editor.onChangeText(textCleaned, false);
 	}
 
 	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
@@ -374,7 +374,7 @@
 
 		textInput.oninput = () => {
 			if (!textInput) return;
-			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
+			editor.updateBounds(textInputCleanup(textInput.innerText));
 		};
 
 		textInputMatrix = data.transform;
@@ -469,8 +469,8 @@
 			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
+				if (setColorChoice === "Primary") editor.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.updateSecondaryColor(...rgb, 1);
 			}
 		});
 
@@ -630,7 +630,7 @@
 							open={Boolean(gradientStopPickerPosition && gradientStopPickerColor)}
 							on:open={({ detail }) => {
 								if (!detail) {
-									editor.handle.closeGradientStopColorPicker();
+									editor.closeGradientStopColorPicker();
 									gradientStopPickerPosition = undefined;
 									gradientStopPickerColor = undefined;
 								}
@@ -638,10 +638,10 @@
 							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
 							on:colorOrGradient={({ detail }) => {
 								const color = fillChoiceColor(detail);
-								if (color) editor.handle.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
+								if (color) editor.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
 							}}
-							on:startHistoryTransaction={() => editor.handle.startGradientStopColorTransaction()}
-							on:commitHistoryTransaction={() => editor.handle.commitGradientStopColorTransaction()}
+							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}
+							on:commitHistoryTransaction={() => editor.commitGradientStopColorTransaction()}
 							bind:this={gradientStopPicker}
 						/>
 					</div>
@@ -684,10 +684,10 @@
 						direction="Vertical"
 						thumbLength={scrollbarSize.y}
 						thumbPosition={scrollbarPos.y}
-						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
+						on:trackShift={({ detail }) => editor.panCanvasByFraction(0, detail)}
 						on:thumbPosition={({ detail }) => panCanvasY(detail)}
-						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
-						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
+						on:thumbDragStart={() => editor.panCanvasAbortPrepare(false)}
+						on:thumbDragAbort={() => editor.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
@@ -696,10 +696,10 @@
 					direction="Horizontal"
 					thumbLength={scrollbarSize.x}
 					thumbPosition={scrollbarPos.x}
-					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
+					on:trackShift={({ detail }) => editor.panCanvasByFraction(detail, 0)}
 					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
-					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
+					on:thumbDragStart={() => editor.panCanvasAbortPrepare(true)}
+					on:thumbDragAbort={() => editor.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

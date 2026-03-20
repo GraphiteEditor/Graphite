@@ -127,17 +127,17 @@
 	});
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -164,7 +164,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -202,7 +202,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -249,7 +249,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -258,7 +258,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -391,7 +391,7 @@
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -447,7 +447,7 @@
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
 			const name = inputElement.value || "";
-			editor.handle.setLayerName(currentListing.entry.id, name);
+			editor.setLayerName(currentListing.entry.id, name);
 			currentListing.entry.alias = name;
 		}
 

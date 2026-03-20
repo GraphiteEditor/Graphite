@@ -105,7 +105,7 @@ export async function triggerClipboardRead(editor: Editor) {
 					const blob = await item.getType("text/plain");
 					const reader = new FileReader();
 					reader.onload = () => {
-						if (typeof reader.result === "string") editor.handle.pasteText(reader.result);
+						if (typeof reader.result === "string") editor.pasteText(reader.result);
 					};
 					reader.readAsText(blob);
 					return true;
@@ -119,7 +119,7 @@ export async function triggerClipboardRead(editor: Editor) {
 					const blob = await item.getType("text/plain");
 					const reader = new FileReader();
 					reader.onload = () => {
-						if (typeof reader.result === "string") editor.handle.pasteSvg(undefined, reader.result);
+						if (typeof reader.result === "string") editor.pasteSvg(undefined, reader.result);
 					};
 					reader.readAsText(blob);
 					return true;
@@ -132,7 +132,7 @@ export async function triggerClipboardRead(editor: Editor) {
 					reader.onload = async () => {
 						if (reader.result instanceof ArrayBuffer) {
 							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-							editor.handle.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
+							editor.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
 						}
 					};
 					reader.readAsArrayBuffer(blob);
@@ -170,6 +170,6 @@ export async function triggerClipboardRead(editor: Editor) {
 		};
 		const message = Object.entries(matchMessage).find(([key]) => String(err).includes(key))?.[1] || String(err);
 
-		editor.handle.errorDialog("Cannot access clipboard", message);
+		editor.errorDialog("Cannot access clipboard", message);
 	}
 }

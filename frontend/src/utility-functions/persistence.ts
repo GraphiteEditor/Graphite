@@ -87,14 +87,14 @@ export async function loadFirstDocument(editor: Editor) {
 
 	if (currentDocumentId !== undefined && String(currentDocumentId) in previouslySavedDocuments) {
 		const doc = previouslySavedDocuments[String(currentDocumentId)];
-		editor.handle.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
-		editor.handle.selectDocument(currentDocumentId);
+		editor.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
+		editor.selectDocument(currentDocumentId);
 	} else {
 		const len = orderedSavedDocuments.length;
 		if (len > 0) {
 			const doc = orderedSavedDocuments[len - 1];
-			editor.handle.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
-			editor.handle.selectDocument(doc.documentId);
+			editor.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
+			editor.selectDocument(doc.documentId);
 		}
 	}
 }
@@ -126,15 +126,15 @@ export async function loadRestDocuments(editor: Editor) {
 		for (let i = currentIndex - 1; i >= 0; i--) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
 			const { name, isSaved } = details;
-			editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, true);
+			editor.openAutoSavedDocument(documentId, name, isSaved, document, true);
 		}
 		for (let i = currentIndex + 1; i < orderedSavedDocuments.length; i++) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
 			const { name, isSaved } = details;
-			editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, false);
+			editor.openAutoSavedDocument(documentId, name, isSaved, document, false);
 		}
 
-		editor.handle.selectDocument(currentDocumentId);
+		editor.selectDocument(currentDocumentId);
 	}
 	// No valid current document: open all remaining documents and select the last one
 	else {
@@ -143,10 +143,10 @@ export async function loadRestDocuments(editor: Editor) {
 		for (let i = length - 2; i >= 0; i--) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
 			const { name, isSaved } = details;
-			editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, true);
+			editor.openAutoSavedDocument(documentId, name, isSaved, document, true);
 		}
 
-		if (length > 0) editor.handle.selectDocument(orderedSavedDocuments[length - 1].documentId);
+		if (length > 0) editor.selectDocument(orderedSavedDocuments[length - 1].documentId);
 	}
 }
 
@@ -181,7 +181,7 @@ export async function loadEditorPreferences(editor: Editor) {
 	const indexedDbStorage = idb.createStore("graphite", "store");
 
 	const preferences = await idb.get<Record<string, unknown>>("preferences", indexedDbStorage);
-	editor.handle.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
+	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 }
 
 export async function wipeDocuments() {

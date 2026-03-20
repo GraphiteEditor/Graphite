@@ -13,7 +13,7 @@ export function createLocalizationManager(subscriptions: SubscriptionRouter, edi
 
 	subscriptions.subscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate", (data) => {
 		const localized = localizeTimestamp(data.commitDate);
-		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
+		editor.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
 	});
 }
 

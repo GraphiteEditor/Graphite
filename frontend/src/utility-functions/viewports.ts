@@ -40,7 +40,7 @@ export function setupViewportResizeObserver(editor: Editor): () => void {
 				continue;
 			}
 
-			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
+			editor.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 		}
 	});
 

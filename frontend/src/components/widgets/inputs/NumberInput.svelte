@@ -408,7 +408,7 @@
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
 		if (isPlatformNative()) {
-			editor.handle.appWindowPointerLock();
+			editor.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
