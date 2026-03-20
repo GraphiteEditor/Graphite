@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher, onDestroy } from "svelte";
-
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "@graphite/managers/input";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "/src/managers/input";
 
 	const ARROW_CLICK_DISTANCE = 0.05;
 	const ARROW_REPEAT_DISTANCE = 0.01;

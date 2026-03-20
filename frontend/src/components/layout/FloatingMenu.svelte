@@ -18,11 +18,9 @@
 
 <script lang="ts">
 	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
-
-	import type { MenuDirection } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { browserVersion } from "@graphite/utility-functions/platform";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { browserVersion } from "/src/utility-functions/platform";
+	import type { MenuDirection } from "/wasm/pkg/graphite_wasm";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;

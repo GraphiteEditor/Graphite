@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
-
-	import { evaluateMathExpression, isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { ActionShortcut, EditorHandle, NumberInputIncrementBehavior, NumberInputMode } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/managers/input";
-	import { browserVersion } from "@graphite/utility-functions/platform";
-
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
+	import { browserVersion } from "/src/utility-functions/platform";
+	import { evaluateMathExpression, isPlatformNative } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut, EditorHandle, NumberInputIncrementBehavior, NumberInputMode } from "/wasm/pkg/graphite_wasm";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;

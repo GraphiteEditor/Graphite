@@ -1,21 +1,19 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
-
-	import type { EditorHandle, LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { NodeGraphStore } from "@graphite/stores/node-graph";
-	import type { TooltipStore } from "@graphite/stores/tooltip";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorHandle, LayerPanelEntry, LayerStructureEntry, Layout } from "/wasm/pkg/graphite_wasm";
 
 	type LayerListingInfo = {
 		folderIndex: number;

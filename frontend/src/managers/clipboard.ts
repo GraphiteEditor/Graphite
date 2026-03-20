@@ -1,6 +1,6 @@
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { insertAtCaret, readAtCaret } from "@graphite/utility-functions/clipboard";
+import { insertAtCaret, readAtCaret } from "/src/utility-functions/clipboard";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 let editorHandle: EditorHandle | undefined = undefined;

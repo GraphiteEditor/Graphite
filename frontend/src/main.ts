@@ -1,8 +1,7 @@
 // This file is the browser's entry point for the JS bundle
 
 import { mount, unmount } from "svelte";
-
-import App from "@graphite/App.svelte";
+import App from "/src/App.svelte";
 
 document.body.setAttribute("data-app-container", "");
 

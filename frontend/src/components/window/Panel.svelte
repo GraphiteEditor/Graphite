@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
-
-	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Data from "@graphite/components/panels/Data.svelte";
-	import Document from "@graphite/components/panels/Document.svelte";
-	import Layers from "@graphite/components/panels/Layers.svelte";
-	import Properties from "@graphite/components/panels/Properties.svelte";
-	import Welcome from "@graphite/components/panels/Welcome.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Data from "/src/components/panels/Data.svelte";
+	import Document from "/src/components/panels/Document.svelte";
+	import Layers from "/src/components/panels/Layers.svelte";
+	import Properties from "/src/components/panels/Properties.svelte";
+	import Welcome from "/src/components/panels/Welcome.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 

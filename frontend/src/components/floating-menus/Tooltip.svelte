@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { getContext } from "svelte";
-
-	import type { EditorHandle, LabeledShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { TooltipStore } from "@graphite/stores/tooltip";
-
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { EditorHandle, LabeledShortcut } from "/wasm/pkg/graphite_wasm";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const editor = getContext<EditorHandle>("editor");

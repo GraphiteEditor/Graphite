@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy } from "svelte";
-
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { Layout } from "/wasm/pkg/graphite_wasm";
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 

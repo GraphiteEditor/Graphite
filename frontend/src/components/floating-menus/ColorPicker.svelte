@@ -1,9 +1,16 @@
 <script lang="ts">
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
-
-	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { FillChoice, MenuDirection, Color } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { TooltipStore } from "@graphite/stores/tooltip";
+	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
+	import SpectrumInput, { MAX_MIDPOINT, MIN_MIDPOINT } from "/src/components/widgets/inputs/SpectrumInput.svelte";
+	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { HSV, RGB } from "/src/utility-functions/colors";
 	import {
 		contrastingOutlineFactor,
 		fillChoiceColor,
@@ -20,18 +27,9 @@
 		colorOpaque,
 		colorEquals,
 		gradientFirstColor,
-	} from "@graphite/utility-functions/colors";
-	import type { HSV, RGB } from "@graphite/utility-functions/colors";
-
-	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import SpectrumInput, { MAX_MIDPOINT, MIN_MIDPOINT } from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	} from "/src/utility-functions/colors";
+	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
+	import type { FillChoice, MenuDirection, Color } from "/wasm/pkg/graphite_wasm";
 
 	type PresetColors = "None" | "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
 

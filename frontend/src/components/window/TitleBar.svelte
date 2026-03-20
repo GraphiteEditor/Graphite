@@ -1,18 +1,16 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy } from "svelte";
-
-	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { AppWindowStore } from "@graphite/stores/app-window";
-	import { enterFullscreen, exitFullscreen } from "@graphite/stores/fullscreen";
-	import type { FullscreenStore } from "@graphite/stores/fullscreen";
-	import type { TooltipStore } from "@graphite/stores/tooltip";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { AppWindowStore } from "/src/stores/app-window";
+	import { enterFullscreen, exitFullscreen } from "/src/stores/fullscreen";
+	import type { FullscreenStore } from "/src/stores/fullscreen";
+	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorHandle, Layout } from "/wasm/pkg/graphite_wasm";
+	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 

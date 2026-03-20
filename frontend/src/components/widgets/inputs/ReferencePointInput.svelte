@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { ReferencePoint, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { ReferencePoint, ActionShortcut } from "/wasm/pkg/graphite_wasm";
 
 	const dispatch = createEventDispatcher<{ value: ReferencePoint }>();
 

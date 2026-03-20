@@ -1,10 +1,9 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-
-import type { EditorHandle, OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
-import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
+import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
+import { rasterizeSVG } from "/src/utility-functions/rasterization";
+import type { EditorHandle, OpenDocument } from "/wasm/pkg/graphite_wasm";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 

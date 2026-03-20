@@ -9,8 +9,7 @@
 
 <script lang="ts">
 	import { onMount } from "svelte";
-
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 
 	let temporaryCanvas: HTMLCanvasElement | undefined;
 	let zoomPreviewCanvas: HTMLCanvasElement | undefined;

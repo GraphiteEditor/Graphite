@@ -1,4 +1,4 @@
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 export type RequestResult = { body: string; status: number };
 
