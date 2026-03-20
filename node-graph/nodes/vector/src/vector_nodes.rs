@@ -241,6 +241,7 @@ async fn stroke<V, L: IntoF64Vec, F: Into<Fill> + 'n + Send>(
 	miter_limit: f64,
 	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
+	#[default(PaintOrder::StrokeAbove)]
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	#[implementations(
@@ -289,8 +290,10 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
+		non_scaling: false,
 		paint_order,
 	};
+
 
 	for vector in content.vector_iter_mut() {
 		let mut stroke = stroke.clone();
