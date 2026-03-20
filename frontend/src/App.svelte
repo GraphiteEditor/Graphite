@@ -3,11 +3,11 @@
 
 	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { initWasm, createEditor } from "@graphite/editor";
-	import type { SubscriptionRouter } from "@graphite/subscription-router";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 	import Editor from "@graphite/components/Editor.svelte";
 
-	let subscriptions: SubscriptionRouter | undefined = undefined;
+	let subscriptions: SubscriptionsRouter | undefined = undefined;
 	let editor: EditorHandle | undefined = undefined;
 	let destroy: (() => void) | undefined = undefined;
 

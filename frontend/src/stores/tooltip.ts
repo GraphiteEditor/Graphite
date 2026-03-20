@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
 export type TooltipStore = ReturnType<typeof createTooltipStore>;
@@ -36,7 +36,7 @@ const tooltipEventListeners: Listener[] = [
 	{ eventName: "wheel", action: closeTooltip },
 ];
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
@@ -44,10 +44,10 @@ const store: Writable<TooltipStoreState> = import.meta.hot?.data?.store || writa
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createTooltipStore(subscriptions: SubscriptionRouter) {
+export function createTooltipStore(subscriptions: SubscriptionsRouter) {
 	destroyTooltipStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("SendShortcutShiftClick", async (data) => {
 		update((state) => {
@@ -76,7 +76,7 @@ export function createTooltipStore(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyTooltipStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	if (tooltipTimeout) clearTimeout(tooltipTimeout);

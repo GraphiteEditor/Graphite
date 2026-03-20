@@ -2,8 +2,8 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
-import type { MessageBody } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import type { MessageBody } from "/src/subscriptions-router";
 
 export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 
@@ -53,17 +53,17 @@ const initialState: NodeGraphStoreState = {
 	reorderExportIndex: undefined,
 };
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<NodeGraphStoreState> = import.meta.hot?.data?.store || writable<NodeGraphStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createNodeGraphStore(subscriptions: SubscriptionRouter) {
+export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
@@ -213,7 +213,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyNodeGraphStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("SendUIMetadata");

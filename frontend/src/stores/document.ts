@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
@@ -27,17 +27,17 @@ const initialState: DocumentStoreState = {
 	fadeArtwork: 100,
 };
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DocumentStoreState> = import.meta.hot?.data?.store || writable<DocumentStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createDocumentStore(subscriptions: SubscriptionRouter) {
+export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 	destroyDocumentStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
@@ -102,7 +102,7 @@ export function createDocumentStore(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyDocumentStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");

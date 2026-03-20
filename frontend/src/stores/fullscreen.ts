@@ -1,7 +1,7 @@
 import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 export type FullscreenStore = ReturnType<typeof createFullscreenStore>;
 
@@ -14,17 +14,17 @@ const initialState: FullscreenStoreState = {
 	keyboardLocked: false,
 };
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<FullscreenStoreState> = import.meta.hot?.data?.store || writable<FullscreenStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createFullscreenStore(subscriptions: SubscriptionRouter) {
+export function createFullscreenStore(subscriptions: SubscriptionsRouter) {
 	destroyFullscreenStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("WindowFullscreen", () => {
 		toggleFullscreen();
@@ -34,7 +34,7 @@ export function createFullscreenStore(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyFullscreenStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("WindowFullscreen");

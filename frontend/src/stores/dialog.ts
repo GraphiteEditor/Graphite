@@ -4,7 +4,7 @@ import type { Writable } from "svelte/store";
 
 import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { IconName } from "@graphite/icons";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export type DialogStore = ReturnType<typeof createDialogStore>;
@@ -29,17 +29,17 @@ const initialState: DialogStoreState = {
 	panicDetails: "",
 };
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DialogStoreState> = import.meta.hot?.data?.store || writable<DialogStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createDialogStore(subscriptions: SubscriptionRouter, editor: EditorHandle) {
+export function createDialogStore(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
 	destroyDialogStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
@@ -109,7 +109,7 @@ export function createDialogStore(subscriptions: SubscriptionRouter, editor: Edi
 }
 
 export function destroyDialogStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("DisplayDialog");

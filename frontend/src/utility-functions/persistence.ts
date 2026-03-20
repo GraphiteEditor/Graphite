@@ -3,7 +3,7 @@ import { get } from "svelte/store";
 
 import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { PortfolioStore } from "@graphite/stores/portfolio";
-import type { MessageBody } from "@graphite/subscription-router";
+import type { MessageBody } from "/src/subscriptions-router";
 
 export async function storeCurrentDocumentId(documentId: string) {
 	const indexedDbStorage = idb.createStore("graphite", "store");

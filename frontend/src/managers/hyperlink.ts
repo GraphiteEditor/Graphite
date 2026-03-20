@@ -1,11 +1,11 @@
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
-export function createHyperlinkManager(subscriptions: SubscriptionRouter) {
+export function createHyperlinkManager(subscriptions: SubscriptionsRouter) {
 	destroyHyperlinkManager();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("TriggerVisitLink", async (data) => {
 		window.open(data.url, "_blank", "noopener");
@@ -13,7 +13,7 @@ export function createHyperlinkManager(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyHyperlinkManager() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("TriggerVisitLink");
@@ -21,5 +21,5 @@ export function destroyHyperlinkManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRef) newModule?.createHyperlinkManager(subscriptionsRef);
+	if (subscriptionsRouter) newModule?.createHyperlinkManager(subscriptionsRouter);
 });

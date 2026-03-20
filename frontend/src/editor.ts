@@ -2,8 +2,8 @@
 
 import init, { EditorHandle, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { FrontendMessage } from "@graphite/../wasm/pkg/graphite_wasm";
-import { createSubscriptionRouter } from "@graphite/subscription-router";
-import type { MessageName, SubscriptionRouter } from "@graphite/subscription-router";
+import { createSubscriptionsRouter } from "/src/subscriptions-router";
+import type { MessageName, SubscriptionsRouter } from "/src/subscriptions-router";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
 // Should be called asynchronously before `createEditor()`.
@@ -19,7 +19,7 @@ export async function initWasm() {
 }
 
 // Should be called after running `initWasm()` and its promise resolving.
-export function createEditor(): { editor: EditorHandle; subscriptions: SubscriptionRouter; destroy: () => void } {
+export function createEditor(): { editor: EditorHandle; subscriptions: SubscriptionsRouter; destroy: () => void } {
 	// Provide a random starter seed which must occur after initializing the Wasm module, since Wasm can't generate its own random numbers
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	const randomSeed = BigInt(randomSeedFloat);
@@ -30,7 +30,7 @@ export function createEditor(): { editor: EditorHandle; subscriptions: Subscript
 	});
 
 	// Subscriptions: allows subscribing to messages in JS that are sent from the Wasm backend
-	const subscriptions = createSubscriptionRouter();
+	const subscriptions = createSubscriptionsRouter();
 
 	// Check if the URL hash fragment has any demo artwork to be loaded
 	const demoArtworkAbortController = new AbortController();

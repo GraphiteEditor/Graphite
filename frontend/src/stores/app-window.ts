@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { AppWindowPlatform } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 export type AppWindowStore = ReturnType<typeof createAppWindowStore>;
 
@@ -21,17 +21,17 @@ const initialState: AppWindowStoreState = {
 	uiScale: 1,
 };
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<AppWindowStoreState> = import.meta.hot?.data?.store || writable<AppWindowStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createAppWindowStore(subscriptions: SubscriptionRouter) {
+export function createAppWindowStore(subscriptions: SubscriptionsRouter) {
 	destroyAppWindowStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("UpdatePlatform", (data) => {
 		update((state) => {
@@ -72,7 +72,7 @@ export function createAppWindowStore(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyAppWindowStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("UpdatePlatform");

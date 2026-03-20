@@ -1,12 +1,12 @@
 import { createCrashDialog } from "@graphite/stores/dialog";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
-export function createPanicManager(subscriptions: SubscriptionRouter) {
+export function createPanicManager(subscriptions: SubscriptionsRouter) {
 	destroyPanicManager();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
@@ -25,7 +25,7 @@ export function createPanicManager(subscriptions: SubscriptionRouter) {
 }
 
 export function destroyPanicManager() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("DisplayDialogPanic");
@@ -33,5 +33,5 @@ export function destroyPanicManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRef) newModule?.createPanicManager(subscriptionsRef);
+	if (subscriptionsRouter) newModule?.createPanicManager(subscriptionsRouter);
 });

@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { EditorHandle, OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
@@ -25,17 +25,17 @@ const initialState: PortfolioStoreState = {
 	layersPanelOpen: true,
 };
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createPortfolioStore(subscriptions: SubscriptionRouter, editor: EditorHandle) {
+export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
 	destroyPortfolioStore();
 
-	subscriptionsRef = subscriptions;
+	subscriptionsRouter = subscriptions;
 
 	subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
@@ -127,7 +127,7 @@ export function createPortfolioStore(subscriptions: SubscriptionRouter, editor: 
 }
 
 export function destroyPortfolioStore() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");

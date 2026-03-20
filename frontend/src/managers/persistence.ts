@@ -1,17 +1,17 @@
 import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { PortfolioStore } from "@graphite/stores/portfolio";
-import type { SubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { saveEditorPreferences, loadEditorPreferences, storeDocument, removeDocument, loadFirstDocument, loadRestDocuments, saveActiveDocument } from "@graphite/utility-functions/persistence";
 
-let subscriptionsRef: SubscriptionRouter | undefined = undefined;
-let editorRef: EditorHandle | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
+let editorHandle: EditorHandle | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 
-export function createPersistenceManager(subscriptions: SubscriptionRouter, editor: EditorHandle, portfolio: PortfolioStore) {
+export function createPersistenceManager(subscriptions: SubscriptionsRouter, editor: EditorHandle, portfolio: PortfolioStore) {
 	destroyPersistenceManager();
 
-	subscriptionsRef = subscriptions;
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
+	editorHandle = editor;
 	portfolioStore = portfolio;
 
 	subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
@@ -48,7 +48,7 @@ export function createPersistenceManager(subscriptions: SubscriptionRouter, edit
 }
 
 export function destroyPersistenceManager() {
-	const subscriptions = subscriptionsRef;
+	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
@@ -63,5 +63,5 @@ export function destroyPersistenceManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRef && editorRef && portfolioStore) newModule?.createPersistenceManager(subscriptionsRef, editorRef, portfolioStore);
+	if (subscriptionsRouter && editorHandle && portfolioStore) newModule?.createPersistenceManager(subscriptionsRouter, editorHandle, portfolioStore);
 });

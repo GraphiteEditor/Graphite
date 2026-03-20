@@ -16,12 +16,12 @@
 	import { createNodeGraphStore, destroyNodeGraphStore } from "@graphite/stores/node-graph";
 	import { createPortfolioStore, destroyPortfolioStore } from "@graphite/stores/portfolio";
 	import { createTooltipStore, destroyTooltipStore } from "@graphite/stores/tooltip";
-	import type { SubscriptionRouter } from "@graphite/subscription-router";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite Wasm editor and subscription router
-	export let subscriptions: SubscriptionRouter;
+	// Graphite Wasm editor and subscriptions router
+	export let subscriptions: SubscriptionsRouter;
 	export let editor: EditorHandle;
 	setContext("subscriptions", subscriptions);
 	setContext("editor", editor);

@@ -4,8 +4,8 @@
 	import type { Color, EditorHandle, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { AppWindowStore } from "@graphite/stores/app-window";
 	import type { DocumentStore } from "@graphite/stores/document";
-	import type { SubscriptionRouter } from "@graphite/subscription-router";
-	import type { MessageBody } from "@graphite/subscription-router";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
@@ -26,7 +26,7 @@
 	let viewport: HTMLDivElement | undefined;
 	let gradientStopPicker: ColorPicker | undefined;
 
-	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorHandle>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");

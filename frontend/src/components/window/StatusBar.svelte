@@ -2,14 +2,14 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { SubscriptionRouter } from "@graphite/subscription-router";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
 	let statusBarHintsLayout: Layout = [];
 	let statusBarInfoLayout: Layout = [];

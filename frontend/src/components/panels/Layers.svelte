@@ -5,7 +5,7 @@
 	import type { EditorHandle, LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { NodeGraphStore } from "@graphite/stores/node-graph";
 	import type { TooltipStore } from "@graphite/stores/tooltip";
-	import type { SubscriptionRouter } from "@graphite/subscription-router";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
@@ -41,7 +41,7 @@
 		startY: number;
 	};
 
-	const subscriptions = getContext<SubscriptionRouter>("subscriptions");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorHandle>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
