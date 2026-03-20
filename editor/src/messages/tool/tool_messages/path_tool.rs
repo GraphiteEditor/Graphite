@@ -408,7 +408,7 @@ impl LayoutHolder for PathTool {
 			// pin_pivot,
 		]);
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
