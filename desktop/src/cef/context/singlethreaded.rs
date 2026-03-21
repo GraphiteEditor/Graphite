@@ -16,7 +16,13 @@ pub(super) struct SingleThreadedCefContext {
 
 impl CefContext for SingleThreadedCefContext {
 	fn work(&mut self) {
+		#[cfg(target_os = "macos")]
+		crate::window::mac::app::IS_CEF_WORK.with(|c| c.set(true));
+
 		cef::do_message_loop_work();
+
+		#[cfg(target_os = "macos")]
+		crate::window::mac::app::IS_CEF_WORK.with(|c| c.set(false));
 	}
 
 	fn handle_window_event(&mut self, event: &WindowEvent) {

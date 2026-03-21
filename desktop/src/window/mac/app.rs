@@ -2,6 +2,10 @@ use objc2::{ClassType, define_class, msg_send};
 use objc2_app_kit::{NSApplication, NSEvent, NSEventType, NSResponder};
 use objc2_foundation::NSObject;
 
+thread_local! {
+	pub(crate) static IS_CEF_WORK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 define_class!(
 	#[unsafe(super(NSApplication, NSResponder, NSObject))]
 	#[name = "GraphiteApplication"]
@@ -10,6 +14,12 @@ define_class!(
 	impl GraphiteApplication {
 		#[unsafe(method(sendEvent:))]
 		fn send_event(&self, event: &NSEvent) {
+			if IS_CEF_WORK.with(|c| c.get()) {
+				// CEF synthesized an NSEvent for an unhandled key press during message loop work.
+				// Drop it to avoid duplicate menu triggers and infinite keyboard event loops with winit.
+				return;
+			}
+
 			// Route keyDown events straight to the key window to skip native menu shortcut handling.
 			if event.r#type() == NSEventType::KeyDown && let Some(key_window) = self.keyWindow() {
 				unsafe { msg_send![&key_window, sendEvent: event] }
