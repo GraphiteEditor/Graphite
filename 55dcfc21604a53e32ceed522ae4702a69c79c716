@@ -1,0 +1,23 @@
+frontend/eslint.config.js
+  2c4f7ecd95f58af1 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "55dcfc21604a53e32ceed522ae4702a69c79c716",
+  "prompts": {
+    "2c4f7ecd95f58af1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b83e5f5d-b44f-401a-b265-c1474bf257b0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
