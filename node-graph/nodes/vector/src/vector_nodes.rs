@@ -10,6 +10,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
+use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
@@ -1306,11 +1307,11 @@ async fn sample_polyline(
 		.collect()
 }
 
-/// Simplifies vector paths by removing points that don't significantly contribute to the shape, using the Ramer-Douglas-Peucker algorithm. Any curves are sampled into polylines before simplification.
+/// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn decimate(
 	_: impl Ctx,
-	/// The vector paths to simplify.
+	/// The vector paths to decimate.
 	content: Table<Vector>,
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
 	#[default(5.)]
@@ -1325,16 +1326,6 @@ async fn decimate(
 	// Below this squared length, a line segment is treated as a degenerate point and the distance
 	// falls back to a simple point-to-point measurement to avoid division by near-zero.
 	const NEAR_ZERO_LENGTH_SQUARED: f64 = 1e-20;
-	// How many curve samples we want within each tolerance-width span. Sampling at exactly the
-	// tolerance step would leave deviations between consecutive samples undetected if a curve
-	// feature falls between two samples; doubling the density closes that gap with comfortable margin.
-	const SAMPLES_PER_TOLERANCE_WIDTH: f64 = 2.;
-	// Hard floor on the sample step (in document pixels). Prevents near-zero tolerance values from
-	// producing pathologically dense sampling before the early-return guard has a chance to act.
-	const MIN_SAMPLE_STEP: f64 = 0.01;
-	// Every curve segment must produce at least this many samples so there is always a start and
-	// at least one interior point for RDP to evaluate.
-	const MIN_SAMPLE_COUNT: usize = 2;
 
 	fn perpendicular_distance(point: DVec2, line_start: DVec2, line_end: DVec2) -> f64 {
 		let line_vector = line_end - line_start;
@@ -1402,28 +1393,17 @@ async fn decimate(
 
 				let is_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
 
-				// Collect points from the bezpath, sampling curves into line segments
+				// Flatten the bezpath into line segments, then collect the points
 				let mut points = Vec::new();
-				for segment in bezpath.segments() {
-					if points.is_empty() {
-						points.push(DVec2::new(segment.start().x, segment.start().y));
+				kurbo::flatten(bezpath, tolerance * 0.5, |el| match el {
+					PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+						points.push(DVec2::new(p.x, p.y));
 					}
-					if is_linear(segment) {
-						points.push(DVec2::new(segment.end().x, segment.end().y));
-					} else {
-						let length = segment.perimeter(DEFAULT_ACCURACY);
-						let sample_step = (tolerance / SAMPLES_PER_TOLERANCE_WIDTH).max(MIN_SAMPLE_STEP);
-						let sample_count = ((length / sample_step).ceil() as usize).max(MIN_SAMPLE_COUNT);
-						for i in 1..=sample_count {
-							let t = i as f64 / sample_count as f64;
-							let sampled = segment.eval(t);
-							points.push(DVec2::new(sampled.x, sampled.y));
-						}
-					}
-				}
+					_ => {}
+				});
 
-				// For closed paths, the last segment ends exactly at the first point, leaving a duplicate, so we remove it.
-				if is_closed {
+				// For closed paths, the last point duplicates the first, so remove it
+				if is_closed && points.len() > 1 && points.last() == points.first() {
 					points.pop();
 				}
 
