@@ -1,10 +1,9 @@
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { DialogStore } from "@graphite/stores/dialog";
-import type { DocumentStore } from "@graphite/stores/document";
-import { fullscreenModeChanged } from "@graphite/stores/fullscreen";
-import type { PortfolioStore } from "@graphite/stores/portfolio";
+import type { DialogStore } from "/src/stores/dialog";
+import type { DocumentStore } from "/src/stores/document";
+import { fullscreenModeChanged } from "/src/stores/fullscreen";
+import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { triggerClipboardRead } from "@graphite/utility-functions/clipboard";
+import { triggerClipboardRead } from "/src/utility-functions/clipboard";
 import {
 	onBeforeUnload,
 	onKeyUp,
@@ -20,7 +19,8 @@ import {
 	onContextMenu,
 	onPaste,
 	onPointerLockChange,
-} from "@graphite/utility-functions/input";
+} from "/src/utility-functions/input";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield" | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {

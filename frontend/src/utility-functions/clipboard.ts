@@ -1,6 +1,6 @@
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
-import { stripIndents } from "@graphite/utility-functions/strip-indents";
+import { extractPixelData } from "/src/utility-functions/rasterization";
+import { stripIndents } from "/src/utility-functions/strip-indents";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 export function readAtCaret(cut: boolean): string | undefined {
 	const element = window.document.activeElement;

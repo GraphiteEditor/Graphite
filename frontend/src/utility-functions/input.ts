@@ -1,14 +1,13 @@
 import { get } from "svelte/store";
-
-import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { DialogStore } from "@graphite/stores/dialog";
-import type { DocumentStore } from "@graphite/stores/document";
-import { toggleFullscreen } from "@graphite/stores/fullscreen";
-import type { PortfolioStore } from "@graphite/stores/portfolio";
-import { pasteFile } from "@graphite/utility-functions/files";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { operatingSystem } from "@graphite/utility-functions/platform";
+import type { DialogStore } from "/src/stores/dialog";
+import type { DocumentStore } from "/src/stores/document";
+import { toggleFullscreen } from "/src/stores/fullscreen";
+import type { PortfolioStore } from "/src/stores/portfolio";
+import { pasteFile } from "/src/utility-functions/files";
+import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
+import { operatingSystem } from "/src/utility-functions/platform";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;

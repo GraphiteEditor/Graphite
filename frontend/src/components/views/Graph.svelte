@@ -2,18 +2,16 @@
 	import { getContext } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
-
-	import type { EditorHandle, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { DocumentStore } from "@graphite/stores/document";
-	import { closeContextMenu } from "@graphite/stores/node-graph";
-	import type { NodeGraphStore } from "@graphite/stores/node-graph";
-
-	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { DocumentStore } from "/src/stores/document";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import { closeContextMenu } from "/src/stores/node-graph";
+	import type { EditorHandle, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wasm/pkg/graphite_wasm";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;

@@ -1,14 +1,12 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
-
-	import init, { EditorHandle, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { FrontendMessage } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { loadDemoArtwork } from "@graphite/utility-functions/network";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
+	import Editor from "/src/components/Editor.svelte";
 	import { createSubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageName, SubscriptionsRouter } from "/src/subscriptions-router";
-
-	import Editor from "@graphite/components/Editor.svelte";
+	import { loadDemoArtwork } from "/src/utility-functions/network";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import init, { EditorHandle, receiveNativeMessage } from "/wasm/pkg/graphite_wasm";
+	import type { FrontendMessage } from "/wasm/pkg/graphite_wasm";
 
 	let subscriptions: SubscriptionsRouter | undefined = undefined;
 	let editor: EditorHandle | undefined = undefined;

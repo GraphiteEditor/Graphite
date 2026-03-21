@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
-
-	import type { Color, EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { fillChoiceColor, colorToRgbaCSS } from "@graphite/utility-functions/colors";
-
-	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { fillChoiceColor, colorToRgbaCSS } from "/src/utility-functions/colors";
+	import type { Color, EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 	const editor = getContext<EditorHandle>("editor");
 

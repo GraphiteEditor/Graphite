@@ -1,5 +1,5 @@
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 type ApiResponse = { family: string; variants: string[]; files: Record<string, string> }[];
 

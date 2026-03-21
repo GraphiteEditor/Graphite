@@ -1,4 +1,4 @@
-import { createCrashDialog } from "@graphite/stores/dialog";
+import { createCrashDialog } from "/src/stores/dialog";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;

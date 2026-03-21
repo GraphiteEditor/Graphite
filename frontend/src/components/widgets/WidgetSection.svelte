@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
-
-	import type { EditorHandle, LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
+	import type { EditorHandle, LayoutTarget, WidgetSection as WidgetSectionData } from "/wasm/pkg/graphite_wasm";
 
 	export let widgetData: WidgetSectionData;
 	export let layoutTarget: LayoutTarget;

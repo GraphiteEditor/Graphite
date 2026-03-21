@@ -1,24 +1,22 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
-
-	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { createClipboardManager, destroyClipboardManager } from "@graphite/managers/clipboard";
-	import { createFontsManager, destroyFontsManager } from "@graphite/managers/fonts";
-	import { createHyperlinkManager, destroyHyperlinkManager } from "@graphite/managers/hyperlink";
-	import { createInputManager, destroyInputManager } from "@graphite/managers/input";
-	import { createLocalizationManager, destroyLocalizationManager } from "@graphite/managers/localization";
-	import { createPanicManager, destroyPanicManager } from "@graphite/managers/panic";
-	import { createPersistenceManager, destroyPersistenceManager } from "@graphite/managers/persistence";
-	import { createAppWindowStore, destroyAppWindowStore } from "@graphite/stores/app-window";
-	import { createDialogStore, destroyDialogStore } from "@graphite/stores/dialog";
-	import { createDocumentStore, destroyDocumentStore } from "@graphite/stores/document";
-	import { createFullscreenStore, destroyFullscreenStore } from "@graphite/stores/fullscreen";
-	import { createNodeGraphStore, destroyNodeGraphStore } from "@graphite/stores/node-graph";
-	import { createPortfolioStore, destroyPortfolioStore } from "@graphite/stores/portfolio";
-	import { createTooltipStore, destroyTooltipStore } from "@graphite/stores/tooltip";
+	import MainWindow from "/src/components/window/MainWindow.svelte";
+	import { createClipboardManager, destroyClipboardManager } from "/src/managers/clipboard";
+	import { createFontsManager, destroyFontsManager } from "/src/managers/fonts";
+	import { createHyperlinkManager, destroyHyperlinkManager } from "/src/managers/hyperlink";
+	import { createInputManager, destroyInputManager } from "/src/managers/input";
+	import { createLocalizationManager, destroyLocalizationManager } from "/src/managers/localization";
+	import { createPanicManager, destroyPanicManager } from "/src/managers/panic";
+	import { createPersistenceManager, destroyPersistenceManager } from "/src/managers/persistence";
+	import { createAppWindowStore, destroyAppWindowStore } from "/src/stores/app-window";
+	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
+	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
+	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
+	import { createNodeGraphStore, destroyNodeGraphStore } from "/src/stores/node-graph";
+	import { createPortfolioStore, destroyPortfolioStore } from "/src/stores/portfolio";
+	import { createTooltipStore, destroyTooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-
-	import MainWindow from "@graphite/components/window/MainWindow.svelte";
+	import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 	// Graphite Wasm editor and subscriptions router
 	export let subscriptions: SubscriptionsRouter;
@@ -346,7 +344,7 @@
 		font-weight: 400;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -354,7 +352,7 @@
 		font-weight: 400;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -362,7 +360,7 @@
 		font-weight: 700;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -370,7 +368,7 @@
 		font-weight: 700;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -378,6 +376,6 @@
 		font-weight: 400;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
 	}
 </style>

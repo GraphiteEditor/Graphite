@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { getContext, onDestroy } from "svelte";
-
-	import type { EditorHandle, OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { PortfolioStore } from "@graphite/stores/portfolio";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Panel from "@graphite/components/window/Panel.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Panel from "/src/components/window/Panel.svelte";
+	import type { PortfolioStore } from "/src/stores/portfolio";
+	import type { EditorHandle, OpenDocument } from "/wasm/pkg/graphite_wasm";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {

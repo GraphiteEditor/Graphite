@@ -1,11 +1,10 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-
-import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { IconName } from "@graphite/icons";
+import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { patchLayout } from "@graphite/utility-functions/widgets";
+import { patchLayout } from "/src/utility-functions/widgets";
+import type { EditorHandle, Layout } from "/wasm/pkg/graphite_wasm";
 
 export type DialogStore = ReturnType<typeof createDialogStore>;
 

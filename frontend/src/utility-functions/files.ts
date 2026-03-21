@@ -1,5 +1,5 @@
-import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
+import { extractPixelData } from "/src/utility-functions/rasterization";
+import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");

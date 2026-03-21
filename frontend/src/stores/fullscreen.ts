@@ -1,6 +1,5 @@
 import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 export type FullscreenStore = ReturnType<typeof createFullscreenStore>;

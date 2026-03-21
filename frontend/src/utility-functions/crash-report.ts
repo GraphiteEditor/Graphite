@@ -1,5 +1,5 @@
-import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
-import { stripIndents } from "@graphite/utility-functions/strip-indents";
+import { browserVersion, operatingSystem } from "/src/utility-functions/platform";
+import { stripIndents } from "/src/utility-functions/strip-indents";
 
 export function crashReportUrl(panicDetails: string): string {
 	const url = new URL("https://github.com/GraphiteEditor/Graphite/issues/new");

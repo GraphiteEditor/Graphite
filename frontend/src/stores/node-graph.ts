@@ -1,9 +1,8 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-
-import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import type { MessageBody } from "/src/subscriptions-router";
+import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "/wasm/pkg/graphite_wasm";
 
 export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 

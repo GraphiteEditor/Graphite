@@ -12,11 +12,7 @@
 		"sourceMap": true,
 		"types": ["node", "svelte", "svelte/store", "svelte/motion", "svelte/transition", "svelte/animate", "svelte/easing"],
 		"baseUrl": ".",
-		"paths": {
-			"/*": ["./*"],
-			"@graphite/*": ["src/*"],
-			"@branding/*": ["../branding/*"]
-		},
+		"paths": { "/*": ["./*"] },
 		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
 	},
 	"include": ["src/**/*.ts", "src/**/*.svelte", "*.ts"],

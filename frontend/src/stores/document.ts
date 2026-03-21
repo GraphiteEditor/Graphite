@@ -1,10 +1,9 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-
-import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { patchLayout } from "@graphite/utility-functions/widgets";
+import { patchLayout } from "/src/utility-functions/widgets";
+import type { Layout } from "/wasm/pkg/graphite_wasm";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
 

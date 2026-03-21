@@ -1,25 +1,23 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-
-	import type { Color, EditorHandle, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { AppWindowStore } from "@graphite/stores/app-window";
-	import type { DocumentStore } from "@graphite/stores/document";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Graph from "/src/components/views/Graph.svelte";
+	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
+	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { AppWindowStore } from "/src/stores/app-window";
+	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
-	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { setupViewportResizeObserver } from "@graphite/utility-functions/viewports";
-
-	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Graph from "@graphite/components/views/Graph.svelte";
-	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
-	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import { fillChoiceColor, createColor } from "/src/utility-functions/colors";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
+	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
+	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
+	import type { Color, EditorHandle, MenuDirection, MouseCursorIcon } from "/wasm/pkg/graphite_wasm";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
