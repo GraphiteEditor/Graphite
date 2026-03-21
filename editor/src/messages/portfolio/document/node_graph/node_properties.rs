@@ -1796,7 +1796,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+	let name = context.network_interface.display_name(&node_id, context.selection_network_path);
 
 	let description = context
 		.network_interface
