@@ -5,10 +5,10 @@
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import type { EditorHandle, LabeledShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LabeledShortcut } from "/wasm/pkg/graphite_wasm";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	let self: FloatingMenu | undefined;
 

@@ -6,7 +6,7 @@ import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
 
 const BUTTON_LEFT = 0;
@@ -78,7 +78,7 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	return true;
 }
 
-export async function onKeyDown(e: KeyboardEvent, editor: EditorHandle, dialogStore: DialogStore) {
+export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	const key = await getLocalizedScanCode(e);
 
 	const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -96,7 +96,7 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorHandle, dialogSt
 	}
 }
 
-export async function onKeyUp(e: KeyboardEvent, editor: EditorHandle, dialogStore: DialogStore) {
+export async function onKeyUp(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	const key = await getLocalizedScanCode(e);
 
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
@@ -109,7 +109,7 @@ export async function onKeyUp(e: KeyboardEvent, editor: EditorHandle, dialogStor
 // Pointer events
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-export function onPointerMove(e: PointerEvent, editor: EditorHandle, documentStore: DocumentStore) {
+export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
@@ -127,7 +127,7 @@ export function onPointerMove(e: PointerEvent, editor: EditorHandle, documentSto
 	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-export function onPointerDown(e: PointerEvent, editor: EditorHandle, dialogStore: DialogStore) {
+export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
@@ -157,7 +157,7 @@ export function onPointerDown(e: PointerEvent, editor: EditorHandle, dialogStore
 	}
 }
 
-export function onPointerUp(e: PointerEvent, editor: EditorHandle) {
+export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	potentiallyRestoreCanvasFocus(e);
 
 	// Don't let the browser navigate back or forward when using the buttons on some mice
@@ -176,7 +176,7 @@ export function onPointerUp(e: PointerEvent, editor: EditorHandle) {
 
 // Mouse events
 
-export function onPotentialDoubleClick(e: MouseEvent, editor: EditorHandle) {
+export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
 	if (textToolInteractiveInputElement || inPointerLock) return;
 
 	// Allow only events within the viewport or node graph boundaries
@@ -215,7 +215,7 @@ export function onPointerLockChange() {
 
 // Wheel events
 
-export function onWheelScroll(e: WheelEvent, editor: EditorHandle) {
+export function onWheelScroll(e: WheelEvent, editor: EditorWrapper) {
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 
 	// Prevent zooming the entire page when using Ctrl + scroll wheel outside of the viewport
@@ -246,7 +246,7 @@ export function onModifyInputField(e: CustomEvent) {
 
 // Window events
 
-export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorHandle, portfolioStore: PortfolioStore) {
+export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorWrapper, portfolioStore: PortfolioStore) {
 	const activeDocument = get(portfolioStore).documents[get(portfolioStore).activeDocumentIndex];
 	if (activeDocument && !activeDocument.details.isAutoSaved) editor.triggerAutoSave(activeDocument.id);
 
@@ -263,7 +263,7 @@ export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorHandle,
 	}
 }
 
-export function onPaste(e: ClipboardEvent, editor: EditorHandle) {
+export function onPaste(e: ClipboardEvent, editor: EditorWrapper) {
 	const dataTransfer = e.clipboardData;
 	if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 	e.preventDefault();

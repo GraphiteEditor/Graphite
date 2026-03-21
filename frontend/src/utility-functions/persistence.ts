@@ -2,7 +2,7 @@ import * as idb from "idb-keyval";
 import { get } from "svelte/store";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 export async function storeCurrentDocumentId(documentId: string) {
 	const indexedDbStorage = idb.createStore("graphite", "store");
@@ -64,7 +64,7 @@ export async function removeDocument(id: string, portfolio: PortfolioStore) {
 	}
 }
 
-export async function loadFirstDocument(editor: EditorHandle) {
+export async function loadFirstDocument(editor: EditorWrapper) {
 	const indexedDbStorage = idb.createStore("graphite", "store");
 
 	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
@@ -98,7 +98,7 @@ export async function loadFirstDocument(editor: EditorHandle) {
 	}
 }
 
-export async function loadRestDocuments(editor: EditorHandle) {
+export async function loadRestDocuments(editor: EditorWrapper) {
 	const indexedDbStorage = idb.createStore("graphite", "store");
 
 	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
@@ -176,7 +176,7 @@ export async function saveEditorPreferences(preferences: unknown) {
 	await idb.set("preferences", preferences, indexedDbStorage);
 }
 
-export async function loadEditorPreferences(editor: EditorHandle) {
+export async function loadEditorPreferences(editor: EditorWrapper) {
 	const indexedDbStorage = idb.createStore("graphite", "store");
 
 	const preferences = await idb.get<Record<string, unknown>>("preferences", indexedDbStorage);

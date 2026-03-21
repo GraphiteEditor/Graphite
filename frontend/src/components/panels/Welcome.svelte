@@ -9,10 +9,10 @@
 	import { pasteFile } from "/src/utility-functions/files";
 	import { patchLayout } from "/src/utility-functions/widgets";
 	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
-	import type { EditorHandle, Layout } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, Layout } from "/wasm/pkg/graphite_wasm";
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	let welcomePanelButtonsLayout: Layout = [];
 

@@ -1,19 +1,19 @@
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 type ApiResponse = { family: string; variants: string[]; files: Record<string, string> }[];
 
 const FONT_LIST_API = "https://api.graphite.art/font-list";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
-let editorHandle: EditorHandle | undefined = undefined;
+let editorWrapper: EditorWrapper | undefined = undefined;
 let abortController: AbortController | undefined = undefined;
 
-export function createFontsManager(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
+export function createFontsManager(subscriptions: SubscriptionsRouter, editor: EditorWrapper) {
 	destroyFontsManager();
 
 	subscriptionsRouter = subscriptions;
-	editorHandle = editor;
+	editorWrapper = editor;
 	abortController = new AbortController();
 
 	subscriptions.subscribeFrontendMessage("TriggerFontCatalogLoad", async () => {
@@ -71,5 +71,5 @@ export function destroyFontsManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRouter && editorHandle) newModule?.createFontsManager(subscriptionsRouter, editorHandle);
+	if (subscriptionsRouter && editorWrapper) newModule?.createFontsManager(subscriptionsRouter, editorWrapper);
 });

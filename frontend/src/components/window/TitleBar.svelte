@@ -9,12 +9,12 @@
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorHandle, Layout } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, Layout } from "/wasm/pkg/graphite_wasm";
 	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const fullscreen = getContext<FullscreenStore>("fullscreen");

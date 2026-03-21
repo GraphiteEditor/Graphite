@@ -20,7 +20,7 @@ import {
 	onPaste,
 	onPointerLockChange,
 } from "/src/utility-functions/input";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield" | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {
@@ -33,35 +33,35 @@ export const PRESS_REPEAT_DELAY_MS = 400;
 export const PRESS_REPEAT_INTERVAL_MS = 72;
 export const PRESS_REPEAT_INTERVAL_RAPID_MS = 10;
 const listeners: Listener[] = [
-	{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => editorHandle && portfolioStore && onBeforeUnload(e, editorHandle, portfolioStore) },
-	{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => editorHandle && dialogStore && onKeyUp(e, editorHandle, dialogStore) },
-	{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => editorHandle && dialogStore && onKeyDown(e, editorHandle, dialogStore) },
-	{ target: window, eventName: "pointermove", action: (e: PointerEvent) => editorHandle && documentStore && onPointerMove(e, editorHandle, documentStore) },
-	{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => editorHandle && dialogStore && onPointerDown(e, editorHandle, dialogStore) },
-	{ target: window, eventName: "pointerup", action: (e: PointerEvent) => editorHandle && onPointerUp(e, editorHandle) },
+	{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => editorWrapper && portfolioStore && onBeforeUnload(e, editorWrapper, portfolioStore) },
+	{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => editorWrapper && dialogStore && onKeyUp(e, editorWrapper, dialogStore) },
+	{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => editorWrapper && dialogStore && onKeyDown(e, editorWrapper, dialogStore) },
+	{ target: window, eventName: "pointermove", action: (e: PointerEvent) => editorWrapper && documentStore && onPointerMove(e, editorWrapper, documentStore) },
+	{ target: window, eventName: "pointerdown", action: (e: PointerEvent) => editorWrapper && dialogStore && onPointerDown(e, editorWrapper, dialogStore) },
+	{ target: window, eventName: "pointerup", action: (e: PointerEvent) => editorWrapper && onPointerUp(e, editorWrapper) },
 	{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
-	{ target: window, eventName: "mouseup", action: (e: MouseEvent) => editorHandle && onPotentialDoubleClick(e, editorHandle) },
-	{ target: window, eventName: "wheel", action: (e: WheelEvent) => editorHandle && onWheelScroll(e, editorHandle), options: { passive: false } },
+	{ target: window, eventName: "mouseup", action: (e: MouseEvent) => editorWrapper && onPotentialDoubleClick(e, editorWrapper) },
+	{ target: window, eventName: "wheel", action: (e: WheelEvent) => editorWrapper && onWheelScroll(e, editorWrapper), options: { passive: false } },
 	{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
 	{ target: window, eventName: "focusout", action: () => onFocusOut() },
 	{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 	{ target: window.document, eventName: "fullscreenchange", action: () => fullscreenModeChanged() },
-	{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => editorHandle && onPaste(e, editorHandle) },
+	{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => editorWrapper && onPaste(e, editorWrapper) },
 	{ target: window.document, eventName: "pointerlockchange", action: onPointerLockChange },
 	{ target: window.document, eventName: "pointerlockerror", action: onPointerLockChange },
 ];
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
-let editorHandle: EditorHandle | undefined = undefined;
+let editorWrapper: EditorWrapper | undefined = undefined;
 let dialogStore: DialogStore | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 let documentStore: DocumentStore | undefined = undefined;
 
-export function createInputManager(subscriptions: SubscriptionsRouter, editor: EditorHandle, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
+export function createInputManager(subscriptions: SubscriptionsRouter, editor: EditorWrapper, dialog: DialogStore, portfolio: PortfolioStore, doc: DocumentStore) {
 	destroyInputManager();
 
 	subscriptionsRouter = subscriptions;
-	editorHandle = editor;
+	editorWrapper = editor;
 	dialogStore = dialog;
 	portfolioStore = portfolio;
 	documentStore = doc;
@@ -98,6 +98,6 @@ export function destroyInputManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRouter && editorHandle && dialogStore && portfolioStore && documentStore)
-		newModule?.createInputManager(subscriptionsRouter, editorHandle, dialogStore, portfolioStore, documentStore);
+	if (subscriptionsRouter && editorWrapper && dialogStore && portfolioStore && documentStore)
+		newModule?.createInputManager(subscriptionsRouter, editorWrapper, dialogStore, portfolioStore, documentStore);
 });

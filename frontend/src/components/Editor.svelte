@@ -16,11 +16,11 @@
 	import { createPortfolioStore, destroyPortfolioStore } from "/src/stores/portfolio";
 	import { createTooltipStore, destroyTooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 	// Graphite Wasm editor and subscriptions router
 	export let subscriptions: SubscriptionsRouter;
-	export let editor: EditorHandle;
+	export let editor: EditorWrapper;
 	setContext("subscriptions", subscriptions);
 	setContext("editor", editor);
 

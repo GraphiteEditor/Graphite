@@ -17,7 +17,7 @@
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
-	import type { Color, EditorHandle, MenuDirection, MouseCursorIcon } from "/wasm/pkg/graphite_wasm";
+	import type { Color, EditorWrapper, MenuDirection, MouseCursorIcon } from "/wasm/pkg/graphite_wasm";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
@@ -25,7 +25,7 @@
 	let gradientStopPicker: ColorPicker | undefined;
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
 

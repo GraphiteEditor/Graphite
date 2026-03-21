@@ -5,11 +5,11 @@
 	import type { MessageName, SubscriptionsRouter } from "/src/subscriptions-router";
 	import { loadDemoArtwork } from "/src/utility-functions/network";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import init, { EditorHandle, receiveNativeMessage } from "/wasm/pkg/graphite_wasm";
+	import init, { EditorWrapper, receiveNativeMessage } from "/wasm/pkg/graphite_wasm";
 	import type { FrontendMessage } from "/wasm/pkg/graphite_wasm";
 
 	let subscriptions: SubscriptionsRouter | undefined = undefined;
-	let editor: EditorHandle | undefined = undefined;
+	let editor: EditorWrapper | undefined = undefined;
 
 	onMount(async () => {
 		// Initialize the Wasm module
@@ -23,7 +23,7 @@
 		// Create the editor and subscriptions router
 		const randomSeed = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
 		subscriptions = createSubscriptionsRouter();
-		editor = EditorHandle.create(operatingSystem(), randomSeed, (messageType: MessageName, messageData: FrontendMessage) => {
+		editor = EditorWrapper.create(operatingSystem(), randomSeed, (messageType: MessageName, messageData: FrontendMessage) => {
 			subscriptions?.handleFrontendMessage(messageType, messageData);
 		});
 

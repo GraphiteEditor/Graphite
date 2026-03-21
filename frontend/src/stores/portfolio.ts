@@ -3,7 +3,7 @@ import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorHandle, OpenDocument } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper, OpenDocument } from "/wasm/pkg/graphite_wasm";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
@@ -31,7 +31,7 @@ const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || wri
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
+export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor: EditorWrapper) {
 	destroyPortfolioStore();
 
 	subscriptionsRouter = subscriptions;

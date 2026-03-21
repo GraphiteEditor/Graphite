@@ -1,5 +1,5 @@
 import { extractPixelData } from "/src/utility-functions/rasterization";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
@@ -66,7 +66,7 @@ export async function upload(accept: string, textOrData: "text" | "data" | "both
 }
 export type UploadResult<T> = { filename: string; type: string; content: T };
 
-export async function pasteFile(item: DataTransferItem, editor: EditorHandle, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
+export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
 	const file = item.getAsFile();
 	if (!file) return;
 
