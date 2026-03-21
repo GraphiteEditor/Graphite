@@ -44,9 +44,9 @@ export async function loadDemoArtwork(editor: EditorHandle) {
 		const response = await fetch(url);
 		if (!response.ok) throw new Error();
 
-		const filename = url.pathname.split("/").pop() || "Untitled";
+		const filename = url.pathname.split("/").pop() || `Untitled.${editor.fileExtension()}`;
 		const content = await response.bytes();
-		editor.openFile(`${filename}.${editor.fileExtension()}`, content);
+		editor.openFile(filename, content);
 
 		history.replaceState("", "", `${window.location.pathname}${window.location.search}`);
 	} catch {
