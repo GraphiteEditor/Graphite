@@ -4,7 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Panel from "/src/components/window/Panel.svelte";
 	import type { PortfolioStore } from "/src/stores/portfolio";
-	import type { EditorHandle, OpenDocument } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, OpenDocument } from "/wasm/pkg/graphite_wasm";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -38,7 +38,7 @@
 		return { name, unsaved, tooltipLabel: name, tooltipDescription };
 	});
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function resizePanel(e: PointerEvent) {

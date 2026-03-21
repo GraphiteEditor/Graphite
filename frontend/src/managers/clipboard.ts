@@ -1,15 +1,15 @@
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { insertAtCaret, readAtCaret } from "/src/utility-functions/clipboard";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
-let editorHandle: EditorHandle | undefined = undefined;
+let editorWrapper: EditorWrapper | undefined = undefined;
 
-export function createClipboardManager(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
+export function createClipboardManager(subscriptions: SubscriptionsRouter, editor: EditorWrapper) {
 	destroyClipboardManager();
 
 	subscriptionsRouter = subscriptions;
-	editorHandle = editor;
+	editorWrapper = editor;
 
 	subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
@@ -36,5 +36,5 @@ export function destroyClipboardManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRouter && editorHandle) newModule?.createClipboardManager(subscriptionsRouter, editorHandle);
+	if (subscriptionsRouter && editorWrapper) newModule?.createClipboardManager(subscriptionsRouter, editorWrapper);
 });

@@ -1,6 +1,6 @@
 import { extractPixelData } from "/src/utility-functions/rasterization";
 import { stripIndents } from "/src/utility-functions/strip-indents";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 export function readAtCaret(cut: boolean): string | undefined {
 	const element = window.document.activeElement;
@@ -83,7 +83,7 @@ export function insertAtCaret(text: string) {
 	element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-export async function triggerClipboardRead(editor: EditorHandle) {
+export async function triggerClipboardRead(editor: EditorWrapper) {
 	// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 	// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 	try {

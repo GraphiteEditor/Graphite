@@ -9,7 +9,7 @@
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 
@@ -23,7 +23,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;

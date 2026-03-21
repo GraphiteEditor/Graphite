@@ -8,7 +8,7 @@ Svelte components that build the Graphite editor GUI from layouts, panels, widge
 
 TypeScript files, constructed by the editor frontend, which manage the input/output of browser APIs and link this functionality with the editor backend. These files subscribe to frontend messages to execute JS APIs, and in response to these APIs or user interactions, they may call functions in the backend (defined in `/frontend/wasm/editor_api.rs`).
 
-Each manager module stores its dependencies (like `subscriptionsRouter` and `editorHandle`) in module-level variables and exports a `create*()` and `destroy*()` function pair. `Editor.svelte` calls each `create*()` constructor in its `onMount` and calls each `destroy*()` in its `onDestroy`. Managers replace themselves during HMR updates if they are modified live during development.
+Each manager module stores its dependencies (like `subscriptionsRouter` and `editorWrapper`) in module-level variables and exports a `create*()` and `destroy*()` function pair. `Editor.svelte` calls each `create*()` constructor in its `onMount` and calls each `destroy*()` in its `onDestroy`. Managers replace themselves during HMR updates if they are modified live during development.
 
 ## Stores: `stores/`
 
@@ -26,11 +26,11 @@ TypeScript files which define and `export` individual helper functions for use e
 
 ## Subscriptions router: `subscriptions-router.ts`
 
-Associates messages from the backend with subscribers in the frontend, and routes messages to subscriber callbacks. This module provides a `subscribeFrontendMessage(messageType, callback)` function which JS code throughout the frontend can call to be registered as the exclusive handler for a chosen message type. The router's other function, `handleFrontendMessage(messageType, messageData)`, is called via the callback passed to `EditorHandle.create()` in `App.svelte` when the backend sends a `FrontendMessage`. When this occurs, the subscriptions router delivers the message to the subscriber by executing its registered `callback` function.
+Associates messages from the backend with subscribers in the frontend, and routes messages to subscriber callbacks. This module provides a `subscribeFrontendMessage(messageType, callback)` function which JS code throughout the frontend can call to be registered as the exclusive handler for a chosen message type. The router's other function, `handleFrontendMessage(messageType, messageData)`, is called via the callback passed to `EditorWrapper.create()` in `App.svelte` when the backend sends a `FrontendMessage`. When this occurs, the subscriptions router delivers the message to the subscriber by executing its registered `callback` function.
 
 ## Svelte app entry point: `App.svelte`
 
-The entry point for the Svelte application. Initializes the Wasm module, creates the `EditorHandle` backend instance and the subscriptions router, and renders `Editor.svelte` once both are ready. The `EditorHandle` is the wasm-bindgen interface to the Rust editor backend (defined in `/frontend/wasm/editor_api.rs`), providing access to callable backend functions. Both the editor and subscriptions router are passed as props to `Editor.svelte` and set as Svelte contexts for use throughout the component tree.
+The entry point for the Svelte application. Initializes the Wasm module, creates the `EditorWrapper` backend instance and the subscriptions router, and renders `Editor.svelte` once both are ready. The `EditorWrapper` is the wasm-bindgen interface to the Rust editor backend (defined in `/frontend/wasm/editor_api.rs`), providing access to callable backend functions. Both the editor and subscriptions router are passed as props to `Editor.svelte` and set as Svelte contexts for use throughout the component tree.
 
 ## Editor base instance: `Editor.svelte`
 

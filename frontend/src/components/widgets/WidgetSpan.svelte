@@ -23,7 +23,7 @@
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { parseFillChoice } from "/src/utility-functions/colors";
-	import type { EditorHandle, LayoutTarget, Widget, WidgetInstance } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wasm/pkg/graphite_wasm";
 
 	// Extract the discriminant key names from the Widget tagged enum union (e.g. "TextButton" | "CheckboxInput" | ...)
 	type WidgetKind = Widget extends infer T ? (T extends Record<infer K, unknown> ? K & string : never) : never;
@@ -32,7 +32,7 @@
 	// A Widget tagged enum unwrapped into a correlated [kind, props] tuple
 	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	export let widgets: WidgetInstance[];
 	export let direction: "row" | "column";

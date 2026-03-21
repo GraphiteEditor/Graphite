@@ -10,8 +10,8 @@ Assorted function and struct definitions used in the Wasm wrapper.
 
 ## Native communication: `src/native_communication.rs`
 
-Handles receiving serialized `FrontendMessage`s from the native desktop app via an `ArrayBuffer` and forwarding them to JS through the editor handle.
+Handles receiving serialized `FrontendMessage`s from the native desktop app via an `ArrayBuffer` and forwarding them to JS through the editor wrapper.
 
 ## Wasm wrapper initialization: `src/lib.rs`
 
-Entry point for the Rust codebase in the Wasm environment. Sets up panic hooks and logging, and defines thread-local storage for the editor instance, editor handle, message buffer, and panic dialog callback.
+Entry point for the Rust codebase in the Wasm environment. Sets up panic hooks and logging, and defines thread-local storage for the editor instance, editor wrapper, message buffer, and panic dialog callback.

@@ -11,13 +11,13 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { closeContextMenu } from "/src/stores/node-graph";
-	import type { EditorHandle, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wasm/pkg/graphite_wasm";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
 	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const documentState = getContext<DocumentStore>("document");
 

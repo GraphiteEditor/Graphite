@@ -4,9 +4,9 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import { fillChoiceColor, colorToRgbaCSS } from "/src/utility-functions/colors";
-	import type { Color, EditorHandle } from "/wasm/pkg/graphite_wasm";
+	import type { Color, EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	// Content
 	export let primary: Color;

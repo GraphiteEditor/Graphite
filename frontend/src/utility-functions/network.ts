@@ -1,4 +1,4 @@
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 export type RequestResult = { body: string; status: number };
 
@@ -35,7 +35,7 @@ export function requestWithUploadDownloadProgress(
 }
 
 // If the URL hash fragment contains a demo artwork path (e.g. #demo/isometric-light), fetch and open it
-export async function loadDemoArtwork(editor: EditorHandle) {
+export async function loadDemoArtwork(editor: EditorWrapper) {
 	const demoArtwork = window.location.hash.trim().match(/#demo\/(.*)/)?.[1];
 	if (!demoArtwork) return;
 

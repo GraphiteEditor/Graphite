@@ -5,7 +5,7 @@
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
 	import { browserVersion } from "/src/utility-functions/platform";
 	import { evaluateMathExpression, isPlatformNative } from "/wasm/pkg/graphite_wasm";
-	import type { ActionShortcut, EditorHandle, NumberInputIncrementBehavior, NumberInputMode } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wasm/pkg/graphite_wasm";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
@@ -14,7 +14,7 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	// Content
 	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.

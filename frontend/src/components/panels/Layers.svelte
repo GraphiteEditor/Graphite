@@ -13,7 +13,7 @@
 	import { pasteFile } from "/src/utility-functions/files";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorHandle, LayerPanelEntry, LayerStructureEntry, Layout } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wasm/pkg/graphite_wasm";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -40,7 +40,7 @@
 	};
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
-	const editor = getContext<EditorHandle>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
 

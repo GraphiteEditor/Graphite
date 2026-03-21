@@ -1,17 +1,17 @@
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { saveEditorPreferences, loadEditorPreferences, storeDocument, removeDocument, loadFirstDocument, loadRestDocuments, saveActiveDocument } from "/src/utility-functions/persistence";
-import type { EditorHandle } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
-let editorHandle: EditorHandle | undefined = undefined;
+let editorWrapper: EditorWrapper | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 
-export function createPersistenceManager(subscriptions: SubscriptionsRouter, editor: EditorHandle, portfolio: PortfolioStore) {
+export function createPersistenceManager(subscriptions: SubscriptionsRouter, editor: EditorWrapper, portfolio: PortfolioStore) {
 	destroyPersistenceManager();
 
 	subscriptionsRouter = subscriptions;
-	editorHandle = editor;
+	editorWrapper = editor;
 	portfolioStore = portfolio;
 
 	subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
@@ -63,5 +63,5 @@ export function destroyPersistenceManager() {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (subscriptionsRouter && editorHandle && portfolioStore) newModule?.createPersistenceManager(subscriptionsRouter, editorHandle, portfolioStore);
+	if (subscriptionsRouter && editorWrapper && portfolioStore) newModule?.createPersistenceManager(subscriptionsRouter, editorWrapper, portfolioStore);
 });
