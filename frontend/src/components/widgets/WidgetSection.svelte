@@ -4,7 +4,7 @@
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
-	import type { EditorWrapper, LayoutTarget, WidgetSection as WidgetSectionData } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LayoutTarget, WidgetSection as WidgetSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let widgetData: WidgetSectionData;
 	export let layoutTarget: LayoutTarget;

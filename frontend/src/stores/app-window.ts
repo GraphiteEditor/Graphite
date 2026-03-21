@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import type { AppWindowPlatform } from "/wasm/pkg/graphite_wasm";
+import type { AppWindowPlatform } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type AppWindowStore = ReturnType<typeof createAppWindowStore>;
 

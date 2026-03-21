@@ -4,7 +4,7 @@
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { Layout } from "/wasm/pkg/graphite_wasm";
+	import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 

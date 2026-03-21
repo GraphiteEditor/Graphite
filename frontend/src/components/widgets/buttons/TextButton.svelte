@@ -5,7 +5,7 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { IconName } from "/src/icons";
-	import type { MenuListEntry, ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 

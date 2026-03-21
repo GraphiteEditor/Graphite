@@ -3,7 +3,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { RadioEntryData } from "/wasm/pkg/graphite_wasm";
+	import type { RadioEntryData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 

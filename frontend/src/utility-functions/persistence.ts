@@ -2,7 +2,7 @@ import * as idb from "idb-keyval";
 import { get } from "svelte/store";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export async function storeCurrentDocumentId(documentId: string) {
 	const indexedDbStorage = idb.createStore("graphite", "store");

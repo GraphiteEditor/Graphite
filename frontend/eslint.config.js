@@ -68,7 +68,7 @@ export default defineConfig([
 				{
 					patterns: [
 						{ group: ["./**", "../**"], message: "\nImports must be absolute (e.g. '/src/<subpath>') not relative (e.g. './<subpath>')." },
-						{ group: ["src/**", "assets/**", "wasm/**"], message: "\nLocal imports must start with '/' (e.g. '/src/<subpath>' not 'src/<subpath>')." },
+						{ group: ["src/**", "assets/**", "wrapper/**"], message: "\nLocal imports must start with '/' (e.g. '/src/<subpath>' not 'src/<subpath>')." },
 					],
 				},
 			],

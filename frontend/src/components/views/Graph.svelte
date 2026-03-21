@@ -11,7 +11,7 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { closeContextMenu } from "/src/stores/node-graph";
-	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;

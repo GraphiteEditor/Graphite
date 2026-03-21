@@ -20,7 +20,7 @@ import {
 	onPaste,
 	onPointerLockChange,
 } from "/src/utility-functions/input";
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield" | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {

@@ -10,7 +10,7 @@
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DialogStore } from "/src/stores/dialog";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
+	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dialog = getContext<DialogStore>("dialog");
 	const tooltip = getContext<TooltipStore>("tooltip");

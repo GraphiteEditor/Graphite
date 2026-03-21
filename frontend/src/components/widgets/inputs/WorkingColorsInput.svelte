@@ -4,7 +4,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import { fillChoiceColor, colorToRgbaCSS } from "/src/utility-functions/colors";
-	import type { Color, EditorWrapper } from "/wasm/pkg/graphite_wasm";
+	import type { Color, EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
 

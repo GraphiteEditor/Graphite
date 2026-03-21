@@ -3,7 +3,7 @@
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradientStops, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
-	import type { FillChoice, MenuDirection, ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { FillChoice, MenuDirection, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 

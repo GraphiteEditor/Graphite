@@ -1,5 +1,5 @@
 import { extractPixelData } from "/src/utility-functions/rasterization";
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");

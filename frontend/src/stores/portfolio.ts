@@ -3,7 +3,7 @@ import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, OpenDocument } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper, OpenDocument } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 

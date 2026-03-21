@@ -23,7 +23,7 @@
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { parseFillChoice } from "/src/utility-functions/colors";
-	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Extract the discriminant key names from the Widget tagged enum union (e.g. "TextButton" | "CheckboxInput" | ...)
 	type WidgetKind = Widget extends infer T ? (T extends Record<infer K, unknown> ? K & string : never) : never;

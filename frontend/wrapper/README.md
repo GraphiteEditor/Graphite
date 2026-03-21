@@ -1,4 +1,4 @@
-# Overview of `/frontend/wasm/`
+# Overview of `/frontend/wrapper/`
 
 ## Wasm wrapper API: `src/editor_wrapper.rs`
 

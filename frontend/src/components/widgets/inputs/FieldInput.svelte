@@ -3,7 +3,7 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{
 		value: string;

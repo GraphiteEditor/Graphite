@@ -17,7 +17,7 @@
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
-	import type { Color, EditorWrapper, MenuDirection, MouseCursorIcon } from "/wasm/pkg/graphite_wasm";
+	import type { Color, EditorWrapper, MenuDirection, MouseCursorIcon } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;

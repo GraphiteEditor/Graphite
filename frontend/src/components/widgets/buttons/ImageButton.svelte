@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { IMAGE_BASE64_STRINGS } from "/src/utility-functions/images";
-	import type { ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let className = "";
 	export { className as class };

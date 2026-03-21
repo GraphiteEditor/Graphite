@@ -4,8 +4,8 @@
 	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import { evaluateMathExpression, isPlatformNative } from "/wasm/pkg/graphite_wasm";
-	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wasm/pkg/graphite_wasm";
+	import { evaluateMathExpression, isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;

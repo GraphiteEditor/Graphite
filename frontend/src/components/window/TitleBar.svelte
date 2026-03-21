@@ -9,8 +9,8 @@
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorWrapper, Layout } from "/wasm/pkg/graphite_wasm";
-	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 

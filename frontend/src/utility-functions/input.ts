@@ -6,8 +6,8 @@ import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
-import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;
