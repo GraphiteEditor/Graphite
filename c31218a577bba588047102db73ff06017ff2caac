@@ -1,0 +1,23 @@
+node-graph/nodes/vector/src/vector_nodes.rs
+  84a6e1da1edf67ce 13,1310,1314,1398-1400,1402-1403,1405-1406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "c31218a577bba588047102db73ff06017ff2caac",
+  "prompts": {
+    "84a6e1da1edf67ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d45a5b78-1303-4175-af15-916454ba79eb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 134,
+      "total_deletions": 110,
+      "accepted_lines": 118,
+      "overriden_lines": 1
+    }
+  }
+}
