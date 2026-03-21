@@ -1307,6 +1307,50 @@ async fn sample_polyline(
 		.collect()
 }
 
+/// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn simplify(
+	_: impl Ctx,
+	/// The vector paths to simplify.
+	content: Table<Vector>,
+	/// The maximum distance the simplified path may deviate from the original.
+	#[default(5.)]
+	#[unit(" px")]
+	tolerance: Length,
+) -> Table<Vector> {
+	if tolerance <= 0. {
+		return content;
+	}
+
+	let options = SimplifyOptions::default();
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let inverse_transform = transform.inverse();
+
+			let mut result = Vector {
+				style: std::mem::take(&mut row.element.style),
+				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
+			};
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(transform);
+
+				let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
+
+				simplified.apply_affine(inverse_transform);
+				result.append_bezpath(simplified);
+			}
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn decimate(
