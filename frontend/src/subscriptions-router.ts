@@ -9,7 +9,7 @@ export type MessageMap = ToMessageMap<FrontendMessage>;
 export type MessageName = keyof MessageMap;
 export type MessageBody<T extends MessageName> = Extract<FrontendMessage, Record<T, unknown>>[T];
 
-export function createSubscriptionRouter() {
+export function createSubscriptionsRouter() {
 	// Callbacks are wrapped at subscription time to capture their type-specific data extraction in a closure,
 	// so the stored function has a uniform signature and the map doesn't need per-key generic value types.
 	const subscriptions = new Map<MessageName, (taggedMessage: MessageMap) => void>();
@@ -99,4 +99,4 @@ export function createSubscriptionRouter() {
 		handleFrontendMessage,
 	};
 }
-export type SubscriptionRouter = ReturnType<typeof createSubscriptionRouter>;
+export type SubscriptionsRouter = ReturnType<typeof createSubscriptionsRouter>;

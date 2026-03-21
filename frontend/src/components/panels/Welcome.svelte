@@ -2,8 +2,8 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
@@ -13,19 +13,20 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorHandle>("editor");
 
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
+		subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
 			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
+		subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	});
 
 	function dropFile(e: DragEvent) {

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
-	import type { Color, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { Color, EditorHandle, MenuDirection, MouseCursorIcon } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { AppWindowStore } from "@graphite/stores/app-window";
 	import type { DocumentStore } from "@graphite/stores/document";
-	import type { MessageBody } from "@graphite/subscription-router";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
@@ -26,7 +26,8 @@
 	let viewport: HTMLDivElement | undefined;
 	let gradientStopPicker: ColorPicker | undefined;
 
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorHandle>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
 
@@ -142,13 +143,13 @@
 	function panCanvasX(newValue: number) {
 		const delta = newValue - scrollbarPos.x;
 		scrollbarPos.x = newValue;
-		editor.handle.panCanvas(-delta * scrollbarMultiplier.x, 0);
+		editor.panCanvas(-delta * scrollbarMultiplier.x, 0);
 	}
 
 	function panCanvasY(newValue: number) {
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
-		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
+		editor.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -342,7 +343,7 @@
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned, false);
+		editor.onChangeText(textCleaned, false);
 	}
 
 	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
@@ -372,7 +373,7 @@
 
 		textInput.oninput = () => {
 			if (!textInput) return;
-			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
+			editor.updateBounds(textInputCleanup(textInput.innerText));
 		};
 
 		textInputMatrix = data.transform;
@@ -454,12 +455,12 @@
 		updatePixelRatio();
 
 		// Update rendered SVGs
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
 			await tick();
 
 			updateDocumentArtwork(data.svg);
 		});
-		editor.subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
 			await tick();
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
@@ -467,25 +468,25 @@
 			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
+				if (setColorChoice === "Primary") editor.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.updateSecondaryColor(...rgb, 1);
 			}
 		});
 
 		// Gradient stop color picker
-		editor.subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
 			gradientStopPickerColor = data.color;
 			gradientStopPickerPosition = { x: data.position[0], y: data.position[1] };
 		});
 
 		// Update scrollbars and rulers
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
 			await tick();
 
 			const { position, size, multiplier } = data;
 			updateDocumentScrollbars(position, size, multiplier);
 		});
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
 			const { origin, spacing, interval, visible } = data;
@@ -493,24 +494,24 @@
 		});
 
 		// Update mouse cursor icon
-		editor.subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
 			await tick();
 
 			updateMouseCursor(data.cursor);
 		});
 
 		// Text entry
-		editor.subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
+		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
 
 			triggerTextCommit();
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
 			await tick();
 
 			displayEditableTextbox(data);
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
 			await tick();
 
 			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
@@ -521,10 +522,10 @@
 				textInput.style.fontFamily = "text-font";
 			}
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
 			textInputMatrix = data.transform;
 		});
-		editor.subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
+		subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
 			await tick();
 
 			displayRemoveEditableTextbox();
@@ -547,17 +548,17 @@
 		removeUpdatePixelRatio?.();
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
 
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
-		editor.subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
-		editor.subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
+		subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
+		subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
+		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
+		subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
 	});
 </script>
 
@@ -628,7 +629,7 @@
 							open={Boolean(gradientStopPickerPosition && gradientStopPickerColor)}
 							on:open={({ detail }) => {
 								if (!detail) {
-									editor.handle.closeGradientStopColorPicker();
+									editor.closeGradientStopColorPicker();
 									gradientStopPickerPosition = undefined;
 									gradientStopPickerColor = undefined;
 								}
@@ -636,10 +637,10 @@
 							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
 							on:colorOrGradient={({ detail }) => {
 								const color = fillChoiceColor(detail);
-								if (color) editor.handle.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
+								if (color) editor.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
 							}}
-							on:startHistoryTransaction={() => editor.handle.startGradientStopColorTransaction()}
-							on:commitHistoryTransaction={() => editor.handle.commitGradientStopColorTransaction()}
+							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}
+							on:commitHistoryTransaction={() => editor.commitGradientStopColorTransaction()}
 							bind:this={gradientStopPicker}
 						/>
 					</div>
@@ -682,10 +683,10 @@
 						direction="Vertical"
 						thumbLength={scrollbarSize.y}
 						thumbPosition={scrollbarPos.y}
-						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
+						on:trackShift={({ detail }) => editor.panCanvasByFraction(0, detail)}
 						on:thumbPosition={({ detail }) => panCanvasY(detail)}
-						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
-						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
+						on:thumbDragStart={() => editor.panCanvasAbortPrepare(false)}
+						on:thumbDragAbort={() => editor.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
@@ -694,10 +695,10 @@
 					direction="Horizontal"
 					thumbLength={scrollbarSize.x}
 					thumbPosition={scrollbarPos.x}
-					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
+					on:trackShift={({ detail }) => editor.panCanvasByFraction(detail, 0)}
 					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
-					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
+					on:thumbDragStart={() => editor.panCanvasAbortPrepare(true)}
+					on:thumbDragAbort={() => editor.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

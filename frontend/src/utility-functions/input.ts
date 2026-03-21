@@ -1,7 +1,7 @@
 import { get } from "svelte/store";
 
 import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { DialogStore } from "@graphite/stores/dialog";
 import type { DocumentStore } from "@graphite/stores/document";
 import { toggleFullscreen } from "@graphite/stores/fullscreen";
@@ -79,7 +79,7 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	return true;
 }
 
-export async function onKeyDown(e: KeyboardEvent, editor: Editor, dialogStore: DialogStore) {
+export async function onKeyDown(e: KeyboardEvent, editor: EditorHandle, dialogStore: DialogStore) {
 	const key = await getLocalizedScanCode(e);
 
 	const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -88,29 +88,29 @@ export async function onKeyDown(e: KeyboardEvent, editor: Editor, dialogStore: D
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
 		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onKeyDown(key, modifiers, e.repeat);
+		editor.onKeyDown(key, modifiers, e.repeat);
 		return;
 	}
 
 	if (get(dialogStore).visible && key === "Escape") {
-		editor.handle.onDialogDismiss();
+		editor.onDialogDismiss();
 	}
 }
 
-export async function onKeyUp(e: KeyboardEvent, editor: Editor, dialogStore: DialogStore) {
+export async function onKeyUp(e: KeyboardEvent, editor: EditorHandle, dialogStore: DialogStore) {
 	const key = await getLocalizedScanCode(e);
 
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
 		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onKeyUp(key, modifiers, e.repeat);
+		editor.onKeyUp(key, modifiers, e.repeat);
 	}
 }
 
 // Pointer events
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-export function onPointerMove(e: PointerEvent, editor: Editor, documentStore: DocumentStore) {
+export function onPointerMove(e: PointerEvent, editor: EditorHandle, documentStore: DocumentStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
@@ -124,11 +124,11 @@ export function onPointerMove(e: PointerEvent, editor: Editor, documentStore: Do
 	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	if (detectShake(e)) editor.handle.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-	editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
-export function onPointerDown(e: PointerEvent, editor: Editor, dialogStore: DialogStore) {
+export function onPointerDown(e: PointerEvent, editor: EditorHandle, dialogStore: DialogStore) {
 	potentiallyRestoreCanvasFocus(e);
 
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
@@ -138,7 +138,7 @@ export function onPointerDown(e: PointerEvent, editor: Editor, dialogStore: Dial
 	const inTextInput = e.target === textToolInteractiveInputElement;
 
 	if (get(dialogStore).visible && !inDialog) {
-		editor.handle.onDialogDismiss();
+		editor.onDialogDismiss();
 		e.preventDefault();
 		e.stopPropagation();
 	}
@@ -146,7 +146,7 @@ export function onPointerDown(e: PointerEvent, editor: Editor, dialogStore: Dial
 	if (!inTextInput && !inContextMenu) {
 		if (textToolInteractiveInputElement) {
 			const isLeftOrRightClick = e.button === BUTTON_RIGHT || e.button === BUTTON_LEFT;
-			editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
+			editor.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
 		} else {
 			viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
@@ -154,11 +154,11 @@ export function onPointerDown(e: PointerEvent, editor: Editor, dialogStore: Dial
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 }
 
-export function onPointerUp(e: PointerEvent, editor: Editor) {
+export function onPointerUp(e: PointerEvent, editor: EditorHandle) {
 	potentiallyRestoreCanvasFocus(e);
 
 	// Don't let the browser navigate back or forward when using the buttons on some mice
@@ -172,12 +172,12 @@ export function onPointerUp(e: PointerEvent, editor: Editor) {
 	if (textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.handle.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 }
 
 // Mouse events
 
-export function onPotentialDoubleClick(e: MouseEvent, editor: Editor) {
+export function onPotentialDoubleClick(e: MouseEvent, editor: EditorHandle) {
 	if (textToolInteractiveInputElement || inPointerLock) return;
 
 	// Allow only events within the viewport or node graph boundaries
@@ -196,7 +196,7 @@ export function onPotentialDoubleClick(e: MouseEvent, editor: Editor) {
 	if (e.button === BUTTON_FORWARD) buttons = 16; // Forward
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
+	editor.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
 }
 
 export function onMouseDown(e: MouseEvent) {
@@ -216,7 +216,7 @@ export function onPointerLockChange() {
 
 // Wheel events
 
-export function onWheelScroll(e: WheelEvent, editor: Editor) {
+export function onWheelScroll(e: WheelEvent, editor: EditorHandle) {
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 
 	// Prevent zooming the entire page when using Ctrl + scroll wheel outside of the viewport
@@ -235,7 +235,7 @@ export function onWheelScroll(e: WheelEvent, editor: Editor) {
 	if (isTargetingCanvas) {
 		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+		editor.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 	}
 }
 
@@ -247,15 +247,15 @@ export function onModifyInputField(e: CustomEvent) {
 
 // Window events
 
-export async function onBeforeUnload(e: BeforeUnloadEvent, editor: Editor, portfolioStore: PortfolioStore) {
+export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorHandle, portfolioStore: PortfolioStore) {
 	const activeDocument = get(portfolioStore).documents[get(portfolioStore).activeDocumentIndex];
-	if (activeDocument && !activeDocument.details.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
+	if (activeDocument && !activeDocument.details.isAutoSaved) editor.triggerAutoSave(activeDocument.id);
 
 	// Skip the message if the editor crashed, since work is already lost
-	if (await editor.handle.hasCrashed()) return;
+	if (await editor.hasCrashed()) return;
 
 	// Skip the message during development, since it's annoying when testing
-	if (await editor.handle.inDevelopmentMode()) return;
+	if (await editor.inDevelopmentMode()) return;
 
 	const allDocumentsSaved = get(portfolioStore).documents.reduce((acc, doc) => acc && doc.details.isSaved, true);
 	if (!allDocumentsSaved) {
@@ -264,13 +264,13 @@ export async function onBeforeUnload(e: BeforeUnloadEvent, editor: Editor, portf
 	}
 }
 
-export function onPaste(e: ClipboardEvent, editor: Editor) {
+export function onPaste(e: ClipboardEvent, editor: EditorHandle) {
 	const dataTransfer = e.clipboardData;
 	if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 	e.preventDefault();
 
 	Array.from(dataTransfer.items).forEach(async (item) => {
-		if (item.type === "text/plain") item.getAsString((text) => editor.handle.pasteText(text));
+		if (item.type === "text/plain") item.getAsString((text) => editor.pasteText(text));
 		await pasteFile(item, editor);
 	});
 }

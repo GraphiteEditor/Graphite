@@ -2,10 +2,10 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
 
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { NodeGraphStore } from "@graphite/stores/node-graph";
 	import type { TooltipStore } from "@graphite/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
@@ -41,7 +41,8 @@
 		startY: number;
 	};
 
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorHandle>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
@@ -69,26 +70,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -107,11 +108,11 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
@@ -125,17 +126,17 @@
 	});
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -162,7 +163,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -200,7 +201,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -247,7 +248,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -256,7 +257,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -389,7 +390,7 @@
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -445,7 +446,7 @@
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
 			const name = inputElement.value || "";
-			editor.handle.setLayerName(currentListing.entry.id, name);
+			editor.setLayerName(currentListing.entry.id, name);
 			currentListing.entry.alias = name;
 		}
 

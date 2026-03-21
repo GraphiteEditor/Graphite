@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { LabeledShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, LabeledShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { TooltipStore } from "@graphite/stores/tooltip";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -11,7 +10,7 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 
 	let self: FloatingMenu | undefined;
 
@@ -32,7 +31,7 @@
 
 	// TODO: Once all TODOs are replaced with real text, remove this function
 	function filterTodo(text: string | undefined): string | undefined {
-		if (text?.trim().toUpperCase() === "TODO" && !editor.handle.inDevelopmentMode()) return "";
+		if (text?.trim().toUpperCase() === "TODO" && !editor.inDevelopmentMode()) return "";
 		return text;
 	}
 

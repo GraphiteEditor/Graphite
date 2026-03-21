@@ -1,64 +1,67 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import type { PortfolioStore } from "@graphite/stores/portfolio";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { saveEditorPreferences, loadEditorPreferences, storeDocument, removeDocument, loadFirstDocument, loadRestDocuments, saveActiveDocument } from "@graphite/utility-functions/persistence";
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
+let editorHandle: EditorHandle | undefined = undefined;
 let portfolioStore: PortfolioStore | undefined = undefined;
 
-export function createPersistenceManager(editor: Editor, portfolio: PortfolioStore) {
+export function createPersistenceManager(subscriptions: SubscriptionsRouter, editor: EditorHandle, portfolio: PortfolioStore) {
 	destroyPersistenceManager();
 
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
+	editorHandle = editor;
 	portfolioStore = portfolio;
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
 		await saveEditorPreferences(data.preferences);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", async () => {
 		await loadEditorPreferences(editor);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
 		await storeDocument(data, portfolio);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerPersistenceRemoveDocument", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceRemoveDocument", async (data) => {
 		await removeDocument(String(data.documentId), portfolio);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument", async () => {
 		await loadFirstDocument(editor);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments", async () => {
 		await loadRestDocuments(editor);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
+	subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerSaveActiveDocument", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerSaveActiveDocument", async (data) => {
 		await saveActiveDocument(data.documentId);
 	});
 }
 
 export function destroyPersistenceManager() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRouter;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
+	subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
+	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments");
+	subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
+	subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (editorRef && portfolioStore) newModule?.createPersistenceManager(editorRef, portfolioStore);
+	if (subscriptionsRouter && editorHandle && portfolioStore) newModule?.createPersistenceManager(subscriptionsRouter, editorHandle, portfolioStore);
 });

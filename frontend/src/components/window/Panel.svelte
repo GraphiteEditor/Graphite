@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -25,7 +25,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
@@ -56,7 +56,7 @@
 	}
 </script>
 
-<LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
+<LayoutCol on:pointerdown={() => panelType && editor.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
 			{#each tabLabels as tabLabel, tabIndex}

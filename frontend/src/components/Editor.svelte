@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { createClipboardManager, destroyClipboardManager } from "@graphite/managers/clipboard";
 	import { createFontsManager, destroyFontsManager } from "@graphite/managers/fonts";
 	import { createHyperlinkManager, destroyHyperlinkManager } from "@graphite/managers/hyperlink";
@@ -16,39 +16,42 @@
 	import { createNodeGraphStore, destroyNodeGraphStore } from "@graphite/stores/node-graph";
 	import { createPortfolioStore, destroyPortfolioStore } from "@graphite/stores/portfolio";
 	import { createTooltipStore, destroyTooltipStore } from "@graphite/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite Wasm editor
-	export let editor: Editor;
+	// Graphite Wasm editor and subscriptions router
+	export let subscriptions: SubscriptionsRouter;
+	export let editor: EditorHandle;
+	setContext("subscriptions", subscriptions);
 	setContext("editor", editor);
 
 	const stores = {
-		dialog: createDialogStore(editor),
-		tooltip: createTooltipStore(editor),
-		document: createDocumentStore(editor),
-		fullscreen: createFullscreenStore(editor),
-		nodeGraph: createNodeGraphStore(editor),
-		portfolio: createPortfolioStore(editor),
-		appWindow: createAppWindowStore(editor),
+		dialog: createDialogStore(subscriptions, editor),
+		tooltip: createTooltipStore(subscriptions),
+		document: createDocumentStore(subscriptions),
+		fullscreen: createFullscreenStore(subscriptions),
+		nodeGraph: createNodeGraphStore(subscriptions),
+		portfolio: createPortfolioStore(subscriptions, editor),
+		appWindow: createAppWindowStore(subscriptions),
 	};
 	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
 
 	onMount(() => {
-		createClipboardManager(editor);
-		createHyperlinkManager(editor);
-		createLocalizationManager(editor);
-		createPanicManager(editor);
-		createPersistenceManager(editor, stores.portfolio);
-		createFontsManager(editor);
-		createInputManager(editor, stores.dialog, stores.portfolio, stores.document);
+		createClipboardManager(subscriptions, editor);
+		createHyperlinkManager(subscriptions);
+		createLocalizationManager(subscriptions, editor);
+		createPanicManager(subscriptions);
+		createPersistenceManager(subscriptions, editor, stores.portfolio);
+		createFontsManager(subscriptions, editor);
+		createInputManager(subscriptions, editor, stores.dialog, stores.portfolio, stores.document);
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
 		// The backend handles idempotency, so this is safe to call again during HMR re-mounts.
-		editor.handle.initAfterFrontendReady();
+		editor.initAfterFrontendReady();
 
 		// Re-send all UI layouts from Rust so the frontend has them after an HMR re-mount
-		editor.handle.resendAllLayouts();
+		editor.resendAllLayouts();
 	});
 
 	onDestroy(() => {

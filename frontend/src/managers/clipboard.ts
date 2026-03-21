@@ -1,37 +1,40 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { insertAtCaret, readAtCaret } from "@graphite/utility-functions/clipboard";
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
+let editorHandle: EditorHandle | undefined = undefined;
 
-export function createClipboardManager(editor: Editor) {
+export function createClipboardManager(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
 	destroyClipboardManager();
 
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
+	editorHandle = editor;
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
 		navigator.clipboard?.writeText?.(data.content);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
-		editor.handle.readSelection(readAtCaret(data.cut), data.cut);
+	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
+		editor.readSelection(readAtCaret(data.cut), data.cut);
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
 }
 
 export function destroyClipboardManager() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRouter;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
+	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (editorRef) newModule?.createClipboardManager(editorRef);
+	if (subscriptionsRouter && editorHandle) newModule?.createClipboardManager(subscriptionsRouter, editorHandle);
 });

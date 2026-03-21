@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, LayoutTarget, Widget, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { parseFillChoice } from "@graphite/utility-functions/colors";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -35,7 +34,7 @@
 	// A Widget tagged enum unwrapped into a correlated [kind, props] tuple
 	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 
 	export let widgets: WidgetInstance[];
 	export let direction: "row" | "column";
@@ -52,15 +51,15 @@
 		.join(" ");
 
 	function widgetValueCommit(widgetIndex: number, value: unknown) {
-		editor.handle.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
+		editor.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
 	}
 
 	function widgetValueUpdate(widgetIndex: number, value: unknown, resendWidget: boolean) {
-		editor.handle.widgetValueUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
+		editor.widgetValueUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
 	}
 
 	function widgetValueCommitAndUpdate(widgetIndex: number, value: unknown, resendWidget: boolean) {
-		editor.handle.widgetValueCommitAndUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
+		editor.widgetValueCommitAndUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
 	}
 
 	// Extracts the kind and props from a Widget tagged enum, validated against the widget registry.

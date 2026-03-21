@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { Color } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { Color, EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { fillChoiceColor, colorToRgbaCSS } from "@graphite/utility-functions/colors";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 
 	// Content
 	export let primary: Color;
@@ -29,11 +28,11 @@
 	}
 
 	function primaryColorChanged(color: Color) {
-		editor.handle.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
+		editor.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
 	}
 
 	function secondaryColorChanged(color: Color) {
-		editor.handle.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
+		editor.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
 	}
 </script>
 

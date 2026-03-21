@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
@@ -27,26 +27,26 @@ const initialState: DocumentStoreState = {
 	fadeArtwork: 100,
 };
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DocumentStoreState> = import.meta.hot?.data?.store || writable<DocumentStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createDocumentStore(editor: Editor) {
+export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 	destroyDocumentStore();
 
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
 			state.fadeArtwork = data.percentage;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
+	subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -55,7 +55,7 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -64,7 +64,7 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
+	subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -73,7 +73,7 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
+	subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -82,7 +82,7 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -91,7 +91,7 @@ export function createDocumentStore(editor: Editor) {
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
 			return state;
@@ -102,14 +102,14 @@ export function createDocumentStore(editor: Editor) {
 }
 
 export function destroyDocumentStore() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRouter;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
-	editor.subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
-	editor.subscriptions.unsubscribeLayoutUpdate("ToolOptions");
-	editor.subscriptions.unsubscribeLayoutUpdate("DocumentBar");
-	editor.subscriptions.unsubscribeLayoutUpdate("ToolShelf");
-	editor.subscriptions.unsubscribeLayoutUpdate("WorkingColors");
-	editor.subscriptions.unsubscribeLayoutUpdate("NodeGraphControlBar");
+	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
+	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
+	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
+	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
+	subscriptions.unsubscribeLayoutUpdate("ToolShelf");
+	subscriptions.unsubscribeLayoutUpdate("WorkingColors");
+	subscriptions.unsubscribeLayoutUpdate("NodeGraphControlBar");
 }

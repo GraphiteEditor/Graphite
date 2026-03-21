@@ -1,27 +1,30 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { localizeTimestamp } from "@graphite/utility-functions/time";
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
+let editorHandle: EditorHandle | undefined = undefined;
 
-export function createLocalizationManager(editor: Editor) {
+export function createLocalizationManager(subscriptions: SubscriptionsRouter, editor: EditorHandle) {
 	destroyLocalizationManager();
 
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
+	editorHandle = editor;
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate", (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate", (data) => {
 		const localized = localizeTimestamp(data.commitDate);
-		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
+		editor.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
 	});
 }
 
 export function destroyLocalizationManager() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRouter;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate");
+	subscriptions.unsubscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (editorRef) newModule?.createLocalizationManager(editorRef);
+	if (subscriptionsRouter && editorHandle) newModule?.createLocalizationManager(subscriptionsRouter, editorHandle);
 });

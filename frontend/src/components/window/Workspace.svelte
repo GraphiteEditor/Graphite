@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { getContext, onDestroy } from "svelte";
 
-	import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { PortfolioStore } from "@graphite/stores/portfolio";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -35,13 +34,13 @@
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
 		const unsaved = !doc.details.isSaved;
-		if (!editor.handle.inDevelopmentMode()) return { name, unsaved };
+		if (!editor.inDevelopmentMode()) return { name, unsaved };
 
 		const tooltipDescription = `Document ID: ${doc.id}`;
 		return { name, unsaved, tooltipLabel: name, tooltipDescription };
 	});
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorHandle>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function resizePanel(e: PointerEvent) {
@@ -151,9 +150,9 @@
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
-					emptySpaceAction={() => editor.handle.newDocumentDialog()}
-					clickAction={(tabIndex) => editor.handle.selectDocument($portfolio.documents[tabIndex].id)}
-					closeAction={(tabIndex) => editor.handle.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
+					emptySpaceAction={() => editor.newDocumentDialog()}
+					clickAction={(tabIndex) => editor.selectDocument($portfolio.documents[tabIndex].id)}
+					closeAction={(tabIndex) => editor.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 					tabActiveIndex={$portfolio.activeDocumentIndex}
 					bind:this={documentPanel}
 				/>

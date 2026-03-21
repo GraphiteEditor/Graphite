@@ -2,12 +2,12 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
+	import type { EditorHandle, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { AppWindowStore } from "@graphite/stores/app-window";
 	import { enterFullscreen, exitFullscreen } from "@graphite/stores/fullscreen";
 	import type { FullscreenStore } from "@graphite/stores/fullscreen";
 	import type { TooltipStore } from "@graphite/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -16,8 +16,9 @@
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
+	const editor = getContext<EditorHandle>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const appWindow = getContext<AppWindowStore>("appWindow");
-	const editor = getContext<Editor>("editor");
 	const fullscreen = getContext<FullscreenStore>("fullscreen");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
@@ -29,14 +30,14 @@
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
 			patchLayout(menuBarLayout, data);
 			menuBarLayout = menuBarLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("MenuBar");
+		subscriptions.unsubscribeLayoutUpdate("MenuBar");
 	});
 </script>
 
@@ -48,7 +49,7 @@
 		{/if}
 	</LayoutRow>
 	<!-- Window frame -->
-	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.handle.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.handle.appWindowMaximize()} />
+	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.appWindowMaximize()} />
 	<!-- Window buttons -->
 	<LayoutRow class="window-buttons" classes={{ fullscreen: showFullscreenButton, windows: $appWindow.platform === "Windows", linux: $appWindow.platform === "Linux" }}>
 		{#if $appWindow.platform !== "Mac"}
@@ -60,20 +61,20 @@
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
-						if (isPlatformNative()) editor.handle.appWindowFullscreen();
+						if (isPlatformNative()) editor.appWindowFullscreen();
 						else ($fullscreen.windowFullscreen ? exitFullscreen : enterFullscreen)();
 					}}
 				>
 					<IconLabel icon={isFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
 				</LayoutRow>
 			{:else}
-				<LayoutRow tooltipLabel="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
+				<LayoutRow tooltipLabel="Minimize" on:click={() => editor.appWindowMinimize()}>
 					<IconLabel icon="WindowButtonWinMinimize" />
 				</LayoutRow>
-				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
+				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.appWindowMaximize()}>
 					<IconLabel icon={$appWindow.maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 				</LayoutRow>
-				<LayoutRow tooltipLabel="Close" on:click={() => editor.handle.appWindowClose()}>
+				<LayoutRow tooltipLabel="Close" on:click={() => editor.appWindowClose()}>
 					<IconLabel icon="WindowButtonWinClose" />
 				</LayoutRow>
 			{/if}
