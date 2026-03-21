@@ -1520,6 +1520,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Handle inputs of selected node
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
 						let input_connector = InputConnector::node(*selected_node, input_index);
+						let is_exposed = network_interface.input_from_connector(&input_connector, selection_network_path).is_some_and(|input| input.is_exposed());
+						if !is_exposed {
+							continue;
+						}
+
 						// Only disconnect inputs to non selected nodes
 						if !network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
@@ -1550,7 +1555,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let output_connector = OutputConnector::node(*selected_node, output_index);
 						if let Some(downstream_connections) = outward_wires.get(&output_connector) {
 							for &input_connector in downstream_connections {
-								if input_connector.node_id().is_some_and(|downstream_node| !all_selected_nodes.contains(&downstream_node)) {
+								let is_exposed = network_interface.input_from_connector(&input_connector, selection_network_path).is_some_and(|input| input.is_exposed());
+								if is_exposed && input_connector.node_id().is_some_and(|downstream_node| !all_selected_nodes.contains(&downstream_node)) {
 									responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 								}
 							}
