@@ -1,4 +1,4 @@
-use crate::editor_api::EditorWrapper;
+use crate::editor_wrapper::EditorWrapper;
 use crate::helpers::wrapper;
 use editor::messages::prelude::FrontendMessage;
 use js_sys::{ArrayBuffer, Uint8Array};
