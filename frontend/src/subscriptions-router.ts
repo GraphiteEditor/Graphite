@@ -1,4 +1,4 @@
-import type { FrontendMessage, LayoutTarget, WidgetDiff } from "/wasm/pkg/graphite_wasm";
+import type { FrontendMessage, LayoutTarget, WidgetDiff } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Type convert a union of messages into a map of messages
 export type ToMessageMap<T> = {

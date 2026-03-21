@@ -1,6 +1,6 @@
 <script lang="ts">
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
-	import type { LayoutTarget, WidgetTable } from "/wasm/pkg/graphite_wasm";
+	import type { LayoutTarget, WidgetTable } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let widgetData: WidgetTable;
 	export let layoutTarget: LayoutTarget;

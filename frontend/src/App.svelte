@@ -5,16 +5,16 @@
 	import type { MessageName, SubscriptionsRouter } from "/src/subscriptions-router";
 	import { loadDemoArtwork } from "/src/utility-functions/network";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import init, { EditorWrapper, receiveNativeMessage } from "/wasm/pkg/graphite_wasm";
-	import type { FrontendMessage } from "/wasm/pkg/graphite_wasm";
+	import init, { EditorWrapper, receiveNativeMessage } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { FrontendMessage } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let subscriptions: SubscriptionsRouter | undefined = undefined;
 	let editor: EditorWrapper | undefined = undefined;
 
 	onMount(async () => {
-		// Initialize the Wasm module
-		const wasm = await init();
-		for (const [name, f] of Object.entries(wasm)) {
+		// Initialize the editor wrapper
+		const wrapper = await init();
+		for (const [name, f] of Object.entries(wrapper)) {
 			if (name.startsWith("__node_registry")) f();
 		}
 		window.imageCanvases = {};

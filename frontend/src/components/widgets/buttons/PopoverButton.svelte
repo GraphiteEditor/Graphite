@@ -5,7 +5,7 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { IconName, PopoverButtonStyle } from "/src/icons";
-	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "/wasm/pkg/graphite_wasm";
+	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let layoutTarget: LayoutTarget;
 

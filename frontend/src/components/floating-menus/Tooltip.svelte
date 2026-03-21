@@ -5,7 +5,7 @@
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import type { EditorWrapper, LabeledShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const editor = getContext<EditorWrapper>("editor");

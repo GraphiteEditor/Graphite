@@ -1,7 +1,7 @@
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { saveEditorPreferences, loadEditorPreferences, storeDocument, removeDocument, loadFirstDocument, loadRestDocuments, saveActiveDocument } from "/src/utility-functions/persistence";
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 let editorWrapper: EditorWrapper | undefined = undefined;

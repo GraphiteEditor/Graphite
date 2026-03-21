@@ -11,7 +11,7 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { MenuListEntry, MenuDirection } from "/wasm/pkg/graphite_wasm";
+	import type { MenuListEntry, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;

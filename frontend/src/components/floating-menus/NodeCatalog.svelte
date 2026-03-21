@@ -6,7 +6,7 @@
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
-	import type { FrontendNodeType } from "/wasm/pkg/graphite_wasm";
+	import type { FrontendNodeType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");

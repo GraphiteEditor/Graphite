@@ -20,7 +20,7 @@
 	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import type { MenuDirection } from "/wasm/pkg/graphite_wasm";
+	import type { MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;

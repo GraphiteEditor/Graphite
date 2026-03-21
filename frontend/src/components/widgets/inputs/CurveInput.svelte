@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { Curve, CurveManipulatorGroup, ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { Curve, CurveManipulatorGroup, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{
 		value: Curve;

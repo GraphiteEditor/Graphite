@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let className = "";
 	export { className as class };

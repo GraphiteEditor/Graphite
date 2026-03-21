@@ -1,6 +1,6 @@
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { localizeTimestamp } from "/src/utility-functions/time";
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 let editorWrapper: EditorWrapper | undefined = undefined;

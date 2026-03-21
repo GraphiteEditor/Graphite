@@ -3,7 +3,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import type { IconName } from "/src/icons";
-	import type { ActionShortcut } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
 	const backupId = String(Math.random()).substring(2);

@@ -13,7 +13,7 @@
 	import { pasteFile } from "/src/utility-functions/files";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;

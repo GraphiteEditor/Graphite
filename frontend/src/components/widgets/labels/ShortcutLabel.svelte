@@ -4,7 +4,7 @@
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { IconName } from "/src/icons";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "/wasm/pkg/graphite_wasm";
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let shortcut: ActionShortcut;

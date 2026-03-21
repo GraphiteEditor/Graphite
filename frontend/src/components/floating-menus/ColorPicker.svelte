@@ -28,8 +28,8 @@
 		colorEquals,
 		gradientFirstColor,
 	} from "/src/utility-functions/colors";
-	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
-	import type { FillChoice, MenuDirection, Color } from "/wasm/pkg/graphite_wasm";
+	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { FillChoice, MenuDirection, Color } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type PresetColors = "None" | "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
 

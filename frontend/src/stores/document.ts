@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { Layout } from "/wasm/pkg/graphite_wasm";
+import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
 

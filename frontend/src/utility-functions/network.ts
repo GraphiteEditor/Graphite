@@ -1,4 +1,4 @@
-import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type RequestResult = { body: string; status: number };
 

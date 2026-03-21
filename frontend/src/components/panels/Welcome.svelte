@@ -8,8 +8,8 @@
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import { isPlatformNative } from "/wasm/pkg/graphite_wasm";
-	import type { EditorWrapper, Layout } from "/wasm/pkg/graphite_wasm";
+	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorWrapper>("editor");

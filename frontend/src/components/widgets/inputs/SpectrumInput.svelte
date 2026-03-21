@@ -9,8 +9,8 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
-	import { evaluateGradientAtPosition } from "/wasm/pkg/graphite_wasm";
-	import type { Color, GradientStops } from "/wasm/pkg/graphite_wasm";
+	import { evaluateGradientAtPosition } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { Color, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;

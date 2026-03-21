@@ -4,7 +4,7 @@ import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { EditorWrapper, Layout } from "/wasm/pkg/graphite_wasm";
+import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type DialogStore = ReturnType<typeof createDialogStore>;
 

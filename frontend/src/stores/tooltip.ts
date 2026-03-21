@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { operatingSystem } from "/src/utility-functions/platform";
-import type { ActionShortcut } from "/wasm/pkg/graphite_wasm";
+import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type TooltipStore = ReturnType<typeof createTooltipStore>;
 

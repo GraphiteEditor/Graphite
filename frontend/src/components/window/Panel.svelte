@@ -9,7 +9,7 @@
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { EditorWrapper } from "/wasm/pkg/graphite_wasm";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 
