@@ -1,0 +1,23 @@
+frontend/wasm/src/helpers.rs
+  85a201217a691c37 19,27,51,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "742cb0377c4f325d6f4c8cb5fcb5871183204f0f",
+  "prompts": {
+    "85a201217a691c37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7ed141a9-74da-44d9-9bfc-1d8581eed024",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 7,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
