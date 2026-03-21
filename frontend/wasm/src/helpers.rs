@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure
-pub fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
+pub(crate) fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
 	web_sys::window()
 		.expect("No global `window` exists")
 		.request_animation_frame(f.as_ref().unchecked_ref())
@@ -24,7 +24,7 @@ pub fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
 }
 
 /// Helper function for calling JS's `setTimeout` with the given closure and delay
-pub fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
+pub(crate) fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
 	web_sys::window()
 		.expect("No global `window` exists")
@@ -34,7 +34,7 @@ pub fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 
 /// Provides access to the `Editor` by calling the given closure with it as an argument.
 #[cfg(not(feature = "native"))]
-pub fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
+fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
 		let Ok(Some(editor)) = guard.as_deref_mut() else {
@@ -48,7 +48,7 @@ pub fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor
 
 /// Provides access to the `Editor` and its `EditorWrapper` by calling the given closure with them as arguments.
 #[cfg(not(feature = "native"))]
-pub fn editor_and_wrapper(callback: impl FnOnce(&mut Editor, &mut EditorWrapper)) {
+pub(crate) fn editor_and_wrapper(callback: impl FnOnce(&mut Editor, &mut EditorWrapper)) {
 	wrapper(|wrapper| {
 		editor(|editor| {
 			// Call the closure with the editor and its wrapper
@@ -57,7 +57,7 @@ pub fn editor_and_wrapper(callback: impl FnOnce(&mut Editor, &mut EditorWrapper)
 	});
 }
 /// Provides access to the `EditorWrapper` by calling the given closure with them as arguments.
-pub fn wrapper(callback: impl FnOnce(&mut EditorWrapper)) {
+pub(crate) fn wrapper(callback: impl FnOnce(&mut EditorWrapper)) {
 	EDITOR_WRAPPER.with(|wrapper| {
 		let mut guard = wrapper.try_lock();
 		let Ok(Some(wrapper)) = guard.as_deref_mut() else {
