@@ -1,6 +1,6 @@
 # Overview of `/frontend/wasm/`
 
-## Wasm wrapper API: `src/editor_api.rs`
+## Wasm wrapper API: `src/editor_wrapper.rs`
 
 Provides bindings for JS to call functions defined in this file, and for `FrontendMessage`s to be sent from Rust back to JS in the form of a callback to the subscription router. This Wasm wrapper crate, since it's written in Rust, is able to call into the Editor crate's codebase and send `FrontendMessage`s back to JS.
 

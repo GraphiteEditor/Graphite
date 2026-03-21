@@ -1,6 +1,6 @@
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
-use crate::editor_api::EditorWrapper;
+use crate::editor_wrapper::EditorWrapper;
 use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER};
 #[cfg(not(feature = "native"))]
 use editor::application::Editor;

@@ -6,7 +6,7 @@ Svelte components that build the Graphite editor GUI from layouts, panels, widge
 
 ## Managers: `managers/`
 
-TypeScript files, constructed by the editor frontend, which manage the input/output of browser APIs and link this functionality with the editor backend. These files subscribe to frontend messages to execute JS APIs, and in response to these APIs or user interactions, they may call functions in the backend (defined in `/frontend/wasm/editor_api.rs`).
+TypeScript files, constructed by the editor frontend, which manage the input/output of browser APIs and link this functionality with the editor backend. These files subscribe to frontend messages to execute JS APIs, and in response to these APIs or user interactions, they may call functions in the backend (defined in `/frontend/wasm/editor_wrapper.rs`).
 
 Each manager module stores its dependencies (like `subscriptionsRouter` and `editorWrapper`) in module-level variables and exports a `create*()` and `destroy*()` function pair. `Editor.svelte` calls each `create*()` constructor in its `onMount` and calls each `destroy*()` in its `onDestroy`. Managers replace themselves during HMR updates if they are modified live during development.
 
@@ -30,7 +30,7 @@ Associates messages from the backend with subscribers in the frontend, and route
 
 ## Svelte app entry point: `App.svelte`
 
-The entry point for the Svelte application. Initializes the Wasm module, creates the `EditorWrapper` backend instance and the subscriptions router, and renders `Editor.svelte` once both are ready. The `EditorWrapper` is the wasm-bindgen interface to the Rust editor backend (defined in `/frontend/wasm/editor_api.rs`), providing access to callable backend functions. Both the editor and subscriptions router are passed as props to `Editor.svelte` and set as Svelte contexts for use throughout the component tree.
+The entry point for the Svelte application. Initializes the Wasm module, creates the `EditorWrapper` backend instance and the subscriptions router, and renders `Editor.svelte` once both are ready. The `EditorWrapper` is the wasm-bindgen interface to the Rust editor backend (defined in `/frontend/wasm/editor_wrapper.rs`), providing access to callable backend functions. Both the editor and subscriptions router are passed as props to `Editor.svelte` and set as Svelte contexts for use throughout the component tree.
 
 ## Editor base instance: `Editor.svelte`
 

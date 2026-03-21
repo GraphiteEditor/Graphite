@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate log;
 
-pub mod editor_api;
+pub mod editor_wrapper;
 pub mod helpers;
 pub mod native_communication;
 
@@ -25,7 +25,7 @@ thread_local! {
 	#[cfg(not(feature = "native"))]
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
-	pub static EDITOR_WRAPPER: Mutex<Option<editor_api::EditorWrapper>> = const { Mutex::new(None) };
+	pub static EDITOR_WRAPPER: Mutex<Option<editor_wrapper::EditorWrapper>> = const { Mutex::new(None) };
 	pub static PANIC_DIALOG_MESSAGE_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> = const { std::cell::RefCell::new(None) };
 }
 
