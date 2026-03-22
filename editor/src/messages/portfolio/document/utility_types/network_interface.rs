@@ -3831,6 +3831,47 @@ impl NodeNetworkInterface {
 		node.context_features = context_features;
 	}
 
+	/// Lightweight version of `set_input` for bulk import operations.
+	/// Directly sets the input without `is_acyclic` checks, position conversions, or per-node cache
+	/// invalidation. Only `load_structure` and outward wire invalidation are performed as they are
+	/// needed for correct wiring of subsequent nodes. Call `unload_all_nodes_click_targets` and
+	/// `unload_all_nodes_bounding_box` once after all import wiring is complete.
+	pub fn set_input_for_import(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_input_for_import");
+			return;
+		};
+
+		match input_connector {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(node) = network.nodes.get_mut(node_id) else {
+					log::error!("Could not get node in set_input_for_import");
+					return;
+				};
+				let Some(input) = node.inputs.get_mut(*input_index) else {
+					log::error!("Could not get input in set_input_for_import");
+					return;
+				};
+				*input = new_input;
+			}
+			InputConnector::Export(export_index) => {
+				let Some(export) = network.exports.get_mut(*export_index) else {
+					log::error!("Could not get export in set_input_for_import");
+					return;
+				};
+				*export = new_input;
+			}
+		}
+
+		self.transaction_modified();
+		self.unload_outward_wires(network_path);
+
+		// Rebuild the layer tree structure so parent-child relationships are correct for subsequent operations
+		if network_path.is_empty() {
+			self.load_structure();
+		}
+	}
+
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
 		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Import { .. }) {
 			// TODO: Add support for flattening NodeInput::Import exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
@@ -3892,8 +3933,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Ensure the network is not cyclic
-		if !network.is_acyclic() {
+		// Ensure the network is not cyclic (only Node connections can create cycles)
+		if matches!(new_input, NodeInput::Node { .. }) && !network.is_acyclic() {
 			self.set_input(input_connector, old_input, network_path);
 			return;
 		}
@@ -5439,14 +5480,19 @@ impl NodeNetworkInterface {
 			return;
 		};
 
+		let layer_output = NodeInput::node(layer.to_node(), 0);
+
 		match post_node_input {
 			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
-				// First child in the stack — just wire directly
-				self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
+				// First child in the stack — wire layer output to the post_node input
+				self.set_input_for_import(&post_node, layer_output, network_path);
 			}
 			NodeInput::Node { .. } => {
-				// Subsequent child — insert before the current top of the stack
-				self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+				// Subsequent child — insert layer between post_node and its current upstream:
+				// 1. Disconnect old upstream from post_node, wire layer output to post_node
+				self.set_input_for_import(&post_node, layer_output, network_path);
+				// 2. Wire old upstream into layer's primary (stack) input
+				self.set_input_for_import(&InputConnector::node(layer.to_node(), 0), post_node_input, network_path);
 			}
 			NodeInput::Import { .. } => {
 				log::error!("Cannot insert import layer into a parent that connects to the imports");
@@ -5715,6 +5761,26 @@ impl NodeNetworkInterface {
 		} else {
 			// Insert the node in the gap and set the upstream to a chain
 			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
+			self.force_set_upstream_to_chain(node_id, network_path);
+		}
+	}
+
+	/// Lightweight version of `move_node_to_chain_start` for bulk import. Uses `set_input_for_import`
+	/// to avoid the expensive `is_acyclic` check and other per-node side effects.
+	pub fn move_node_to_chain_start_for_import(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId]) {
+		let parent_input = InputConnector::node(parent.to_node(), 1);
+		let Some(current_input) = self.input_from_connector(&parent_input, network_path).cloned() else {
+			log::error!("Could not get input for node {node_id}");
+			return;
+		};
+		let node_output = NodeInput::node(*node_id, 0);
+		if matches!(current_input, NodeInput::Value { .. }) {
+			self.set_input_for_import(&parent_input, node_output, network_path);
+			self.set_chain_position(node_id, network_path);
+		} else {
+			// Insert the node in the gap: wire node output to parent input, wire old upstream to node's input 0
+			self.set_input_for_import(&parent_input, node_output, network_path);
+			self.set_input_for_import(&InputConnector::node(*node_id, 0), current_input, network_path);
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}

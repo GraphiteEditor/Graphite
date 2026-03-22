@@ -480,10 +480,16 @@ fn import_usvg_node(
 			let mut child_extents_svg_order: Vec<u32> = Vec::new();
 			let mut group_extents_map: HashMap<LayerNodeIdentifier, Vec<u32>> = HashMap::new();
 
+			// Enable import mode: skips expensive is_acyclic checks and per-node cache invalidation
+			// during wiring since we're building a known tree structure where cycles are impossible
+			modify_inputs.import_mode = true;
+
 			for child in group.children() {
 				let extent = import_usvg_node_inner(modify_inputs, child, transform, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
 				child_extents_svg_order.push(extent);
 			}
+
+			modify_inputs.import_mode = false;
 			modify_inputs.layer_node = Some(layer);
 
 			// Set positions for all imported descendants in a single O(n) pass
