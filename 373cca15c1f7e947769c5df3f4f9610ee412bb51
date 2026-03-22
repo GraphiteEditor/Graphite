@@ -1,0 +1,36 @@
+editor/src/messages/portfolio/document/graph_operation/graph_operation_message_handler.rs
+  b19e800687565c5f 495-497
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "373cca15c1f7e947769c5df3f4f9610ee412bb51",
+  "prompts": {
+    "84a6e1da1edf67ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d45a5b78-1303-4175-af15-916454ba79eb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 9,
+      "accepted_lines": 35,
+      "overriden_lines": 0
+    },
+    "b19e800687565c5f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "82954239-5c1b-43d8-8876-9240cb71cbe7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
