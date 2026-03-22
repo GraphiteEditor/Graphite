@@ -5417,6 +5417,56 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 
+	/// Lightweight version of `move_layer_to_stack` for SVG import. Performs only the wiring
+	/// (connecting the layer into the stack) without any position calculation or push/collision logic.
+	/// Positions should be set separately after the full import tree is built.
+	pub fn move_layer_to_stack_for_import(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
+		// Artboard redirection: if a non-artboard layer targets ROOT_PARENT and an artboard exists, redirect into the artboard
+		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next()
+			&& parent == LayerNodeIdentifier::ROOT_PARENT
+			&& self
+				.reference(&layer.to_node(), network_path)
+				.is_none_or(|reference| reference != DefinitionIdentifier::Network("Artboard".into()))
+			&& self.is_artboard(&first_layer.to_node(), network_path)
+		{
+			parent = first_layer;
+			insert_index = 0;
+		}
+
+		let post_node = ModifyInputsContext::get_post_node_with_index(self, parent, insert_index);
+		let Some(post_node_input) = self.input_from_connector(&post_node, network_path).cloned() else {
+			log::error!("Could not get previous input in move_layer_to_stack_for_import");
+			return;
+		};
+
+		match post_node_input {
+			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				// First child in the stack — just wire directly
+				self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
+			}
+			NodeInput::Node { .. } => {
+				// Subsequent child — insert before the current top of the stack
+				self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+			}
+			NodeInput::Import { .. } => {
+				log::error!("Cannot insert import layer into a parent that connects to the imports");
+			}
+		}
+	}
+
+	/// Sets a layer's position directly without triggering per-node cache invalidation.
+	/// Used for bulk import operations where caches are invalidated once at the end.
+	pub fn set_layer_position_for_import(&mut self, node_id: &NodeId, position: LayerPosition, network_path: &[NodeId]) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node_metadata for node {node_id} in set_layer_position_for_import");
+			return;
+		};
+		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			layer_metadata.position = position;
+			self.transaction_modified();
+		}
+	}
+
 	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
 	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
 		// Prevent moving an artboard anywhere but to the ROOT_PARENT child stack
