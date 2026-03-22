@@ -17,8 +17,8 @@ impl Compiler {
 		let proto_networks = network.into_proto_networks();
 
 		proto_networks.map(move |mut proto_network| {
-			proto_network.insert_context_nullification_nodes()?;
-			proto_network.generate_stable_node_ids();
+			let outwards_edges = proto_network.insert_context_nullification_nodes()?;
+			proto_network.generate_stable_node_ids(&outwards_edges);
 			Ok(proto_network)
 		})
 	}
