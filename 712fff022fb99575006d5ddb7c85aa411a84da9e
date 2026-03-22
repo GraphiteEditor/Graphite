@@ -1,0 +1,23 @@
+frontend/package.json
+  3f0e19fa3be0eaf1 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "712fff022fb99575006d5ddb7c85aa411a84da9e",
+  "prompts": {
+    "3f0e19fa3be0eaf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0dc48b3a-dc47-4e49-8475-06ef0f42f19d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
