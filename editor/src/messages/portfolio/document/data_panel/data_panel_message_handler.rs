@@ -165,6 +165,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 		Table<Color>,
+		Table<Fill>,
 		Table<GradientStops>,
 		GradientStops,
 		f64,
@@ -389,7 +390,7 @@ impl TableRowLayout for Vector {
 				}
 
 				if let Some(stroke) = self.style.stroke.clone() {
-					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
+					let color = if let Some(color) = stroke.color() { FillChoice::Solid(color) } else { FillChoice::None };
 					table_rows.push(vec![
 						TextLabel::new("Stroke").narrow(true).widget_instance(),
 						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
@@ -553,6 +554,58 @@ impl TableRowLayout for Color {
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
 		vec![LayoutGroup::row(widgets)]
+	}
+}
+
+impl TableRowLayout for Fill {
+	fn type_name() -> &'static str {
+		"Fill"
+	}
+	fn identifier(&self) -> String {
+		match self {
+			Self::None => "None".to_string(),
+			Self::Solid(color) => format!("Solid (#{})", color.to_gamma_srgb().to_rgba_hex_srgb()),
+			Self::Gradient(gradient) => format!("{} Gradient ({} stops)", gradient.gradient_type, gradient.stops.len()),
+		}
+	}
+	fn element_widget(&self, _index: usize) -> WidgetInstance {
+		let choice = match self {
+			Self::None => FillChoice::None,
+			Self::Solid(color) => FillChoice::Solid(*color),
+			Self::Gradient(gradient) => FillChoice::Gradient(gradient.stops.clone()),
+		};
+		ColorInput::new(choice).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let mut table_rows = Vec::new();
+		table_rows.push(column_headings(&["property", "value"]));
+
+		match self {
+			Self::None => table_rows.push(vec![TextLabel::new("Type").narrow(true).widget_instance(), TextLabel::new("None").narrow(true).widget_instance()]),
+			Self::Solid(color) => {
+				table_rows.push(vec![TextLabel::new("Type").narrow(true).widget_instance(), TextLabel::new("Solid").narrow(true).widget_instance()]);
+				table_rows.push(vec![
+					TextLabel::new("Color").narrow(true).widget_instance(),
+					TextLabel::new(format!("#{} (Alpha: {}%)", color.to_rgb_hex_srgb(), color.a() * 100.)).narrow(true).widget_instance(),
+				]);
+			}
+			Self::Gradient(gradient) => {
+				table_rows.push(vec![
+					TextLabel::new("Type").narrow(true).widget_instance(),
+					TextLabel::new(format!("{} Gradient", gradient.gradient_type)).narrow(true).widget_instance(),
+				]);
+				table_rows.push(vec![
+					TextLabel::new("Start").narrow(true).widget_instance(),
+					TextLabel::new(format_dvec2(gradient.start)).narrow(true).widget_instance(),
+				]);
+				table_rows.push(vec![
+					TextLabel::new("End").narrow(true).widget_instance(),
+					TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_instance(),
+				]);
+			}
+		}
+
+		vec![LayoutGroup::table(table_rows, false)]
 	}
 }
 

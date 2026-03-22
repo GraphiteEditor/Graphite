@@ -14,7 +14,6 @@ use vector_types::GradientStops;
 
 pub type Vector = vector_types::Vector<Option<Table<Graphic>>>;
 
-/// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
@@ -22,7 +21,7 @@ pub enum Graphic {
 	RasterCPU(Table<Raster<CPU>>),
 	RasterGPU(Table<Raster<GPU>>),
 	Color(Table<Color>),
-	Gradient(Table<GradientStops>),
+	Gradient(Table<vector_types::vector::style::Fill>),
 }
 
 impl Default for Graphic {
@@ -92,15 +91,47 @@ impl From<Table<Color>> for Graphic {
 // Note: Table conversions handled by blanket impl in gcore
 // Note: Table<Color> -> Option<Color> is in gcore (Color is defined there)
 
-// GradientStops
+// Fill
+impl From<vector_types::vector::style::Fill> for Graphic {
+	fn from(fill: vector_types::vector::style::Fill) -> Self {
+		Graphic::Gradient(Table::new_from_element(fill))
+	}
+}
+impl From<Table<vector_types::vector::style::Fill>> for Graphic {
+	fn from(fill: Table<vector_types::vector::style::Fill>) -> Self {
+		Graphic::Gradient(fill)
+	}
+}
+
+// Gradient (GradientStops)
 impl From<GradientStops> for Graphic {
 	fn from(gradient: GradientStops) -> Self {
-		Graphic::Gradient(Table::new_from_element(gradient))
+		Graphic::Gradient(Table::new_from_element(vector_types::vector::style::Fill::Gradient(vector_types::vector::style::Gradient {
+			stops: gradient,
+			gradient_type: vector_types::vector::style::GradientType::Linear,
+			start: glam::DVec2::new(0., 0.5),
+			end: glam::DVec2::new(1., 0.5),
+		})))
 	}
 }
 impl From<Table<GradientStops>> for Graphic {
 	fn from(gradient: Table<GradientStops>) -> Self {
-		Graphic::Gradient(gradient)
+		Graphic::Gradient(
+			gradient
+				.into_iter()
+				.map(|row| TableRow {
+					element: vector_types::vector::style::Fill::Gradient(vector_types::vector::style::Gradient {
+						stops: row.element,
+						gradient_type: vector_types::vector::style::GradientType::Linear,
+						start: glam::DVec2::new(0., 0.5),
+						end: glam::DVec2::new(1., 0.5),
+					}),
+					transform: row.transform,
+					alpha_blending: row.alpha_blending,
+					source_node_id: row.source_node_id,
+				})
+				.collect(),
+		)
 	}
 }
 
@@ -176,9 +207,31 @@ impl TryFromGraphic for Color {
 	}
 }
 
-impl TryFromGraphic for GradientStops {
+impl TryFromGraphic for vector_types::vector::style::Fill {
 	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
 		if let Graphic::Gradient(t) = graphic { Some(t) } else { None }
+	}
+}
+
+impl TryFromGraphic for GradientStops {
+	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+		if let Graphic::Gradient(t) = graphic {
+			Some(
+				t.into_iter()
+					.filter_map(|row| match row.element {
+						vector_types::vector::style::Fill::Gradient(g) => Some(TableRow {
+							element: g.stops,
+							transform: row.transform,
+							alpha_blending: row.alpha_blending,
+							source_node_id: row.source_node_id,
+						}),
+						_ => None,
+					})
+					.collect(),
+			)
+		} else {
+			None
+		}
 	}
 }
 
@@ -225,9 +278,15 @@ impl IntoGraphicTable for Table<Color> {
 	}
 }
 
-impl IntoGraphicTable for Table<GradientStops> {
+impl IntoGraphicTable for Table<vector_types::vector::style::Fill> {
 	fn into_graphic_table(self) -> Table<Graphic> {
 		Table::new_from_element(Graphic::Gradient(self))
+	}
+}
+
+impl IntoGraphicTable for Table<GradientStops> {
+	fn into_graphic_table(self) -> Table<Graphic> {
+		Table::new_from_element(self.into())
 	}
 }
 

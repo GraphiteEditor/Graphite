@@ -97,17 +97,7 @@ impl RenderExt for Stroke {
 	type Output = String;
 
 	/// Provide the SVG attributes for the stroke.
-	fn render(
-		&self,
-		_svg_defs: &mut String,
-		_element_transform: DAffine2,
-		_stroke_transform: DAffine2,
-		_bounds: DAffine2,
-		_transformed_bounds: DAffine2,
-		render_params: &RenderParams,
-	) -> Self::Output {
-		// Don't render a stroke at all if it would be invisible
-		let Some(color) = self.color else { return String::new() };
+	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output {
 		if !self.has_renderable_stroke() {
 			return String::new();
 		}
@@ -123,10 +113,21 @@ impl RenderExt for Stroke {
 		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
-		if color.a() < 1. {
-			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
-		}
+		let mut attributes = match &self.paint {
+			Fill::None => return String::new(),
+			Fill::Solid(color) => {
+				let mut result = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+				if color.a() < 1. {
+					let _ = write!(result, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+				}
+				result
+			}
+			Fill::Gradient(gradient) => {
+				let gradient_id = gradient.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+				format!(r##" stroke="url('#{gradient_id}')""##)
+			}
+		};
+
 		if let Some(mut weight) = weight {
 			if stroke_align.is_some() && render_params.aligned_strokes {
 				weight *= 2.;

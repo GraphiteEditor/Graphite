@@ -2,7 +2,9 @@
 
 pub use crate::gradient::*;
 use core_types::Color;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::Alpha;
+use core_types::render_complexity::RenderComplexity;
 use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -32,6 +34,25 @@ impl std::fmt::Display for Fill {
 	}
 }
 
+impl BoundingBox for Fill {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		match self {
+			Self::None => RenderBoundingBox::None,
+			Self::Solid(_) | Self::Gradient(_) => RenderBoundingBox::Infinite,
+		}
+	}
+}
+
+impl RenderComplexity for Fill {
+	fn render_complexity(&self) -> usize {
+		match self {
+			Self::None => 0,
+			Self::Solid(_) => 1,
+			Self::Gradient(g) => g.stops.len(),
+		}
+	}
+}
+
 impl Fill {
 	/// Construct a new [Fill::Solid] from a [Color].
 	pub fn solid(color: Color) -> Self {
@@ -49,12 +70,12 @@ impl Fill {
 	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.
 	pub fn color(&self) -> Color {
 		match self {
-			Self::None => Color::BLACK,
+			Self::None => Color::TRANSPARENT,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
 			Self::Gradient(Gradient { stops, .. }) => {
 				if stops.is_empty() {
-					Color::BLACK
+					Color::TRANSPARENT
 				} else {
 					stops.color[0]
 				}
@@ -295,13 +316,81 @@ fn daffine2_identity() -> DAffine2 {
 	DAffine2::IDENTITY
 }
 
+/// Helper module for deserializing the `Stroke::paint` field, supporting both the
+/// new `"paint": Fill` format and the legacy `"color": Color` format from old `.graphite` files.
+mod stroke_paint_migration {
+	use super::*;
+	use serde::Deserialize;
+
+	/// Legacy representation: old `.graphite` files stored a bare `Color` in a field called `"color"`.
+	#[derive(Deserialize)]
+	struct OldStroke {
+		#[serde(default)]
+		color: Option<Color>,
+		#[serde(default)]
+		paint: Option<Fill>,
+		#[serde(default)]
+		weight: f64,
+		#[serde(default)]
+		dash_lengths: Vec<f64>,
+		#[serde(default)]
+		dash_offset: f64,
+		#[serde(default, alias = "line_cap")]
+		cap: StrokeCap,
+		#[serde(default, alias = "line_join")]
+		join: StrokeJoin,
+		#[serde(default = "default_miter_limit", alias = "line_join_miter_limit")]
+		join_miter_limit: f64,
+		#[serde(default)]
+		align: StrokeAlign,
+		#[serde(default = "super::daffine2_identity")]
+		transform: DAffine2,
+		#[serde(default)]
+		non_scaling: bool,
+		#[serde(default)]
+		paint_order: PaintOrder,
+	}
+
+	fn default_miter_limit() -> f64 {
+		4.
+	}
+
+	/// Attempt to deserialize a `Stroke` from either the new or old format.
+	pub fn deserialize_stroke<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Stroke, D::Error> {
+		let old = OldStroke::deserialize(deserializer)?;
+
+		// If the new `paint` field is present, use it directly.
+		// Otherwise, fall back to converting the legacy `color` field into `Fill::Solid`.
+		let paint = match old.paint {
+			Some(paint) => paint,
+			None => match old.color {
+				Some(color) => Fill::Solid(color),
+				None => Fill::None,
+			},
+		};
+
+		Ok(Stroke {
+			paint,
+			weight: old.weight,
+			dash_lengths: old.dash_lengths,
+			dash_offset: old.dash_offset,
+			cap: old.cap,
+			join: old.join,
+			join_miter_limit: old.join_miter_limit,
+			align: old.align,
+			transform: old.transform,
+			non_scaling: old.non_scaling,
+			paint_order: old.paint_order,
+		})
+	}
+}
+
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny)]
 pub struct Stroke {
-	/// Stroke color
-	pub color: Option<Color>,
+	/// Stroke paint (solid color or gradient)
+	pub paint: Fill,
 	/// Line thickness
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
@@ -316,13 +405,19 @@ pub struct Stroke {
 	pub align: StrokeAlign,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
-	#[serde(default)]
+	pub non_scaling: bool,
 	pub paint_order: PaintOrder,
+}
+
+impl<'de> serde::Deserialize<'de> for Stroke {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		stroke_paint_migration::deserialize_stroke(deserializer)
+	}
 }
 
 impl std::hash::Hash for Stroke {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.color.hash(state);
+		self.paint.hash(state);
 		self.weight.to_bits().hash(state);
 		{
 			self.dash_lengths.len().hash(state);
@@ -334,14 +429,15 @@ impl std::hash::Hash for Stroke {
 		self.join_miter_limit.to_bits().hash(state);
 		self.align.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
+		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
 }
 
 impl Stroke {
-	pub const fn new(color: Option<Color>, weight: f64) -> Self {
+	pub fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
-			color,
+			paint: color.map_or(Fill::None, Fill::Solid),
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -350,13 +446,14 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
-			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
+			paint: self.paint.lerp(&other.paint, time),
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
@@ -368,13 +465,18 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
+			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
 
 	/// Get the current stroke color.
 	pub fn color(&self) -> Option<Color> {
-		self.color
+		match &self.paint {
+			Fill::None => None,
+			Fill::Solid(color) => Some(*color),
+			Fill::Gradient(gradient) => gradient.stops.color.first().copied(),
+		}
 	}
 
 	/// Get the current stroke weight.
@@ -417,7 +519,7 @@ impl Stroke {
 	}
 
 	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {
-		self.color = *color;
+		self.paint = color.map_or(Fill::None, Fill::Solid);
 
 		Some(self)
 	}
@@ -466,7 +568,14 @@ impl Stroke {
 	}
 
 	pub fn has_renderable_stroke(&self) -> bool {
-		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
+		if self.weight <= 0. {
+			return false;
+		}
+		match &self.paint {
+			Fill::None => false,
+			Fill::Solid(color) => color.a() != 0.,
+			Fill::Gradient(_) => true,
+		}
 	}
 }
 
@@ -475,7 +584,7 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			weight: 0.,
-			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
+			paint: Fill::Solid(Color::from_rgba8_srgb(0, 0, 0, 255)),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			cap: StrokeCap::Butt,
@@ -483,6 +592,7 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 			paint_order: PaintOrder::default(),
 		}
 	}
@@ -508,7 +618,7 @@ impl std::fmt::Display for PathStyle {
 		let fill = &self.fill;
 
 		let stroke = match &self.stroke {
-			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| c.to_rgba_hex_srgb()), stroke.weight),
+			Some(stroke) => format!("{} (Weight: {} px)", stroke.paint, stroke.weight),
 			None => "None".to_string(),
 		};
 
