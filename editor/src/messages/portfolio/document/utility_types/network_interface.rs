@@ -4068,8 +4068,8 @@ impl NodeNetworkInterface {
 			log::error!("Could not get current input in disconnect_input");
 			return;
 		};
-		// Do not disconnect an already disconnected input
-		if matches!(current_input, NodeInput::Value { .. }) {
+		// Only disconnect inputs that are actual wire connections (Node or Import)
+		if !matches!(current_input, NodeInput::Node { .. } | NodeInput::Import { .. }) {
 			return;
 		}
 
