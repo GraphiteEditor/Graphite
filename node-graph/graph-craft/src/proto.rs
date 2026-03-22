@@ -264,6 +264,28 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
+	/// Returns true if node IDs are already dense sequential indices (0, 1, 2, ..., N-1).
+	fn has_dense_ids(&self) -> bool {
+		self.nodes.iter().enumerate().all(|(idx, (id, _))| id.0 as usize == idx)
+	}
+
+	/// Collect inwards edges when node IDs are already dense sequential (0..N), skipping HashMap construction.
+	fn collect_inwards_edges_dense(&self) -> Vec<Vec<usize>> {
+		let mut inwards_edges = vec![Vec::new(); self.nodes.len()];
+		for (node_id, node) in &self.nodes {
+			let node_index = node_id.0 as usize;
+
+			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
+				for ref_id in ref_nodes {
+					self.check_ref(ref_id, node_id);
+					inwards_edges[node_index].push(ref_id.0 as usize);
+				}
+			}
+		}
+
+		inwards_edges
+	}
+
 	/// Inserts context nullification nodes to optimize caching.
 	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
 	/// Returns the outwards edges of the final sorted graph for reuse by subsequent passes.
@@ -432,10 +454,9 @@ impl ProtoNetwork {
 
 	// Based on https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
 	// This approach excludes nodes that are not connected
-	pub fn topological_sort(&self) -> Result<(Vec<NodeId>, FxHashMap<NodeId, usize>), String> {
-		let (inwards_edges, id_map) = self.collect_inwards_edges_with_mapping();
+	fn topological_sort_from_edges(&self, inwards_edges: &[Vec<usize>], output_index: usize) -> Result<Vec<NodeId>, String> {
 		let mut sorted = Vec::with_capacity(self.nodes.len());
-		let mut stack = vec![id_map[&self.output]];
+		let mut stack = vec![output_index];
 		let mut state = vec![NodeState::Unvisited; self.nodes.len()];
 
 		while let Some(&node_index) = stack.last() {
@@ -465,18 +486,29 @@ impl ProtoNetwork {
 			}
 		}
 
+		Ok(sorted)
+	}
+
+	pub fn topological_sort(&self) -> Result<(Vec<NodeId>, FxHashMap<NodeId, usize>), String> {
+		let (inwards_edges, id_map) = self.collect_inwards_edges_with_mapping();
+		let output_index = id_map[&self.output];
+		let sorted = self.topological_sort_from_edges(&inwards_edges, output_index)?;
 		Ok((sorted, id_map))
 	}
 
 	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {
-		let (order, _id_map) = self.topological_sort()?;
-
-		// // Map of node ids to their current index in the nodes vector
-		// let current_positions: FxHashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
-
-		// // Map of node ids to their new index based on topological order
-		let new_positions: FxHashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (self.nodes[id.0 as usize].0, pos)).collect();
+		// When node IDs are already dense sequential (0..N), skip building the FxHashMap id_map
+		let (order, new_positions) = if self.has_dense_ids() {
+			let inwards_edges = self.collect_inwards_edges_dense();
+			let order = self.topological_sort_from_edges(&inwards_edges, self.output.0 as usize)?;
+			let new_positions: FxHashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos)).collect();
+			(order, new_positions)
+		} else {
+			let (order, _) = self.topological_sort()?;
+			let new_positions: FxHashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (self.nodes[id.0 as usize].0, pos)).collect();
+			(order, new_positions)
+		};
 		// assert_eq!(id_map, current_positions);
 
 		// Create a new nodes vector based on the topological order
