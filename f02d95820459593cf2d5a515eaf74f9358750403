@@ -1,0 +1,27 @@
+editor/src/messages/portfolio/document/utility_types/network_interface.rs
+  b19e800687565c5f 3834-3868,5487-5488,5767-5780
+editor/src/messages/portfolio/document/graph_operation/graph_operation_message_handler.rs
+  b19e800687565c5f 483-486,491-492
+editor/src/messages/portfolio/document/graph_operation/utility_types.rs
+  b19e800687565c5f 36-38,48,149-157,166,177,183,192,201,232,236,240,244,255,259,344,349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "f02d95820459593cf2d5a515eaf74f9358750403",
+  "prompts": {
+    "b19e800687565c5f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "82954239-5c1b-43d8-8876-9240cb71cbe7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 11,
+      "accepted_lines": 101,
+      "overriden_lines": 0
+    }
+  }
+}
