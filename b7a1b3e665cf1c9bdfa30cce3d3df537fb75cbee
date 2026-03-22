@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "b7a1b3e665cf1c9bdfa30cce3d3df537fb75cbee",
+  "prompts": {
+    "8cef3ed3db37e9c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ede3ddf1-a197-43c3-8ebf-7714b7b12564",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
