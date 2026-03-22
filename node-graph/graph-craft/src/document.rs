@@ -608,27 +608,39 @@ impl NodeNetwork {
 
 	/// Check there are no cycles in the graph (this should never happen).
 	pub fn is_acyclic(&self) -> bool {
-		let mut dependencies: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-		for (node_id, node) in &self.nodes {
-			dependencies.insert(
-				*node_id,
-				node.inputs
-					.iter()
-					.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None })
-					.collect(),
-			);
-		}
-		while !dependencies.is_empty() {
-			let Some((&disconnected, _)) = dependencies.iter().find(|(_, l)| l.is_empty()) else {
-				error!("Dependencies {dependencies:?}");
-				return false;
-			};
-			dependencies.remove(&disconnected);
-			for connections in dependencies.values_mut() {
-				connections.retain(|&id| id != disconnected);
+		// Count how many node-type inputs reference each node (its in-degree)
+		let mut in_degree: HashMap<NodeId, usize> = self.nodes.keys().map(|&id| (id, 0)).collect();
+		for node in self.nodes.values() {
+			for input in &node.inputs {
+				if let NodeInput::Node { node_id, .. } = input
+					&& let Some(degree) = in_degree.get_mut(node_id)
+				{
+					*degree += 1;
+				}
 			}
 		}
-		true
+
+		// Seed the queue with all nodes that have zero in-degree
+		let mut queue: Vec<NodeId> = in_degree.iter().filter(|&(_, &deg)| deg == 0).map(|(&id, _)| id).collect();
+		let mut visited = 0;
+
+		// Process nodes with zero in-degree, decrementing dependents
+		while let Some(node_id) = queue.pop() {
+			visited += 1;
+			let Some(node) = self.nodes.get(&node_id) else { continue };
+			for input in &node.inputs {
+				if let NodeInput::Node { node_id: upstream_id, .. } = input
+					&& let Some(degree) = in_degree.get_mut(upstream_id)
+				{
+					*degree -= 1;
+					if *degree == 0 {
+						queue.push(*upstream_id);
+					}
+				}
+			}
+		}
+
+		visited == self.nodes.len()
 	}
 }
 
@@ -992,11 +1004,7 @@ impl NodeNetwork {
 			.filter_map(|(id_node, (target_id, target_output_index))| {
 				let node = self.nodes.get(id_node)?;
 				let deps = node.original_location.dependants.first().cloned().unwrap_or_default();
-				if deps.is_empty() {
-					None
-				} else {
-					Some((*target_id, *target_output_index, deps))
-				}
+				if deps.is_empty() { None } else { Some((*target_id, *target_output_index, deps)) }
 			})
 			.collect();
 
@@ -1019,19 +1027,17 @@ impl NodeNetwork {
 					node_id: output_node_id,
 					output_index: output_output_index,
 					..
-				} = input
+				} = input && let Some(&(resolved_id, resolved_output_index)) = resolved.get(output_node_id)
 				{
-					if let Some(&(resolved_id, resolved_output_index)) = resolved.get(output_node_id) {
-						// Propagate inputs_source metadata from the identity node
-						if let Some(id_location) = id_node_locations.get(output_node_id) {
-							for source in id_location.inputs(index) {
-								node.original_location.inputs_source.insert(source, index);
-							}
+					// Propagate inputs_source metadata from the identity node
+					if let Some(id_location) = id_node_locations.get(output_node_id) {
+						for source in id_location.inputs(index) {
+							node.original_location.inputs_source.insert(source, index);
 						}
-
-						*output_node_id = resolved_id;
-						*output_output_index = resolved_output_index;
 					}
+
+					*output_node_id = resolved_id;
+					*output_output_index = resolved_output_index;
 				}
 			}
 		}
