@@ -485,9 +485,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
 				match Self::read_file(&path, content) {
 					FileContent::Document(content) => {
+						let document_path = if path.is_absolute() { Some(path) } else { None };
 						responses.add(PortfolioMessage::OpenDocumentFile {
 							document_name: name,
-							document_path: Some(path),
+							document_path,
 							document_serialized_content: content,
 						});
 					}

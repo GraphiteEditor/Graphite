@@ -835,26 +835,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
-				if let DocumentMessage::SaveDocumentAs = message {
-					self.path = None;
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+
+				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
+				if path.is_some() {
+					responses.add(DocumentMessage::MarkAsSaved);
 				}
 
-				self.set_save_state(true);
-				responses.add(PortfolioMessage::AutoSaveActiveDocument);
-				// Update the save status of the just saved document
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
 				responses.add(FrontendMessage::TriggerSaveDocument {
 					document_id,
 					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path: self.path.clone(),
+					path,
+					folder,
 					content: self.serialize_document().into_bytes().into(),
-				})
+				});
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
 
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+				responses.add(DocumentMessage::MarkAsSaved);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {

@@ -332,7 +332,7 @@ impl NodeGraphExecutor {
 
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
-						self.process_export(node_graph_output, export_config, responses)?;
+						self.process_export(node_graph_output, export_config, document, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
@@ -435,7 +435,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let ExportConfig {
 			file_type,
 			name,
@@ -457,6 +457,7 @@ impl NodeGraphExecutor {
 			_ => name,
 		};
 		let name = format!("{base_name}.{file_extension}");
+		let folder = document.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -466,6 +467,7 @@ impl NodeGraphExecutor {
 				if file_type == FileType::Svg {
 					responses.add(FrontendMessage::TriggerSaveFile {
 						name,
+						folder,
 						content: svg.into_bytes().into(),
 					});
 				} else {
@@ -513,7 +515,11 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
+				responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder,
+					content: encoded.into(),
+				});
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
