@@ -3832,9 +3832,8 @@ impl NodeNetworkInterface {
 	}
 
 	/// Lightweight version of `set_input` for bulk import operations.
-	/// Directly sets the input without `is_acyclic` checks, position conversions, or per-node cache
-	/// invalidation. Only `load_structure` and outward wire invalidation are performed as they are
-	/// needed for correct wiring of subsequent nodes. Call `unload_all_nodes_click_targets` and
+	/// Directly sets the input without `is_acyclic` checks, `load_structure`, position conversions,
+	/// or per-node cache invalidation. Call `load_structure`, `unload_all_nodes_click_targets`, and
 	/// `unload_all_nodes_bounding_box` once after all import wiring is complete.
 	pub fn set_input_for_import(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
 		let Some(network) = self.network_mut(network_path) else {
@@ -3865,11 +3864,6 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 		self.unload_outward_wires(network_path);
-
-		// Rebuild the layer tree structure so parent-child relationships are correct for subsequent operations
-		if network_path.is_empty() {
-			self.load_structure();
-		}
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {

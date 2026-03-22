@@ -492,6 +492,9 @@ fn import_usvg_node(
 			modify_inputs.import_mode = false;
 			modify_inputs.layer_node = Some(layer);
 
+			// Rebuild the layer tree once now that all wiring is complete
+			modify_inputs.network_interface.load_structure();
+
 			// Set positions for all imported descendants in a single O(n) pass
 			let parent_pos = modify_inputs.network_interface.position(&layer.to_node(), &[]).unwrap_or(IVec2::ZERO);
 			set_import_child_positions(modify_inputs.network_interface, layer, parent_pos, &child_extents_svg_order, &group_extents_map);
