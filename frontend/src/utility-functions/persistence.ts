@@ -167,7 +167,9 @@ function databaseOpen(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.open(PERSISTENCE_DB, 1);
 		request.onupgradeneeded = () => {
-			request.result.createObjectStore(PERSISTENCE_STORE);
+			if (!request.result.objectStoreNames.contains(PERSISTENCE_STORE)) {
+				request.result.createObjectStore(PERSISTENCE_STORE);
+			}
 		};
 		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(request.error);
