@@ -58,7 +58,7 @@ pub struct NodeRuntime {
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
-	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	wasm_canvas_cache: wasm::CanvasSurfaceCache,
 	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	current_viewport_texture: Option<ImageTexture>,
@@ -146,7 +146,7 @@ impl NodeRuntime {
 			vector_modify: Default::default(),
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
-			wasm_viewport_surface: None,
+			wasm_canvas_cache: wasm::CanvasSurfaceCache::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			current_viewport_texture: None,
 		}
@@ -280,7 +280,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -304,7 +304,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -318,83 +318,19 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							self.current_viewport_texture = Some(image_texture.clone());
+
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
-							// Get or create the cached surface
-							if self.wasm_viewport_surface.is_none() {
-								let surface_handle = app_io.create_window();
-								let wasm_surface = executor
-									.create_surface(graphene_std::wasm_application_io::WasmSurfaceHandle {
-										surface: surface_handle.surface.clone(),
-										window_id: surface_handle.window_id,
-									})
-									.expect("Failed to create surface");
-								self.wasm_viewport_surface = Some(Arc::new(wasm_surface));
-							}
-
-							let surface = self.wasm_viewport_surface.as_ref().unwrap();
-
-							// Use logical resolution for CSS sizing, physical resolution for the actual surface/texture
-							let physical_resolution = render_config.viewport.resolution;
-							let logical_resolution = physical_resolution.as_dvec2() / render_config.scale;
-
-							// Blit the texture to the surface
-							let mut encoder = executor.context.device.create_command_encoder(&vello::wgpu::CommandEncoderDescriptor {
-								label: Some("Texture to Surface Blit"),
-							});
-
-							// Configure the surface at physical resolution (for HiDPI displays)
-							let surface_inner = &surface.surface.inner;
-							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
-							surface_inner.configure(
-								&executor.context.device,
-								&vello::wgpu::SurfaceConfiguration {
-									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
-									format: vello::wgpu::TextureFormat::Rgba8Unorm,
-									width: physical_resolution.x,
-									height: physical_resolution.y,
-									present_mode: surface_caps.present_modes[0],
-									alpha_mode: vello::wgpu::CompositeAlphaMode::PreMultiplied,
-									view_formats: vec![],
-									desired_maximum_frame_latency: 2,
-								},
-							);
-
-							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
-							self.current_viewport_texture = Some(image_texture.clone());
-
-							encoder.copy_texture_to_texture(
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: image_texture.texture.as_ref(),
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: &surface_texture.texture,
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								image_texture.texture.size(),
-							);
-
-							executor.context.queue.submit([encoder.finish()]);
-							surface_texture.present();
-
-							// TODO: Figure out if we can explicityl destroy the wgpu texture here to reduce the allocation pressure. We might also be able to use a texture allocation pool
-
-							let frame = graphene_std::application_io::SurfaceFrame {
-								surface_id: surface.window_id,
-								resolution: logical_resolution,
-								transform: glam::DAffine2::IDENTITY,
-							};
-
+							let canvas_id = self.wasm_canvas_cache.blit_to_canvas(&image_texture, executor);
+							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
 							(
 								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::CanvasFrame(frame),
+									data: RenderOutputType::CanvasFrame {
+										canvas_id,
+										resolution: logical_resolution,
+									},
 									metadata,
 								})),
 								None,
@@ -670,5 +606,143 @@ impl InspectState {
 			inspect_node: self.inspect_node,
 			introspected_data,
 		})
+	}
+}
+
+#[cfg(all(target_family = "wasm", feature = "gpu"))]
+mod wasm {
+	use graphene_std::application_io::ImageTexture;
+	use js_sys::{Object, Reflect};
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicU64, Ordering};
+	use vello::wgpu;
+	use wasm_bindgen::JsCast;
+	use wasm_bindgen::JsValue;
+	use web_sys::{HtmlCanvasElement, window};
+	use wgpu_executor::WgpuExecutor;
+
+	pub type CanvasId = u64;
+
+	static CANVAS_IDS: AtomicU64 = AtomicU64::new(0);
+
+	/// Cache for the canvas surface to reuse it across frames
+	pub struct CanvasSurfaceCache(Option<Arc<CanvasSurface>>);
+	impl CanvasSurfaceCache {
+		pub fn new() -> Self {
+			Self(None)
+		}
+		pub fn blit_to_canvas(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) -> CanvasId {
+			let source_texture: &wgpu::Texture = image_texture.as_ref();
+
+			let surface = self.get(executor);
+
+			// Blit the texture to the surface
+			let mut encoder = executor.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+				label: Some("Texture to Surface Blit"),
+			});
+
+			let size = source_texture.size();
+
+			// Configure the surface at physical resolution (for HiDPI displays)
+			let surface_caps = surface.surface.get_capabilities(&executor.context.adapter);
+			surface.surface.configure(
+				&executor.context.device,
+				&wgpu::SurfaceConfiguration {
+					usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
+					format: wgpu::TextureFormat::Rgba8Unorm,
+					width: size.width,
+					height: size.height,
+					present_mode: surface_caps.present_modes[0],
+					alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+					view_formats: vec![],
+					desired_maximum_frame_latency: 2,
+				},
+			);
+
+			let surface_texture = surface.surface.get_current_texture().expect("Failed to get surface texture");
+
+			encoder.copy_texture_to_texture(
+				wgpu::TexelCopyTextureInfoBase {
+					texture: source_texture,
+					mip_level: 0,
+					origin: Default::default(),
+					aspect: Default::default(),
+				},
+				wgpu::TexelCopyTextureInfoBase {
+					texture: &surface_texture.texture,
+					mip_level: 0,
+					origin: Default::default(),
+					aspect: Default::default(),
+				},
+				source_texture.size(),
+			);
+
+			executor.context.queue.submit([encoder.finish()]);
+			surface_texture.present();
+
+			surface.canvas_id
+		}
+
+		fn get(&mut self, executor: &WgpuExecutor) -> &CanvasSurface {
+			if self.0.is_none() {
+				self.0 = Some(Arc::new(create_canvas_surface(executor)));
+			}
+			self.0.as_ref().unwrap()
+		}
+	}
+
+	/// A wgpu surface backed by an HTML canvas element.
+	/// Holds a reference to the canvas to prevent garbage collection.
+	struct CanvasSurface {
+		surface: wgpu::Surface<'static>,
+		canvas_id: u64,
+		/// Keep canvas alive
+		_canvas: HtmlCanvasElement,
+	}
+
+	// SAFETY: WASM is single-threaded, so Send/Sync are safe
+	unsafe impl Send for CanvasSurface {}
+	unsafe impl Sync for CanvasSurface {}
+
+	/// Creates a new HTML canvas element, stores it in the global `imageCanvases` object, and creates a wgpu surface from it.
+	fn create_canvas_surface(executor: &WgpuExecutor) -> CanvasSurface {
+		let wrapper = || {
+			let document = window().expect("should have a window in this context").document().expect("window should have a document");
+
+			let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into::<HtmlCanvasElement>()?;
+			let canvas_id = CANVAS_IDS.fetch_add(1, Ordering::SeqCst);
+
+			// Store the canvas in the global scope so it doesn't get garbage collected
+			let window = window().expect("should have a window in this context");
+			let window_obj = Object::from(window);
+
+			let image_canvases_key = JsValue::from_str("imageCanvases");
+
+			let mut canvases = Reflect::get(&window_obj, &image_canvases_key);
+			if canvases.is_err() {
+				Reflect::set(&JsValue::from(web_sys::window().unwrap()), &image_canvases_key, &Object::new()).unwrap();
+				canvases = Reflect::get(&window_obj, &image_canvases_key);
+			}
+
+			// Convert key and value to JsValue
+			let js_key = JsValue::from_str(canvas_id.to_string().as_str());
+			let js_value = JsValue::from(canvas.clone());
+
+			let canvases = Object::from(canvases.unwrap());
+
+			// Use Reflect API to set property
+			Reflect::set(&canvases, &js_key, &js_value)?;
+
+			// Create the wgpu surface from the canvas
+			let surface = executor
+				.context
+				.instance
+				.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+				.expect("Failed to create surface from canvas");
+
+			Ok::<_, JsValue>(CanvasSurface { surface, canvas_id, _canvas: canvas })
+		};
+
+		wrapper().expect("should be able to create surface")
 	}
 }

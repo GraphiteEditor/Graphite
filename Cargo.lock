@@ -6932,7 +6932,6 @@ dependencies = [
  "vello",
  "web-sys",
  "wgpu",
- "winit",
 ]
 
 [[package]]

@@ -1,38 +1,11 @@
-#[cfg(target_family = "wasm")]
-use base64::Engine;
-#[cfg(target_family = "wasm")]
-use core_types::WasmNotSend;
-#[cfg(target_family = "wasm")]
-use core_types::math::bbox::Bbox;
 use core_types::table::Table;
-#[cfg(target_family = "wasm")]
-use core_types::transform::Footprint;
 use core_types::{Color, Ctx};
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
-#[cfg(target_family = "wasm")]
-use graphic_types::Graphic;
-#[cfg(target_family = "wasm")]
-use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
-#[cfg(target_family = "wasm")]
-use graphic_types::vector_types::gradient::GradientStops;
-#[cfg(target_family = "wasm")]
-use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
-#[cfg(target_family = "wasm")]
-use wasm_bindgen::JsCast;
-#[cfg(target_family = "wasm")]
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-
-/// Allocates GPU memory and a rendering context for vector-to-raster conversion.
-#[cfg(feature = "wgpu")]
-#[node_macro::node(category(""))]
-async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	Arc::new(editor.application_io.as_ref().unwrap().create_window())
-}
 
 fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -166,75 +139,4 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	};
 
 	Table::new_from_element(Raster::new_cpu(image))
-}
-
-/// Renders a view of the input graphic within an area defined by the *Footprint*.
-#[cfg(target_family = "wasm")]
-#[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + 'n>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Graphic>,
-		Table<Color>,
-		Table<GradientStops>,
-	)]
-	mut data: Table<T>,
-	footprint: Footprint,
-	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
-) -> Table<Raster<CPU>>
-where
-	Table<T>: Render,
-{
-	use core_types::table::TableRow;
-
-	if footprint.transform.matrix2.determinant() == 0. {
-		log::trace!("Invalid footprint received for rasterization");
-		return Table::new();
-	}
-
-	let mut render = SvgRender::new();
-	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
-	let size = aabb.size();
-	let resolution = footprint.resolution;
-	let render_params = RenderParams {
-		footprint,
-		for_export: true,
-		..Default::default()
-	};
-
-	for row in data.iter_mut() {
-		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
-	}
-	data.render_svg(&mut render, &render_params);
-	render.format_svg(glam::DVec2::ZERO, size);
-	let svg_string = render.svg.to_svg_string();
-
-	let canvas = &surface_handle.surface;
-	canvas.set_width(resolution.x);
-	canvas.set_height(resolution.y);
-
-	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-
-	let preamble = "data:image/svg+xml;base64,";
-	let mut base64_string = String::with_capacity(preamble.len() + svg_string.len() * 4);
-	base64_string.push_str(preamble);
-	base64::engine::general_purpose::STANDARD.encode_string(svg_string, &mut base64_string);
-
-	let image_data = web_sys::HtmlImageElement::new().unwrap();
-	image_data.set_src(base64_string.as_str());
-	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context
-		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
-		.unwrap();
-
-	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
-
-	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(TableRow {
-		element: Raster::new_cpu(image),
-		transform: footprint.transform,
-		..Default::default()
-	})
 }
