@@ -1,0 +1,23 @@
+deny.toml
+  3f0e19fa3be0eaf1 42-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "65cb2d158dfd9019bbf105b2dbf2b4041f9cf0d1",
+  "prompts": {
+    "3f0e19fa3be0eaf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0dc48b3a-dc47-4e49-8475-06ef0f42f19d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 5,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
