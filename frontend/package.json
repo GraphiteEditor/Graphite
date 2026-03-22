@@ -26,7 +26,7 @@
 		"wasm:watch-dev": "cargo watch --postpone --watch-when-idle --workdir=wrapper --shell \"wasm-pack build . --dev --target=web -- --color=always\"",
 		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wrapper --shell \"wasm-pack build . --release --target=web -- --color=always\""
 	},
-	"//": "NOTE: `source-sans-pro` is never to be upgraded to 3.x because that renders a pixel above its intended position.",
+	"//": "NOTE: `source-sans-pro` is never to be upgraded to 3.x because that renders 1px above its intended position.",
 	"dependencies": {
 		"idb-keyval": "^6.2.2",
 		"source-code-pro": "2.42.0",
@@ -40,6 +40,7 @@
 		"@types/node": "^25.5.0",
 		"buffer": "^6.0.3",
 		"concurrently": "^9.2.1",
+		"eslint": "^9.39.2",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import": "^2.32.0",
 		"eslint-plugin-prettier": "^5.5.5",

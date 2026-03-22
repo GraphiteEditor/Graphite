@@ -4,16 +4,13 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"strict": true,
-		"importHelpers": true,
 		"skipLibCheck": true,
-		"esModuleInterop": true,
-		"allowSyntheticDefaultImports": true,
 		"verbatimModuleSyntax": true,
 		"sourceMap": true,
-		"types": ["node", "svelte", "svelte/store", "svelte/motion", "svelte/transition", "svelte/animate", "svelte/easing"],
+		"types": ["node"],
 		"baseUrl": ".",
 		"paths": { "/*": ["./*"] },
-		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
+		"lib": ["ESNext", "DOM", "DOM.Iterable"]
 	},
 	"include": ["src/**/*.ts", "src/**/*.svelte", "*.ts"],
 	"ts-node": {
