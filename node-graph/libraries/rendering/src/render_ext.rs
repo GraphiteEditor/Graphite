@@ -47,13 +47,16 @@ impl RenderExt for Gradient {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
+		let spread_method = self.spread_method.svg_name();
+		let spread_method = if spread_method.is_empty() { String::new() } else { format!(r#" spreadMethod="{spread_method}""#) };
+
 		let gradient_id = generate_uuid();
 
 		match self.gradient_type {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{gradient_transform}>{}</linearGradient>"#,
+					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{spread_method}{gradient_transform}>{}</linearGradient>"#,
 					gradient_id, start.x, start.y, end.x, end.y, stop
 				);
 			}
@@ -61,7 +64,7 @@ impl RenderExt for Gradient {
 				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{gradient_transform}>{}</radialGradient>"#,
+					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{spread_method}{gradient_transform}>{}</radialGradient>"#,
 					gradient_id, start.x, start.y, radius, stop
 				);
 			}

@@ -27,7 +27,7 @@ use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::QRCodeErrorCorrectionLevel;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -2006,6 +2006,54 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		]);
 
 		widgets.push(LayoutGroup::row(row));
+
+		let mut spread_methods_row: Vec<WidgetInstance> = vec![];
+
+		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Repeat, GradientSpreadMethod::Reflect]
+			.iter()
+			.map(|&spread_method| {
+				let gradient_for_input = gradient_for_closure.clone();
+				let gradient_for_backup = gradient_for_closure.clone();
+
+				let set_input_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient_for_input.clone();
+						new_gradient.spread_method = spread_method;
+						TaggedValue::Fill(Fill::Gradient(new_gradient))
+					},
+					node_id,
+					FillInput::<Color>::INDEX,
+				);
+
+				let set_backup_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient_for_backup.clone();
+						new_gradient.spread_method = spread_method;
+						TaggedValue::Gradient(new_gradient)
+					},
+					node_id,
+					BackupGradientInput::INDEX,
+				);
+
+				RadioEntryData::new(format!("{:?}", spread_method))
+					.label(format!("{:?}", spread_method))
+					.on_update(move |_| Message::Batched {
+						messages: Box::new([
+							set_input_value(&()),
+							set_backup_value(&()),
+							GradientToolMessage::UpdateOptions {
+								options: GradientOptionsUpdate::SpreadMethod(spread_method),
+							}
+							.into(),
+						]),
+					})
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		spread_methods_row.extend_from_slice(&[RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance()]);
+
+		widgets.push(LayoutGroup::row(spread_methods_row));
 	}
 
 	widgets

@@ -334,6 +334,27 @@ impl GradientStops {
 	}
 }
 
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum GradientSpreadMethod {
+	#[default]
+	Pad,
+	Repeat,
+	Reflect,
+}
+
+impl GradientSpreadMethod {
+	pub fn svg_name(&self) -> &'static str {
+		match self {
+			GradientSpreadMethod::Pad => "",
+			GradientSpreadMethod::Reflect => "reflect",
+			GradientSpreadMethod::Repeat => "repeat",
+		}
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
@@ -345,6 +366,8 @@ pub struct Gradient {
 	pub gradient_type: GradientType,
 	pub start: DVec2,
 	pub end: DVec2,
+	#[serde(default)]
+	pub spread_method: GradientSpreadMethod,
 }
 
 impl Default for Gradient {
@@ -354,6 +377,7 @@ impl Default for Gradient {
 			gradient_type: GradientType::Linear,
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
+			spread_method: GradientSpreadMethod::Pad,
 		}
 	}
 }
@@ -369,6 +393,7 @@ impl std::hash::Hash for Gradient {
 			.for_each(|x| x.to_bits().hash(state));
 		self.stops.color.iter().for_each(|color| color.hash(state));
 		self.gradient_type.hash(state);
+		self.spread_method.hash(state);
 	}
 }
 
@@ -387,7 +412,7 @@ impl std::fmt::Display for Gradient {
 
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType, spread_method: GradientSpreadMethod) -> Self {
 		let stops = GradientStops::new([
 			GradientStop {
 				position: 0.,
@@ -401,7 +426,13 @@ impl Gradient {
 			},
 		]);
 
-		Self { start, end, stops, gradient_type }
+		Self {
+			start,
+			end,
+			stops,
+			gradient_type,
+			spread_method,
+		}
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
@@ -414,8 +445,15 @@ impl Gradient {
 		});
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
+		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
 
-		Self { start, end, stops, gradient_type }
+		Self {
+			start,
+			end,
+			stops,
+			gradient_type,
+			spread_method,
+		}
 	}
 
 	/// Insert a stop into the gradient, the index if successful

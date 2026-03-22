@@ -15,7 +15,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Gradient, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -765,6 +765,14 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 	}
 }
 
+fn convert_spread_method(spread_method: usvg::SpreadMethod) -> GradientSpreadMethod {
+	match spread_method {
+		usvg::SpreadMethod::Pad => GradientSpreadMethod::Pad,
+		usvg::SpreadMethod::Reflect => GradientSpreadMethod::Reflect,
+		usvg::SpreadMethod::Repeat => GradientSpreadMethod::Repeat,
+	}
+}
+
 fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
@@ -787,8 +795,15 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 					GradientStops::new(stops)
 				}
 			};
+			let spread_method = convert_spread_method(linear.spread_method());
 
-			Fill::Gradient(Gradient { start, end, gradient_type, stops })
+			Fill::Gradient(Gradient {
+				start,
+				end,
+				gradient_type,
+				stops,
+				spread_method,
+			})
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -810,8 +825,15 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 					GradientStops::new(stops)
 				}
 			};
+			let spread_method = convert_spread_method(radial.spread_method());
 
-			Fill::Gradient(Gradient { start, end, gradient_type, stops })
+			Fill::Gradient(Gradient {
+				start,
+				end,
+				gradient_type,
+				stops,
+				spread_method,
+			})
 		}
 		usvg::Paint::Pattern(_) => {
 			warn!("SVG patterns are not currently supported");
