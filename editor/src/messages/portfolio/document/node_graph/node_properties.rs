@@ -1837,6 +1837,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		return vec![LayoutGroup::row(widgets_first_row)];
 	};
 	let fill2 = fill.clone();
+	let backup_gradient2 = backup_gradient.clone();
 	let backup_color_fill: Fill = backup_color.clone().into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
@@ -1846,23 +1847,28 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.value(fill.clone().into())
 			.on_update(move |x: &ColorInput| Message::Batched {
 				messages: Box::new([
-					match &fill2 {
-						Fill::None => NodeGraphMessage::SetInputValue {
+					// Put the new and most up to date colour into the backup slot (to avoid out of date backup slot)
+					match &x.value {
+						FillChoice::None => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupColorInput::INDEX,
 							value: TaggedValue::Color(Table::new()),
 						}
 						.into(),
-						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
+						FillChoice::Solid(color) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupColorInput::INDEX,
 							value: TaggedValue::Color(Table::new_from_element(*color)),
 						}
 						.into(),
-						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
+						FillChoice::Gradient(gradient) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupGradientInput::INDEX,
-							value: TaggedValue::Gradient(gradient.clone()),
+							value: {
+								let mut backup_gradient_new = fill2.as_gradient().cloned().unwrap_or_else(|| backup_gradient2.clone());
+								backup_gradient_new.stops = gradient.clone();
+								TaggedValue::Gradient(backup_gradient_new)
+							},
 						}
 						.into(),
 					},
