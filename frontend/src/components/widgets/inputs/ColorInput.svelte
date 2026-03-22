@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { FillChoice, MenuDirection, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradientStops, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
-
-	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradientStops, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
+	import type { FillChoice, MenuDirection, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 

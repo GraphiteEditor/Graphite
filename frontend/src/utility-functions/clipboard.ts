@@ -1,6 +1,6 @@
-import type { Editor } from "@graphite/editor";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
-import { stripIndents } from "@graphite/utility-functions/strip-indents";
+import { extractPixelData } from "/src/utility-functions/rasterization";
+import { stripIndents } from "/src/utility-functions/strip-indents";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function readAtCaret(cut: boolean): string | undefined {
 	const element = window.document.activeElement;
@@ -83,7 +83,7 @@ export function insertAtCaret(text: string) {
 	element.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-export async function triggerClipboardRead(editor: Editor) {
+export async function triggerClipboardRead(editor: EditorWrapper) {
 	// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 	// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 	try {
@@ -105,7 +105,7 @@ export async function triggerClipboardRead(editor: Editor) {
 					const blob = await item.getType("text/plain");
 					const reader = new FileReader();
 					reader.onload = () => {
-						if (typeof reader.result === "string") editor.handle.pasteText(reader.result);
+						if (typeof reader.result === "string") editor.pasteText(reader.result);
 					};
 					reader.readAsText(blob);
 					return true;
@@ -119,7 +119,7 @@ export async function triggerClipboardRead(editor: Editor) {
 					const blob = await item.getType("text/plain");
 					const reader = new FileReader();
 					reader.onload = () => {
-						if (typeof reader.result === "string") editor.handle.pasteSvg(undefined, reader.result);
+						if (typeof reader.result === "string") editor.pasteSvg(undefined, reader.result);
 					};
 					reader.readAsText(blob);
 					return true;
@@ -132,7 +132,7 @@ export async function triggerClipboardRead(editor: Editor) {
 					reader.onload = async () => {
 						if (reader.result instanceof ArrayBuffer) {
 							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-							editor.handle.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
+							editor.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
 						}
 					};
 					reader.readAsArrayBuffer(blob);
@@ -170,6 +170,6 @@ export async function triggerClipboardRead(editor: Editor) {
 		};
 		const message = Object.entries(matchMessage).find(([key]) => String(err).includes(key))?.[1] || String(err);
 
-		editor.handle.errorDialog("Cannot access clipboard", message);
+		editor.errorDialog("Cannot access clipboard", message);
 	}
 }

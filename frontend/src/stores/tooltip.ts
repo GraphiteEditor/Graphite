@@ -1,9 +1,8 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-
-import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-import type { Editor } from "@graphite/editor";
-import { operatingSystem } from "@graphite/utility-functions/platform";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import { operatingSystem } from "/src/utility-functions/platform";
+import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type TooltipStore = ReturnType<typeof createTooltipStore>;
 
@@ -36,7 +35,7 @@ const tooltipEventListeners: Listener[] = [
 	{ eventName: "wheel", action: closeTooltip },
 ];
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
@@ -44,26 +43,26 @@ const store: Writable<TooltipStoreState> = import.meta.hot?.data?.store || writa
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export function createTooltipStore(editor: Editor) {
+export function createTooltipStore(subscriptions: SubscriptionsRouter) {
 	destroyTooltipStore();
 
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
 
-	editor.subscriptions.subscribeFrontendMessage("SendShortcutShiftClick", async (data) => {
+	subscriptions.subscribeFrontendMessage("SendShortcutShiftClick", async (data) => {
 		update((state) => {
 			state.shiftClickShortcut = data.shortcut;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("SendShortcutAltClick", async (data) => {
+	subscriptions.subscribeFrontendMessage("SendShortcutAltClick", async (data) => {
 		update((state) => {
 			state.altClickShortcut = data.shortcut;
 			return state;
 		});
 	});
 
-	editor.subscriptions.subscribeFrontendMessage("SendShortcutFullscreen", async (data) => {
+	subscriptions.subscribeFrontendMessage("SendShortcutFullscreen", async (data) => {
 		update((state) => {
 			state.fullscreenShortcut = operatingSystem() === "Mac" ? data.shortcutMac : data.shortcut;
 			return state;
@@ -76,14 +75,14 @@ export function createTooltipStore(editor: Editor) {
 }
 
 export function destroyTooltipStore() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRouter;
+	if (!subscriptions) return;
 
 	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
-	editor.subscriptions.unsubscribeFrontendMessage("SendShortcutShiftClick");
-	editor.subscriptions.unsubscribeFrontendMessage("SendShortcutAltClick");
-	editor.subscriptions.unsubscribeFrontendMessage("SendShortcutFullscreen");
+	subscriptions.unsubscribeFrontendMessage("SendShortcutShiftClick");
+	subscriptions.unsubscribeFrontendMessage("SendShortcutAltClick");
+	subscriptions.unsubscribeFrontendMessage("SendShortcutFullscreen");
 
 	tooltipEventListeners.forEach(({ eventName, action }) => document.removeEventListener(eventName, action));
 }

@@ -29,6 +29,7 @@ jobs:
     secrets: inherit
     with:
       web: true
+      merge_queue: ${{ github.event_name == 'merge_group' }}
 
   # Run the Rust tests on the self-hosted native runner
   test:

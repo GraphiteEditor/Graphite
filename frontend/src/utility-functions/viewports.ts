@@ -1,6 +1,6 @@
-import type { Editor } from "@graphite/editor";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-export function setupViewportResizeObserver(editor: Editor): () => void {
+export function setupViewportResizeObserver(editor: EditorWrapper): () => void {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
 	if (viewports.length <= 0) return () => {};
 
@@ -40,7 +40,7 @@ export function setupViewportResizeObserver(editor: Editor): () => void {
 				continue;
 			}
 
-			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
+			editor.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 		}
 	});
 

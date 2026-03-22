@@ -1521,10 +1521,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
 						let input_connector = InputConnector::node(*selected_node, input_index);
 						// Only disconnect inputs to non selected nodes
-						if !network_interface
+						if network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
-							.and_then(|connector| connector.node_id())
-							.is_some_and(|node_id| all_selected_nodes.contains(&node_id))
+							.is_some_and(|connector| connector.node_id().map_or(true, |node_id| !all_selected_nodes.contains(&node_id)))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}
@@ -1949,15 +1948,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
 				if let Some((box_selection_start, _)) = self.box_selection_start {
-					// The mouse button was released but we missed the pointer up event
-					// if ((e.buttons & 1) === 0) {
-					// 	completeBoxSelection();
-					// 	boxSelection = undefined;
-					// } else if ((e.buttons & 2) !== 0) {
-					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
-					// 	boxSelection = undefined;
-					// }
-
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 						log::error!("Could not get network metadata in UpdateBoxSelection");
 						return;

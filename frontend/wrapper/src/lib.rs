@@ -4,10 +4,11 @@
 #[macro_use]
 extern crate log;
 
-pub mod editor_api;
+pub mod editor_wrapper;
 pub mod helpers;
 pub mod native_communication;
 
+use crate::helpers::wrapper;
 use editor::messages::prelude::*;
 use std::panic;
 use std::sync::Mutex;
@@ -24,7 +25,7 @@ thread_local! {
 	#[cfg(not(feature = "native"))]
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
-	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
+	pub static EDITOR_WRAPPER: Mutex<Option<editor_wrapper::EditorWrapper>> = const { Mutex::new(None) };
 	pub static PANIC_DIALOG_MESSAGE_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> = const { std::cell::RefCell::new(None) };
 }
 
@@ -53,7 +54,7 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 
 		if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
 			NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
-			editor_api::handle(|handle| {
+			wrapper(|wrapper| {
 				let error = r#"
 				<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
@@ -63,7 +64,7 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 				/text>"#
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
-				handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::UpdateDocumentArtwork { svg: error });
+				wrapper.send_frontend_message_to_js_rust_proxy(FrontendMessage::UpdateDocumentArtwork { svg: error });
 			});
 		}
 
@@ -116,7 +117,7 @@ fn send_panic_dialog_via_callback(panic_info: String) -> Result<(), String> {
 fn send_panic_dialog_deferred(panic_info: String) {
 	let callback = Closure::once_into_js(move || {
 		if send_panic_dialog_via_callback(panic_info).is_err() {
-			log::error!("Failed to send crash dialog after panic because the editor handle is unavailable");
+			log::error!("Failed to send crash dialog after panic because the editor wrapper is unavailable");
 		}
 	});
 

@@ -1,25 +1,25 @@
-import type { Editor } from "@graphite/editor";
+import type { SubscriptionsRouter } from "/src/subscriptions-router";
 
-let editorRef: Editor | undefined = undefined;
+let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
-export function createHyperlinkManager(editor: Editor) {
+export function createHyperlinkManager(subscriptions: SubscriptionsRouter) {
 	destroyHyperlinkManager();
 
-	editorRef = editor;
+	subscriptionsRouter = subscriptions;
 
-	editor.subscriptions.subscribeFrontendMessage("TriggerVisitLink", async (data) => {
+	subscriptions.subscribeFrontendMessage("TriggerVisitLink", async (data) => {
 		window.open(data.url, "_blank", "noopener");
 	});
 }
 
 export function destroyHyperlinkManager() {
-	const editor = editorRef;
-	if (!editor) return;
+	const subscriptions = subscriptionsRouter;
+	if (!subscriptions) return;
 
-	editor.subscriptions.unsubscribeFrontendMessage("TriggerVisitLink");
+	subscriptions.unsubscribeFrontendMessage("TriggerVisitLink");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (editorRef) newModule?.createHyperlinkManager(editorRef);
+	if (subscriptionsRouter) newModule?.createHyperlinkManager(subscriptionsRouter);
 });
