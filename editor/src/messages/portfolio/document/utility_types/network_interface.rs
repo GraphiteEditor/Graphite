@@ -2065,6 +2065,30 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.outward_wires.unload();
 	}
 
+	/// Incrementally updates the outward_wires cache when a single input connector changes,
+	/// avoiding a full rebuild. If the cache is not loaded, this is a no-op (it will be fully
+	/// rebuilt on the next read via `outward_wires()`).
+	fn update_outward_wires(&mut self, network_path: &[NodeId], input_connector: &InputConnector, old_input: &NodeInput, new_input: &NodeInput) {
+		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+			return;
+		};
+		let TransientMetadata::Loaded(outward_wires) = &mut network_metadata.transient_metadata.outward_wires else {
+			return;
+		};
+
+		// Remove the input_connector from the old output's downstream list
+		if let Some(old_output) = OutputConnector::from_input(old_input)
+			&& let Some(connections) = outward_wires.get_mut(&old_output)
+		{
+			connections.retain(|c| c != input_connector);
+		}
+
+		// Add the input_connector to the new output's downstream list
+		if let Some(new_output) = OutputConnector::from_input(new_input) {
+			outward_wires.entry(new_output).or_default().push(*input_connector);
+		}
+	}
+
 	pub fn layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<u32> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in layer_width");
@@ -3841,7 +3865,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		match input_connector {
+		let old_input = match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(node) = network.nodes.get_mut(node_id) else {
 					log::error!("Could not get node in set_input_for_import");
@@ -3851,19 +3875,19 @@ impl NodeNetworkInterface {
 					log::error!("Could not get input in set_input_for_import");
 					return;
 				};
-				*input = new_input;
+				std::mem::replace(input, new_input.clone())
 			}
 			InputConnector::Export(export_index) => {
 				let Some(export) = network.exports.get_mut(*export_index) else {
 					log::error!("Could not get export in set_input_for_import");
 					return;
 				};
-				*export = new_input;
+				std::mem::replace(export, new_input.clone())
 			}
-		}
+		};
 
 		self.transaction_modified();
-		self.unload_outward_wires(network_path);
+		self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
@@ -3985,7 +4009,7 @@ impl NodeNetworkInterface {
 						}
 					}
 				}
-				self.unload_outward_wires(network_path);
+				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 				// Layout system
 				let Some(current_node_position) = self.position(upstream_node_id, network_path) else {
 					log::error!("Could not get current node position in set_input for node {upstream_node_id}");
@@ -4040,17 +4064,17 @@ impl NodeNetworkInterface {
 			}
 			// If a connection is made to the imports
 			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. }) => {
-				self.unload_outward_wires(network_path);
+				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 				self.unload_wire(input_connector, network_path);
 			}
 			// If a connection to the imports is disconnected
 			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
-				self.unload_outward_wires(network_path);
+				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 				self.unload_wire(input_connector, network_path);
 			}
 			// If a node is disconnected.
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
-				self.unload_outward_wires(network_path);
+				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 				self.unload_wire(input_connector, network_path);
 
 				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
