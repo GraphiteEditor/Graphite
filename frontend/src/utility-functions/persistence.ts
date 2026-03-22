@@ -1,73 +1,55 @@
-import * as idb from "idb-keyval";
 import { get } from "svelte/store";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { MessageBody } from "/src/subscriptions-router";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-export async function storeCurrentDocumentId(documentId: string) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
+const PERSISTENCE_DB = "graphite";
+const PERSISTENCE_STORE = "store";
 
-	await idb.set("current_document_id", String(documentId), indexedDbStorage);
+export async function storeCurrentDocumentId(documentId: string) {
+	await databaseSet("current_document_id", String(documentId));
 }
 
 export async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersistenceWriteDocument">, portfolio: PortfolioStore) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
-
-	await idb.update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
-		"documents",
-		(old) => {
-			const documents = old || {};
-			documents[String(autoSaveDocument.documentId)] = autoSaveDocument;
-			return documents;
-		},
-		indexedDbStorage,
-	);
+	await databaseUpdate<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", (old) => {
+		const documents = old || {};
+		documents[String(autoSaveDocument.documentId)] = autoSaveDocument;
+		return documents;
+	});
 
 	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
-	await idb.set("documents_tab_order", documentOrder, indexedDbStorage);
+	await databaseSet("documents_tab_order", documentOrder);
 	await storeCurrentDocumentId(String(autoSaveDocument.documentId));
 }
 
 export async function removeDocument(id: string, portfolio: PortfolioStore) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
+	await databaseUpdate<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", (old) => {
+		const documents = old || {};
+		delete documents[id];
+		return documents;
+	});
 
-	await idb.update<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>(
-		"documents",
-		(old) => {
-			const documents = old || {};
-			delete documents[id];
-			return documents;
-		},
-		indexedDbStorage,
-	);
-
-	await idb.update<string[]>(
-		"documents_tab_order",
-		(old) => {
-			const order = old || [];
-			return order.filter((docId) => docId !== id);
-		},
-		indexedDbStorage,
-	);
+	await databaseUpdate<string[]>("documents_tab_order", (old) => {
+		const order = old || [];
+		return order.filter((docId) => docId !== id);
+	});
 
 	const documentCount = get(portfolio).documents.length;
 	if (documentCount > 0) {
 		const documentIndex = get(portfolio).activeDocumentIndex;
 		const documentId = String(get(portfolio).documents[documentIndex].id);
 
-		const tabOrder = (await idb.get<string[]>("documents_tab_order", indexedDbStorage)) || [];
+		const tabOrder = (await databaseGet<string[]>("documents_tab_order")) || [];
 		if (tabOrder.includes(documentId)) {
 			await storeCurrentDocumentId(documentId);
 		}
 	} else {
-		await idb.del("current_document_id", indexedDbStorage);
+		await databaseDelete("current_document_id");
 	}
 }
 
 export async function loadFirstDocument(editor: EditorWrapper) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
-
-	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
+	const previouslySavedDocuments = await databaseGet<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents");
 
 	// TODO: Eventually remove this document upgrade code
 	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if the browser is storing the old format as strings
@@ -77,8 +59,8 @@ export async function loadFirstDocument(editor: EditorWrapper) {
 		});
 	}
 
-	const documentOrder = await idb.get<string[]>("documents_tab_order", indexedDbStorage);
-	const currentDocumentIdString = await idb.get<string>("current_document_id", indexedDbStorage);
+	const documentOrder = await databaseGet<string[]>("documents_tab_order");
+	const currentDocumentIdString = await databaseGet<string>("current_document_id");
 	const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
 	if (!previouslySavedDocuments || !documentOrder) return;
 
@@ -99,9 +81,7 @@ export async function loadFirstDocument(editor: EditorWrapper) {
 }
 
 export async function loadRestDocuments(editor: EditorWrapper) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
-
-	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
+	const previouslySavedDocuments = await databaseGet<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents");
 
 	// TODO: Eventually remove this document upgrade code
 	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
@@ -111,8 +91,8 @@ export async function loadRestDocuments(editor: EditorWrapper) {
 		});
 	}
 
-	const documentOrder = await idb.get<string[]>("documents_tab_order", indexedDbStorage);
-	const currentDocumentIdString = await idb.get<string>("current_document_id", indexedDbStorage);
+	const documentOrder = await databaseGet<string[]>("documents_tab_order");
+	const currentDocumentIdString = await databaseGet<string>("current_document_id");
 	const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
 	if (!previouslySavedDocuments || !documentOrder) return;
 
@@ -150,9 +130,7 @@ export async function loadRestDocuments(editor: EditorWrapper) {
 }
 
 export async function saveActiveDocument(documentId: bigint) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
-
-	const previouslySavedDocuments = await idb.get<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", indexedDbStorage);
+	const previouslySavedDocuments = await databaseGet<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents");
 
 	const documentIdString = String(documentId);
 
@@ -171,22 +149,77 @@ export async function saveActiveDocument(documentId: bigint) {
 }
 
 export async function saveEditorPreferences(preferences: unknown) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
-
-	await idb.set("preferences", preferences, indexedDbStorage);
+	await databaseSet("preferences", preferences);
 }
 
 export async function loadEditorPreferences(editor: EditorWrapper) {
-	const indexedDbStorage = idb.createStore("graphite", "store");
-
-	const preferences = await idb.get<Record<string, unknown>>("preferences", indexedDbStorage);
+	const preferences = await databaseGet<Record<string, unknown>>("preferences");
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 }
 
 export async function wipeDocuments() {
-	const indexedDbStorage = idb.createStore("graphite", "store");
+	await databaseDelete("documents_tab_order");
+	await databaseDelete("current_document_id");
+	await databaseDelete("documents");
+}
 
-	await idb.del("documents_tab_order", indexedDbStorage);
-	await idb.del("current_document_id", indexedDbStorage);
-	await idb.del("documents", indexedDbStorage);
+function databaseOpen(): Promise<IDBDatabase> {
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open(PERSISTENCE_DB, 1);
+		request.onupgradeneeded = () => {
+			if (!request.result.objectStoreNames.contains(PERSISTENCE_STORE)) {
+				request.result.createObjectStore(PERSISTENCE_STORE);
+			}
+		};
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+}
+
+async function databaseGet<T>(key: string): Promise<T | undefined> {
+	const db = await databaseOpen();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readonly");
+		const request = transaction.objectStore(PERSISTENCE_STORE).get(key);
+		request.onsuccess = () => {
+			const result: T | undefined = request.result;
+			resolve(result);
+		};
+		request.onerror = () => reject(request.error);
+	});
+}
+
+async function databaseSet(key: string, value: unknown): Promise<void> {
+	const db = await databaseOpen();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		transaction.objectStore(PERSISTENCE_STORE).put(value, key);
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
+}
+
+async function databaseDelete(key: string): Promise<void> {
+	const db = await databaseOpen();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		transaction.objectStore(PERSISTENCE_STORE).delete(key);
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
+}
+
+async function databaseUpdate<T>(key: string, updater: (existing: T | undefined) => T): Promise<void> {
+	const db = await databaseOpen();
+	return new Promise((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const getRequest = store.get(key);
+		getRequest.onsuccess = () => {
+			const existing: T | undefined = getRequest.result;
+			store.put(updater(existing), key);
+		};
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
 }

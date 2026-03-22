@@ -12,11 +12,5 @@
 		"paths": { "/*": ["./*"] },
 		"lib": ["ESNext", "DOM", "DOM.Iterable"]
 	},
-	"include": ["src/**/*.ts", "src/**/*.svelte", "*.ts"],
-	"ts-node": {
-		"compilerOptions": {
-			"useDefineForClassFields": false,
-			"noImplicitOverride": true
-		}
-	}
+	"include": ["src/**/*.ts", "src/**/*.svelte", "*.ts"]
 }
