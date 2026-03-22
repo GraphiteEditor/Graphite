@@ -1,0 +1,27 @@
+frontend/package.json
+  3f0e19fa3be0eaf1 43
+website/tsconfig.json
+  3f0e19fa3be0eaf1 4-5,29
+frontend/tsconfig.json
+  3f0e19fa3be0eaf1 10,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "06f27f1d3a49e8ecf56aceb9fd02827618275b4f",
+  "prompts": {
+    "3f0e19fa3be0eaf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0dc48b3a-dc47-4e49-8475-06ef0f42f19d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 25,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}
