@@ -47,6 +47,7 @@ pub enum FileType {
 	Png,
 	Jpg,
 	Svg,
+	Pdf,
 }
 
 impl FileType {
@@ -55,6 +56,7 @@ impl FileType {
 			FileType::Png => "image/png",
 			FileType::Jpg => "image/jpeg",
 			FileType::Svg => "image/svg+xml",
+			FileType::Pdf => "application/pdf",
 		}
 	}
 }
@@ -66,6 +68,7 @@ pub enum ExportBounds {
 	AllArtwork,
 	Selection,
 	Artboard(LayerNodeIdentifier),
+	ArtboardsAsPages,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]

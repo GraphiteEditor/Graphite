@@ -25,3 +25,6 @@ graphic-types = { workspace = true }
 
 # Workspace dependencies
 vello = { workspace = true }
+krilla = { workspace = true }
+krilla-svg = { workspace = true }
+usvg-045 = { workspace = true }

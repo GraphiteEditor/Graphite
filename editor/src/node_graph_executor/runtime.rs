@@ -90,6 +90,13 @@ pub struct ExportConfig {
 	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
+	/// When true, this execution is one page of a multi-page PDF.
+	/// The executor accumulates pages and emits the PDF when all arrive.
+	#[serde(skip)]
+	pub is_multipage_pdf: bool,
+	/// Total number of pages expected for the multi-page PDF.
+	#[serde(skip)]
+	pub pdf_pages_total: usize,
 }
 
 #[derive(Clone)]
