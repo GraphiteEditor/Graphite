@@ -4,7 +4,7 @@ use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_application_io::{ApplicationIo, ImageTexture};
+use graphene_application_io::ApplicationIo;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
 
@@ -59,9 +59,9 @@ pub async fn pixel_preview<'a: 'n>(
 	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let resampled = exec.resample_texture(&source_texture.texture, physical_resolution, &transform);
+	let resampled = exec.resample_texture(source_texture.as_ref(), physical_resolution, &transform);
 
-	result.data = RenderOutputType::Texture(ImageTexture { texture: resampled.into() });
+	result.data = RenderOutputType::Texture(resampled.into());
 
 	result
 		.metadata

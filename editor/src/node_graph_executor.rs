@@ -7,7 +7,7 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
+use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -397,12 +397,11 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
-			RenderOutputType::CanvasFrame(frame) => {
-				let matrix = format_transform_matrix(frame.transform);
-				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
+			#[cfg(target_family = "wasm")]
+			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
+					r#"<svg><foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					resolution.x, resolution.y, canvas_id,
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
