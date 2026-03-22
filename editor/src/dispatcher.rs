@@ -559,7 +559,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers().await;
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
 
-		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
 
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 2);
 	}
@@ -582,7 +582,7 @@ mod test {
 				.await;
 		}
 
-	assert_eq!(editor.active_document().metadata().all_layers().count(), 5);
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 5);
 	}
 
 	#[tokio::test]
