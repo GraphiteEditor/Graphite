@@ -951,71 +951,103 @@ impl NodeNetwork {
 		}
 	}
 
-	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
-		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
-		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation
-			&& *ident == graphene_core::ops::identity::IDENTIFIER
-		{
-			assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
-			if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
-				let node_input_output_index = output_index;
-				// TODO fix
-				if let Some(input_node) = self.nodes.get_mut(&node_id) {
-					for &dep in &node.original_location.dependants[0] {
-						input_node.original_location.dependants[output_index].push(dep);
-					}
+	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
+	/// This is done in a single batch pass rather than per-node to avoid O(N×M) iteration.
+	pub fn remove_redundant_id_nodes(&mut self) {
+		// Step 1: Identify all identity nodes and build a remapping table.
+		// Each identity node maps to its upstream (node_id, output_index).
+		let mut remap: HashMap<NodeId, (NodeId, usize)> = HashMap::new();
+		for (id, node) in &self.nodes {
+			if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::identity::IDENTIFIER)
+				&& node.inputs.len() == 1
+				&& let NodeInput::Node { node_id, output_index, .. } = node.inputs[0]
+			{
+				remap.insert(*id, (node_id, output_index));
+			}
+		}
+
+		if remap.is_empty() {
+			return;
+		}
+
+		// Step 2: Resolve transitive chains (identity → identity → real node).
+		// Use path compression so each identity node maps directly to the final real node.
+		let resolved: HashMap<NodeId, (NodeId, usize)> = remap
+			.keys()
+			.map(|&id| {
+				let mut current = id;
+				let mut output_index = 0;
+				while let Some(&(next_id, next_output_index)) = remap.get(&current) {
+					current = next_id;
+					output_index = next_output_index;
 				}
+				(id, (current, output_index))
+			})
+			.collect();
 
-				let input_node_id = node_id;
-				for output in self.nodes.values_mut() {
-					for (index, input) in output.inputs.iter_mut().enumerate() {
-						if let NodeInput::Node {
-							node_id: output_node_id,
-							output_index: output_output_index,
-							..
-						} = input && *output_node_id == id
-						{
-							*output_node_id = input_node_id;
-							*output_output_index = node_input_output_index;
+		// Step 3: Propagate dependant metadata from each identity node to its resolved upstream node.
+		// Collect the metadata first to avoid borrow conflicts.
+		let dependant_updates: Vec<(NodeId, usize, Vec<NodeId>)> = resolved
+			.iter()
+			.filter_map(|(id_node, (target_id, target_output_index))| {
+				let node = self.nodes.get(id_node)?;
+				let deps = node.original_location.dependants.first().cloned().unwrap_or_default();
+				if deps.is_empty() {
+					None
+				} else {
+					Some((*target_id, *target_output_index, deps))
+				}
+			})
+			.collect();
 
-							let input_source = &mut output.original_location.inputs_source;
-							for source in node.original_location.inputs(index) {
-								input_source.insert(source, index);
+		for (target_id, target_output_index, deps) in dependant_updates {
+			if let Some(input_node) = self.nodes.get_mut(&target_id) {
+				while input_node.original_location.dependants.len() <= target_output_index {
+					input_node.original_location.dependants.push(Vec::new());
+				}
+				input_node.original_location.dependants[target_output_index].extend(deps);
+			}
+		}
+
+		// Step 4: Collect inputs_source metadata from identity nodes for use during rewriting.
+		let id_node_locations: HashMap<NodeId, OriginalLocation> = resolved.keys().filter_map(|id| Some((*id, self.nodes.get(id)?.original_location.clone()))).collect();
+
+		// Step 5: Single pass over all non-identity nodes to rewrite references.
+		for (_, node) in self.nodes.iter_mut() {
+			for (index, input) in node.inputs.iter_mut().enumerate() {
+				if let NodeInput::Node {
+					node_id: output_node_id,
+					output_index: output_output_index,
+					..
+				} = input
+				{
+					if let Some(&(resolved_id, resolved_output_index)) = resolved.get(output_node_id) {
+						// Propagate inputs_source metadata from the identity node
+						if let Some(id_location) = id_node_locations.get(output_node_id) {
+							for source in id_location.inputs(index) {
+								node.original_location.inputs_source.insert(source, index);
 							}
 						}
-					}
-					for node_input in self.exports.iter_mut() {
-						if let NodeInput::Node { node_id, output_index, .. } = node_input
-							&& *node_id == id
-						{
-							*node_id = input_node_id;
-							*output_index = node_input_output_index;
-						}
+
+						*output_node_id = resolved_id;
+						*output_output_index = resolved_output_index;
 					}
 				}
 			}
-			self.nodes.remove(&id);
 		}
-		Ok(())
-	}
 
-	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
-	pub fn remove_redundant_id_nodes(&mut self) {
-		let id_nodes = self
-			.nodes
-			.iter()
-			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::identity::IDENTIFIER)
-					&& node.inputs.len() == 1
-					&& matches!(node.inputs[0], NodeInput::Node { .. })
-			})
-			.map(|(id, _)| *id)
-			.collect::<Vec<_>>();
-		for id in id_nodes {
-			if let Err(e) = self.remove_id_node(id) {
-				log::warn!("{e}")
+		// Step 6: Rewrite exports.
+		for export in self.exports.iter_mut() {
+			if let NodeInput::Node { node_id, output_index, .. } = export {
+				if let Some(&(resolved_id, resolved_output_index)) = resolved.get(node_id) {
+					*node_id = resolved_id;
+					*output_index = resolved_output_index;
+				}
 			}
 		}
+
+		// Step 7: Remove all identity nodes.
+		self.nodes.retain(|id, _| !resolved.contains_key(id));
 	}
 
 	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
