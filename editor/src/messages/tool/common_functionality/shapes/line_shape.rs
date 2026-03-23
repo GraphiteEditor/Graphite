@@ -13,6 +13,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::line::*;
 use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq, Debug, Default)]
@@ -73,7 +75,7 @@ impl Line {
 		let line_to = document_points[1] - document_points[0];
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, StartInput::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(line_to), false),
 		});
 		let document_to_viewport = document.metadata().document_to_viewport;
@@ -96,7 +98,7 @@ impl Line {
 				let node_inputs =
 					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
-				let Some(&TaggedValue::DVec2(line_to)) = node_inputs[1].as_value() else {
+				let Some(&TaggedValue::DVec2(line_to)) = node_inputs[StartInput::INDEX].as_value() else {
 					return None;
 				};
 
@@ -194,6 +196,8 @@ mod test_line_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeInputDecleration;
+	use graphene_std::vector::generator_nodes::line::{StartInput, EndInput};
 
 	/// Get the line's document-space start and end points by reading line_to from the node
 	/// and computing the actual positions via the layer's transform.
@@ -206,7 +210,7 @@ mod test_line_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
 				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
-				let Some(&TaggedValue::DVec2(line_to)) = node_inputs[1].as_value() else {
+				let Some(&TaggedValue::DVec2(line_to)) = node_inputs[StartInput::INDEX].as_value() else {
 					return None;
 				};
 
