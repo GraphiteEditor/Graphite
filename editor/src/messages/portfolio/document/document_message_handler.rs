@@ -4,7 +4,9 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{
+	ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL,
+};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -665,7 +667,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_parent = self.new_layer_parent(true);
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				let transform = if place_at_origin {
+				let mut transform = if place_at_origin {
 					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
 					DAffine2::from_scale(image_size)
 				} else {
@@ -679,6 +681,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let cursor_in_parent = parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport);
 					cursor_in_parent * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
 				};
+				transform.translation = transform.translation.round();
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
@@ -1394,10 +1397,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_template: Box::new(new_artboard_node),
 				});
 				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
-				// With a content Transform node: use x: 15 (8 indent + 7 for the node width). Without: use x: LAYER_INDENT_OFFSET.
+				// With a content Transform node: shift by the layer indent plus the node width. Without: use just the layer indent.
 				responses.add(NodeGraphMessage::ShiftNodePosition {
 					node_id,
-					x: if needs_content_transform { 15 } else { LAYER_INDENT_OFFSET },
+					x: if needs_content_transform { LAYER_INDENT_OFFSET + NODE_CHAIN_WIDTH } else { LAYER_INDENT_OFFSET },
 					y: -3,
 				});
 				responses.add(GraphOperationMessage::ResizeArtboard {

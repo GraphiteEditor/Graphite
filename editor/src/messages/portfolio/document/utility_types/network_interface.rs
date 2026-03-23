@@ -6,7 +6,7 @@ use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelati
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{
-	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP,
+	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, STACK_VERTICAL_GAP,
 };
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
@@ -243,7 +243,7 @@ impl NodeNetworkInterface {
 
 	pub fn chain_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
 		if self.number_of_displayed_inputs(node_id, network_path) > 1 {
-			let mut last_chain_node_distance = 0u32;
+			let mut last_chain_node_distance = 0_u32;
 			// Iterate upstream from the layer, and get the number of nodes distance to the last node with Position::Chain
 			for (index, node_id) in self
 				.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalPrimaryOutputFlow)
@@ -255,11 +255,11 @@ impl NodeNetworkInterface {
 				if self.is_chain(&node_id, network_path) {
 					last_chain_node_distance = (index as u32) + 1;
 				} else {
-					return last_chain_node_distance * 7 + 1;
+					return last_chain_node_distance * NODE_CHAIN_WIDTH as u32 + 1;
 				}
 			}
 
-			last_chain_node_distance * 7 + 1
+			last_chain_node_distance * NODE_CHAIN_WIDTH as u32 + 1
 		} else {
 			// Layer with no inputs has no chain
 			0
@@ -2695,7 +2695,7 @@ impl NodeNetworkInterface {
 							if downstream_node_metadata.persistent_metadata.is_layer() {
 								// Get the position of the layer
 								let layer_position = self.position(downstream_node_id, network_path)?;
-								return Some(layer_position + IVec2::new(-node_distance_from_layer * 7, 0));
+								return Some(layer_position + IVec2::new(-node_distance_from_layer * NODE_CHAIN_WIDTH, 0));
 							}
 							node_distance_from_layer += 1;
 							current_node_id = *downstream_node_id;
