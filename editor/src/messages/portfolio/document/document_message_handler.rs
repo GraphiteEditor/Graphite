@@ -1370,7 +1370,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let content_shift = -bounds[0].round();
 				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
 				// With a content Transform node: use x: 15 (8 indent + 7 for the node width). Without: use x: LAYER_INDENT_OFFSET.
-				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: if needs_content_transform { 15 } else { LAYER_INDENT_OFFSET }, y: -3 });
+				responses.add(NodeGraphMessage::ShiftNodePosition {
+					node_id,
+					x: if needs_content_transform { 15 } else { LAYER_INDENT_OFFSET },
+					y: -3,
+				});
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: LayerNodeIdentifier::new_unchecked(node_id),
 					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
