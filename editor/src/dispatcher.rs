@@ -528,6 +528,62 @@ mod test {
 
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
+	/// - create a new document
+	/// - assert it starts with zero layers
+	#[tokio::test]
+	async fn new_document_starts_empty() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let layer_count = editor.active_document().metadata().all_layers().count();
+		assert_eq!(layer_count, 0);
+	}
+
+	/// - create rect
+	/// - assert one layer exists
+	#[tokio::test]
+	async fn draw_rect_adds_one_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let layer_count = editor.active_document().metadata().all_layers().count();
+		assert_eq!(layer_count, 1);
+	}
+
+	/// - create three layers
+	/// - delete the active selection (the ellipse, drawn last)
+	/// - assert two layers remain
+	#[tokio::test]
+	async fn delete_selected_layer_reduces_count() {
+		let mut editor = create_editor_with_three_layers().await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
+
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 2);
+	}
+
+	/// - create three layers
+	/// - copy and paste the active selection twice
+	/// - assert five layers exist
+	#[tokio::test]
+	async fn paste_twice_gives_five_layers() {
+		let mut editor = create_editor_with_three_layers().await;
+
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		for _ in 0..2 {
+			editor
+				.handle_message(PortfolioMessage::PasteIntoFolder {
+					clipboard: Clipboard::Internal,
+					parent: LayerNodeIdentifier::ROOT_PARENT,
+					insert_index: 0,
+				})
+				.await;
+		}
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 5);
+	}
 
 	#[tokio::test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.
