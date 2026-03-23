@@ -664,11 +664,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				// Align the layer with the mouse or center of viewport
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
-				let center_in_viewport_layerspace = center_in_viewport;
+				let center_in_viewport_layerspace = mouse.map_or(DAffine2::IDENTITY, |viewport_location| {
+					let viewport_location: DVec2 = viewport_location.into();
+					let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+					DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()))
+				});
 
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
@@ -716,9 +716,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				mouse,
 				parent_and_insert_index,
 			} => {
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
+				// When mouse is None (file-open flow), use the document origin directly to avoid a ±0.5px offset
+				// that `calculate_offset_transform`'s anti-aliasing rounding introduces for odd-sized viewports.
+				let center_in_viewport = mouse.map_or(DAffine2::IDENTITY, |pos| {
+					let viewport_location: DVec2 = pos.into();
+					let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+					DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()))
+				});
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
