@@ -1,0 +1,23 @@
+editor/src/messages/portfolio/document/utility_types/network_interface.rs
+  3b94773c792c97f7 3863-3867
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "deeb12d03f56b800281d10c41ee88b797e94959a",
+  "prompts": {
+    "3b94773c792c97f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "083f76ea-4184-4c7e-991f-a7f545a6fdd3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
