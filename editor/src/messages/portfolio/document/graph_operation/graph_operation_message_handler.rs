@@ -580,18 +580,23 @@ fn import_usvg_path(
 	let subpaths = convert_usvg_path(path);
 	let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 
-	modify_inputs.insert_vector(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
+	// Compute the combined transform once; skip creating a Transform node entirely when it is identity.
+	let node_transform = transform * usvg_transform(node.abs_transform());
+	let has_transform = node_transform != DAffine2::IDENTITY;
 
-	if let Some(transform_node_id) = modify_inputs.existing_network_node_id("Transform", true) {
-		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
-	}
+	modify_inputs.insert_vector(subpaths, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
+
+	if has_transform
+		&& let Some(transform_node_id) = modify_inputs.existing_network_node_id("Transform", false) {
+			transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, node_transform);
+		}
 
 	if let Some(fill) = path.fill() {
 		let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		apply_usvg_fill(fill, modify_inputs, bounds_transform, graphite_gradient_stops);
 	}
 	if let Some(stroke) = path.stroke() {
-		apply_usvg_stroke(stroke, modify_inputs, transform * usvg_transform(node.abs_transform()));
+		apply_usvg_stroke(stroke, modify_inputs, node_transform);
 	}
 }
 
