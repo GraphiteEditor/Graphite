@@ -592,6 +592,7 @@ struct PathToolData {
 	last_clicked_point_was_selected: bool,
 	last_clicked_segment_was_selected: bool,
 	snapping_axis: Option<Axis>,
+	snap_axis_origin: Option<DVec2>,
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
@@ -1971,7 +1972,7 @@ impl Fsm for PathToolFsmState {
 						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
-							let origin = tool_data.drag_start_pos;
+							let origin = tool_data.snap_axis_origin.or_else(|| tool_data.snap_manager.indicator_pos()).unwrap_or(tool_data.drag_start_pos);
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							match axis {
@@ -2108,16 +2109,43 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let snap_axis_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					// Constrain molding to a single axis when Shift is held
+					let mouse_position = if snap_axis_state {
+						// Calculate the midpoint along the actual bezier curve for the axis overlay.
+						// This uses the curve captured at mouse-down (which includes all prior modifications),
+						// so after a previous bulge the axis origin reflects the updated curve shape.
+						let transform = document.metadata().transform_to_viewport(segment.layer());
+						let curve_midpoint = point_to_dvec2(segment.pathseg().eval(0.5));
+						let midpoint = transform.transform_point2(curve_midpoint);
+						tool_data.snap_axis_origin = Some(midpoint);
+
+						// Constrain mouse movement relative to drag start so molding delta stays correct
+						let drag_start = tool_data.drag_start_pos;
+						let delta = input.mouse.position - drag_start;
+						let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
+						tool_data.snapping_axis = Some(axis);
+						match axis {
+							Axis::X => DVec2::new(input.mouse.position.x, drag_start.y),
+							Axis::Y => DVec2::new(drag_start.x, input.mouse.position.y),
+							_ => input.mouse.position,
+						}
+					} else {
+						tool_data.snapping_axis = None;
+						tool_data.snap_axis_origin = None;
+						input.mouse.position
+					};
+
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2372,6 +2400,8 @@ impl Fsm for PathToolFsmState {
 				tool_data.molding_segment = false;
 				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.angle_locked = false;
+				tool_data.snapping_axis = None;
+				tool_data.snap_axis_origin = None;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -2620,6 +2650,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				tool_data.snapping_axis = None;
+				tool_data.snap_axis_origin = None;
 				tool_data.sliding_point_info = None;
 
 				if drag_occurred || extend_selection {
