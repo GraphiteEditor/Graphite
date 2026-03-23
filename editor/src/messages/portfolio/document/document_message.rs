@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
-use glam::DAffine2;
+use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
@@ -229,6 +229,9 @@ pub enum DocumentMessage {
 	SelectionStepForward,
 	WrapContentInArtboard {
 		place_artboard_at_origin: bool,
+		/// When `Some`, use this canvas (origin, dimensions) for the artboard instead of measuring the content bounding box.
+		/// The origin comes from the SVG viewBox's min-x/min-y values and the dimensions from its width/height.
+		artboard_canvas: Option<(IVec2, IVec2)>,
 	},
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,

@@ -1349,25 +1349,35 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.selection_step_forward(&self.selection_network_path);
 				responses.add(EventMessage::SelectionChanged);
 			}
-			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
-				// Get bounding box of all layers
+			DocumentMessage::WrapContentInArtboard {
+				place_artboard_at_origin,
+				artboard_canvas,
+			} => {
+				// Get bounding box of all layers (always needed to confirm there is content)
 				let bounds = self.network_interface.document_bounds_document_space(false);
 				let Some(bounds) = bounds else { return };
-				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
+
+				// When artboard_canvas is provided (SVG file-open flow), use the declared canvas origin and dimensions;
+				// no content-shift Transform node needed since the SVG was already placed at its natural coordinates.
+				let (artboard_location, artboard_dimensions, content_shift) = if let Some((origin, dimensions)) = artboard_canvas {
+					(origin, dimensions, DVec2::ZERO)
+				} else {
+					// No declared canvas (image or clipboard paste): derive location and dimensions from the content bounding box.
+					let location = if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() };
+					(location, (bounds[1] - bounds[0]).round().as_ivec2(), -bounds[0].round())
+				};
 
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
 				let new_artboard_node = document_node_definitions::resolve_network_node_type("Artboard")
 					.expect("Failed to create artboard node")
-					.default_node_template();
+					// Enable clipping by default (input index 5) so imported content is masked to the artboard bounds
+					.node_template_input_override([None, None, None, None, None, Some(NodeInput::value(TaggedValue::Bool(true), false))]);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
 					node_template: Box::new(new_artboard_node),
 				});
-				// Compute the shift needed to align the content's top-left corner to the artboard's origin.
-				// When content is already at the document origin this is zero → no Transform node is created.
-				let content_shift = -bounds[0].round();
 				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
 				// With a content Transform node: use x: 15 (8 indent + 7 for the node width). Without: use x: LAYER_INDENT_OFFSET.
 				responses.add(NodeGraphMessage::ShiftNodePosition {
@@ -1377,8 +1387,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: LayerNodeIdentifier::new_unchecked(node_id),
-					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
-					dimensions: bounds_rounded_dimensions.as_ivec2(),
+					location: artboard_location,
+					dimensions: artboard_dimensions,
 				});
 
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output

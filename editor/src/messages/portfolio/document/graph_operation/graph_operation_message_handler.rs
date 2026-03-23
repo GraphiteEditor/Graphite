@@ -337,7 +337,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				// The placement transform positions the root group in document space.
 				// When centering (paste at cursor/viewport), shift so the SVG is centered at the transform origin.
-				// When not centering (file-open flow), keep the natural SVG coordinates.
+				// When not centering (file-open flow), content stays at viewport coordinates (usvg's viewBox mapping
+				// already places it in [0, width] × [0, height]); the artboard's X/Y handles the viewBox origin offset.
 				let mut placement_transform = if center {
 					let size = tree.size();
 					let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
