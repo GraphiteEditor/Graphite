@@ -340,9 +340,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// When not centering (file-open flow), content stays at viewport coordinates (usvg's viewBox mapping
 				// already places it in [0, width] × [0, height]); the artboard's X/Y handles the viewBox origin offset.
 				let mut placement_transform = if center {
-					let size = tree.size();
-					let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
-					transform * DAffine2::from_translation(offset_to_center)
+					// Center on the actual rendered content bounds rather than the viewbox size.
+					// An SVG may have a viewbox larger than its content, so using viewport_size/2 would place the cursor
+					// in that empty region instead of on the content.
+					let bounds = tree.root().abs_bounding_box();
+					let visual_center = DVec2::new((bounds.left() + bounds.right()) as f64 / 2., (bounds.top() + bounds.bottom()) as f64 / 2.);
+					transform * DAffine2::from_translation(-visual_center)
 				} else {
 					transform
 				};
