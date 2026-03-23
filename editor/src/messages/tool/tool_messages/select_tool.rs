@@ -1,5 +1,4 @@
 #![allow(clippy::too_many_arguments)]
-
 use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
@@ -398,14 +397,17 @@ struct SelectToolData {
 	pivot_gizmo_start: Option<DVec2>,
 	pivot_gizmo_shift: Option<DVec2>,
 	compass_rose: CompassRose,
-	line_center: DVec2,
+	line_center_document: DVec2,
 	skew_edge: EdgeBool,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	drag_start_center: ViewportPosition,
+	/// Drag start position in document coordinates, used for the center of the axis-aligned snapping and the compass rose
+	drag_start_center_document: DVec2,
+	/// Drag start mouse position in document coordinates, used for axis-aligned snapping that follows canvas pan/tilt
+	drag_start_document: DVec2,
 }
 
 impl SelectToolData {
@@ -869,7 +871,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.compass_rose.refresh_position(document);
 					let compass_center = tool_data.compass_rose.compass_rose_position();
 					if !matches!(self, Self::Dragging { .. }) {
-						tool_data.line_center = compass_center;
+						tool_data.line_center_document = document.metadata().document_to_viewport.inverse().transform_point2(compass_center);
 					}
 
 					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
@@ -899,17 +901,21 @@ impl Fsm for SelectToolFsmState {
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let color = if !hover { color } else { color_faded };
-						let line_center = tool_data.line_center;
+						let line_center = document.metadata().document_to_viewport.transform_point2(tool_data.line_center_document);
 						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 					}
 
 					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
-						let mouse_position = mouse_position - tool_data.drag_start;
+						// Convert document-space origin to current viewport (follows pan/tilt)
+						let viewport_origin = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_document);
+						let mouse_position = mouse_position - viewport_origin;
 						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-						let angle = -mouse_position.angle_to(DVec2::X);
-						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+						// Account for canvas rotation
+						let canvas_rotation = document.metadata().document_to_viewport.matrix2.y_axis.to_angle() - std::f64::consts::FRAC_PI_2;
+						let angle = -mouse_position.angle_to(DVec2::X) - canvas_rotation;
+						let snapped_angle = (angle / snap_resolution).round() * snap_resolution + canvas_rotation;
 
-						let origin = tool_data.drag_start_center;
+						let origin = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_center_document);
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X);
@@ -1021,7 +1027,8 @@ impl Fsm for SelectToolFsmState {
 				let position = tool_data.pivot_gizmo().position(document);
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(position));
 
-				tool_data.drag_start_center = position;
+				tool_data.drag_start_center_document = document.metadata().document_to_viewport.inverse().transform_point2(position);
+				tool_data.drag_start_document = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -1164,7 +1171,9 @@ impl Fsm for SelectToolFsmState {
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
 
 				let snap_data = SnapData::ignore(document, input, viewport, ignore);
-				let (start, current) = (tool_data.drag_start, tool_data.drag_current);
+				// Convert document-space origin to current viewport (follows pan/tilt)
+				let start = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_document);
+				let current = tool_data.drag_current;
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
