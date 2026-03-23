@@ -321,6 +321,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				transform,
 				parent,
 				insert_index,
+				center,
 			} => {
 				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
@@ -334,21 +335,38 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				};
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				let size = tree.size();
-				let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
-				let transform = transform * DAffine2::from_translation(offset_to_center);
+				// The placement transform positions the root group in document space.
+				// When centering (paste at cursor/viewport), shift so the SVG is centered at the transform origin.
+				// When not centering (file-open flow), content stays at viewport coordinates (usvg's viewBox mapping
+				// already places it in [0, width] × [0, height]); the artboard's X/Y handles the viewBox origin offset.
+				let mut placement_transform = if center {
+					// Center on the actual rendered content bounds rather than the viewbox size.
+					// An SVG may have a viewbox larger than its content, so using viewport_size/2 would place the cursor
+					// in that empty region instead of on the content.
+					let bounds = tree.root().abs_bounding_box();
+					let visual_center = DVec2::new((bounds.left() + bounds.right()) as f64 / 2., (bounds.top() + bounds.bottom()) as f64 / 2.);
+					transform * DAffine2::from_translation(-visual_center)
+				} else {
+					transform
+				};
+				placement_transform.translation = placement_transform.translation.round();
 
 				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
 
+				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
+				// The placement offset is then applied once to the root group layer below.
 				import_usvg_node(
 					&mut modify_inputs,
 					&usvg::Node::Group(Box::new(tree.root().clone())),
-					transform,
 					id,
 					parent,
 					insert_index,
 					&graphite_gradient_stops,
 				);
+
+				// After import, `layer_node` is set to the root group. Apply the placement transform to it
+				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
+				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
 			}
 		}
 	}
@@ -452,7 +470,6 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 fn import_usvg_node(
 	modify_inputs: &mut ModifyInputsContext,
 	node: &usvg::Node,
-	transform: DAffine2,
 	id: NodeId,
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
@@ -477,7 +494,7 @@ fn import_usvg_node(
 			modify_inputs.import = true;
 
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, transform, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
 				child_extents_svg_order.push(extent);
 			}
 
@@ -496,7 +513,7 @@ fn import_usvg_node(
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
 		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, transform, layer, graphite_gradient_stops);
+			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
@@ -517,7 +534,6 @@ fn import_usvg_node(
 fn import_usvg_node_inner(
 	modify_inputs: &mut ModifyInputsContext,
 	node: &usvg::Node,
-	transform: DAffine2,
 	id: NodeId,
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
@@ -532,7 +548,7 @@ fn import_usvg_node_inner(
 		usvg::Node::Group(group) => {
 			let mut child_extents: Vec<u32> = Vec::new();
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, transform, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
 				child_extents.push(extent);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -547,7 +563,7 @@ fn import_usvg_node_inner(
 			total_extent
 		}
 		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, transform, layer, graphite_gradient_stops);
+			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 			0
 		}
 		usvg::Node::Image(_image) => {
@@ -564,21 +580,18 @@ fn import_usvg_node_inner(
 }
 
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
-fn import_usvg_path(
-	modify_inputs: &mut ModifyInputsContext,
-	node: &usvg::Node,
-	path: &usvg::Path,
-	transform: DAffine2,
-	layer: LayerNodeIdentifier,
-	graphite_gradient_stops: &HashMap<String, GradientStops>,
-) {
+fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	let subpaths = convert_usvg_path(path);
 	let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 
-	modify_inputs.insert_vector(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
+	// Skip creating a Transform node entirely when the SVG-native transform is identity.
+	let node_transform = usvg_transform(node.abs_transform());
+	let has_transform = node_transform != DAffine2::IDENTITY;
 
-	if let Some(transform_node_id) = modify_inputs.existing_network_node_id("Transform", true) {
-		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
+	modify_inputs.insert_vector(subpaths, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
+
+	if has_transform && let Some(transform_node_id) = modify_inputs.existing_network_node_id("Transform", false) {
+		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, node_transform);
 	}
 
 	if let Some(fill) = path.fill() {
@@ -586,7 +599,7 @@ fn import_usvg_path(
 		apply_usvg_fill(fill, modify_inputs, bounds_transform, graphite_gradient_stops);
 	}
 	if let Some(stroke) = path.stroke() {
-		apply_usvg_stroke(stroke, modify_inputs, transform * usvg_transform(node.abs_transform()));
+		apply_usvg_stroke(stroke, modify_inputs, node_transform);
 	}
 }
 
