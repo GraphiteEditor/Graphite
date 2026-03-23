@@ -3860,6 +3860,11 @@ impl NodeNetworkInterface {
 	/// or per-node cache invalidation. Call `load_structure`, `unload_all_nodes_click_targets`, and
 	/// `unload_all_nodes_bounding_box` once after all import wiring is complete.
 	pub fn set_input_for_import(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
+		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Import { .. }) {
+			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
+			return;
+		}
+
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_input_for_import");
 			return;
