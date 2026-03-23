@@ -18,6 +18,15 @@ use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
 use vector_types::GradientStops;
 
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destruct)]
+pub struct SplitChannelsOutput {
+	pub red: Table<Raster<CPU>>,
+	pub green: Table<Raster<CPU>>,
+	pub blue: Table<Raster<CPU>>,
+	pub alpha: Table<Raster<CPU>>,
+}
+
 // TODO: Implement the following:
 // Color Balance
 // Aims for interoperable compatibility with:
@@ -116,6 +125,17 @@ fn extract_channel<T: Adjust<Color>>(
 		color.map_rgb(|_| extracted_value).with_alpha(1.)
 	});
 	input
+}
+
+#[cfg(feature = "std")]
+#[node_macro::node(name("Split Channels"), category("Raster: Channels"), deconstruct_output)]
+fn split_channels(_: impl Ctx, input: Table<Raster<CPU>>) -> SplitChannelsOutput {
+	SplitChannelsOutput {
+		red: extract_channel((), input.clone(), RedGreenBlueAlpha::Red),
+		green: extract_channel((), input.clone(), RedGreenBlueAlpha::Green),
+		blue: extract_channel((), input.clone(), RedGreenBlueAlpha::Blue),
+		alpha: extract_channel((), input, RedGreenBlueAlpha::Alpha),
+	}
 }
 
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
