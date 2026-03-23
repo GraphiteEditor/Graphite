@@ -2185,9 +2185,9 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		while !unvisited_segments.is_empty() {
 			let first = *unvisited_segments.iter().next().unwrap();
 			unvisited_segments.remove(&first);
-			
+
 			let mut path = vec![first];
-			
+
 			loop {
 				let last = *path.last().unwrap();
 				// Find next segment
@@ -2198,7 +2198,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 					break;
 				}
 			}
-			
+
 			// Try to extend backwards
 			loop {
 				let first = *path.first().unwrap();
@@ -2356,9 +2356,9 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 			.filter(|(_, handles)| !matches!(handles, BezierHandles::Linear))
 			.map(|(&id, _)| id)
 			.collect();
-		vector.colinear_manipulators.retain(|[h1, h2]| {
-			valid_nonlinear_segments.contains(&h1.segment) && valid_nonlinear_segments.contains(&h2.segment)
-		});
+		vector
+			.colinear_manipulators
+			.retain(|[h1, h2]| valid_nonlinear_segments.contains(&h1.segment) && valid_nonlinear_segments.contains(&h2.segment));
 	}
 
 	vector
