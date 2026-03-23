@@ -347,7 +347,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					parent,
 					insert_index,
 					&graphite_gradient_stops,
-					true,
 				);
 			}
 		}
@@ -457,21 +456,13 @@ fn import_usvg_node(
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
-	is_root: bool,
 ) {
 	let layer = modify_inputs.create_layer(id);
 
-	if is_root {
-		// Root layer uses the full move_layer_to_stack to handle interaction with existing nodes
-		modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-		modify_inputs.layer_node = Some(layer);
-		if let Some(upstream_layer) = layer.next_sibling(modify_inputs.network_interface.document_metadata()) {
-			modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, 3), &[]);
-		}
-	} else {
-		// Non-root layers use lightweight wiring without push/collision logic
-		modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
-		modify_inputs.layer_node = Some(layer);
+	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+	modify_inputs.layer_node = Some(layer);
+	if let Some(upstream_layer) = layer.next_sibling(modify_inputs.network_interface.document_metadata()) {
+		modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, 3), &[]);
 	}
 
 	match node {
@@ -507,7 +498,7 @@ fn import_usvg_node(
 			import_usvg_path(modify_inputs, node, path, transform, layer, graphite_gradient_stops);
 		}
 		usvg::Node::Image(_image) => {
-			warn!("Skip image")
+			warn!("Skip image");
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
