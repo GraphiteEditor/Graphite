@@ -1,0 +1,23 @@
+editor/src/messages/portfolio/document/document_message_handler.rs
+  50c5ad61ef4f6054 669-671,719-725
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "77994266346180c0440a7aba1d9475c53ec8ba93",
+  "prompts": {
+    "50c5ad61ef4f6054": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed8c94b5-9e16-41cf-bff3-440ceac16de9",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 9,
+      "accepted_lines": 10,
+      "overriden_lines": 1
+    }
+  }
+}
