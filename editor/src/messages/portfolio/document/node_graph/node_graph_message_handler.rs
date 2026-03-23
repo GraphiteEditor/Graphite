@@ -645,7 +645,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = resolve_network_node_type("Default Network").expect("Default Network node should exist").default_node_template();
+				let mut default_node_template = resolve_network_node_type("Custom Node").expect("Custom Node should exist").default_node_template();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
 					log::error!("Could not get center of selected_nodes");
 					return;
