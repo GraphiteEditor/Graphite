@@ -1,14 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
-
-	import { evaluateMathExpression, isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/managers/input";
-	import { browserVersion } from "@graphite/utility-functions/platform";
-
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
+	import { browserVersion } from "/src/utility-functions/platform";
+	import { evaluateMathExpression, isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
@@ -17,7 +14,7 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	// Content
 	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
@@ -408,7 +405,7 @@
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
 		if (isPlatformNative()) {
-			editor.handle.appWindowPointerLock();
+			editor.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;

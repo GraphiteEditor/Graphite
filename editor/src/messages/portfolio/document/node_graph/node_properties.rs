@@ -1796,7 +1796,21 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+
+	let display_name = context
+		.network_interface
+		.node_metadata(&node_id, context.selection_network_path)
+		.map(|metadata| metadata.persistent_metadata.display_name.as_str());
+	let implementation_name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+	let name = if let Some(display_name) = display_name
+		&& implementation_name != display_name
+		&& implementation_name != "Custom Node"
+		&& !display_name.is_empty()
+	{
+		format!("{display_name} ({implementation_name})")
+	} else {
+		implementation_name
+	};
 
 	let description = context
 		.network_interface

@@ -89,10 +89,12 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 		name: String,
 		path: Option<PathBuf>,
+		folder: Option<PathBuf>,
 		content: serde_bytes::ByteBuf,
 	},
 	TriggerSaveFile {
 		name: String,
+		folder: Option<PathBuf>,
 		content: serde_bytes::ByteBuf,
 	},
 	TriggerExportImage {

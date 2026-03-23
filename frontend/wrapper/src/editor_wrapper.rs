@@ -4,8 +4,14 @@
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
 //
-use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
+#[cfg(not(feature = "native"))]
+use crate::EDITOR;
+#[cfg(not(feature = "native"))]
+use crate::helpers::poll_node_graph_evaluation;
+use crate::helpers::{auto_save_all_documents, calculate_hash, render_image_data_to_canvases, request_animation_frame, set_timeout, translate_key, wrapper};
+use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
+#[cfg(not(feature = "native"))]
+use editor::application::{Editor, Environment, Host, Platform};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -16,85 +22,52 @@ use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily}
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
-use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::GradientStops;
-use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
-
-#[cfg(not(feature = "native"))]
-use crate::EDITOR;
-#[cfg(not(feature = "native"))]
-use editor::application::{Editor, Environment, Host, Platform};
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
-
-fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
-	use std::collections::hash_map::DefaultHasher;
-	use std::hash::Hasher;
-	let mut hasher = DefaultHasher::new();
-	t.hash(&mut hasher);
-	hasher.finish()
-}
-
-/// Provides a handle to access the raw Wasm memory.
-#[wasm_bindgen(js_name = wasmMemory)]
-pub fn wasm_memory() -> JsValue {
-	wasm_bindgen::memory()
-}
-
-#[wasm_bindgen(js_name = isPlatformNative)]
-pub fn is_platform_native() -> bool {
-	#[cfg(feature = "native")]
-	{
-		true
-	}
-	#[cfg(not(feature = "native"))]
-	{
-		false
-	}
-}
-
-// ============================================================================
 
 /// This struct is, via wasm-bindgen, used by JS to interact with the editor backend. It does this by calling functions, which are `impl`ed
 #[wasm_bindgen]
 #[derive(Clone)]
-pub struct EditorHandle {
+pub struct EditorWrapper {
 	/// This callback is called by the editor's dispatcher when directing `FrontendMessage`s from Rust to JS
 	frontend_message_handler_callback: js_sys::Function,
 }
 
 // Defined separately from the `impl` block below since this `impl` block lacks the `#[wasm_bindgen]` attribute.
 // Quirks in wasm-bindgen prevent functions in `#[wasm_bindgen]` `impl` blocks from being made publicly accessible from Rust.
-impl EditorHandle {
+impl EditorWrapper {
 	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
 		self.send_frontend_message_to_js(message);
 	}
 
-	fn initialize_handle(frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+	fn initialize_wrapper(frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
 		let panic_callback = frontend_message_handler_callback.clone();
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
+		let editor_wrapper = EditorWrapper { frontend_message_handler_callback };
+		if EDITOR_WRAPPER.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor_wrapper.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor wrapper more than once");
 		}
 		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
-		editor_handle
+		editor_wrapper
 	}
 }
 
 #[wasm_bindgen]
-impl EditorHandle {
+impl EditorWrapper {
+	// ========================
+	// Editor wrapper machinery
+	// ========================
+
 	#[cfg(not(feature = "native"))]
-	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
 		let editor = Editor::new(
 			Environment {
 				platform: Platform::Web,
@@ -108,21 +81,20 @@ impl EditorHandle {
 			uuid_random_seed,
 		);
 
-		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+		if EDITOR.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
 
-		Self::initialize_handle(frontend_message_handler_callback)
+		Self::initialize_wrapper(frontend_message_handler_callback)
 	}
-
 	#[cfg(feature = "native")]
-	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-		Self::initialize_handle(frontend_message_handler_callback)
+	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		Self::initialize_wrapper(frontend_message_handler_callback)
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
 	#[cfg(not(feature = "native"))]
-	fn dispatch<T: Into<Message>>(&self, message: T) {
+	pub(crate) fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
 		use crate::MESSAGE_BUFFER;
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -146,9 +118,8 @@ impl EditorHandle {
 			self.send_frontend_message_to_js(message);
 		}
 	}
-
 	#[cfg(feature = "native")]
-	fn dispatch<T: Into<Message>>(&self, message: T) {
+	pub(crate) fn dispatch<T: Into<Message>>(&self, message: T) {
 		let message: Message = message.into();
 		let Ok(serialized_message) = ron::to_string(&message) else {
 			log::error!("Failed to serialize message");
@@ -158,7 +129,7 @@ impl EditorHandle {
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn send_frontend_message_to_js(&self, message: FrontendMessage) {
+	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(image_data);
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
@@ -182,10 +153,9 @@ impl EditorHandle {
 		}
 	}
 
-	// ========================================================================
-	// Add additional JS -> Rust wrapper functions below as needed for calling
-	// the backend from the web frontend.
-	// ========================================================================
+	// ================================================
+	// Functions for calling the editor in Rust from JS
+	// ================================================
 
 	/// Re-sends all UI layouts to the frontend. Called during HMR re-mounts when the frontend has lost its layout state.
 	#[wasm_bindgen(js_name = resendAllLayouts)]
@@ -215,7 +185,7 @@ impl EditorHandle {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-					handle(|handle| {
+					wrapper(|wrapper| {
 						// Process all messages that have been queued up
 						let mut messages = MESSAGE_BUFFER.take();
 						messages.push(
@@ -230,7 +200,7 @@ impl EditorHandle {
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
 						messages.push(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into());
 
-						handle.dispatch(Message::Batched { messages: messages.into() });
+						wrapper.dispatch(Message::Batched { messages: messages.into() });
 					});
 				}
 
@@ -486,13 +456,6 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Zoom the canvas to fit all content
-	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
-	pub fn zoom_canvas_to_fit_all(&self) {
-		let message = DocumentMessage::ZoomCanvasToFitAll;
-		self.dispatch(message);
-	}
-
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
 	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
@@ -689,6 +652,7 @@ impl EditorHandle {
 		self.dispatch(GradientToolMessage::CloseStopColorPicker);
 	}
 
+	/// Toggle clipping the alpha of a layer to the alpha of the layer below it in the layer stack
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);
@@ -843,6 +807,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Pastes an SVG given its string representation
 	#[wasm_bindgen(js_name = pasteSvg)]
 	pub fn paste_svg(&self, name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
@@ -933,7 +898,21 @@ impl EditorHandle {
 	}
 }
 
-// ============================================================================
+// ====================================================================
+// Static functions callable from JavaScript without an Editor instance
+// ====================================================================
+
+#[wasm_bindgen(js_name = isPlatformNative)]
+pub fn is_platform_native() -> bool {
+	#[cfg(feature = "native")]
+	{
+		true
+	}
+	#[cfg(not(feature = "native"))]
+	{
+		false
+	}
+}
 
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
@@ -971,177 +950,4 @@ pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f
 	let color = GradientStops { position, midpoint, color }.evaluate(t);
 
 	serde_wasm_bindgen::to_value(&color).unwrap()
-}
-
-/// Helper function for calling JS's `requestAnimationFrame` with the given closure
-fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
-	web_sys::window()
-		.expect("No global `window` exists")
-		.request_animation_frame(f.as_ref().unchecked_ref())
-		.expect("Failed to call `requestAnimationFrame`");
-}
-
-/// Helper function for calling JS's `setTimeout` with the given closure and delay
-fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
-	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
-	web_sys::window()
-		.expect("No global `window` exists")
-		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
-		.expect("Failed to call `setTimeout`");
-}
-
-/// Provides access to the `Editor` by calling the given closure with it as an argument.
-#[cfg(not(feature = "native"))]
-fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
-	EDITOR.with(|editor| {
-		let mut guard = editor.try_lock();
-		let Ok(Some(editor)) = guard.as_deref_mut() else {
-			log::error!("Failed to borrow editor");
-			return T::default();
-		};
-
-		callback(editor)
-	})
-}
-
-/// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-#[cfg(not(feature = "native"))]
-pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
-	handle(|editor_handle| {
-		editor(|editor| {
-			// Call the closure with the editor and its handle
-			callback(editor, editor_handle);
-		})
-	});
-}
-/// Provides access to the `EditorHandle` by calling the given closure with them as arguments.
-pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
-	EDITOR_HANDLE.with(|editor_handle| {
-		let mut guard = editor_handle.try_lock();
-		let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
-			log::error!("Failed to borrow editor handle");
-			return;
-		};
-
-		// Call the closure with the editor and its handle
-		callback(editor_handle);
-	});
-}
-
-#[cfg(not(feature = "native"))]
-async fn poll_node_graph_evaluation() {
-	// Process no further messages after a crash to avoid spamming the console
-	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-		return;
-	}
-
-	if !editor::node_graph_executor::run_node_graph().await.0 {
-		return;
-	}
-
-	editor_and_handle(|editor, handle| {
-		let mut messages = VecDeque::new();
-		if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-			// TODO: This is a hacky way to suppress the error, but it shouldn't be generated in the first place
-			if e != "No active document" {
-				error!("Error evaluating node graph:\n{e}");
-			}
-		}
-
-		// Clear the error display if there are no more errors
-		if !messages.is_empty() {
-			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
-		}
-
-		// Batch responses to pool frontend updates
-		let batched = Message::Batched {
-			messages: messages.into_iter().collect(),
-		};
-		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in editor.handle_message(batched) {
-			handle.send_frontend_message_to_js(response);
-		}
-
-		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-	});
-}
-
-fn auto_save_all_documents() {
-	// Process no further messages after a crash to avoid spamming the console
-	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-		return;
-	}
-
-	handle(|handle| {
-		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
-	});
-}
-
-fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
-	let window = match window() {
-		Some(window) => window,
-		None => {
-			error!("Cannot render canvas: window object not found");
-			return;
-		}
-	};
-	let document = window.document().expect("window should have a document");
-	let window_obj = Object::from(window);
-	let image_canvases_key = JsValue::from_str("imageCanvases");
-
-	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
-		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
-		_ => {
-			let new_obj = Object::new();
-			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
-				error!("Failed to create and set imageCanvases object on window");
-				return;
-			}
-			new_obj.into()
-		}
-	};
-	let canvases_obj = Object::from(canvases_obj);
-
-	for (placeholder_id, image) in image_data.iter() {
-		let canvas_name = placeholder_id.to_string();
-		let js_key = JsValue::from_str(&canvas_name);
-
-		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
-			continue;
-		}
-
-		let canvas: HtmlCanvasElement = document
-			.create_element("canvas")
-			.expect("Failed to create canvas element")
-			.dyn_into::<HtmlCanvasElement>()
-			.expect("Failed to cast element to HtmlCanvasElement");
-
-		canvas.set_width(image.width);
-		canvas.set_height(image.height);
-
-		let context: CanvasRenderingContext2d = canvas
-			.get_context("2d")
-			.expect("Failed to get 2d context")
-			.expect("2d context was not found")
-			.dyn_into::<CanvasRenderingContext2d>()
-			.expect("Failed to cast context to CanvasRenderingContext2d");
-		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
-		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
-		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
-			Ok(image_data_obj) => {
-				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
-					error!("Failed to put image data on canvas for id: {placeholder_id}");
-				}
-			}
-			Err(e) => {
-				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
-			}
-		}
-
-		let js_value = JsValue::from(canvas);
-
-		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
-			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
-		}
-	}
 }

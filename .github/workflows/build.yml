@@ -46,6 +46,8 @@ on:
         type: string
       pr_number:
         type: string
+      merge_queue:
+        type: boolean
 
 jobs:
   web:
@@ -111,6 +113,7 @@ jobs:
         run: mold -run cargo run build web${{ inputs.debug && ' debug' || '' }}
 
       - name: 📤 Publish to Cloudflare Pages
+        if: inputs.merge_queue == false
         id: cloudflare
         continue-on-error: ${{ github.event_name != 'push' }}
         env:
@@ -143,7 +146,7 @@ jobs:
           exit 1
 
       - name: 🚀 Create a GitHub environment deployment
-        if: inputs.checkout_repo == '' || inputs.checkout_repo == github.repository
+        if: (inputs.checkout_repo == '' || inputs.checkout_repo == github.repository) && inputs.merge_queue == false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CF_URL: ${{ steps.cloudflare.outputs.url }}
@@ -180,7 +183,7 @@ jobs:
             -f log_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: 💬 Comment with the build link
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+        if: github.event_name != 'pull_request' && inputs.merge_queue == false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CF_URL: ${{ steps.cloudflare.outputs.url }}
@@ -204,7 +207,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
               -f body="$COMMENT_BODY"
-          elif [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "merge_group" ]; then
+          elif [ "${{ github.event_name }}" != "pull_request" ]; then
             # Manual trigger (workflow_dispatch, !build): comment on the PR
             PR_NUMBER="${{ inputs.pr_number }}"
             if [ -z "$PR_NUMBER" ]; then
@@ -226,7 +229,7 @@ jobs:
         run: sed -i "s|$TEMPLATE||" frontend/dist/index.html
 
       - name: 📦 Upload web bundle artifact
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && inputs.merge_queue == false
         uses: actions/upload-artifact@v6
         with:
           name: graphite-web-bundle

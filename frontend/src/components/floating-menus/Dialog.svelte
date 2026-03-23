@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
-
-	import type { DialogStore } from "@graphite/stores/dialog";
-	import { crashReportUrl } from "@graphite/utility-functions/crash-report";
-	import { wipeDocuments } from "@graphite/utility-functions/persistence";
-
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { DialogStore } from "/src/stores/dialog";
+	import { crashReportUrl } from "/src/utility-functions/crash-report";
+	import { wipeDocuments } from "/src/utility-functions/persistence";
 
 	const dialog = getContext<DialogStore>("dialog");
 

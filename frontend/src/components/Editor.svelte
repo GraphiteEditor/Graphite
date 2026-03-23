@@ -1,54 +1,55 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
+	import MainWindow from "/src/components/window/MainWindow.svelte";
+	import { createClipboardManager, destroyClipboardManager } from "/src/managers/clipboard";
+	import { createFontsManager, destroyFontsManager } from "/src/managers/fonts";
+	import { createHyperlinkManager, destroyHyperlinkManager } from "/src/managers/hyperlink";
+	import { createInputManager, destroyInputManager } from "/src/managers/input";
+	import { createLocalizationManager, destroyLocalizationManager } from "/src/managers/localization";
+	import { createPanicManager, destroyPanicManager } from "/src/managers/panic";
+	import { createPersistenceManager, destroyPersistenceManager } from "/src/managers/persistence";
+	import { createAppWindowStore, destroyAppWindowStore } from "/src/stores/app-window";
+	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
+	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
+	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
+	import { createNodeGraphStore, destroyNodeGraphStore } from "/src/stores/node-graph";
+	import { createPortfolioStore, destroyPortfolioStore } from "/src/stores/portfolio";
+	import { createTooltipStore, destroyTooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { Editor } from "@graphite/editor";
-	import { createClipboardManager, destroyClipboardManager } from "@graphite/managers/clipboard";
-	import { createFontsManager, destroyFontsManager } from "@graphite/managers/fonts";
-	import { createHyperlinkManager, destroyHyperlinkManager } from "@graphite/managers/hyperlink";
-	import { createInputManager, destroyInputManager } from "@graphite/managers/input";
-	import { createLocalizationManager, destroyLocalizationManager } from "@graphite/managers/localization";
-	import { createPanicManager, destroyPanicManager } from "@graphite/managers/panic";
-	import { createPersistenceManager, destroyPersistenceManager } from "@graphite/managers/persistence";
-	import { createAppWindowStore, destroyAppWindowStore } from "@graphite/stores/app-window";
-	import { createDialogStore, destroyDialogStore } from "@graphite/stores/dialog";
-	import { createDocumentStore, destroyDocumentStore } from "@graphite/stores/document";
-	import { createFullscreenStore, destroyFullscreenStore } from "@graphite/stores/fullscreen";
-	import { createNodeGraphStore, destroyNodeGraphStore } from "@graphite/stores/node-graph";
-	import { createPortfolioStore, destroyPortfolioStore } from "@graphite/stores/portfolio";
-	import { createTooltipStore, destroyTooltipStore } from "@graphite/stores/tooltip";
-
-	import MainWindow from "@graphite/components/window/MainWindow.svelte";
-
-	// Graphite Wasm editor
-	export let editor: Editor;
+	// Graphite Wasm editor and subscriptions router
+	export let subscriptions: SubscriptionsRouter;
+	export let editor: EditorWrapper;
+	setContext("subscriptions", subscriptions);
 	setContext("editor", editor);
 
 	const stores = {
-		dialog: createDialogStore(editor),
-		tooltip: createTooltipStore(editor),
-		document: createDocumentStore(editor),
-		fullscreen: createFullscreenStore(editor),
-		nodeGraph: createNodeGraphStore(editor),
-		portfolio: createPortfolioStore(editor),
-		appWindow: createAppWindowStore(editor),
+		dialog: createDialogStore(subscriptions, editor),
+		tooltip: createTooltipStore(subscriptions),
+		document: createDocumentStore(subscriptions),
+		fullscreen: createFullscreenStore(subscriptions),
+		nodeGraph: createNodeGraphStore(subscriptions),
+		portfolio: createPortfolioStore(subscriptions, editor),
+		appWindow: createAppWindowStore(subscriptions),
 	};
 	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
 
 	onMount(() => {
-		createClipboardManager(editor);
-		createHyperlinkManager(editor);
-		createLocalizationManager(editor);
-		createPanicManager(editor);
-		createPersistenceManager(editor, stores.portfolio);
-		createFontsManager(editor);
-		createInputManager(editor, stores.dialog, stores.portfolio, stores.document);
+		createClipboardManager(subscriptions, editor);
+		createHyperlinkManager(subscriptions);
+		createLocalizationManager(subscriptions, editor);
+		createPanicManager(subscriptions);
+		createPersistenceManager(subscriptions, editor, stores.portfolio);
+		createFontsManager(subscriptions, editor);
+		createInputManager(subscriptions, editor, stores.dialog, stores.portfolio, stores.document);
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
 		// The backend handles idempotency, so this is safe to call again during HMR re-mounts.
-		editor.handle.initAfterFrontendReady();
+		editor.initAfterFrontendReady();
 
 		// Re-send all UI layouts from Rust so the frontend has them after an HMR re-mount
-		editor.handle.resendAllLayouts();
+		editor.resendAllLayouts();
 	});
 
 	onDestroy(() => {
@@ -343,7 +344,7 @@
 		font-weight: 400;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -351,7 +352,7 @@
 		font-weight: 400;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -359,7 +360,7 @@
 		font-weight: 700;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -367,7 +368,7 @@
 		font-weight: 700;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -375,6 +376,6 @@
 		font-weight: 400;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
+		src: url("/node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
 	}
 </style>
