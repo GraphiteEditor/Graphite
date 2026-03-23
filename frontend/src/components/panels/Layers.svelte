@@ -258,7 +258,7 @@
 		editor.deselectAllLayers();
 	}
 
-	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
+	function calculateDragIndex(tree: LayoutCol, clientY: number, dataIndex: number, select?: () => void): DraggingData | undefined {
 		const treeChildren = tree.div()?.children;
 		const treeOffset = tree.div()?.getBoundingClientRect().top;
 
@@ -274,16 +274,24 @@
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
+		let isInvalidDrag = false;
+
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+			const draggingLayerDepth = layers[dataIndex]?.entry?.depth;
+
+			if (!draggingLayerDepth) return;
+
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
-			Array.from(treeChildren).forEach((treeChild) => {
-				const indexAttribute = treeChild.getAttribute("data-index");
-				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+
+			for (const treeChild of Array.from(treeChildren)) {
+				if (isInvalidDrag) break;
+				const indexAttribute = parseInt(treeChild.getAttribute("data-index") ?? "0", 10);
+				if (!indexAttribute) continue;
+				const { folderIndex, entry: layer } = layers[indexAttribute];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
-					return;
+					continue;
 				}
 				const pointerPercentage = (clientY - rect.top) / rect.height;
 				if (layer.childrenAllowed) {
@@ -316,7 +324,9 @@
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
-			});
+
+				break;
+			}
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
@@ -326,6 +336,15 @@
 				insertIndex = numberRootLayers;
 				markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanelTop;
 			}
+
+			const isDraggingRootToNested = draggingLayerDepth === 1 && insertDepth > 0;
+			const isDraggingNestedToRoot = draggingLayerDepth > 1 && insertDepth === 0;
+
+			if (isDraggingRootToNested || isDraggingNestedToRoot) {
+				isInvalidDrag = true;
+			}
+
+			if (isInvalidDrag) return;
 		}
 
 		return {
@@ -359,8 +378,9 @@
 			const distance = Math.hypot(e.clientX - internalDragState.startX, e.clientY - internalDragState.startY);
 			const DRAG_THRESHOLD = 5;
 
-			if (distance > DRAG_THRESHOLD) {
+			if (distance > DRAG_THRESHOLD && internalDragState) {
 				internalDragState.active = true;
+				draggedLayerIndex = layers.findIndex((layer) => layer.entry.id === internalDragState?.layerId);
 				dragInPanel = true;
 
 				const layer = internalDragState.listing.entry;
@@ -371,14 +391,14 @@
 		}
 
 		// Perform drag calculations if a drag is occurring
-		if (internalDragState.active) {
+		if (internalDragState.active && draggedLayerIndex !== undefined) {
 			const select = () => {
 				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
 					selectLayer(internalDragState.listing, false, false);
 				}
 			};
 
-			draggingData = calculateDragIndex(list, e.clientY, select);
+			draggingData = calculateDragIndex(list, e.clientY, draggedLayerIndex, select);
 		}
 	}
 
@@ -468,6 +488,8 @@
 		await onEditLayerName(targetListing);
 	}
 
+	let draggedLayerIndex: number | undefined;
+
 	function fileDragOver(e: DragEvent) {
 		if (!draggable || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
 
@@ -475,7 +497,10 @@
 		e.preventDefault();
 		dragInPanel = true;
 
-		if (list) draggingData = calculateDragIndex(list, e.clientY);
+		// Use the stored index from dragStart
+		if (list && draggedLayerIndex !== undefined) {
+			draggingData = calculateDragIndex(list, e.clientY, draggedLayerIndex, draggingData?.select);
+		}
 	}
 
 	function fileDrop(e: DragEvent) {
@@ -490,6 +515,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		draggedLayerIndex = undefined;
 	}
 
 	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
