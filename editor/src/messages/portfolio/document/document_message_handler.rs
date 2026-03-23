@@ -427,7 +427,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::AddTransaction);
 
 				let mut new_dragging = Vec::new();
-				let mut layers = self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+				let mut layers = self.network_interface.shallowest_unique_layers(&self.selection_network_path).collect::<Vec<_>>();
 
 				layers.sort_by_key(|layer| {
 					let Some(parent) = layer.parent(self.metadata()) else { return usize::MAX };
@@ -443,13 +443,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					copy_ids.insert(node_id, NodeId(0));
 
 					self.network_interface
-						.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+						.upstream_flow_back_from_nodes(vec![layer.to_node()], &self.selection_network_path, FlowType::LayerChildrenUpstreamFlow)
 						.enumerate()
 						.for_each(|(index, node_id)| {
 							copy_ids.insert(node_id, NodeId((index + 1) as u64));
 						});
 
-					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+					let nodes = self.network_interface.copy_nodes(&copy_ids, &self.selection_network_path).collect::<Vec<(NodeId, NodeTemplate)>>();
 
 					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
 
