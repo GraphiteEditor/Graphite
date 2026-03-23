@@ -662,14 +662,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			} => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
+				let layer_parent = self.new_layer_parent(true);
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				let transform = if place_at_origin {
 					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
 					DAffine2::from_scale(image_size)
 				} else {
-					// Clipboard paste or drag-drop: center at cursor or viewport center
-					self.document_transform_from_mouse(mouse, viewport) * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					let cursor_in_parent = parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport);
+					cursor_in_parent * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
 				};
 
 				let layer_node_id = NodeId::new();
@@ -677,7 +685,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -714,12 +722,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				parent_and_insert_index,
 				place_at_origin,
 			} => {
+				let layer_parent = self.new_layer_parent(true);
 				let transform = if place_at_origin {
 					// File-open flow: place at document origin so `WrapContentInArtboard` can wrap it without extra Transform nodes
 					DAffine2::IDENTITY
 				} else {
-					// Clipboard paste or drag-drop: center at cursor or viewport center
-					self.document_transform_from_mouse(mouse, viewport)
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport)
 				};
 
 				let layer_node_id = NodeId::new();
@@ -727,7 +742,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
