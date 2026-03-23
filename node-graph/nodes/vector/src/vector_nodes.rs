@@ -2180,31 +2180,33 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		let end_points = segment_domain.end_point();
 
 		let mut paths = Vec::new();
-		let mut unvisited_segments: std::collections::HashSet<usize> = (0..segment_domain.ids().len()).collect();
+		let mut unvisited_segments: Vec<usize> = (0..segment_domain.ids().len()).collect();
 
 		while !unvisited_segments.is_empty() {
-			let first = *unvisited_segments.iter().next().unwrap();
-			unvisited_segments.remove(&first);
-
+			let first = unvisited_segments[0];
+			unvisited_segments.retain(|&x| x != first);
+			
 			let mut path = vec![first];
-
+			
 			loop {
 				let last = *path.last().unwrap();
 				// Find next segment
-				if let Some(&next) = unvisited_segments.iter().find(|&&p| start_points[p] == end_points[last]) {
+				if let Some(next_idx) = unvisited_segments.iter().position(|&p| start_points[p] == end_points[last]) {
+					let next = unvisited_segments[next_idx];
 					path.push(next);
-					unvisited_segments.remove(&next);
+					unvisited_segments.retain(|&x| x != next);
 				} else {
 					break;
 				}
 			}
-
+			
 			// Try to extend backwards
 			loop {
 				let first = *path.first().unwrap();
-				if let Some(&prev) = unvisited_segments.iter().find(|&&p| end_points[p] == start_points[first]) {
+				if let Some(prev_idx) = unvisited_segments.iter().position(|&p| end_points[p] == start_points[first]) {
+					let prev = unvisited_segments[prev_idx];
 					path.insert(0, prev);
-					unvisited_segments.remove(&prev);
+					unvisited_segments.retain(|&x| x != prev);
 				} else {
 					break;
 				}
@@ -2348,7 +2350,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		// Clean up colinear_manipulators: remove entries that reference
 		// segments which no longer exist or have become linear after beveling.
 		// Collect valid non-linear segment IDs first to avoid borrow conflicts.
-		let valid_nonlinear_segments: std::collections::HashSet<SegmentId> = vector
+		let valid_nonlinear_segments: Vec<SegmentId> = vector
 			.segment_domain
 			.ids()
 			.iter()
