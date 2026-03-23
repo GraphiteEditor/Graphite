@@ -34,6 +34,7 @@ pub(crate) struct App {
 	window_fullscreen: bool,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_lock_position: Option<PhysicalPosition<f64>>,
+	pending_drag: bool,
 	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
@@ -107,6 +108,7 @@ impl App {
 			window_fullscreen: false,
 			pointer_position: Default::default(),
 			pointer_lock_position: Default::default(),
+			pending_drag: false,
 			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
@@ -399,9 +401,7 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::WindowDrag => {
-				if let Some(window) = &self.window {
-					window.start_drag();
-				}
+				self.pending_drag = true;
 			}
 			DesktopFrontendMessage::WindowHide => {
 				if let Some(window) = &self.window {
@@ -575,6 +575,13 @@ impl ApplicationHandler for App {
 			WindowEvent::SurfaceResized(_) | WindowEvent::ScaleFactorChanged { .. } => {
 				self.resize();
 			}
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(MouseButton::Left),
+				state: ElementState::Released,
+				..
+			} => {
+				self.pending_drag = false;
+			}
 			WindowEvent::RedrawRequested => {
 				#[cfg(target_os = "macos")]
 				self.resize();
@@ -657,6 +664,13 @@ impl ApplicationHandler for App {
 				if self.pointer_lock_position.is_none() =>
 			{
 				self.pointer_position = position;
+
+				if self.pending_drag {
+					self.pending_drag = false;
+					if let Some(window) = &self.window {
+						window.start_drag();
+					}
+				}
 			}
 
 			_ => {}
