@@ -5,7 +5,9 @@ mod resolved_types;
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
-use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
+use crate::consts::{
+	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP,
+};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
@@ -4680,7 +4682,7 @@ impl NodeNetworkInterface {
 		// Set the position to stack if necessary
 		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
 			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::Stack((position.y - downstream_position.y - 3).max(0) as u32),
+				position: LayerPosition::Stack((position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32),
 				owned_nodes: TransientMetadata::Unloaded,
 			})
 		}
@@ -4841,7 +4843,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		self.set_stack_position(node_id, (node_position.y - downstream_position.y - 3).max(0) as u32, network_path);
+		self.set_stack_position(node_id, (node_position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32, network_path);
 	}
 
 	/// Sets the position of a node to a chain position
@@ -5601,7 +5603,7 @@ impl NodeNetworkInterface {
 		let after_move_post_layer_position = if let Some(post_node_id) = post_node.node_id() {
 			self.position(&post_node_id, network_path)
 		} else {
-			Some(IVec2::new(8, -3))
+			Some(IVec2::new(LAYER_INDENT_OFFSET, -STACK_VERTICAL_GAP))
 		};
 
 		let Some(after_move_post_layer_position) = after_move_post_layer_position else {
@@ -5618,15 +5620,15 @@ impl NodeNetworkInterface {
 				log::error!("Could not get downstream node position in move_layer_to_stack");
 				return;
 			};
-			let mut lowest_y_position = downstream_node_position.y + 3;
+			let mut lowest_y_position = downstream_node_position.y + STACK_VERTICAL_GAP;
 
 			for bottom_position in self.upstream_nodes_below_layer(&downstream_node, network_path).iter().filter_map(|node_id| {
 				let is_layer = self.is_layer(node_id, network_path);
-				self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 })
+				self.position(node_id, network_path).map(|position| position.y + if is_layer { STACK_VERTICAL_GAP } else { 2 })
 			}) {
 				lowest_y_position = lowest_y_position.max(bottom_position);
 			}
-			downstream_height = lowest_y_position - (downstream_node_position.y + 3);
+			downstream_height = lowest_y_position - (downstream_node_position.y + STACK_VERTICAL_GAP);
 		}
 
 		let mut highest_y_position = layer_to_move_position.y;
@@ -5634,7 +5636,7 @@ impl NodeNetworkInterface {
 
 		for (bottom_position, top_position) in self.upstream_nodes_below_layer(&layer.to_node(), network_path).iter().filter_map(|node_id| {
 			let is_layer = self.is_layer(node_id, network_path);
-			let bottom_position = self.position(node_id, network_path).map(|position| position.y + if is_layer { 3 } else { 2 });
+			let bottom_position = self.position(node_id, network_path).map(|position| position.y + if is_layer { STACK_VERTICAL_GAP } else { 2 });
 			let top_position = self.position(node_id, network_path).map(|position| if is_layer { position.y - 1 } else { position.y });
 			bottom_position.zip(top_position)
 		}) {
@@ -5642,7 +5644,7 @@ impl NodeNetworkInterface {
 			lowest_y_position = lowest_y_position.max(bottom_position);
 		}
 		let height_above_layer = layer_to_move_position.y - highest_y_position + downstream_height;
-		let height_below_layer = lowest_y_position - layer_to_move_position.y - 3;
+		let height_below_layer = lowest_y_position - layer_to_move_position.y - STACK_VERTICAL_GAP;
 
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
 		if let Some(upstream_node_id) = post_node_input.as_node() {
@@ -5654,7 +5656,7 @@ impl NodeNetworkInterface {
 			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
 
 			// Create the minimum amount space for the moved layer
-			for _ in 0..3 {
+			for _ in 0..STACK_VERTICAL_GAP {
 				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
 			}
 
@@ -5683,7 +5685,7 @@ impl NodeNetworkInterface {
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
 
-					let final_layer_position = after_move_post_layer_position + IVec2::new(-8, 3);
+					let final_layer_position = after_move_post_layer_position + IVec2::new(-LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP);
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 				}
@@ -5694,7 +5696,7 @@ impl NodeNetworkInterface {
 						return;
 					};
 
-					let final_layer_position = IVec2::new(stack_top_position.x, after_move_post_layer_position.y + 3 + height_above_layer);
+					let final_layer_position = IVec2::new(stack_top_position.x, after_move_post_layer_position.y + STACK_VERTICAL_GAP + height_above_layer);
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					insert_node_after_post = true;
@@ -5707,13 +5709,13 @@ impl NodeNetworkInterface {
 			match post_node_input {
 				// Move to the bottom of the stack
 				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
-					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + height_above_layer);
+					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
 				}
 				// Insert into the stack
 				NodeInput::Node { .. } => {
-					let final_layer_position = after_move_post_layer_position + IVec2::new(0, 3 + height_above_layer);
+					let final_layer_position = after_move_post_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					insert_node_after_post = true;

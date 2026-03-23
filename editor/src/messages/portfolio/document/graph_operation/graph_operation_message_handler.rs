@@ -1,5 +1,6 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
+use crate::consts::{LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
@@ -462,7 +463,7 @@ fn import_usvg_node(
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
 	if let Some(upstream_layer) = layer.next_sibling(modify_inputs.network_interface.document_metadata()) {
-		modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, 3), &[]);
+		modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, STACK_VERTICAL_GAP), &[]);
 	}
 
 	match node {
@@ -537,7 +538,11 @@ fn import_usvg_node_inner(
 			modify_inputs.layer_node = Some(layer);
 
 			let n = child_extents.len();
-			let total_extent = if n == 0 { 0 } else { 6 * n as u32 - 3 + child_extents.iter().sum::<u32>() };
+			let total_extent = if n == 0 {
+				0
+			} else {
+				(2 * STACK_VERTICAL_GAP as u32) * n as u32 - STACK_VERTICAL_GAP as u32 + child_extents.iter().sum::<u32>()
+			};
 			group_extents_map.insert(layer, child_extents);
 			total_extent
 		}
@@ -588,7 +593,7 @@ fn import_usvg_path(
 /// Set correct positions for all imported layers in a single top-down O(n) pass.
 ///
 /// For each group's child stack:
-/// - The top-of-stack child (last SVG child) gets an Absolute position at (parent_x - 8, parent_y + 3)
+/// - The top-of-stack child (last SVG child) gets an Absolute position at (parent_x - LAYER_INDENT_OFFSET, parent_y + STACK_VERTICAL_GAP)
 /// - All other children get Stack(y_offset) where y_offset accounts for the subtree extent of
 ///   the sibling above them in the stack, ensuring no overlap.
 fn set_import_child_positions(
@@ -614,10 +619,10 @@ fn set_import_child_positions(
 	// For stack child at index i:
 	//   - SVG index = n - 1 - i
 	//   - Previous stack sibling's SVG index = n - i
-	//   - y_offset = extent_of_previous_sibling + 3
+	//   - y_offset = extent_of_previous_sibling + STACK_VERTICAL_GAP
 
-	let child_x = group_pos.x - 8;
-	let mut current_y = group_pos.y + 3;
+	let child_x = group_pos.x - LAYER_INDENT_OFFSET;
+	let mut current_y = group_pos.y + STACK_VERTICAL_GAP;
 
 	for (i, child_layer) in layer_children.iter().enumerate() {
 		let child_pos = IVec2::new(child_x, current_y);
@@ -628,7 +633,7 @@ fn set_import_child_positions(
 		} else {
 			// Below top — set Stack y_offset based on previous sibling's subtree extent
 			let prev_sibling_svg_idx = n - i;
-			let y_offset = child_extents_svg_order[prev_sibling_svg_idx] + 3;
+			let y_offset = child_extents_svg_order[prev_sibling_svg_idx] + STACK_VERTICAL_GAP as u32;
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Stack(y_offset), &[]);
 		}
 
@@ -637,10 +642,10 @@ fn set_import_child_positions(
 			set_import_child_positions(network_interface, *child_layer, child_pos, grandchild_extents, group_extents_map);
 		}
 
-		// Advance current_y for the next child: base spacing (3) + gap (3) + subtree extent
+		// Advance current_y for the next child: node height (STACK_VERTICAL_GAP) + gap (STACK_VERTICAL_GAP) + subtree extent
 		let child_svg_idx = n - 1 - i;
 		let child_extent = child_extents_svg_order[child_svg_idx];
-		current_y += 6 + child_extent as i32;
+		current_y += 2 * STACK_VERTICAL_GAP + child_extent as i32;
 	}
 }
 
