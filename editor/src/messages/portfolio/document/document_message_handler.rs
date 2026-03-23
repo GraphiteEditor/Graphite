@@ -664,11 +664,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				// Align the layer with the mouse or center of viewport
-				let center_in_viewport_layerspace = mouse.map_or(DAffine2::IDENTITY, |viewport_location| {
-					let viewport_location: DVec2 = viewport_location.into();
-					let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-					DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()))
-				});
+				let center_in_viewport_layerspace = self.document_transform_from_mouse(mouse, viewport);
 
 				// Make layer the size of the image
 				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
@@ -718,11 +714,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			} => {
 				// When mouse is None (file-open flow), use the document origin directly to avoid a ±0.5px offset
 				// that `calculate_offset_transform`'s anti-aliasing rounding introduces for odd-sized viewports.
-				let center_in_viewport = mouse.map_or(DAffine2::IDENTITY, |pos| {
-					let viewport_location: DVec2 = pos.into();
-					let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-					DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()))
-				});
+				let center_in_viewport = self.document_transform_from_mouse(mouse, viewport);
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
@@ -1478,6 +1470,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Translates a viewport mouse position to a document-space transform, or returns identity if no mouse position is given.
+	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
+		mouse.map_or(DAffine2::IDENTITY, |pos| {
+			let viewport_location: DVec2 = pos.into();
+			let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+			DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()))
+		})
+	}
+
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
