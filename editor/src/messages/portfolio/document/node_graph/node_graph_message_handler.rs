@@ -717,7 +717,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.move_layer_to_stack(layer, parent, insert_index, selection_network_path);
 			}
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
-				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path);
+				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
 			NodeGraphMessage::SetChainPosition { node_id } => {
 				network_interface.set_chain_position(&node_id, selection_network_path);
