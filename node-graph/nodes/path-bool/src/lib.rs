@@ -141,6 +141,7 @@ fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item =
 	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
 		row.element.append_subpath(subpath, false);
 	}
+	row.element.detect_colinear_manipulators();
 
 	table.push(row);
 	table
