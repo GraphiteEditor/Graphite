@@ -39,6 +39,17 @@ impl CornerRadius for [f64; 4] {
 	}
 }
 
+/// Sets colinear_manipulators for elliptical/circular shapes, pairing the end handle
+/// of each segment with the primary handle of the next segment in a wrapping fashion.
+fn set_ellipse_colinear_manipulators(vector: &mut Vector) {
+	let len = vector.segment_domain.ids().len();
+	for i in 0..len {
+		vector
+			.colinear_manipulators
+			.push([HandleId::end(vector.segment_domain.ids()[i]), HandleId::primary(vector.segment_domain.ids()[(i + 1) % len])]);
+	}
+}
+
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"))]
 fn circle(
@@ -49,7 +60,9 @@ fn circle(
 	radius: f64,
 ) -> Table<Vector> {
 	let radius = radius.abs();
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	let mut circle = Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)));
+	set_ellipse_colinear_manipulators(&mut circle);
+	Table::new_from_element(circle)
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
@@ -66,7 +79,7 @@ fn arc(
 	sweep_angle: Angle,
 	arc_type: ArcType,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
+	let mut vector = Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -75,7 +88,9 @@ fn arc(
 			ArcType::Closed => subpath::ArcType::Closed,
 			ArcType::PieSlice => subpath::ArcType::PieSlice,
 		},
-	)))
+	));
+	vector.detect_colinear_manipulators();
+	Table::new_from_element(vector)
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
@@ -90,14 +105,16 @@ fn spiral(
 	#[default(25)] outer_radius: f64,
 	#[default(90.)] angular_resolution: f64,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+	let mut vector = Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
 		spiral_type,
-	)))
+	));
+	vector.detect_colinear_manipulators();
+	Table::new_from_element(vector)
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
@@ -117,13 +134,7 @@ fn ellipse(
 	let corner2 = radius;
 
 	let mut ellipse = Vector::from_subpath(subpath::Subpath::new_ellipse(corner1, corner2));
-
-	let len = ellipse.segment_domain.ids().len();
-	for i in 0..len {
-		ellipse
-			.colinear_manipulators
-			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
-	}
+	set_ellipse_colinear_manipulators(&mut ellipse);
 
 	Table::new_from_element(ellipse)
 }
