@@ -321,6 +321,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				transform,
 				parent,
 				insert_index,
+				center,
 			} => {
 				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
@@ -334,9 +335,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				};
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				let size = tree.size();
-				let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
-				let transform = transform * DAffine2::from_translation(offset_to_center);
+				let transform = if center {
+					let size = tree.size();
+					let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
+					transform * DAffine2::from_translation(offset_to_center)
+				} else {
+					transform
+				};
 
 				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
 

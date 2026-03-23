@@ -681,6 +681,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					image,
 					mouse: None,
 					parent_and_insert_index: None,
+					place_at_origin: true,
 				});
 
 				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
@@ -701,6 +702,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					svg,
 					mouse: None,
 					parent_and_insert_index: None,
+					place_at_origin: true,
 				});
 
 				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
@@ -980,6 +982,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						image,
 						mouse,
 						parent_and_insert_index,
+						place_at_origin: false,
 					});
 				}
 			}
@@ -997,6 +1000,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						svg,
 						mouse,
 						parent_and_insert_index,
+						place_at_origin: false,
 					});
 				}
 			}

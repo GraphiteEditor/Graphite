@@ -4,7 +4,7 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -658,18 +658,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				image,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				// Align the layer with the mouse or center of viewport
-				let center_in_viewport_layerspace = self.document_transform_from_mouse(mouse, viewport);
-
-				// Make layer the size of the image
-				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
-
-				let transform = center_in_viewport_layerspace * fit_image_size;
+				let transform = if place_at_origin {
+					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
+					DAffine2::from_scale(image_size)
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center
+					self.document_transform_from_mouse(mouse, viewport) * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
+				};
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
@@ -711,17 +712,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				svg,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
-				// When mouse is None (file-open flow), use the document origin directly to avoid a ±0.5px offset
-				// that `calculate_offset_transform`'s anti-aliasing rounding introduces for odd-sized viewports.
-				let center_in_viewport = self.document_transform_from_mouse(mouse, viewport);
+				let transform = if place_at_origin {
+					// File-open flow: place at document origin so `WrapContentInArtboard` can wrap it without extra Transform nodes
+					DAffine2::IDENTITY
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center
+					self.document_transform_from_mouse(mouse, viewport)
+				};
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -1359,7 +1365,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_id,
 					node_template: Box::new(new_artboard_node),
 				});
-				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: 15, y: -3 });
+				// Compute the shift needed to align the content's top-left corner to the artboard's origin.
+				// When content is already at the document origin this is zero → no Transform node is created.
+				let content_shift = -bounds[0].round();
+				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
+				// With a content Transform node: use x: 15 (8 indent + 7 for the node width). Without: use x: LAYER_INDENT_OFFSET.
+				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: if needs_content_transform { 15 } else { LAYER_INDENT_OFFSET }, y: -3 });
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: LayerNodeIdentifier::new_unchecked(node_id),
 					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
@@ -1373,10 +1384,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					insert_node_input_index: 1,
 				});
 
-				// Shift the content by half its width and height so it gets centered in the artboard
+				// Shift the content to align its top-left to the artboard's origin (no-op when content is already at origin)
 				responses.add(GraphOperationMessage::TransformChange {
 					layer: node_layer_id,
-					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
+					transform: DAffine2::from_translation(content_shift),
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
@@ -1470,13 +1481,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
-	/// Translates a viewport mouse position to a document-space transform, or returns identity if no mouse position is given.
+	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
 	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
-		mouse.map_or(DAffine2::IDENTITY, |pos| {
-			let viewport_location: DVec2 = pos.into();
-			let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-			DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()))
-		})
+		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_pos - viewport.offset().into_dvec2()))
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad

@@ -105,12 +105,18 @@ pub enum DocumentMessage {
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
+		/// When true (file-open flow), place the image at the document origin so `WrapContentInArtboard`
+		/// can wrap it without a content Transform node. When false, place at the cursor or viewport center.
+		place_at_origin: bool,
 	},
 	PasteSvg {
 		name: Option<String>,
 		svg: String,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
+		/// When true (file-open flow), place the SVG at the document origin so `WrapContentInArtboard`
+		/// can wrap it without a content Transform node. When false, place at the cursor or viewport center.
+		place_at_origin: bool,
 	},
 	Redo,
 	RenameDocument {

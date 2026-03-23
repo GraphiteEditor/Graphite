@@ -230,7 +230,7 @@ pub fn new_image_layer(image_frame: Table<Raster<CPU>>, id: NodeId, parent: Laye
 }
 
 /// Create a new group layer from an SVG string.
-pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_svg_layer(svg: String, transform: glam::DAffine2, center: bool, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewSvg {
 		id,
@@ -238,6 +238,7 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 		transform,
 		parent,
 		insert_index,
+		center,
 	});
 	LayerNodeIdentifier::new_unchecked(id)
 }
