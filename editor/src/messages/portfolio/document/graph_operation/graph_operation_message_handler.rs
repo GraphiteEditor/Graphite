@@ -474,14 +474,14 @@ fn import_usvg_node(
 
 			// Enable import mode: skips expensive is_acyclic checks and per-node cache invalidation
 			// during wiring since we're building a known tree structure where cycles are impossible
-			modify_inputs.import_mode = true;
+			modify_inputs.import = true;
 
 			for child in group.children() {
 				let extent = import_usvg_node_inner(modify_inputs, child, transform, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
 				child_extents_svg_order.push(extent);
 			}
 
-			modify_inputs.import_mode = false;
+			modify_inputs.import = false;
 			modify_inputs.layer_node = Some(layer);
 
 			// Rebuild the layer tree once now that all wiring is complete

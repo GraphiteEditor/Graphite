@@ -5774,38 +5774,38 @@ impl NodeNetworkInterface {
 		self.create_wire(&upstream_output, &InputConnector::node(*node_id, insert_node_input_index), network_path);
 	}
 
-	// Moves a node and to the start of a layer chain (feeding into the secondary input of the layer)
-	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId]) {
-		let Some(current_input) = self.input_from_connector(&InputConnector::node(parent.to_node(), 1), network_path) else {
-			log::error!("Could not get input for node {node_id}");
-			return;
-		};
-		if matches!(current_input, NodeInput::Value { .. }) {
-			self.create_wire(&OutputConnector::node(*node_id, 0), &InputConnector::node(parent.to_node(), 1), network_path);
-			self.set_chain_position(node_id, network_path);
-		} else {
-			// Insert the node in the gap and set the upstream to a chain
-			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
-			self.force_set_upstream_to_chain(node_id, network_path);
-		}
-	}
-
-	/// Lightweight version of `move_node_to_chain_start` for bulk import. Uses `set_input_for_import`
-	/// to avoid the expensive `is_acyclic` check and other per-node side effects.
-	pub fn move_node_to_chain_start_for_import(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId]) {
+	/// Moves a node to the start of a layer chain (feeding into the secondary input of the layer).
+	/// When `import` is true, uses lightweight wiring that skips `is_acyclic` checks and per-node cache invalidation.
+	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId], import: bool) {
 		let parent_input = InputConnector::node(parent.to_node(), 1);
 		let Some(current_input) = self.input_from_connector(&parent_input, network_path).cloned() else {
 			log::error!("Could not get input for node {node_id}");
 			return;
 		};
-		let node_output = NodeInput::node(*node_id, 0);
+
+		// Chain is empty: wire the node as the first (and only) entry in the chain
 		if matches!(current_input, NodeInput::Value { .. }) {
-			self.set_input_for_import(&parent_input, node_output, network_path);
+			// Wire: [parent] -> [new node]
+			if import {
+				self.set_input_for_import(&parent_input, NodeInput::node(*node_id, 0), network_path);
+			} else {
+				self.create_wire(&OutputConnector::node(*node_id, 0), &parent_input, network_path);
+			}
+
+			// Mark this lone node as chain-positioned
 			self.set_chain_position(node_id, network_path);
-		} else {
-			// Insert the node in the gap: wire node output to parent input, wire old upstream to node's input 0
-			self.set_input_for_import(&parent_input, node_output, network_path);
-			self.set_input_for_import(&InputConnector::node(*node_id, 0), current_input, network_path);
+		}
+		// Chain already has nodes: splice this node between the parent and the chain's existing final downstream node
+		else {
+			// Wire: [parent] -> [new node] -> [existing node]
+			if import {
+				self.set_input_for_import(&parent_input, NodeInput::node(*node_id, 0), network_path);
+				self.set_input_for_import(&InputConnector::node(*node_id, 0), current_input, network_path);
+			} else {
+				self.insert_node_between(node_id, &parent_input, 0, network_path);
+			}
+
+			// Ensure all upstream nodes from here are marked as chain-positioned
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}
