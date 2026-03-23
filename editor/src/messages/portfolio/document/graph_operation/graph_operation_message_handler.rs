@@ -593,9 +593,8 @@ fn import_usvg_path(
 /// Set correct positions for all imported layers in a single top-down O(n) pass.
 ///
 /// For each group's child stack:
-/// - The top-of-stack child (last SVG child) gets an Absolute position at (parent_x - LAYER_INDENT_OFFSET, parent_y + STACK_VERTICAL_GAP)
-/// - All other children get Stack(y_offset) where y_offset accounts for the subtree extent of
-///   the sibling above them in the stack, ensuring no overlap.
+/// - The top-of-stack child (last SVG child) gets an `Absolute` position at `(parent_x - LAYER_INDENT_OFFSET, parent_y + STACK_VERTICAL_GAP)`
+/// - All other children get `Stack(y_offset)` where `y_offset` accounts for the subtree extent of the sibling above them in the stack, ensuring no overlap.
 fn set_import_child_positions(
 	network_interface: &mut NodeNetworkInterface,
 	group: LayerNodeIdentifier,
@@ -613,8 +612,8 @@ fn set_import_child_positions(
 	}
 
 	// Children in the layer tree are in stack order (top to bottom), which is the REVERSE of SVG order.
-	// SVG order:   [s_0,   s_1,   ..., s_{n-1}]  with extents [e_0, e_1, ..., e_{n-1}]
-	// Stack order:  [s_{n-1}, s_{n-2}, ..., s_0]  (top to bottom)
+	// SVG order:   [s_0,     s_1,     ..., s_{n-1}] with extents [e_0, e_1, ..., e_{n-1}]
+	// Stack order: [s_{n-1}, s_{n-2}, ..., s_0    ] (top to bottom)
 	//
 	// For stack child at index i:
 	//   - SVG index = n - 1 - i
@@ -628,12 +627,12 @@ fn set_import_child_positions(
 		let child_pos = IVec2::new(child_x, current_y);
 
 		if i == 0 {
-			// Top of stack — set to Absolute position
+			// Top of stack — set to `Absolute` position
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Absolute(child_pos), &[]);
 		} else {
-			// Below top — set Stack y_offset based on previous sibling's subtree extent
-			let prev_sibling_svg_idx = n - i;
-			let y_offset = child_extents_svg_order[prev_sibling_svg_idx] + STACK_VERTICAL_GAP as u32;
+			// Below top — set `Stack` with `y_offset` based on previous sibling's subtree extent
+			let prev_sibling_svg_index = n - i;
+			let y_offset = child_extents_svg_order[prev_sibling_svg_index] + STACK_VERTICAL_GAP as u32;
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Stack(y_offset), &[]);
 		}
 
@@ -642,9 +641,9 @@ fn set_import_child_positions(
 			set_import_child_positions(network_interface, *child_layer, child_pos, grandchild_extents, group_extents_map);
 		}
 
-		// Advance current_y for the next child: node height (STACK_VERTICAL_GAP) + gap (STACK_VERTICAL_GAP) + subtree extent
-		let child_svg_idx = n - 1 - i;
-		let child_extent = child_extents_svg_order[child_svg_idx];
+		// Advance `current_y` for the next child: node height (STACK_VERTICAL_GAP) + gap (STACK_VERTICAL_GAP) + subtree extent
+		let child_svg_index = n - 1 - i;
+		let child_extent = child_extents_svg_order[child_svg_index];
 		current_y += 2 * STACK_VERTICAL_GAP + child_extent as i32;
 	}
 }

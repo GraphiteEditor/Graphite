@@ -33,8 +33,7 @@ pub struct ModifyInputsContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	// Cannot be LayerNodeIdentifier::ROOT_PARENT
 	pub layer_node: Option<LayerNodeIdentifier>,
-	/// When true, chain node wiring uses the lightweight import path that skips expensive
-	/// `is_acyclic` checks and per-node cache invalidation.
+	/// When true, chain node wiring uses the lightweight import path that skips expensive `is_acyclic` checks and per-node cache invalidation.
 	pub import_mode: bool,
 }
 
