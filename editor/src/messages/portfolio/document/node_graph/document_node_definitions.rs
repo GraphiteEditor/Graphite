@@ -585,6 +585,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::value(TaggedValue::F64(0.), false),
 									NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
 									NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+									NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 								],
 								..Default::default()
 							},
@@ -1699,6 +1700,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::import(concrete!(DVec2), 3),
 									// From the Skew import
 									NodeInput::import(concrete!(DVec2), 4),
+									// From the Origin Offset import
+									NodeInput::import(concrete!(DVec2), 5),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
 								..Default::default()
@@ -1763,7 +1766,16 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							}),
 						),
 						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						InputMetadata::with_name_description_override("Origin Offset", "TODO", WidgetOverride::Custom("hidden".to_string())),
+						InputMetadata::with_name_description_override(
+							"Origin Offset",
+							"TODO",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
 						InputMetadata::with_name_description_override("Scale Appearance", "TODO", WidgetOverride::Custom("hidden".to_string())),
 					],
 					output_names: vec!["Data".to_string()],
