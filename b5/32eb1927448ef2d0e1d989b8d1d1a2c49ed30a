@@ -1,0 +1,23 @@
+node-graph/nodes/vector/src/vector_nodes.rs
+  05f83908229eded5 1916,1968-1982
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "b532eb1927448ef2d0e1d989b8d1d1a2c49ed30a",
+  "prompts": {
+    "05f83908229eded5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d63e22cd-4ce6-46ea-9795-cceb74919a7f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 22,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
