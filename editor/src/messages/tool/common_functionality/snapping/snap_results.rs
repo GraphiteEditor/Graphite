@@ -122,3 +122,123 @@ pub struct SnappedCurve {
 	pub point: SnappedPoint,
 	pub document_curve: PathSeg,
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapSource, SnapSource};
+	use glam::DVec2;
+	#[test]
+	fn is_snapped_with_finite_distance() {
+		let point = SnappedPoint { distance: 3.0, ..Default::default() };
+		assert!(point.is_snapped());
+	}
+	#[test]
+	fn is_not_snapped_with_infinite_distance() {
+		let point = SnappedPoint::infinite_snap(DVec2::ZERO);
+		assert!(!point.is_snapped());
+	}
+	#[test]
+	fn infinite_snap_sets_position_and_infinite_distance() {
+		let pos = DVec2::new(10., 20.);
+		let point = SnappedPoint::infinite_snap(pos);
+		assert_eq!(point.snapped_point_document, pos);
+		assert!(!point.is_snapped());
+		assert!(point.distance.is_infinite());
+	}
+	#[test]
+	fn from_source_point_sets_position_and_source() {
+		let pos = DVec2::new(5., 15.);
+		let source = SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint);
+		let point = SnappedPoint::from_source_point(pos, source);
+		assert_eq!(point.snapped_point_document, pos);
+		assert_eq!(point.source, source);
+	}
+	#[test]
+	fn align_returns_true_with_horizontal_target() {
+		let point = SnappedPoint {
+			alignment_target_horizontal: Some(DVec2::ZERO),
+			..Default::default()
+		};
+		assert!(point.align());
+	}
+	#[test]
+	fn align_returns_true_with_vertical_target() {
+		let point = SnappedPoint {
+			alignment_target_vertical: Some(DVec2::ZERO),
+			..Default::default()
+		};
+		assert!(point.align());
+	}
+	#[test]
+	fn align_returns_false_with_no_targets() {
+		assert!(!SnappedPoint::default().align());
+	}
+	#[test]
+	fn other_snap_better_self_infinite_other_finite() {
+		let self_snap = SnappedPoint::infinite_snap(DVec2::ZERO);
+		let other_snap = SnappedPoint { distance: 1.0, ..Default::default() };
+		assert!(self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_self_finite_other_infinite() {
+		let self_snap = SnappedPoint { distance: 1.0, ..Default::default() };
+		let other_snap = SnappedPoint::infinite_snap(DVec2::ZERO);
+		assert!(!self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_both_infinite() {
+		let self_snap = SnappedPoint::infinite_snap(DVec2::ZERO);
+		let other_snap = SnappedPoint::infinite_snap(DVec2::ONE);
+		// Neither finite, so other_closer check: INF < INF + bias = false. Result: false.
+		assert!(!self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_when_other_significantly_closer() {
+		let self_snap = SnappedPoint { distance: 5.0, ..Default::default() };
+		let other_snap = SnappedPoint { distance: 1.0, ..Default::default() };
+		// 1.0 < 5.0 + 0.01 → other_closer = true
+		assert!(self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_when_self_significantly_closer() {
+		let self_snap = SnappedPoint { distance: 1.0, ..Default::default() };
+		let other_snap = SnappedPoint { distance: 5.0, ..Default::default() };
+		// 5.0 < 1.0 + 0.01 → false
+		assert!(!self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_constrained_beats_unconstrained_even_if_further() {
+		let self_snap = SnappedPoint { distance: 1.0, constrained: false, ..Default::default() };
+		let other_snap = SnappedPoint { distance: 2.0, constrained: true, ..Default::default() };
+		// other_more_constrained = true; self_more_constrained = false → other wins
+		assert!(self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_self_constrained_blocks_other() {
+		let self_snap = SnappedPoint { distance: 2.0, constrained: true, ..Default::default() };
+		let other_snap = SnappedPoint { distance: 1.0, constrained: false, ..Default::default() };
+		// self_more_constrained = true → result is false regardless of distance
+		assert!(!self_snap.other_snap_better(&other_snap));
+	}
+	#[test]
+	fn other_snap_better_prefers_non_intersection_at_same_position() {
+		let pos = DVec2::new(3., 4.);
+		let self_snap = SnappedPoint {
+			snapped_point_document: pos,
+			distance: 1.0,
+			constrained: true,
+			at_intersection: true,
+			..Default::default()
+		};
+		let other_snap = SnappedPoint {
+			snapped_point_document: pos,
+			distance: 1.0,
+			constrained: true,
+			at_intersection: false,
+			..Default::default()
+		};
+		// Both constrained at same position; self is intersection, other is not → other wins
+		assert!(self_snap.other_snap_better(&other_snap));
+	}
+}
