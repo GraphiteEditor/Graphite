@@ -27,6 +27,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	println!("cargo:rerun-if-env-changed=RUSTC_CODEGEN_SPIRV_PATH");
 	let rustc_codegen_spirv_path = std::env::var("RUSTC_CODEGEN_SPIRV_PATH").unwrap_or_default();
+
+	let cargo_build_target = std::env::var_os("CARGO_BUILD_TARGET");
+	unsafe {
+		// Unset `CARGO_BUILD_TARGET` to prevent `rustc_codegen_spirv` from picking it up and trying to build for the wrong target.
+		std::env::remove_var("CARGO_BUILD_TARGET");
+	}
+
 	let backend = if rustc_codegen_spirv_path.is_empty() {
 		// install the toolchain and build the `rustc_codegen_spirv` codegen backend with it
 		cargo_gpu::Install::from_shader_crate(shader_crate.clone()).run()?
@@ -38,6 +45,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 		backend.target_spec_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 		backend
 	};
+
+	if let Some(value) = cargo_build_target {
+		unsafe {
+			// Set `CARGO_BUILD_TARGET` for the rest of the build
+			std::env::set_var("CARGO_BUILD_TARGET", value);
+		}
+	}
 
 	// build the shader crate
 	let mut builder = backend.to_spirv_builder(shader_crate, "spirv-unknown-naga-wgsl");
