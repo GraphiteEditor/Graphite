@@ -173,6 +173,10 @@ impl ClickTracker {
 			}
 		}
 
+		if matches!(state, ElementState::Released) && record.down_count != record.up_count {
+			return ClickCount::Ignore;
+		}
+
 		count
 	}
 }
@@ -183,6 +187,7 @@ pub(crate) enum ClickCount {
 	Single,
 	Double,
 	Triple,
+	Ignore,
 }
 impl From<ClickCount> for i32 {
 	fn from(count: ClickCount) -> i32 {
@@ -190,6 +195,7 @@ impl From<ClickCount> for i32 {
 			ClickCount::Single => 1,
 			ClickCount::Double => 2,
 			ClickCount::Triple => 3,
+			ClickCount::Ignore => 0,
 		}
 	}
 }

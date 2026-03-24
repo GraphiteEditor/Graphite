@@ -6,7 +6,7 @@ mod keymap;
 use keymap::{ToCharRepresentation, ToNativeKeycode, ToVKBits};
 
 mod state;
-pub(crate) use state::{CefModifiers, InputState};
+pub(crate) use state::{CefModifiers, ClickCount, InputState};
 
 use super::consts::{PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
@@ -36,7 +36,11 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				}
 			};
 
-			let cef_click_count = input_state.mouse_input(mouse_button, state).into();
+			let click_count = input_state.mouse_input(mouse_button, state);
+			if matches!(click_count, ClickCount::Ignore) {
+				return;
+			}
+			let cef_click_count = click_count.into();
 			let cef_mouse_up = match state {
 				ElementState::Pressed => 0,
 				ElementState::Released => 1,
