@@ -2086,7 +2086,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	}
 
 	// Preserve original graphic table as upstream data so this group layer's nested layers can be edited by the tools.
-	let graphic_table_content = content.clone().into_graphic_table();
+	let mut graphic_table_content = content.clone().into_graphic_table();
 
 	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
 	let content = content.into_flattened_table::<Vector>();
@@ -2110,14 +2110,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let source_row = content_iter.nth(source_index).unwrap();
 	let target_row = content_iter.next().unwrap();
 
-	let mut vector = Vector {
-		upstream_data: Some(graphic_table_content),
-		..Default::default()
-	};
-
 	// Lerp styles
 	let vector_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
-	vector.style = source_row.element.style.lerp(&target_row.element.style, time);
 
 	// Decompose transforms into translation, rotation, and scale components
 	let source_transform = source_row.transform;
@@ -2143,6 +2137,21 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let lerped_scale = source_scale.lerp(target_scale, time);
 
 	let lerped_transform = DAffine2::from_scale_angle_translation(lerped_scale, lerped_rotation, lerped_translation);
+
+	// Pre-compensate upstream_data transforms so that when collect_metadata applies
+	// the row transform (which will be group_transform * lerped_transform after the
+	// pipeline's Transform node runs), the lerped_transform cancels out and children
+	// get the correct footprint: parent * group_transform * child_transform.
+	let lerped_inverse = lerped_transform.inverse();
+	for row in graphic_table_content.iter_mut() {
+		*row.transform = lerped_inverse * *row.transform;
+	}
+
+	let mut vector = Vector {
+		upstream_data: Some(graphic_table_content),
+		..Default::default()
+	};
+	vector.style = source_row.element.style.lerp(&target_row.element.style, time);
 
 	// Interpolate geometry in local space (no transform baked in) — the lerped transform handles positioning
 	let source_bezpaths = source_row.element.stroke_bezpath_iter();
