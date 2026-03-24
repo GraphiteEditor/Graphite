@@ -344,7 +344,15 @@ function detectShake(e: PointerEvent | MouseEvent): boolean {
 }
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
-	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
+	if (!(target instanceof HTMLElement)) return false;
+	if (target.nodeName === "TEXTAREA" || target.isContentEditable) return true;
+	if (target instanceof HTMLInputElement) {
+		const inputType = target.type.toLowerCase();
+		// Only consider actual text-entry input types as text fields, not checkboxes, radio buttons, etc.
+		const textInputTypes = ["text", "password", "email", "number", "search", "tel", "url", "date", "datetime-local", "month", "time", "week"];
+		return textInputTypes.includes(inputType);
+	}
+	return false;
 }
 
 function potentiallyRestoreCanvasFocus(e: Event) {
