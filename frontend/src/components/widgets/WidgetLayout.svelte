@@ -1,9 +1,8 @@
 <script lang="ts">
-	import type { Layout, LayoutTarget } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
-	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
-	import WidgetTable from "@graphite/components/widgets/WidgetTable.svelte";
+	import WidgetSection from "/src/components/widgets/WidgetSection.svelte";
+	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
+	import WidgetTable from "/src/components/widgets/WidgetTable.svelte";
+	import type { Layout, LayoutTarget } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let layout: Layout;
 	export let layoutTarget: LayoutTarget;

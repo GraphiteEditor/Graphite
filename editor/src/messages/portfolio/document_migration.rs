@@ -861,6 +861,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::InstanceOnPointsNode", "core_types::vector::InstanceOnPointsNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::vector::copy_to_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::CopyToPointsNode", "core_types::vector::CopyToPointsNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::vector::jitter_points::IDENTIFIER,
 		aliases: &["graphene_core::vector::JitterPointsNode"],
 	},

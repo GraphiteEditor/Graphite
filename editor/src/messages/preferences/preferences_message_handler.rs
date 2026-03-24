@@ -28,14 +28,16 @@ pub struct PreferencesMessageHandler {
 }
 
 impl PreferencesMessageHandler {
-	#[cfg(not(target_os = "macos"))]
-	pub fn needs_restart(&self, other: &Self) -> bool {
-		self.disable_ui_acceleration != other.disable_ui_acceleration
-	}
-
-	#[cfg(target_os = "macos")]
-	pub fn needs_restart(&self, other: &Self) -> bool {
-		self.disable_ui_acceleration != other.disable_ui_acceleration || self.vsync != other.vsync
+	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
+		let mut requiring_restart = Vec::new();
+		if self.disable_ui_acceleration != other.disable_ui_acceleration {
+			requiring_restart.push("Disable UI Acceleration");
+		}
+		#[cfg(target_os = "macos")]
+		if self.vsync != other.vsync {
+			requiring_restart.push("Enable V-Sync");
+		}
+		requiring_restart.into_iter().map(String::from).collect()
 	}
 
 	pub fn get_selection_mode(&self) -> SelectionMode {

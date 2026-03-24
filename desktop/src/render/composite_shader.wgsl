@@ -71,6 +71,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 	if (viewport_srgb.a < 0.001) {
 		viewport_srgb = constants.background_color;
+	} else if (viewport_srgb.a < 0.999) {
+		viewport_srgb = blend(viewport_srgb, constants.background_color);
 	}
 
 	if (overlay_srgb.a < 0.001) {

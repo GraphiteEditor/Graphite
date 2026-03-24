@@ -25,16 +25,16 @@ jobs:
       SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
 
-      - name: 🦀 Install the latest Rust
-        run: |
-          echo "Initial system version:"
-          rustc --version
-          rustup update stable
-          echo "Latest updated version:"
-          rustc --version
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
 
       - name: 📦 Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.6
