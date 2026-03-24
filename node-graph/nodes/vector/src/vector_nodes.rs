@@ -2119,11 +2119,32 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let vector_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
 	vector.style = source_row.element.style.lerp(&target_row.element.style, time);
 
-	// Before and after transforms
+	// Decompose transforms into translation, rotation, and scale components
 	let source_transform = source_row.transform;
 	let target_transform = target_row.transform;
 
-	// Before and after paths
+	let source_translation = source_transform.translation;
+	let source_rotation = source_transform.decompose_rotation();
+	let source_scale = source_transform.decompose_scale();
+
+	let target_translation = target_transform.translation;
+	let target_rotation = target_transform.decompose_rotation();
+	let target_scale = target_transform.decompose_scale();
+
+	// Interpolate transform components separately (using shortest-arc angular interpolation for rotation)
+	let lerped_translation = source_translation.lerp(target_translation, time);
+	let mut rotation_diff = target_rotation - source_rotation;
+	if rotation_diff > PI {
+		rotation_diff -= TAU;
+	} else if rotation_diff < -PI {
+		rotation_diff += TAU;
+	}
+	let lerped_rotation = source_rotation + rotation_diff * time;
+	let lerped_scale = source_scale.lerp(target_scale, time);
+
+	let lerped_transform = DAffine2::from_scale_angle_translation(lerped_scale, lerped_rotation, lerped_translation);
+
+	// Interpolate geometry in local space (no transform baked in) — the lerped transform handles positioning
 	let source_bezpaths = source_row.element.stroke_bezpath_iter();
 	let target_bezpaths = target_row.element.stroke_bezpath_iter();
 
@@ -2131,9 +2152,6 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
 			continue;
 		}
-
-		source_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
-		target_bezpath.apply_affine(Affine::new(target_transform.to_cols_array()));
 
 		let target_segment_len = target_bezpath.segments().count();
 		let source_segment_len = source_bezpath.segments().count();
@@ -2172,8 +2190,6 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let target_paths = target_row.element.stroke_bezpath_iter().skip(source_paths_count);
 
 	for mut source_path in source_paths {
-		source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
-
 		// Skip if the path has no segments else get the point at the end of the path.
 		let Some(end) = source_path.segments().last().map(|element| element.end()) else { continue };
 
@@ -2197,8 +2213,6 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	}
 
 	for mut target_path in target_paths {
-		target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
-
 		// Skip if the path has no segments else get the point at the start of the path.
 		let Some(start) = target_path.segments().next().map(|element| element.start()) else { continue };
 
@@ -2223,6 +2237,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 
 	Table::new_from_row(TableRow {
 		element: vector,
+		transform: lerped_transform,
 		alpha_blending: vector_alpha_blending,
 		..Default::default()
 	})
