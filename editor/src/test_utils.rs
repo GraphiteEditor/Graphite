@@ -380,7 +380,13 @@ pub mod test_prelude {
 #[cfg(test)]
 mod test {
 	use super::*;
-	
+
+	async fn create_editor_with_new_document() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+	}
+
 	/// - create editor
 	/// - assert it initializes without panicking
 	#[tokio::test]
@@ -393,9 +399,8 @@ mod test {
 	/// - assert active document exists
 	#[tokio::test]
 	async fn new_document_is_active() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		assert!(editor.active_document().metadata().all_layers().count() == 0);
+		let editor = create_editor_with_new_document().await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0);
 	}
 
 	/// - create editor
@@ -404,8 +409,7 @@ mod test {
 	/// - assert one layer exists
 	#[tokio::test]
 	async fn draw_rect_helper_creates_layer() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
+		let mut editor = create_editor_with_new_document().await;
 		editor.draw_rect(0., 0., 100., 100.).await;
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
 	}
@@ -416,8 +420,7 @@ mod test {
 	/// - assert one layer exists
 	#[tokio::test]
 	async fn draw_ellipse_helper_creates_layer() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
+		let mut editor = create_editor_with_new_document().await;
 		editor.draw_ellipse(0., 0., 100., 100.).await;
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
 	}
@@ -428,8 +431,7 @@ mod test {
 	/// - assert no layer added
 	#[tokio::test]
 	async fn select_primary_color_does_not_add_layer() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
+		let mut editor = create_editor_with_new_document().await;
 		editor.select_primary_color(Color::RED).await;
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 0);
 	}
@@ -440,8 +442,7 @@ mod test {
 	/// - assert two layers exist
 	#[tokio::test]
 	async fn draw_two_shapes_gives_two_layers() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
+		let mut editor = create_editor_with_new_document().await;
 		editor.draw_rect(0., 0., 100., 100.).await;
 		editor.draw_ellipse(0., 0., 100., 100.).await;
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 2);
