@@ -2127,14 +2127,14 @@ impl DocumentMessageHandler {
 		};
 
 		let size = existing_bottom_right - existing_top_left;
-		// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
-		// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
-		let size = size.max(DVec2::ONE);
+		//Fixed by using correct Math for calculating the enlargement based on the resize direction and whether the opposite corner is being resized from
 		let enlargement = DVec2::new(
 			if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
 			if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
 		);
-		let enlargement_factor = (enlargement + size) / size;
+		let clamped_size = size.max(DVec2::ONE);
+		let clamped_new_size = (size + enlargement).max(DVec2::ONE);
+		let enlargement_factor = clamped_new_size / clamped_size;
 
 		let position = DVec2::new(
 			existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
