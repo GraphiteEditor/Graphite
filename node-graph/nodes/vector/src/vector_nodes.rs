@@ -10,6 +10,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
+use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
@@ -1298,6 +1299,176 @@ async fn sample_polyline(
 
 				// Append the bezpath (subpath) that connects generated points by lines.
 				result.append_bezpath(sample_bezpath);
+			}
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
+/// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn simplify(
+	_: impl Ctx,
+	/// The vector paths to simplify.
+	content: Table<Vector>,
+	/// The maximum distance the simplified path may deviate from the original.
+	#[default(5.)]
+	#[unit(" px")]
+	tolerance: Length,
+) -> Table<Vector> {
+	if tolerance <= 0. {
+		return content;
+	}
+
+	let options = SimplifyOptions::default();
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let inverse_transform = transform.inverse();
+
+			let mut result = Vector {
+				style: std::mem::take(&mut row.element.style),
+				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
+			};
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(transform);
+
+				let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
+
+				simplified.apply_affine(inverse_transform);
+				result.append_bezpath(simplified);
+			}
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
+/// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn decimate(
+	_: impl Ctx,
+	/// The vector paths to decimate.
+	content: Table<Vector>,
+	/// The maximum distance a point can deviate from the simplified path before it is kept.
+	#[default(5.)]
+	#[unit(" px")]
+	tolerance: Length,
+) -> Table<Vector> {
+	// Tolerance of 0 means no simplification is possible, so return immediately
+	if tolerance <= 0. {
+		return content;
+	}
+
+	// Below this squared length, a line segment is treated as a degenerate point and the distance
+	// falls back to a simple point-to-point measurement to avoid division by near-zero.
+	const NEAR_ZERO_LENGTH_SQUARED: f64 = 1e-20;
+
+	fn perpendicular_distance(point: DVec2, line_start: DVec2, line_end: DVec2) -> f64 {
+		let line_vector = line_end - line_start;
+		let line_length_squared = line_vector.length_squared();
+		if line_length_squared < NEAR_ZERO_LENGTH_SQUARED {
+			return point.distance(line_start);
+		}
+		(point - line_start).perp_dot(line_vector).abs() / line_length_squared.sqrt()
+	}
+
+	fn rdp_simplify(points: &[DVec2], tolerance: f64) -> Vec<DVec2> {
+		if points.len() < 3 {
+			return points.to_vec();
+		}
+
+		let mut keep = vec![false; points.len()];
+		keep[0] = true;
+		keep[points.len() - 1] = true;
+
+		let mut stack = vec![(0, points.len() - 1)];
+
+		while let Some((start_index, end_index)) = stack.pop() {
+			let start = points[start_index];
+			let end = points[end_index];
+
+			let mut max_distance = 0.;
+			let mut max_index = 0;
+
+			for (i, &point) in points.iter().enumerate().take(end_index).skip(start_index + 1) {
+				let distance = perpendicular_distance(point, start, end);
+				if distance > max_distance {
+					max_distance = distance;
+					max_index = i;
+				}
+			}
+
+			if max_distance > tolerance {
+				keep[max_index] = true;
+				if max_index - start_index > 1 {
+					stack.push((start_index, max_index));
+				}
+				if end_index - max_index > 1 {
+					stack.push((max_index, end_index));
+				}
+			}
+		}
+
+		points.iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| *p).collect()
+	}
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let inverse_transform = transform.inverse();
+
+			let mut result = Vector {
+				style: std::mem::take(&mut row.element.style),
+				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
+			};
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(transform);
+
+				let is_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
+
+				// Flatten the bezpath into line segments, then collect the points
+				let mut points = Vec::new();
+				kurbo::flatten(bezpath, tolerance * 0.5, |el| match el {
+					PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+						points.push(DVec2::new(p.x, p.y));
+					}
+					_ => {}
+				});
+
+				// For closed paths, the last point duplicates the first, so remove it
+				if is_closed && points.len() > 1 && points.last() == points.first() {
+					points.pop();
+				}
+
+				// Apply RDP simplification
+				let simplified = rdp_simplify(&points, tolerance);
+				if simplified.is_empty() {
+					continue;
+				}
+
+				// Reconstruct as a polyline
+				let mut new_bezpath = BezPath::new();
+				new_bezpath.move_to((simplified[0].x, simplified[0].y));
+				for &point in &simplified[1..] {
+					new_bezpath.line_to((point.x, point.y));
+				}
+				if is_closed {
+					new_bezpath.close_path();
+				}
+
+				new_bezpath.apply_affine(inverse_transform);
+				result.append_bezpath(new_bezpath);
 			}
 
 			row.element = result;

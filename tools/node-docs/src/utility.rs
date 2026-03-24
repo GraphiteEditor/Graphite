@@ -1,7 +1,6 @@
 use graph_craft::proto::NodeMetadata;
 use indoc::indoc;
 
-pub const NODE_CATALOG_PATH: &str = "../../website/content/learn/node-catalog";
 pub const OMIT_HIDDEN: bool = true;
 
 pub fn category_description(category: &str) -> &str {

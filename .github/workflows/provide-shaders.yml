@@ -1,4 +1,4 @@
-name: Provide Shaders
+name: "Provide Shaders"
 
 on:
   push:
@@ -12,14 +12,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
 
-      - name: Build graphene raster nodes shaders
+      - name: ❄ Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: 💾 Set up Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: 🏗 Build graphene raster nodes shaders
         run: nix build .#graphite-raster-nodes-shaders && cp result raster_nodes_shaders_entrypoint.wgsl
 
-      - name: Upload graphene raster nodes shaders to artifacts repository
+      - name: 📤 Upload graphene raster nodes shaders to artifacts repository
         run: |
           bash .github/workflows/scripts/artifact-upload.bash \
             ${{ vars.ARTIFACTS_REPO_OWNER }} \

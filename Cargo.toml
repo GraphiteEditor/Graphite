@@ -8,7 +8,7 @@ members = [
 	"desktop/platform/mac",
 	"desktop/platform/win",
 	"editor",
-	"frontend/wasm",
+	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"node-graph/libraries/*",
@@ -30,7 +30,7 @@ members = [
 ]
 default-members = [
 	"editor",
-	"frontend/wasm",
+	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"node-graph/graph-craft",

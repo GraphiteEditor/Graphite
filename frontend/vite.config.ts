@@ -1,7 +1,6 @@
 import { execSync } from "child_process";
 import { readFileSync } from "fs";
 import path from "path";
-
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 import type { PluginOption } from "vite";
@@ -14,12 +13,7 @@ export default defineConfig(({ mode }) => {
 	return {
 		plugins: plugins(mode),
 		resolve: {
-			alias: [
-				{ find: /@branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") },
-				{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
-				{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
-				{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
-			],
+			alias: [{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") }],
 		},
 		server: {
 			port: 8080,
@@ -32,7 +26,7 @@ function plugins(mode: string): PluginOption[] {
 	const plugins = [
 		svelte(),
 		viteMultipleAssets(
-			// Additional static asset directories besides `public/`
+			// Additional static asset directories
 			[
 				{ input: "../demo-artwork/**", output: "demo-artwork" },
 				{ input: "../branding/favicons/**", output: "" },

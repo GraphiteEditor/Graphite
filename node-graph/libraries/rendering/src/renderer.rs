@@ -522,18 +522,21 @@ impl Render for Artboard {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		// Render background
-		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-		scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
-		scene.pop_layer();
+		// Render background
+		if !render_params.hide_artboards {
+			let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
+			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
+			scene.pop_layer();
+		}
 
 		if self.clip {
 			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
+
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
 		let mut render_params = render_params.clone();

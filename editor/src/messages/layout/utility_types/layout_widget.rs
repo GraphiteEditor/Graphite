@@ -20,10 +20,30 @@ impl core::fmt::Display for WidgetId {
 	}
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
-#[repr(u8)]
-pub enum LayoutTarget {
+macro_rules! define_layout_target {
+	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
+		#[repr(u8)]
+		pub enum LayoutTarget {
+			$($(#[$attr])* $variant,)*
+			// KEEP THIS ENUM LAST
+			// This is a marker that is used to define an array that is used to hold widgets
+			#[serde(skip)]
+			_LayoutTargetLength,
+		}
+
+		impl From<u8> for LayoutTarget {
+			fn from(value: u8) -> Self {
+				match value {
+					$(x if x == Self::$variant as u8 => Self::$variant,)*
+					_ => panic!("Invalid LayoutTarget discriminant: {value}"),
+				}
+			}
+		}
+	};
+}
+define_layout_target!(
 	/// The spreadsheet panel allows for the visualisation of data in the graph.
 	DataPanel,
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
@@ -58,12 +78,7 @@ pub enum LayoutTarget {
 	WelcomeScreenButtons,
 	/// The color swatch for the working colors and a flip and reset button found at the bottom of the tool shelf.
 	WorkingColors,
-
-	// KEEP THIS ENUM LAST
-	// This is a marker that is used to define an array that is used to hold widgets
-	#[serde(skip)]
-	_LayoutTargetLength,
-}
+);
 
 /// For use by structs that define a UI widget layout by implementing the layout() function belonging to this trait.
 /// The send_layout() function can then be called by other code which is a part of the same struct so as to send the layout to the frontend.

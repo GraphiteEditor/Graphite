@@ -9,13 +9,9 @@
 
 <script lang="ts">
 	import { onMount } from "svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-
-	const temporaryCanvas = document.createElement("canvas");
-	temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
-	temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
-
+	let temporaryCanvas: HTMLCanvasElement | undefined;
 	let zoomPreviewCanvas: HTMLCanvasElement | undefined;
 
 	export let imageData: ImageData | undefined = undefined;
@@ -31,6 +27,11 @@
 		if (!zoomPreviewCanvas) return;
 		const context = zoomPreviewCanvas.getContext("2d");
 
+		if (!temporaryCanvas) {
+			temporaryCanvas = document.createElement("canvas");
+			temporaryCanvas.width = ZOOM_WINDOW_DIMENSIONS;
+			temporaryCanvas.height = ZOOM_WINDOW_DIMENSIONS;
+		}
 		const temporaryContext = temporaryCanvas.getContext("2d");
 
 		if (!imageData || !context || !temporaryContext) return;
