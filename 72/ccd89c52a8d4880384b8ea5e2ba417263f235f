@@ -1,0 +1,36 @@
+node-graph/nodes/vector/src/vector_nodes.rs
+  83af42350da2a8b2 1949,1953-1974,2067
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "72ccd89c52a8d4880384b8ea5e2ba417263f235f",
+  "prompts": {
+    "05f83908229eded5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d63e22cd-4ce6-46ea-9795-cceb74919a7f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 34,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "83af42350da2a8b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18818827-baab-44ac-a755-5d5631bb1aab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 18,
+      "accepted_lines": 24,
+      "overriden_lines": 0
+    }
+  }
+}
