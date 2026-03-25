@@ -1,0 +1,23 @@
+node-graph/libraries/rendering/src/renderer.rs
+  05f83908229eded5 1235,1240-1248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "603035fbce2afb970dc7937215c7a3cac98088f6",
+  "prompts": {
+    "05f83908229eded5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d63e22cd-4ce6-46ea-9795-cceb74919a7f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 7,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    }
+  }
+}
