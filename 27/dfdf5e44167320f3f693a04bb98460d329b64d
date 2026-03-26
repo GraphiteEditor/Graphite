@@ -1,0 +1,29 @@
+editor/src/messages/portfolio/document/document_message_handler.rs
+  127867e2bb2aba68 627-629
+editor/src/messages/portfolio/document/document_message.rs
+  127867e2bb2aba68 87
+editor/src/messages/menu_bar/menu_bar_message_handler.rs
+  127867e2bb2aba68 501-502
+editor/src/messages/input_mapper/input_mappings.rs
+  127867e2bb2aba68 360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "27dfdf5e44167320f3f693a04bb98460d329b64d",
+  "prompts": {
+    "127867e2bb2aba68": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "32e68dfb-9577-4b80-b444-d401a131cc3f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
