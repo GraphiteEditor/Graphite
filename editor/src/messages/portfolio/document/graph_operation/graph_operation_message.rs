@@ -74,6 +74,17 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	NewBlendShapesLayer {
+		id: NodeId,
+		blend_path_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		count: usize,
+	},
+	ConnectBlendPathToChildren {
+		blend_shape_id: NodeId,
+		blend_path_id: NodeId,
+	},
 	NewBooleanOperationLayer {
 		id: NodeId,
 		operation: graphene_std::vector::misc::BooleanOperation,

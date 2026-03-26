@@ -84,6 +84,7 @@ pub enum DocumentMessage {
 	GridVisibility {
 		visible: bool,
 	},
+	BlendSelectedLayers,
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},

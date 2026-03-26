@@ -625,6 +625,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
+			DocumentMessage::BlendSelectedLayers => {
+				self.handle_group_selected_layers(GroupFolderType::BlendShapes, responses);
+			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.handle_group_selected_layers(group_folder_type, responses);
 			}
@@ -2159,6 +2162,41 @@ impl DocumentMessageHandler {
 						insert_index,
 					});
 				}
+			}
+			GroupFolderType::BlendShapes => {
+				let blend_path_id = NodeId(generate_uuid());
+				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
+				responses.add(GraphOperationMessage::NewBlendShapesLayer {
+					id: folder_id,
+					blend_path_id,
+					parent,
+					insert_index,
+					count: all_layers_to_group.len() * 10,
+				});
+
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
+
+				// Move selected layers into the group as children
+				for layer_to_group in all_layers_to_group.into_iter().rev() {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_to_group,
+						parent: new_group_folder,
+						insert_index: 0,
+					});
+				}
+
+				// Connect the child stack to the Blend Path layer as a co-parent
+				responses.add(GraphOperationMessage::ConnectBlendPathToChildren {
+					blend_shape_id: folder_id,
+					blend_path_id,
+				});
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				return folder_id;
 			}
 		}
 

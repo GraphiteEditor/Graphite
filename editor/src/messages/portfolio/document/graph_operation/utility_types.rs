@@ -156,6 +156,47 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[], self.import);
 	}
 
+	pub fn insert_blend_shapes_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
+		let blend_shapes = resolve_network_node_type("Blend Shapes").expect("Blend Shapes node does not exist").node_template_input_override([
+			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::Vector(Default::default()), true)),
+			Some(NodeInput::value(TaggedValue::F64(count), false)),
+		]);
+
+		let blend_shapes_id = NodeId::new();
+		self.network_interface.insert_node(blend_shapes_id, blend_shapes, &[]);
+		self.network_interface.move_node_to_chain_start(&blend_shapes_id, layer, &[], self.import);
+
+		blend_shapes_id
+	}
+
+	/// Returns the Path node ID (the node closest to the layer's merge node in the chain).
+	pub fn insert_blend_path_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
+		// Add Origins to Polyline node first (will be pushed deepest in the chain)
+		let origins_to_polyline = resolve_network_node_type("Origins to Polyline")
+			.expect("Origins to Polyline node does not exist")
+			.default_node_template();
+		let origins_to_polyline_id = NodeId::new();
+		self.network_interface.insert_node(origins_to_polyline_id, origins_to_polyline, &[]);
+		self.network_interface.move_node_to_chain_start(&origins_to_polyline_id, layer, &[], self.import);
+
+		// Add Auto-Tangents node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
+		let auto_tangents = resolve_proto_node_type(graphene_std::vector::auto_tangents::IDENTIFIER)
+			.expect("Auto-Tangents node does not exist")
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::Bool(false), false))]);
+		let auto_tangents_id = NodeId::new();
+		self.network_interface.insert_node(auto_tangents_id, auto_tangents, &[]);
+		self.network_interface.move_node_to_chain_start(&auto_tangents_id, layer, &[], self.import);
+
+		// Add Path node to chain start (closest to the Merge node)
+		let path = resolve_network_node_type("Path").expect("Path node does not exist").default_node_template();
+		let path_id = NodeId::new();
+		self.network_interface.insert_node(path_id, path, &[]);
+		self.network_interface.move_node_to_chain_start(&path_id, layer, &[], self.import);
+
+		path_id
+	}
+
 	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
 		let vector = Table::new_from_element(Vector::from_subpaths(subpaths, true));
 

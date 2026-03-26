@@ -495,6 +495,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 									})
 									.disabled(no_active_document || !has_selected_layers),
 							]]),
+						MenuListEntry::new("Blend")
+							.label("Blend")
+							.icon("BlendShapes")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::BlendSelectedLayers))
+							.on_commit(|_| DocumentMessage::BlendSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
 						MenuListEntry::new("Make Path Editable")

@@ -586,7 +586,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Vector(Default::default()), true),
-						NodeInput::value(TaggedValue::Vector(Default::default()), true),
+						NodeInput::value(TaggedValue::Vector(Default::default()), false),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::Bool(Default::default()), false),
 					],

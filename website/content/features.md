@@ -138,7 +138,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 66" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>All-around performance optimizations</span>
 		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
+		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Blend tool to morph between shapes</span>
 		</div>
