@@ -341,8 +341,8 @@ impl GradientStops {
 pub enum GradientSpreadMethod {
 	#[default]
 	Pad,
-	Repeat,
 	Reflect,
+	Repeat,
 }
 
 impl GradientSpreadMethod {

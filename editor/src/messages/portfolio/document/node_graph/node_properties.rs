@@ -2009,7 +2009,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 		let mut spread_methods_row: Vec<WidgetInstance> = vec![];
 
-		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Repeat, GradientSpreadMethod::Reflect]
+		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
 			.iter()
 			.map(|&spread_method| {
 				let gradient_for_input = gradient_for_closure.clone();

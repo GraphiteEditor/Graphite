@@ -197,15 +197,15 @@ impl LayoutHolder for GradientTool {
 				}
 				.into()
 			}),
-			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Repeat),
-				}
-				.into()
-			}),
 			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Reflect),
+				}
+				.into()
+			}),
+			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Repeat),
 				}
 				.into()
 			}),
