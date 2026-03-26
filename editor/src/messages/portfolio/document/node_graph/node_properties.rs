@@ -2007,7 +2007,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 		widgets.push(LayoutGroup::row(row));
 
-		let mut spread_methods_row: Vec<WidgetInstance> = vec![];
+		let mut spread_methods_row: Vec<WidgetInstance> = vec![TextLabel::new("").widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance()];
 
 		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
 			.iter()
@@ -2051,6 +2051,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			})
 			.collect();
 
+		add_blank_assist(&mut spread_methods_row);
 		spread_methods_row.extend_from_slice(&[RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance()]);
 
 		widgets.push(LayoutGroup::row(spread_methods_row));
