@@ -1197,6 +1197,22 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.collect()
 }
 
+/// Determines if the subpath at the given index (across all vector element subpaths) is closed, meaning its ends are connected together forming a loop.
+#[node_macro::node(name("Path is Closed"), category("Vector"), path(core_types::vector))]
+async fn path_is_closed(
+	_: impl Ctx,
+	/// The vector content whose subpaths are inspected.
+	content: Table<Vector>,
+	/// The index of the subpath to check, counting across subpaths in all vector elements.
+	index: f64,
+) -> bool {
+	content
+		.iter()
+		.flat_map(|row| row.element.stroke_bezpath_iter().map(|bezpath| bezpath.elements().last() == Some(&kurbo::PathEl::ClosePath)))
+		.nth(index.max(0.) as usize)
+		.unwrap_or(false)
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> Table<Vector> {
 	let mut content = content;
