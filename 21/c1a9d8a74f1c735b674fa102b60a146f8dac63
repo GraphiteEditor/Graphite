@@ -1,0 +1,51 @@
+node-graph/libraries/core-types/src/transform.rs
+  efaff98737416c1c 3,6-17,26-32,37-58,61-62,64-65,69-73,76-78,80-85,203
+editor/src/messages/portfolio/document/graph_operation/transform_utils.rs
+  efaff98737416c1c 11-12,15,134-136
+node-graph/nodes/raster/src/std_nodes.rs
+  efaff98737416c1c 206
+editor/src/messages/portfolio/document/node_graph/node_properties.rs
+  efaff98737416c1c 26,268,571
+node-graph/nodes/gstd/src/render_node.rs
+  efaff98737416c1c 111
+node-graph/nodes/gstd/src/render_cache.rs
+  efaff98737416c1c 396
+node-graph/nodes/gstd/src/pixel_preview.rs
+  efaff98737416c1c 25
+node-graph/graph-craft/src/document/value.rs
+  efaff98737416c1c 272
+node-graph/libraries/vector-types/src/vector/vector_types.rs
+  efaff98737416c1c 486
+node-graph/nodes/vector/src/vector_nodes.rs
+  efaff98737416c1c 2108-2110,2112-2113,2115,2117-2118,2124,2126-2128,2643
+node-graph/nodes/transform/src/transform_nodes.rs
+  efaff98737416c1c 80,152-153,155-165
+editor/src/messages/portfolio/document_migration.rs
+  efaff98737416c1c 1934-1943
+node-graph/libraries/vector-types/src/vector/style.rs
+  efaff98737416c1c 369-370,373-392
+node-graph/interpreted-executor/src/node_registry.rs
+  efaff98737416c1c 137,231
+node-graph/libraries/vector-types/src/vector/click_target.rs
+  efaff98737416c1c 182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "21c1a9d8a74f1c735b674fa102b60a146f8dac63",
+  "prompts": {
+    "efaff98737416c1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2776e5ba-a9c1-467d-b388-e414d1bd596b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 431,
+      "total_deletions": 176,
+      "accepted_lines": 302,
+      "overriden_lines": 3
+    }
+  }
+}
