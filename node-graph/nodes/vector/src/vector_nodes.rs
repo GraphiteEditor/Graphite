@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
-use core_types::transform::Footprint;
+use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -2030,17 +2030,19 @@ async fn offset_points(
 		.collect()
 }
 
-/// Interpolates the geometry and styles between multiple vector layers, producing a single morphed vector shape.
+/// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
-/// Based on the progression value, adjacent vector elements are blended together. From 0 until 1, the first element (bottom layer) morphs into the second element (next layer up). From 1 until 2, it then morphs into the third element, and so on until progression is capped at the last element (top layer).
+/// Progression [0, 1) morphs through all objects at uniform speed. A path may be provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	_: impl Ctx,
-	/// The vector elements to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
+	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	#[implementations(Table<Graphic>, Table<Vector>)]
 	content: I,
-	/// The factor from one vector element to the next in sequence. The whole number part selects the source element, and the decimal part determines the interpolation amount towards the next element.
+	/// The fractional part [0, 1) traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
 	progression: Progression,
+	/// An optional control path whose anchor points correspond to each object. Curved segments between points will shape the morph trajectory instead of traveling straight. If there is a break between path segments, the separate subpaths are selected by index from the integer part of the progression value. For example, [1, 2) morphs along the segments of the second subpath, and so on.
+	path: Table<Vector>,
 ) -> Table<Vector> {
 	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
 	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
@@ -2091,52 +2093,169 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
 	let content = content.into_flattened_table::<Vector>();
 
-	// Determine source and target indices and interpolation time fraction
-	let progression = progression.max(0.);
-	let source_index = progression.floor() as usize;
-	let time = progression.fract();
-
 	// Not enough elements to interpolate between, so we return the input as-is
 	if content.len() <= 1 {
 		return content;
 	}
-	// Progression is at or past the last element, so we return the last element without interpolation
-	if source_index >= content.len() - 1 {
-		return content.into_iter().last().into_iter().collect();
+
+	// Build the control path for the morph trajectory.
+	// Collect all subpaths from the path input (applying transforms), or build a default polyline from element origins.
+	let control_bezpaths: Vec<BezPath> = if path.is_empty() {
+		// Default: polyline connecting each element's origin (translation component of transform)
+		let mut default_path = BezPath::new();
+		for (i, row) in content.iter().enumerate() {
+			let origin = row.transform.translation;
+			let point = kurbo::Point::new(origin.x, origin.y);
+			if i == 0 {
+				default_path.move_to(point);
+			} else {
+				default_path.line_to(point);
+			}
+		}
+		vec![default_path]
+	} else {
+		// User-provided path: collect all subpaths with transforms applied
+		path.iter()
+			.flat_map(|vector| {
+				let transform = *vector.transform;
+				vector.element.stroke_bezpath_iter().map(move |mut bezpath| {
+					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+					bezpath
+				})
+			})
+			.collect()
+	};
+
+	// Select which subpath to use based on the integer part of progression (like the 'Position on Path' node)
+	let progression = progression.max(0.);
+	let subpath_count = control_bezpaths.len() as f64;
+	let clamped_progression = progression.clamp(0., subpath_count);
+	let subpath_index = if clamped_progression >= subpath_count { subpath_count - 1. } else { clamped_progression } as usize;
+	let fractional_progression = if clamped_progression >= subpath_count { 1. } else { clamped_progression.fract() };
+
+	let control_bezpath = &control_bezpaths[subpath_index];
+	let segment_count = control_bezpath.segments().count();
+
+	// If the control path has no segments, return the first element
+	if segment_count == 0 {
+		return content.into_iter().next().into_iter().collect();
 	}
 
-	// Interpolation between two elements
-	let mut content_iter = content.into_iter();
-	let source_row = content_iter.nth(source_index).unwrap();
-	let target_row = content_iter.next().unwrap();
+	// Compute per-segment arc lengths for Euclidean progression along the control path
+	let segment_lengths: Vec<f64> = control_bezpath.segments().map(|seg| seg.perimeter(DEFAULT_ACCURACY)).collect();
+	let total_length: f64 = segment_lengths.iter().sum();
+
+	// Map the fractional progression (0–1) to a segment index and local t using Euclidean distance.
+	// We compute both:
+	// - `time`: the arc-length fraction within the segment, used as the blend factor for morphing
+	// - `parametric_t`: the parametric t for evaluating the spatial position on the control path
+	let (source_index, time, parametric_t) = if total_length <= f64::EPSILON {
+		// Degenerate path (all points coincident): just use the first element
+		(0_usize, 0., 0.)
+	} else if fractional_progression >= 1. {
+		// At the end: last element fully
+		(segment_count - 1, 1., 1.)
+	} else {
+		// Walk segments by arc-length ratio to find which segment we're in
+		let mut accumulator = 0.;
+		let mut found_index = segment_count - 1;
+		let mut found_t = 1.;
+		for (i, length) in segment_lengths.iter().enumerate() {
+			let ratio = length / total_length;
+			if fractional_progression <= accumulator + ratio {
+				found_index = i;
+				found_t = if ratio > f64::EPSILON { (fractional_progression - accumulator) / ratio } else { 0. };
+				break;
+			}
+			accumulator += ratio;
+		}
+
+		// Convert the arc-length fraction to a parametric t for evaluating position on the control path curve
+		let segment = control_bezpath.get_seg(found_index + 1).unwrap();
+		let parametric_t = eval_pathseg_euclidean(segment, found_t, DEFAULT_ACCURACY);
+
+		// found_t is the arc-length fraction within this segment (0–1), used as the blend factor
+		(found_index, found_t, parametric_t)
+	};
+
+	// The path segment index for evaluating spatial position (before clamping to object range)
+	let path_segment_index = source_index;
+
+	// Determine if the selected subpath is closed (has a closing segment connecting its end back to its start)
+	let is_closed = control_bezpath.elements().last() == Some(&PathEl::ClosePath);
+
+	// Number of anchor points (content elements) per subpath: for closed subpaths, the closing
+	// segment doesn't add a new anchor, so anchors = segments. For open: anchors = segments + 1.
+	let anchor_count = |bp: &BezPath| -> usize {
+		let segs = bp.segments().count();
+		let closed = bp.elements().last() == Some(&PathEl::ClosePath);
+		if closed { segs } else { segs + 1 }
+	};
+
+	// Offset source_index by the number of content elements consumed by previous subpaths,
+	// so each subpath morphs through its own slice of content (not always starting from element 0).
+	let content_offset: usize = control_bezpaths[..subpath_index].iter().map(&anchor_count).sum();
+	let local_source_index = source_index;
+	let source_index = local_source_index + content_offset;
+	let subpath_anchors = anchor_count(control_bezpath);
+
+	// For closed subpaths, the closing segment wraps target back to the first element of this subpath's slice.
+	// For open subpaths, target is simply the next element.
+	let target_index = if is_closed && local_source_index >= subpath_anchors - 1 {
+		content_offset // Wrap to first element of this subpath's slice
+	} else {
+		source_index + 1
+	};
+
+	// Clamp to valid content range
+	let source_index = source_index.min(content.len() - 1);
+	let target_index = target_index.min(content.len() - 1);
+
+	// Collect content into a Vec for index-based access (needed for closed subpath wrapping)
+	let content_rows: Vec<_> = content.into_iter().collect();
+
+	// At the end of an open subpath with no more interpolation needed, return the final element
+	if !is_closed && time >= 1. && local_source_index >= subpath_anchors - 2 {
+		return std::iter::once(content_rows.into_iter().nth(target_index).unwrap()).collect();
+	}
+
+	let source_row = &content_rows[source_index];
+	let target_row = &content_rows[target_index];
 
 	// Lerp styles
 	let vector_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
 
-	// Decompose transforms into translation, rotation, and scale components
-	let source_transform = source_row.transform;
-	let target_transform = target_row.transform;
+	// Evaluate the spatial position on the control path for the translation component
+	let path_position = {
+		// Use the original path segment index (not the clamped object index)
+		let segment_index = path_segment_index.min(segment_count - 1);
+		let segment = control_bezpath.get_seg(segment_index + 1).unwrap();
+		let point = segment.eval(parametric_t);
+		DVec2::new(point.x, point.y)
+	};
 
-	let source_translation = source_transform.translation;
-	let source_rotation = source_transform.decompose_rotation();
-	let source_scale = source_transform.decompose_scale();
+	// Interpolate rotation, scale, and skew between source and target, but use the path position for translation.
+	// This decomposition must match the one used in Stroke::lerp so the renderer's stroke_transform.inverse()
+	// correctly cancels the element transform, keeping the stroke uniform when Stroke is after Transform.
+	let lerped_transform = {
+		let (s_angle, s_scale, s_skew) = source_row.transform.decompose_rotation_scale_skew();
+		let (t_angle, t_scale, t_skew) = target_row.transform.decompose_rotation_scale_skew();
 
-	let target_translation = target_transform.translation;
-	let target_rotation = target_transform.decompose_rotation();
-	let target_scale = target_transform.decompose_scale();
+		let lerp = |a: f64, b: f64| a + (b - a) * time;
 
-	// Interpolate transform components separately (using shortest-arc angular interpolation for rotation)
-	let lerped_translation = source_translation.lerp(target_translation, time);
-	let mut rotation_diff = target_rotation - source_rotation;
-	if rotation_diff > PI {
-		rotation_diff -= TAU;
-	} else if rotation_diff < -PI {
-		rotation_diff += TAU;
-	}
-	let lerped_rotation = source_rotation + rotation_diff * time;
-	let lerped_scale = source_scale.lerp(target_scale, time);
+		// Shortest-arc rotation interpolation
+		let mut rotation_diff = t_angle - s_angle;
+		if rotation_diff > PI {
+			rotation_diff -= TAU;
+		} else if rotation_diff < -PI {
+			rotation_diff += TAU;
+		}
+		let lerped_angle = s_angle + rotation_diff * time;
 
-	let lerped_transform = DAffine2::from_scale_angle_translation(lerped_scale, lerped_rotation, lerped_translation);
+		let trs = DAffine2::from_scale_angle_translation(s_scale.lerp(t_scale, time), lerped_angle, path_position);
+		let skew = DAffine2::from_cols_array(&[1., 0., lerp(s_skew, t_skew), 1., 0., 0.]);
+		trs * skew
+	};
 
 	// Pre-compensate upstream_data transforms so that when collect_metadata applies
 	// the row transform (which will be group_transform * lerped_transform after the
@@ -2868,12 +2987,15 @@ mod test {
 		second_rectangle.transform *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
-		let morphed = super::morph(Footprint::default(), rectangles, 0.5).await;
-		let element = morphed.iter().next().unwrap().element;
+		let morphed = super::morph(Footprint::default(), rectangles, 0.5, Table::default()).await;
+		let row = morphed.iter().next().unwrap();
+		// Geometry stays in local space (original rectangle coordinates)
 		assert_eq!(
-			&element.point_domain.positions()[..4],
-			vec![DVec2::new(-50., -50.), DVec2::new(50., -50.), DVec2::new(50., 50.), DVec2::new(-50., 50.)]
+			&row.element.point_domain.positions()[..4],
+			vec![DVec2::new(0., 0.), DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]
 		);
+		// The interpolated transform carries the midpoint translation (approximate due to arc-length parameterization)
+		assert!((row.transform.translation - DVec2::new(-50., -50.)).length() < 1e-3);
 	}
 
 	#[track_caller]
