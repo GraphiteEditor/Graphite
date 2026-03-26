@@ -191,3 +191,83 @@ impl Polygon {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
+
+#[cfg(test)]
+mod test_polygon {
+	use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::value::TaggedValue;
+
+	/// Reads sides and radius from the first polygon node found in the document.
+	fn get_polygon_inputs(editor: &EditorTestUtils) -> Option<(u32, f64)> {
+		let document = editor.active_document();
+		document.metadata().all_layers().find_map(|layer| {
+			let inputs = NodeGraphLayer::new(layer, &document.network_interface)
+				.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::regular_polygon::IDENTIFIER))?;
+			let Some(&TaggedValue::U32(sides)) = inputs.get(1).and_then(|i| i.as_value()) else {
+				return None;
+			};
+			let Some(&TaggedValue::F64(radius)) = inputs.get(2).and_then(|i| i.as_value()) else {
+				return None;
+			};
+			Some((sides, radius))
+		})
+	}
+
+	#[tokio::test]
+	async fn polygon_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Shape, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+		let (sides, radius) = get_polygon_inputs(&editor).expect("Polygon node should exist after draw");
+		assert!(sides >= 3, "Polygon should have at least 3 sides, got {sides}");
+		assert!((radius - 50.).abs() < 1., "Expected radius ≈ 50 for 100×100 drag, got {radius}");
+	}
+
+	#[tokio::test]
+	async fn polygon_draw_non_square_uses_shorter_dimension() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Drag wider than tall: dimensions = (100, 60), radius = shorter/2 = 30
+		editor.drag_tool(ToolType::Shape, 0., 0., 100., 60., ModifierKeys::empty()).await;
+
+		let (_, radius) = get_polygon_inputs(&editor).expect("Polygon node should exist");
+		assert!((radius - 30.).abs() < 1., "Expected radius ≈ 30 for 100×60 drag, got {radius}");
+	}
+
+	#[tokio::test]
+	async fn polygon_draw_shift_lock_ratio() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// SHIFT forces equal dimensions — a 100×60 drag becomes 100×100
+		editor.drag_tool(ToolType::Shape, 0., 0., 100., 60., ModifierKeys::SHIFT).await;
+
+		let (_, radius) = get_polygon_inputs(&editor).expect("Polygon node should exist");
+		assert!((radius - 50.).abs() < 1., "Expected radius ≈ 50 with SHIFT lock ratio on 100×60 drag, got {radius}");
+	}
+
+	#[tokio::test]
+	async fn polygon_default_six_sides() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Shape, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let (sides, _) = get_polygon_inputs(&editor).expect("Polygon node should exist");
+		assert_eq!(sides, 5, "Default polygon should have 5 sides");
+	}
+
+	#[tokio::test]
+	async fn polygon_cancel_rmb_no_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool_cancel_rmb(ToolType::Shape).await;
+
+		assert_eq!(
+			editor.active_document().metadata().all_layers().count(),
+			0,
+			"RMB-cancelled polygon should not create a layer"
+		);
+	}
+}
