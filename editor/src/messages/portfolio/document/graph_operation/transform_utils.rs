@@ -3,39 +3,16 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::subpath::Subpath;
+use graphene_std::transform::Transform;
 use graphene_std::vector::PointId;
-
-/// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
-pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {
-	let x_axis = transform.matrix2.x_axis;
-	let y_axis = transform.matrix2.y_axis;
-
-	// Assuming there is no vertical shear
-	let angle = x_axis.y.atan2(x_axis.x);
-	let (sin, cos) = angle.sin_cos();
-	let scale_x = if cos.abs() > 1e-10 { x_axis.x / cos } else { x_axis.y / sin };
-
-	let mut shear_x = (sin * y_axis.y + cos * y_axis.x) / (sin * sin * scale_x + cos * cos * scale_x);
-	if !shear_x.is_finite() {
-		shear_x = 0.;
-	}
-	let scale_y = if cos.abs() > 1e-10 {
-		(y_axis.y - scale_x * sin * shear_x) / cos
-	} else {
-		(scale_x * cos * shear_x - y_axis.x) / sin
-	};
-	let translation = transform.translation;
-	let scale = DVec2::new(scale_x, scale_y);
-	let shear = DVec2::new(shear_x, 0.);
-	(scale, angle, translation, shear)
-}
 
 /// Update the inputs of the transform node to match a new transform
 pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &NodeId, transform: DAffine2) {
-	let (scale, rotation, translation, shear) = compute_scale_angle_translation_shear(transform);
+	let (rotation, scale, skew) = transform.decompose_rotation_scale_skew();
+	let translation = transform.translation;
 
 	let rotation = rotation.to_degrees();
-	let shear = DVec2::new(shear.x.atan().to_degrees(), shear.y.atan().to_degrees());
+	let shear = DVec2::new(skew.atan().to_degrees(), 0.);
 
 	network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
 	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
@@ -154,8 +131,9 @@ mod tests {
 							translate,
 						);
 
-						let (new_scale, new_angle, new_translation, new_shear) = compute_scale_angle_translation_shear(original_transform);
-						let new_transform = DAffine2::from_scale_angle_translation(new_scale, new_angle, new_translation) * DAffine2::from_cols_array(&[1., new_shear.y, new_shear.x, 1., 0., 0.]);
+						let (new_angle, new_scale, new_skew) = original_transform.decompose_rotation_scale_skew();
+						let new_translation = original_transform.translation;
+						let new_transform = DAffine2::from_scale_angle_translation(new_scale, new_angle, new_translation) * DAffine2::from_cols_array(&[1., 0., new_skew, 1., 0., 0.]);
 
 						assert!(
 							new_transform.abs_diff_eq(original_transform, 1e-10),

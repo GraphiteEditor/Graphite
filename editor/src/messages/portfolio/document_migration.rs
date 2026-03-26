@@ -12,6 +12,7 @@ use graphene_std::ProtoNodeIdentifier;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
+use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
@@ -1846,6 +1847,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	{
 		let context_features = node_definition.node_template.document_node.context_features;
 		document.network_interface.set_context_features(node_id, network_path, context_features);
+	}
+
+	// Add the "Scale Type" parameter to the "Decompose Scale" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::decompose_scale::IDENTIFIER) && inputs_count == 1 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ScaleType(ScaleType::Magnitude), false), network_path);
 	}
 
 	// ==================================

@@ -179,7 +179,7 @@ impl ClickTarget {
 
 				// Decompose transform into rotation, scale, translation for caching strategy
 				let rotation = transform.decompose_rotation();
-				let scale = transform.decompose_scale();
+				let scale = transform.scale_magnitudes();
 				let translation = transform.translation;
 
 				// Generate fingerprint for cache lookup

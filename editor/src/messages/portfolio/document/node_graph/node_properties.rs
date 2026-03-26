@@ -23,7 +23,7 @@ use graphene_std::raster::{
 };
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
-use graphene_std::transform::{Footprint, ReferencePoint, Transform};
+use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::QRCodeErrorCorrectionLevel;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
@@ -265,6 +265,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<QRCodeErrorCorrectionLevel>() => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<ScaleType>() => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
 						// =====
 						// OTHER
 						// =====
@@ -567,7 +568,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	let widgets = if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
 		let translation = transform.translation;
 		let rotation = transform.decompose_rotation();
-		let scale = transform.decompose_scale();
+		let scale = transform.scale_magnitudes();
 
 		location_widgets.extend_from_slice(&[
 			NumberInput::new(Some(translation.x))
