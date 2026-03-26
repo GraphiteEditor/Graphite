@@ -216,9 +216,9 @@ impl LayoutHolder for GradientTool {
 		let mut widgets = vec![
 			gradient_type,
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			reverse_stops,
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			spread_method,
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			reverse_stops,
 		];
 
 		if self.options.gradient_type == GradientType::Radial {
