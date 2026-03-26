@@ -1,0 +1,36 @@
+node-graph/nodes/vector/src/vector_nodes.rs
+  f1af43e9cac0b21c 1117,1119-1121,1125,1141,1162,1165,1167,1170-1194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "84c8dbec37a50eef3543b248f943fdec1dc25cb3",
+  "prompts": {
+    "127867e2bb2aba68": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "32e68dfb-9577-4b80-b444-d401a131cc3f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 45,
+      "overriden_lines": 0
+    },
+    "f1af43e9cac0b21c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e3991d8-8d32-40fc-ab2d-edf1ebd47e0b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 34,
+      "overriden_lines": 0
+    }
+  }
+}
