@@ -129,6 +129,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					self.data.has_selected_gradient = has_gradient;
 					responses.add(ToolMessage::RefreshToolOptions);
 				}
+
+				// Sync tool options with the selected layer's gradient
+				if has_gradient && let Some(gradient) = get_gradient_on_selected_layer(&context.document) {
+					let type_differs = self.options.gradient_type != gradient.gradient_type;
+					let spread_method_differs = self.options.spread_method != gradient.spread_method;
+
+					if type_differs {
+						self.options.gradient_type = gradient.gradient_type;
+					}
+					if spread_method_differs {
+						self.options.spread_method = gradient.spread_method;
+					}
+					if type_differs || spread_method_differs {
+						responses.add(ToolMessage::RefreshToolOptions);
+					}
+				};
 			}
 		}
 	}
@@ -1543,12 +1559,16 @@ fn apply_gradient_update(
 	responses.add(ToolMessage::RefreshToolOptions);
 }
 
-fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
+fn get_gradient_on_selected_layer(document: &DocumentMessageHandler) -> Option<Gradient> {
 	document
 		.network_interface
 		.selected_nodes()
 		.selected_visible_layers(&document.network_interface)
-		.any(|layer| get_gradient(layer, &document.network_interface).is_some())
+		.find_map(|layer| get_gradient(layer, &document.network_interface))
+}
+
+fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
+	get_gradient_on_selected_layer(document).is_some()
 }
 
 #[inline(always)]
