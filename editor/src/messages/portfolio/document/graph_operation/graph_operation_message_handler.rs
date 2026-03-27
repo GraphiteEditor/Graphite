@@ -188,9 +188,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				network_interface.move_layer_to_stack(blend_path_layer, parent, insert_index + 1, &[]);
 
-				// Connect the Path node's output to the Blend Shapes node's Path parameter input (input 1).
+				// Connect the Path node's output to the Blend Shapes node's Path parameter input (input 2).
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.
-				network_interface.set_input(&InputConnector::node(blend_shapes_node_id, 1), NodeInput::node(path_node_id, 0), &[]);
+				network_interface.set_input(&InputConnector::node(blend_shapes_node_id, 2), NodeInput::node(path_node_id, 0), &[]);
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,

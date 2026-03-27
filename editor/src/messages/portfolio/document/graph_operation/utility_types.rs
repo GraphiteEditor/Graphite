@@ -159,7 +159,8 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_blend_shapes_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
 		let blend_shapes = resolve_network_node_type("Blend Shapes").expect("Blend Shapes node does not exist").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::Vector(Default::default()), true)),
+			None,
+			None,
 			Some(NodeInput::value(TaggedValue::F64(count), false)),
 		]);
 
@@ -176,6 +177,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.node_template_input_override([
 				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 				Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+				None,
 				Some(NodeInput::value(TaggedValue::Vector(Default::default()), false)),
 			]);
 

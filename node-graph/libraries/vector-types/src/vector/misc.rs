@@ -554,3 +554,21 @@ pub enum SpiralType {
 	Archimedean,
 	Logarithmic,
 }
+
+/// Controls how the morph/blend progression spends its time along the interpolation path, allowing for constant speed/spacing with respect to different parameters of change.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum InterpolationDistribution {
+	/// All objects occupy an equal portion of the progression range, regardless of their changing distances, angles, sizes, or slants.
+	#[default]
+	Objects,
+	/// All distances along the interpolation path are covered at a constant rate, meaning more time is spent traversing further distances.
+	Distances,
+	/// All angles of rotation between objects are covered at a constant rate, meaning more time is spent turning through larger angles.
+	Angles,
+	/// All sizes of expansion/contraction between objects are covered at a constant rate, meaning more time is spent scaling through larger (logarithmic) changes in size.
+	Sizes,
+	/// All slants (changes in skew angle) between objects are covered at a constant rate, meaning more time is spent skewing through larger changes in slant.
+	Slants,
+}
