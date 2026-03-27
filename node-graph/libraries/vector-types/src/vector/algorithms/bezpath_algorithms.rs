@@ -6,7 +6,7 @@ use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
 use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
 use kurbo::common::{solve_cubic, solve_quadratic};
-use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
+use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 /// Splits the [`BezPath`] at segment index at `t` value which lie in the range of [0, 1].
@@ -342,34 +342,10 @@ pub(crate) fn pathseg_length_centroid_and_length(segment: PathSeg, accuracy: Opt
 	}
 }
 
-/// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
-/// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
+/// Finds the parametric `t` value on the given path segment corresponding to a fractional arc-length `distance` (0–1).
+/// Delegates to kurbo's `inv_arclen` which uses the ITP method with incremental arc-length computation.
 pub fn eval_pathseg_euclidean(segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
-	let mut low_t = 0.;
-	let mut mid_t = 0.5;
-	let mut high_t = 1.;
-
-	let total_length = segment.perimeter(accuracy);
-
-	if !total_length.is_finite() || total_length <= f64::EPSILON {
-		return 0.;
-	}
-
-	let distance = distance.clamp(0., 1.);
-
-	while high_t - low_t > accuracy {
-		let current_length = segment.subsegment(0.0..mid_t).perimeter(accuracy);
-		let current_distance = current_length / total_length;
-
-		if current_distance > distance {
-			high_t = mid_t;
-		} else {
-			low_t = mid_t;
-		}
-		mid_t = (high_t + low_t) / 2.;
-	}
-
-	mid_t
+	segment.inv_arclen(distance.clamp(0., 1.) * segment.arclen(accuracy), accuracy)
 }
 
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.
