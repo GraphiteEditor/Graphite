@@ -1,0 +1,23 @@
+node-graph/libraries/vector-types/src/vector/algorithms/bezpath_algorithms.rs
+  c1999ac0f19436f9 9,345-346,348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "3bac38b58d695d6ebfba2452b59a4d5bc622e13b",
+  "prompts": {
+    "c1999ac0f19436f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d3d369d-e15c-4b2c-8bec-5e268859f62b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 57,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
