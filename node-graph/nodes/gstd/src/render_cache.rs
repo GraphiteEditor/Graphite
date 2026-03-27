@@ -6,7 +6,7 @@ use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, E
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_application_io::{ApplicationIo, ImageTexture};
+use graphene_application_io::ApplicationIo;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -460,7 +460,7 @@ pub async fn render_output_cache<'a: 'n>(
 	let combined_metadata = composite_cached_regions(&all_regions, output_texture.as_ref(), &device_origin_offset, &footprint.transform, exec);
 
 	RenderOutput {
-		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
+		data: RenderOutputType::Texture(output_texture.into()),
 		metadata: combined_metadata,
 	}
 }
@@ -506,7 +506,7 @@ where
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
 
 	CachedRegion {
-		texture: rendered_texture.texture.as_ref().clone(),
+		texture: rendered_texture.as_ref().clone(),
 		texture_size: region_pixel_size,
 		tiles: region.tiles.clone(),
 		metadata: result.metadata,
@@ -558,7 +558,7 @@ fn composite_cached_regions(
 					aspect: wgpu::TextureAspect::All,
 				},
 				wgpu::TexelCopyTextureInfo {
-					texture: &output_texture,
+					texture: output_texture,
 					mip_level: 0,
 					origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
 					aspect: wgpu::TextureAspect::All,

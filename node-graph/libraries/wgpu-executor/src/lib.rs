@@ -7,13 +7,10 @@ use crate::resample::Resampler;
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
 use core_types::Color;
-use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
-use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
-use std::sync::Arc;
+use graphene_application_io::{ApplicationIo, EditorApi};
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
-use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, TextureAspect};
 
 pub use context::Context as WgpuContext;
@@ -40,15 +37,6 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 	fn from(editor_api: &'a EditorApi<T>) -> Self {
 		editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap()
 	}
-}
-
-pub type WgpuSurface = Arc<SurfaceHandle<Surface>>;
-pub type WgpuWindow = Arc<SurfaceHandle<WindowHandle>>;
-
-pub struct Surface {
-	pub inner: wgpu::Surface<'static>,
-	pub target_texture: Mutex<Option<TargetTexture>>,
-	pub blitter: TextureBlitter,
 }
 
 #[derive(Clone, Debug)]
@@ -103,15 +91,6 @@ impl TargetTexture {
 	}
 }
 
-#[cfg(target_family = "wasm")]
-pub type Window = web_sys::HtmlCanvasElement;
-#[cfg(not(target_family = "wasm"))]
-pub type Window = Arc<dyn winit::window::Window>;
-
-unsafe impl StaticType for Surface {
-	type Static = Surface;
-}
-
 const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 impl WgpuExecutor {
@@ -160,29 +139,6 @@ impl WgpuExecutor {
 	pub fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> wgpu::Texture {
 		self.resampler.resample(&self.context, source, target_size, transform)
 	}
-
-	#[cfg(target_family = "wasm")]
-	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
-		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
-		self.create_surface_inner(surface, canvas.window_id)
-	}
-	#[cfg(not(target_family = "wasm"))]
-	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
-		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
-		self.create_surface_inner(surface, window.window_id)
-	}
-
-	pub fn create_surface_inner(&self, surface: wgpu::Surface<'static>, window_id: SurfaceId) -> Result<SurfaceHandle<Surface>> {
-		let blitter = TextureBlitter::new(&self.context.device, VELLO_SURFACE_FORMAT);
-		Ok(SurfaceHandle {
-			window_id,
-			surface: Surface {
-				inner: surface,
-				target_texture: Mutex::new(None),
-				blitter,
-			},
-		})
-	}
 }
 
 impl WgpuExecutor {
@@ -213,5 +169,3 @@ impl WgpuExecutor {
 		})
 	}
 }
-
-pub type WindowHandle = Arc<SurfaceHandle<Window>>;

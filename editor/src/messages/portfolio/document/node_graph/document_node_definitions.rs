@@ -1010,8 +1010,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::create_surface::IDENTIFIER),
+								inputs: vec![],
+								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::create_canvas::IDENTIFIER),
 								skip_deduplication: true,
 								..Default::default()
 							},

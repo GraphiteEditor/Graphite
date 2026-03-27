@@ -2192,6 +2192,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-canvas-utils"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphene-application-io",
+ "log",
+ "serde",
+ "text-nodes",
+ "vector-types",
+ "web-sys",
+ "wgpu",
+ "wgpu-executor",
+]
+
+[[package]]
 name = "graphene-cli"
 version = "0.1.0"
 dependencies = [
@@ -2239,6 +2256,7 @@ dependencies = [
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-canvas-utils",
  "graphene-core",
  "graphic-nodes",
  "graphic-types",
@@ -6932,7 +6950,6 @@ dependencies = [
  "vello",
  "web-sys",
  "wgpu",
- "winit",
 ]
 
 [[package]]
