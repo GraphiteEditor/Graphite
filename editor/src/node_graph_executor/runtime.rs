@@ -19,6 +19,8 @@ use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
+#[cfg(target_family = "wasm")]
+use graphene_std::wasm_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -58,7 +60,7 @@ pub struct NodeRuntime {
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
-	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	current_viewport_texture: Option<ImageTexture>,
@@ -146,7 +148,7 @@ impl NodeRuntime {
 			vector_modify: Default::default(),
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
-			wasm_viewport_surface: None,
+			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			current_viewport_texture: None,
 		}
@@ -280,7 +282,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -304,7 +306,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -318,83 +320,20 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							self.current_viewport_texture = Some(image_texture.clone());
+
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
-							// Get or create the cached surface
-							if self.wasm_viewport_surface.is_none() {
-								let surface_handle = app_io.create_window();
-								let wasm_surface = executor
-									.create_surface(graphene_std::wasm_application_io::WasmSurfaceHandle {
-										surface: surface_handle.surface.clone(),
-										window_id: surface_handle.window_id,
-									})
-									.expect("Failed to create surface");
-								self.wasm_viewport_surface = Some(Arc::new(wasm_surface));
-							}
+							self.wasm_canvas_cache.present(&image_texture, executor);
 
-							let surface = self.wasm_viewport_surface.as_ref().unwrap();
-
-							// Use logical resolution for CSS sizing, physical resolution for the actual surface/texture
-							let physical_resolution = render_config.viewport.resolution;
-							let logical_resolution = physical_resolution.as_dvec2() / render_config.scale;
-
-							// Blit the texture to the surface
-							let mut encoder = executor.context.device.create_command_encoder(&vello::wgpu::CommandEncoderDescriptor {
-								label: Some("Texture to Surface Blit"),
-							});
-
-							// Configure the surface at physical resolution (for HiDPI displays)
-							let surface_inner = &surface.surface.inner;
-							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
-							surface_inner.configure(
-								&executor.context.device,
-								&vello::wgpu::SurfaceConfiguration {
-									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
-									format: vello::wgpu::TextureFormat::Rgba8Unorm,
-									width: physical_resolution.x,
-									height: physical_resolution.y,
-									present_mode: surface_caps.present_modes[0],
-									alpha_mode: vello::wgpu::CompositeAlphaMode::PreMultiplied,
-									view_formats: vec![],
-									desired_maximum_frame_latency: 2,
-								},
-							);
-
-							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
-							self.current_viewport_texture = Some(image_texture.clone());
-
-							encoder.copy_texture_to_texture(
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: image_texture.texture.as_ref(),
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: &surface_texture.texture,
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								image_texture.texture.size(),
-							);
-
-							executor.context.queue.submit([encoder.finish()]);
-							surface_texture.present();
-
-							// TODO: Figure out if we can explicityl destroy the wgpu texture here to reduce the allocation pressure. We might also be able to use a texture allocation pool
-
-							let frame = graphene_std::application_io::SurfaceFrame {
-								surface_id: surface.window_id,
-								resolution: logical_resolution,
-								transform: glam::DAffine2::IDENTITY,
-							};
-
+							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
 							(
 								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::CanvasFrame(frame),
+									data: RenderOutputType::CanvasFrame {
+										canvas_id: self.wasm_canvas_cache.id(),
+										resolution: logical_resolution,
+									},
 									metadata,
 								})),
 								None,

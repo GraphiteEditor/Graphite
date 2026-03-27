@@ -10,7 +10,6 @@ use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphic_types::Artboard;
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -40,7 +39,6 @@ macro_rules! tagged_value {
 			None,
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
-			SurfaceFrame(SurfaceFrame),
 			#[serde(skip)]
 			EditorApi(Arc<WasmEditorApi>)
 		}
@@ -54,7 +52,6 @@ macro_rules! tagged_value {
 					Self::None => {}
 					$( Self::$identifier(x) => {x.hash(state)}),*
 					Self::RenderOutput(x) => x.hash(state),
-					Self::SurfaceFrame(x) => x.hash(state),
 					Self::EditorApi(x) => x.hash(state),
 				}
 			}
@@ -66,7 +63,6 @@ macro_rules! tagged_value {
 					Self::None => Box::new(()),
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
-					Self::SurfaceFrame(x) => Box::new(x),
 					Self::EditorApi(x) => Box::new(x),
 				}
 			}
@@ -76,7 +72,6 @@ macro_rules! tagged_value {
 					Self::None => Arc::new(()),
 					$( Self::$identifier(x) => Arc::new(x), )*
 					Self::RenderOutput(x) => Arc::new(x),
-					Self::SurfaceFrame(x) => Arc::new(x),
 					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
@@ -86,7 +81,6 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::SurfaceFrame(_) => concrete!(SurfaceFrame),
 					Self::EditorApi(_) => concrete!(&WasmEditorApi)
 				}
 			}
@@ -99,8 +93,6 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
-					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
-
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
@@ -113,8 +105,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
-					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(SurfaceFrame::clone(input.downcast_ref().unwrap()))),
-					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
+					_ => Err(format!("Cannot convert {:?} to TaggedValue", std::any::type_name_of_val(input))),
 				}
 			}
 			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`
@@ -148,7 +139,6 @@ macro_rules! tagged_value {
 					Self::None => "()".to_string(),
 					$( Self::$identifier(x) => format!("{:?}", x), )*
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
-					Self::SurfaceFrame(_) => "SurfaceFrame".to_string(),
 					Self::EditorApi(_) => "WasmEditorApi".to_string(),
 				}
 			}
@@ -482,11 +472,10 @@ pub struct RenderOutput {
 	pub metadata: RenderMetadata,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
-	CanvasFrame(SurfaceFrame),
 	#[serde(skip)]
-	Texture(ImageTexture),
+	Texture(graphene_application_io::ImageTexture),
 	#[serde(skip)]
 	Buffer {
 		data: Vec<u8>,
@@ -497,8 +486,35 @@ pub enum RenderOutputType {
 		svg: String,
 		image_data: Vec<(u64, Image<Color>)>,
 	},
+	#[cfg(target_family = "wasm")]
+	CanvasFrame {
+		canvas_id: u64,
+		resolution: DVec2,
+	},
 }
 
+impl Hash for RenderOutputType {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		match self {
+			Self::Texture(texture) => {
+				texture.hash(state);
+			}
+			Self::Buffer { data, width, height } => {
+				data.hash(state);
+				width.hash(state);
+				height.hash(state);
+			}
+			Self::Svg { svg, image_data } => {
+				svg.hash(state);
+				image_data.hash(state);
+			}
+			#[cfg(target_family = "wasm")]
+			Self::CanvasFrame { canvas_id, .. } => {
+				canvas_id.hash(state);
+			}
+		}
+	}
+}
 impl Hash for RenderOutput {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.data.hash(state)
