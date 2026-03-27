@@ -628,6 +628,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::BlendSelectedLayers => {
 				self.handle_group_selected_layers(GroupFolderType::BlendShapes, responses);
 			}
+			DocumentMessage::MorphSelectedLayers => {
+				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
+			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.handle_group_selected_layers(group_folder_type, responses);
 			}
@@ -1488,6 +1491,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
+				BlendSelectedLayers,
+				MorphSelectedLayers,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
@@ -2190,6 +2195,28 @@ impl DocumentMessageHandler {
 					blend_shape_id: folder_id,
 					blend_path_id,
 				});
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				return folder_id;
+			}
+			GroupFolderType::Morph => {
+				responses.add(GraphOperationMessage::NewMorphLayer { id: folder_id, parent, insert_index });
+
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
+
+				// Move selected layers into the group as children
+				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
+				for layer_to_group in all_layers_to_group.into_iter().rev() {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_to_group,
+						parent: new_group_folder,
+						insert_index: 0,
+					});
+				}
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);

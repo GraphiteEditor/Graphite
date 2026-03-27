@@ -85,6 +85,11 @@ pub enum GraphOperationMessage {
 		blend_shape_id: NodeId,
 		blend_path_id: NodeId,
 	},
+	NewMorphLayer {
+		id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
 	NewBooleanOperationLayer {
 		id: NodeId,
 		operation: graphene_std::vector::misc::BooleanOperation,

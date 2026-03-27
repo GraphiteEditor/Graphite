@@ -712,4 +712,5 @@ pub enum GroupFolderType {
 	Layer,
 	BooleanOperation(graphene_std::vector::misc::BooleanOperation),
 	BlendShapes,
+	Morph,
 }

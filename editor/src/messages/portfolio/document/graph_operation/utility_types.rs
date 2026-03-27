@@ -170,6 +170,22 @@ impl<'a> ModifyInputsContext<'a> {
 		blend_shapes_id
 	}
 
+	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
+		let morph = resolve_proto_node_type(graphene_std::vector::morph::IDENTIFIER)
+			.expect("Morph node does not exist")
+			.node_template_input_override([
+				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+				Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+				Some(NodeInput::value(TaggedValue::Vector(Default::default()), false)),
+			]);
+
+		let morph_id = NodeId::new();
+		self.network_interface.insert_node(morph_id, morph, &[]);
+		self.network_interface.move_node_to_chain_start(&morph_id, layer, &[], self.import);
+
+		morph_id
+	}
+
 	/// Returns the Path node ID (the node closest to the layer's merge node in the chain).
 	pub fn insert_blend_path_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		// Add Origins to Polyline node first (will be pushed deepest in the chain)

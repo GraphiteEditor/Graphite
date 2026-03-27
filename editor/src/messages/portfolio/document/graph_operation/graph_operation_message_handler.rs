@@ -232,6 +232,18 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// Shift the child stack (topmost child only, the rest follow) down 3 and left 10
 				network_interface.shift_node(&children_id, IVec2::new(-10, 3), &[]);
 			}
+			GraphOperationMessage::NewMorphLayer { id, parent, insert_index } => {
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+				let layer = modify_inputs.create_layer(id);
+				modify_inputs.insert_morph_data(layer);
+				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+
+				responses.add(NodeGraphMessage::SetDisplayNameImpl {
+					node_id: id,
+					alias: "Morph".to_string(),
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			GraphOperationMessage::NewBooleanOperationLayer { id, operation, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);

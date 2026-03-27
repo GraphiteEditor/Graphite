@@ -157,6 +157,7 @@ import IconsGrid from "/../branding/assets/icon-16px-solid/icons-grid.svg";
 import Image from "/../branding/assets/icon-16px-solid/image.svg";
 import Layer from "/../branding/assets/icon-16px-solid/layer.svg";
 import License from "/../branding/assets/icon-16px-solid/license.svg";
+import Morph from "/../branding/assets/icon-16px-solid/morph.svg";
 import NewLayer from "/../branding/assets/icon-16px-solid/new-layer.svg";
 import NodeBlur from "/../branding/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "/../branding/assets/icon-16px-solid/node-brushwork.svg";
@@ -275,6 +276,7 @@ const SOLID_16PX = {
 	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
+	Morph: { svg: Morph, size: 16 },
 	NewLayer: { svg: NewLayer, size: 16 },
 	Node: { svg: Node, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },

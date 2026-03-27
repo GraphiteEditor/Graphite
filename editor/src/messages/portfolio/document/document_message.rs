@@ -85,6 +85,7 @@ pub enum DocumentMessage {
 		visible: bool,
 	},
 	BlendSelectedLayers,
+	MorphSelectedLayers,
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
