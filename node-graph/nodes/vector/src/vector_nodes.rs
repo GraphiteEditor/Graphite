@@ -2044,46 +2044,102 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	/// An optional control path whose anchor points correspond to each object. Curved segments between points will shape the morph trajectory instead of traveling straight. If there is a break between path segments, the separate subpaths are selected by index from the integer part of the progression value. For example, [1, 2) morphs along the segments of the second subpath, and so on.
 	path: Table<Vector>,
 ) -> Table<Vector> {
-	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
-	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
-		let bezpath_segment_count = bezpath.segments().count();
+	/// Promotes a segment's handle pair to cubic-equivalent Bézier control points.
+	/// For linear segments (both None), handles are placed at 1/3 and 2/3 between anchors.
+	/// For quadratic segments (one handle), degree elevation is applied.
+	fn promote_handles_to_cubic(prev_anchor: DVec2, out_handle: Option<DVec2>, in_handle: Option<DVec2>, curr_anchor: DVec2) -> (DVec2, DVec2) {
+		match (out_handle, in_handle) {
+			(Some(handle_start), Some(handle_end)) => (handle_start, handle_end),
+			(None, None) => {
+				let third = (curr_anchor - prev_anchor) / 3.;
+				(prev_anchor + third, curr_anchor - third)
+			}
+			(Some(handle), None) | (None, Some(handle)) => {
+				let handle_start = prev_anchor + (handle - prev_anchor) * (2. / 3.);
+				let handle_end = curr_anchor + (handle - curr_anchor) * (2. / 3.);
+				(handle_start, handle_end)
+			}
+		}
+	}
 
-		if count == 0 || bezpath_segment_count == 0 {
+	/// Subdivides the last segment of a manipulator group list at its midpoint, adding one new manipulator.
+	/// For closed paths, the "last segment" is the closing segment from the last back to the first manipulator.
+	fn subdivide_last_manipulator_segment(manips: &mut Vec<ManipulatorGroup<PointId>>, closed: bool) {
+		let len = manips.len();
+		if len < 2 {
 			return;
 		}
 
-		// Initially push the last segment of the bezpath
-		let mut new_segments = vec![bezpath.get_seg(bezpath_segment_count).unwrap()];
+		let (prev_idx, next_idx) = if closed { (len - 1, 0) } else { (len - 2, len - 1) };
 
-		// Generate new segments by subdividing last segment
-		for _ in 0..count {
-			let last = new_segments.pop().unwrap();
-			let (first, second) = last.subdivide();
-			new_segments.push(first);
-			new_segments.push(second);
+		let prev_anchor = manips[prev_idx].anchor;
+		let next_anchor = manips[next_idx].anchor;
+		let (h1, h2) = promote_handles_to_cubic(prev_anchor, manips[prev_idx].out_handle, manips[next_idx].in_handle, next_anchor);
+
+		// De Casteljau subdivision at t=0.5
+		let m01 = prev_anchor.lerp(h1, 0.5);
+		let m12 = h1.lerp(h2, 0.5);
+		let m23 = h2.lerp(next_anchor, 0.5);
+		let m012 = m01.lerp(m12, 0.5);
+		let m123 = m12.lerp(m23, 0.5);
+		let mid = m012.lerp(m123, 0.5);
+
+		manips[prev_idx].out_handle = Some(m01);
+		manips[next_idx].in_handle = Some(m23);
+
+		let mid_manip = ManipulatorGroup {
+			anchor: mid,
+			in_handle: Some(m012),
+			out_handle: Some(m123),
+			id: PointId::ZERO,
+		};
+
+		if closed {
+			manips.push(mid_manip);
+		} else {
+			manips.insert(next_idx, mid_manip);
+		}
+	}
+
+	/// Constructs BezierHandles from the out_handle of one manipulator and in_handle of the next.
+	fn handles_from_manips(out_handle: Option<DVec2>, in_handle: Option<DVec2>) -> BezierHandles {
+		match (out_handle, in_handle) {
+			(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
+			(None, None) => BezierHandles::Linear,
+			(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle },
+		}
+	}
+
+	/// Pushes a subpath (list of manipulators) directly into a Vector's point, segment, and region domains,
+	/// bypassing the BezPath intermediate representation used by `append_bezpath`.
+	fn push_manipulators_to_vector(vector: &mut Vector, manips: &[ManipulatorGroup<PointId>], closed: bool, point_id: &mut PointId, segment_id: &mut SegmentId) {
+		let Some(first) = manips.first() else { return };
+
+		let first_point_index = vector.point_domain.ids().len();
+		vector.point_domain.push(point_id.next_id(), first.anchor);
+		let mut prev_point_index = first_point_index;
+		let mut first_segment_id = None;
+
+		for manip_window in manips.windows(2) {
+			let point_index = vector.point_domain.ids().len();
+			vector.point_domain.push(point_id.next_id(), manip_window[1].anchor);
+
+			let handles = handles_from_manips(manip_window[0].out_handle, manip_window[1].in_handle);
+			let seg_id = segment_id.next_id();
+			first_segment_id.get_or_insert(seg_id);
+			vector.segment_domain.push(seg_id, prev_point_index, point_index, handles, StrokeId::ZERO);
+
+			prev_point_index = point_index;
 		}
 
-		// Append the new segments.
-		if count != 0 {
-			// Remove the last segment as it is already appended to the new_segments.
-			let mut is_closed = false;
-			if let Some(last_element) = bezpath.pop()
-				&& last_element == PathEl::ClosePath
-			{
-				is_closed = true;
-				_ = bezpath.pop();
-			}
+		if closed && manips.len() > 1 {
+			let handles = handles_from_manips(manips.last().unwrap().out_handle, manips[0].in_handle);
+			let closing_seg_id = segment_id.next_id();
+			first_segment_id.get_or_insert(closing_seg_id);
+			vector.segment_domain.push(closing_seg_id, prev_point_index, first_point_index, handles, StrokeId::ZERO);
 
-			for segment in new_segments {
-				if bezpath.elements().is_empty() {
-					bezpath.move_to(segment.start())
-				}
-				bezpath.push(segment.as_path_el());
-			}
-
-			if is_closed {
-				bezpath.close_path();
-			}
+			let region_id = vector.region_domain.next_id();
+			vector.region_domain.push(region_id, first_segment_id.unwrap()..=closing_seg_id, FillId::ZERO);
 		}
 	}
 
@@ -2272,95 +2328,95 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	};
 	vector.style = source_row.element.style.lerp(&target_row.element.style, time);
 
-	// Cache bezpath reconstructions — stroke_bezpath_iter() rebuilds from internal representation each call
-	let mut source_bezpaths: Vec<BezPath> = source_row.element.stroke_bezpath_iter().collect();
-	let mut target_bezpaths: Vec<BezPath> = target_row.element.stroke_bezpath_iter().collect();
+	// Work directly with manipulator groups, bypassing the BezPath intermediate representation.
+	// This avoids the full Vector → BezPath → interpolate → BezPath → Vector roundtrip each frame.
+	let mut source_subpaths: Vec<_> = source_row.element.stroke_manipulator_groups().collect();
+	let mut target_subpaths: Vec<_> = target_row.element.stroke_manipulator_groups().collect();
 
 	// Interpolate geometry in local space (no transform baked in) — the lerped transform handles positioning
-	let matched_count = source_bezpaths.len().min(target_bezpaths.len());
-	let extra_source = source_bezpaths.split_off(matched_count);
-	let extra_target = target_bezpaths.split_off(matched_count);
+	let matched_count = source_subpaths.len().min(target_subpaths.len());
+	let extra_source = source_subpaths.split_off(matched_count);
+	let extra_target = target_subpaths.split_off(matched_count);
 
-	for (mut source_bezpath, mut target_bezpath) in source_bezpaths.into_iter().zip(target_bezpaths) {
-		if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
+	let mut point_id = PointId::ZERO;
+	let mut segment_id = SegmentId::ZERO;
+
+	for ((mut source_manips, source_closed), (mut target_manips, target_closed)) in source_subpaths.into_iter().zip(target_subpaths) {
+		if source_manips.is_empty() || target_manips.is_empty() {
 			continue;
 		}
 
-		let target_segment_len = target_bezpath.segments().count();
-		let source_segment_len = source_bezpath.segments().count();
-
-		// Insert new segments to align the number of segments in source_bezpath and target_bezpath.
-		make_new_segments(&mut source_bezpath, target_segment_len.max(source_segment_len) - source_segment_len);
-		make_new_segments(&mut target_bezpath, source_segment_len.max(target_segment_len) - target_segment_len);
-
-		let source_segments = source_bezpath.segments().collect::<Vec<PathSeg>>();
-		let target_segments = target_bezpath.segments().collect::<Vec<PathSeg>>();
-
-		// Interpolate anchors and handles
-		for (i, (source_element, target_element)) in source_bezpath.elements_mut().iter_mut().zip(target_bezpath.elements_mut().iter_mut()).enumerate() {
-			match source_element {
-				PathEl::MoveTo(point) => *point = point.lerp(target_element.end_point().unwrap(), time),
-				PathEl::ClosePath => {}
-				elm => {
-					let mut source_segment = source_segments.get(i - 1).unwrap().to_cubic();
-					let target_segment = target_segments.get(i - 1).unwrap().to_cubic();
-					source_segment.p0 = source_segment.p0.lerp(target_segment.p0, time);
-					source_segment.p1 = source_segment.p1.lerp(target_segment.p1, time);
-					source_segment.p2 = source_segment.p2.lerp(target_segment.p2, time);
-					source_segment.p3 = source_segment.p3.lerp(target_segment.p3, time);
-					*elm = PathSeg::Cubic(source_segment).as_path_el();
-				}
-			}
+		// Align manipulator counts by subdividing the last segment of the shorter subpath
+		let source_count = source_manips.len();
+		let target_count = target_manips.len();
+		for _ in 0..target_count.saturating_sub(source_count) {
+			subdivide_last_manipulator_segment(&mut source_manips, source_closed);
+		}
+		for _ in 0..source_count.saturating_sub(target_count) {
+			subdivide_last_manipulator_segment(&mut target_manips, target_closed);
 		}
 
-		vector.append_bezpath(source_bezpath);
+		// Build interpolated manipulator groups
+		let mut interpolated: Vec<ManipulatorGroup<PointId>> = source_manips
+			.iter()
+			.zip(target_manips.iter())
+			.map(|(s, t)| ManipulatorGroup {
+				anchor: s.anchor.lerp(t.anchor, time),
+				in_handle: None,
+				out_handle: None,
+				id: PointId::ZERO,
+			})
+			.collect();
+
+		// Interpolate handles for each segment by promoting to cubic and lerping
+		let segment_count = if source_closed { source_manips.len() } else { source_manips.len().saturating_sub(1) };
+		for segment_index in 0..segment_count {
+			let next_index = (segment_index + 1) % source_manips.len();
+
+			let (s_h1, s_h2) = promote_handles_to_cubic(
+				source_manips[segment_index].anchor,
+				source_manips[segment_index].out_handle,
+				source_manips[next_index].in_handle,
+				source_manips[next_index].anchor,
+			);
+			let (t_h1, t_h2) = promote_handles_to_cubic(
+				target_manips[segment_index].anchor,
+				target_manips[segment_index].out_handle,
+				target_manips[next_index].in_handle,
+				target_manips[next_index].anchor,
+			);
+
+			interpolated[segment_index].out_handle = Some(s_h1.lerp(t_h1, time));
+			interpolated[next_index].in_handle = Some(s_h2.lerp(t_h2, time));
+		}
+
+		push_manipulators_to_vector(&mut vector, &interpolated, source_closed, &mut point_id, &mut segment_id);
 	}
 
-	// Deal with unmatched extra paths by collapsing them
-	for mut source_path in extra_source {
-		// Skip if the path has no segments else get the point at the end of the path.
-		let Some(end) = source_path.segments().last().map(|element| element.end()) else { continue };
+	// Deal with unmatched extra source subpaths by collapsing them toward their end point
+	for (mut manips, closed) in extra_source {
+		let Some(end) = manips.last().map(|m| m.anchor) else { continue };
 
-		for element in source_path.elements_mut() {
-			match element {
-				PathEl::MoveTo(point) => *point = point.lerp(end, time),
-				PathEl::LineTo(point) => *point = point.lerp(end, time),
-				PathEl::QuadTo(point, point1) => {
-					*point = point.lerp(end, time);
-					*point1 = point1.lerp(end, time);
-				}
-				PathEl::CurveTo(point, point1, point2) => {
-					*point = point.lerp(end, time);
-					*point1 = point1.lerp(end, time);
-					*point2 = point2.lerp(end, time);
-				}
-				PathEl::ClosePath => {}
-			}
+		for manip in &mut manips {
+			manip.anchor = manip.anchor.lerp(end, time);
+			manip.in_handle = manip.in_handle.map(|h| h.lerp(end, time));
+			manip.out_handle = manip.out_handle.map(|h| h.lerp(end, time));
 		}
-		vector.append_bezpath(source_path);
+
+		push_manipulators_to_vector(&mut vector, &manips, closed, &mut point_id, &mut segment_id);
 	}
 
-	for mut target_path in extra_target {
-		// Skip if the path has no segments else get the point at the start of the path.
-		let Some(start) = target_path.segments().next().map(|element| element.start()) else { continue };
+	// Deal with unmatched extra target subpaths by expanding them from their start point
+	for (mut manips, closed) in extra_target {
+		let Some(start) = manips.first().map(|m| m.anchor) else { continue };
 
-		for element in target_path.elements_mut() {
-			match element {
-				PathEl::MoveTo(point) => *point = start.lerp(*point, time),
-				PathEl::LineTo(point) => *point = start.lerp(*point, time),
-				PathEl::QuadTo(point, point1) => {
-					*point = start.lerp(*point, time);
-					*point1 = start.lerp(*point1, time);
-				}
-				PathEl::CurveTo(point, point1, point2) => {
-					*point = start.lerp(*point, time);
-					*point1 = start.lerp(*point1, time);
-					*point2 = start.lerp(*point2, time);
-				}
-				PathEl::ClosePath => {}
-			}
+		for manip in &mut manips {
+			manip.anchor = start.lerp(manip.anchor, time);
+			manip.in_handle = manip.in_handle.map(|h| start.lerp(h, time));
+			manip.out_handle = manip.out_handle.map(|h| start.lerp(h, time));
 		}
-		vector.append_bezpath(target_path);
+
+		push_manipulators_to_vector(&mut vector, &manips, closed, &mut point_id, &mut segment_id);
 	}
 
 	Table::new_from_row(TableRow {
