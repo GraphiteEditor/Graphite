@@ -2208,22 +2208,22 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	};
 
 	// Clamp to valid content range
-	let source_index = source_index.min(content.len() - 1);
-	let target_index = target_index.min(content.len() - 1);
-
-	// Collect content into a Vec for index-based access (needed for closed subpath wrapping)
-	let content_rows: Vec<_> = content.into_iter().collect();
+	let Some(max_index) = content.len().checked_sub(1) else { return content };
+	let source_index = source_index.min(max_index);
+	let target_index = target_index.min(max_index);
 
 	// At the end of an open subpath with no more interpolation needed, return the final element
 	if !is_closed && time >= 1. && local_source_index >= subpath_anchors - 2 {
-		return std::iter::once(content_rows.into_iter().nth(target_index).unwrap()).collect();
+		return content.into_iter().nth(target_index).into_iter().collect();
 	}
 
-	let source_row = &content_rows[source_index];
-	let target_row = &content_rows[target_index];
+	// Use indexed access to borrow only the two rows we need, avoiding collecting the entire table
+	let (Some(source_row), Some(target_row)) = (content.get(source_index), content.get(target_index)) else {
+		return content;
+	};
 
 	// Lerp styles
-	let vector_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
+	let vector_alpha_blending = source_row.alpha_blending.lerp(target_row.alpha_blending, time as f32);
 
 	// Evaluate the spatial position on the control path for the translation component
 	let path_position = {
@@ -2272,11 +2272,16 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	};
 	vector.style = source_row.element.style.lerp(&target_row.element.style, time);
 
-	// Interpolate geometry in local space (no transform baked in) — the lerped transform handles positioning
-	let source_bezpaths = source_row.element.stroke_bezpath_iter();
-	let target_bezpaths = target_row.element.stroke_bezpath_iter();
+	// Cache bezpath reconstructions — stroke_bezpath_iter() rebuilds from internal representation each call
+	let mut source_bezpaths: Vec<BezPath> = source_row.element.stroke_bezpath_iter().collect();
+	let mut target_bezpaths: Vec<BezPath> = target_row.element.stroke_bezpath_iter().collect();
 
-	for (mut source_bezpath, mut target_bezpath) in source_bezpaths.zip(target_bezpaths) {
+	// Interpolate geometry in local space (no transform baked in) — the lerped transform handles positioning
+	let matched_count = source_bezpaths.len().min(target_bezpaths.len());
+	let extra_source = source_bezpaths.split_off(matched_count);
+	let extra_target = target_bezpaths.split_off(matched_count);
+
+	for (mut source_bezpath, mut target_bezpath) in source_bezpaths.into_iter().zip(target_bezpaths) {
 		if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
 			continue;
 		}
@@ -2308,16 +2313,11 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 			}
 		}
 
-		vector.append_bezpath(source_bezpath.clone());
+		vector.append_bezpath(source_bezpath);
 	}
 
 	// Deal with unmatched extra paths by collapsing them
-	let source_paths_count = source_row.element.stroke_bezpath_iter().count();
-	let target_paths_count = target_row.element.stroke_bezpath_iter().count();
-	let source_paths = source_row.element.stroke_bezpath_iter().skip(target_paths_count);
-	let target_paths = target_row.element.stroke_bezpath_iter().skip(source_paths_count);
-
-	for mut source_path in source_paths {
+	for mut source_path in extra_source {
 		// Skip if the path has no segments else get the point at the end of the path.
 		let Some(end) = source_path.segments().last().map(|element| element.end()) else { continue };
 
@@ -2340,7 +2340,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		vector.append_bezpath(source_path);
 	}
 
-	for mut target_path in target_paths {
+	for mut target_path in extra_target {
 		// Skip if the path has no segments else get the point at the start of the path.
 		let Some(start) = target_path.segments().next().map(|element| element.start()) else { continue };
 
