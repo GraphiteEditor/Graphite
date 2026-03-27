@@ -254,3 +254,169 @@ fn calculate_isometric_x_position(y_spacing: f64, rad_a: f64, rad_b: f64) -> f64
 	let spacing_x = y_spacing / (rad_a.tan() + rad_b.tan());
 	spacing_x * 9.
 }
+#[cfg(test)]
+mod tests {
+	use super::calculate_grid_params;
+	use glam::DVec2;
+
+	// ── (false, false) rectangular ──────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_basic_rectangle() {
+		// Simple downward-right drag: translation = start, dimensions = raw/9, no angle
+		let (translation, dimensions, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 90.), false, false, false);
+		assert_eq!(translation, DVec2::ZERO);
+		assert_eq!(dimensions, DVec2::splat(10.)); // 90/9 = 10
+		assert!(angle.is_none());
+	}
+
+	#[test]
+	fn grid_params_negative_drag_adjusts_translation() {
+		// Drag up-left from (100,100) to (10,10): both x and y branches in (false,false) rect
+		let (translation, dimensions, angle) = calculate_grid_params(DVec2::splat(100.), DVec2::splat(10.), false, false, false);
+		assert!((translation.x - 10.).abs() < 1e-10, "Expected translation.x=10, got {}", translation.x);
+		assert!((translation.y - 10.).abs() < 1e-10, "Expected translation.y=10, got {}", translation.y);
+		assert_eq!(dimensions, DVec2::splat(10.)); // (90,90)/9
+		assert!(angle.is_none());
+	}
+
+	// ── (false, false) isometric ────────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_isometric_produces_angle() {
+		// Isometric grid (no lock_ratio): angle is dynamically computed from drag
+		let (_, _, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 90.), true, false, false);
+		assert!(angle.is_some(), "Isometric grid should return an angle");
+	}
+
+	#[test]
+	fn grid_params_isometric_free_form_upward_drag() {
+		// (false, false) isometric with end.y < start.y: upward-drag translation branch
+		let start = DVec2::new(0., 100.);
+		let end = DVec2::new(90., 10.);
+		let (translation, dimensions, angle) = calculate_grid_params(start, end, true, false, false);
+		assert!(angle.is_some());
+		// translation.y = start.y - (start.y - end.y) = 10
+		assert!((translation.y - 10.).abs() < 1e-10, "Expected translation.y=10, got {}", translation.y);
+		assert_eq!(dimensions, DVec2::splat(10.)); // |100-10|/9 = 90/9 = 10
+	}
+
+	// ── (false, true) rectangular ───────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_lock_ratio_forces_square_spacing() {
+		// Non-square drag (90x45) with lock_ratio: uses larger dim (90), dimensions = 90/9 = 10
+		let (_, dimensions, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 45.), false, false, true);
+		assert_eq!(dimensions, DVec2::splat(10.));
+		assert!(angle.is_none());
+	}
+
+	#[test]
+	fn grid_params_lock_ratio_upward_drag() {
+		// (false, true) rect with end.y < start.y: translation shifts down by max
+		let start = DVec2::new(0., 90.);
+		let end = DVec2::new(90., 0.);
+		let (translation, dimensions, angle) = calculate_grid_params(start, end, false, false, true);
+		// raw = (90,90), max = 90; translation.y = 90 - 90 = 0
+		assert!((translation.y - 0.).abs() < 1e-10, "Expected translation.y=0, got {}", translation.y);
+		assert_eq!(dimensions, DVec2::splat(10.));
+		assert!(angle.is_none());
+	}
+
+	#[test]
+	fn grid_params_lock_ratio_leftward_drag() {
+		// (false, true) rect with end.x < start.x: translation shifts right by max
+		let start = DVec2::new(90., 0.);
+		let end = DVec2::new(0., 90.);
+		let (translation, dimensions, angle) = calculate_grid_params(start, end, false, false, true);
+		// raw = (90,90), max = 90; translation.x = 90 - 90 = 0
+		assert!((translation.x - 0.).abs() < 1e-10, "Expected translation.x=0, got {}", translation.x);
+		assert_eq!(dimensions, DVec2::splat(10.));
+		assert!(angle.is_none());
+	}
+
+	// ── (false, true) isometric ─────────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_isometric_lock_ratio_fixes_angle_at_30() {
+		// Isometric + lock_ratio (positive drag): angle fixed at 30°
+		let (_, _, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 90.), true, false, true);
+		assert_eq!(angle, Some(30.), "Isometric lock_ratio should fix angle at 30°");
+	}
+
+	#[test]
+	fn grid_params_isometric_lock_ratio_negative_drag() {
+		// (false, true) isometric with end.x < start.x and end.y < start.y: both translation branches
+		let start = DVec2::new(90., 90.);
+		let end = DVec2::new(0., 0.);
+		let (translation, dimensions, angle) = calculate_grid_params(start, end, true, false, true);
+		assert_eq!(angle, Some(30.));
+		assert_eq!(dimensions, DVec2::splat(10.)); // raw_y=90, 90/9=10
+		// translation = start − (0,max) − (max,0) = (90,90) − (0,90) − (90,0) = (0,0)
+		assert!((translation.x - 0.).abs() < 1e-10, "Expected translation.x=0, got {}", translation.x);
+		assert!((translation.y - 0.).abs() < 1e-10, "Expected translation.y=0, got {}", translation.y);
+	}
+
+	// ── (true, false) rectangular ───────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_center_doubles_dimensions_and_shifts_translation() {
+		// Center draw rect: dimensions = 2×raw/9, translation = start − raw
+		let (translation, dimensions, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 90.), false, true, false);
+		assert_eq!(translation, DVec2::splat(-90.));
+		assert_eq!(dimensions, DVec2::splat(20.)); // 2 × 90/9 = 20
+		assert!(angle.is_none());
+	}
+
+	// ── (true, false) isometric ─────────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_center_only_isometric_produces_angle() {
+		// (true, false) isometric: angle dynamically derived from drag direction
+		let (_, dimensions, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 90.), true, true, false);
+		assert!(angle.is_some(), "Center-only isometric should produce an angle");
+		assert_eq!(dimensions, DVec2::splat(10.)); // raw_y=90/9=10
+	}
+
+	#[test]
+	fn grid_params_center_only_isometric_upward_drag() {
+		// (true, false) isometric with end.y < start.y: upward-drag inner branch
+		let start = DVec2::new(0., 90.);
+		let end = DVec2::new(90., 0.);
+		let (translation, _, angle) = calculate_grid_params(start, end, true, true, false);
+		// mouse_delta = (90, -90); translation = start − delta/2 = (0,90) − (45,−45) = (−45,135)
+		// end.y < start.y → translation.y −= start.y − end.y = 90 → 135 − 90 = 45
+		assert!(angle.is_some());
+		assert!((translation.y - 45.).abs() < 1e-10, "Expected translation.y=45, got {}", translation.y);
+	}
+
+	// ── (true, true) rectangular ────────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_center_and_lock_ratio_rect() {
+		// (true, true) rect: uses max dimension, translation = start − max, dimensions = 2×max/9
+		let (translation, dimensions, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 45.), false, true, true);
+		// max = 90; translation = (0,0) − 90 = (−90,−90); dimensions = 2×90/9 = 20
+		assert_eq!(translation, DVec2::splat(-90.));
+		assert_eq!(dimensions, DVec2::splat(20.));
+		assert!(angle.is_none());
+	}
+
+	// ── (true, true) isometric ──────────────────────────────────────────────────
+
+	#[test]
+	fn grid_params_center_and_lock_ratio_isometric() {
+		// (true, true) isometric (downward drag): angle fixed at 30°, also exercises calculate_isometric_x_position
+		let (_, _, angle) = calculate_grid_params(DVec2::ZERO, DVec2::new(90., 90.), true, true, true);
+		assert_eq!(angle, Some(30.), "Center+lock isometric should fix angle at 30°");
+	}
+
+	#[test]
+	fn grid_params_center_and_lock_ratio_isometric_upward_drag() {
+		// (true, true) isometric with end.y < start.y: inner upward-drag branch
+		let start = DVec2::new(0., 90.);
+		let end = DVec2::new(90., 0.);
+		let (_, _, angle) = calculate_grid_params(start, end, true, true, true);
+		assert_eq!(angle, Some(30.));
+	}
+}
