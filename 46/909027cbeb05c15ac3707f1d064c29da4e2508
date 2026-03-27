@@ -1,0 +1,64 @@
+node-graph/nodes/vector/src/vector_nodes.rs
+  2216689b1fec737f 2191-2192,2195-2197,2199
+  c1999ac0f19436f9 2127-2128
+  5287a152270d8470 2132,2135-2138,2190,2193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "46909027cbeb05c15ac3707f1d064c29da4e2508",
+  "prompts": {
+    "2216689b1fec737f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7744ec47-e26c-43d2-b7e6-e6a99f49dc44",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 22,
+      "total_deletions": 25,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "5287a152270d8470": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99b5c924-939a-4dad-963c-e8781bf1d74d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 18,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    },
+    "5b511dffe4224bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "77ed3825-ae94-44f3-b69c-9f7fa9b7c46d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "c1999ac0f19436f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d3d369d-e15c-4b2c-8bec-5e268859f62b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
