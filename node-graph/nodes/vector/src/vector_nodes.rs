@@ -2045,15 +2045,13 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	path: Table<Vector>,
 ) -> Table<Vector> {
 	/// Promotes a segment's handle pair to cubic-equivalent Bézier control points.
-	/// For linear segments (both None), handles are placed at 1/3 and 2/3 between anchors.
+	/// For linear segments (both None), handles are placed at their respective anchors (zero-length)
+	/// so that interpolation against another zero-length cubic doesn't introduce unwanted curvature.
 	/// For quadratic segments (one handle), degree elevation is applied.
 	fn promote_handles_to_cubic(prev_anchor: DVec2, out_handle: Option<DVec2>, in_handle: Option<DVec2>, curr_anchor: DVec2) -> (DVec2, DVec2) {
 		match (out_handle, in_handle) {
 			(Some(handle_start), Some(handle_end)) => (handle_start, handle_end),
-			(None, None) => {
-				let third = (curr_anchor - prev_anchor) / 3.;
-				(prev_anchor + third, curr_anchor - third)
-			}
+			(None, None) => (prev_anchor, curr_anchor),
 			(Some(handle), None) | (None, Some(handle)) => {
 				let handle_start = prev_anchor + (handle - prev_anchor) * (2. / 3.);
 				let handle_end = curr_anchor + (handle - curr_anchor) * (2. / 3.);
@@ -2368,26 +2366,52 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 			})
 			.collect();
 
-		// Interpolate handles for each segment by promoting to cubic and lerping
+		// Interpolate handles per segment, preserving handle type when source and target match
 		let segment_count = if source_closed { source_manips.len() } else { source_manips.len().saturating_sub(1) };
 		for segment_index in 0..segment_count {
 			let next_index = (segment_index + 1) % source_manips.len();
 
-			let (s_h1, s_h2) = promote_handles_to_cubic(
-				source_manips[segment_index].anchor,
-				source_manips[segment_index].out_handle,
-				source_manips[next_index].in_handle,
-				source_manips[next_index].anchor,
-			);
-			let (t_h1, t_h2) = promote_handles_to_cubic(
-				target_manips[segment_index].anchor,
-				target_manips[segment_index].out_handle,
-				target_manips[next_index].in_handle,
-				target_manips[next_index].anchor,
-			);
+			let source_out = source_manips[segment_index].out_handle;
+			let source_in = source_manips[next_index].in_handle;
+			let target_out = target_manips[segment_index].out_handle;
+			let target_in = target_manips[next_index].in_handle;
 
-			interpolated[segment_index].out_handle = Some(s_h1.lerp(t_h1, time));
-			interpolated[next_index].in_handle = Some(s_h2.lerp(t_h2, time));
+			match (source_out, source_in, target_out, target_in) {
+				// Both linear — no handles needed
+				(None, None, None, None) => {}
+				// Both cubic — lerp handle pairs directly
+				(Some(s_out), Some(s_in), Some(t_out), Some(t_in)) => {
+					interpolated[segment_index].out_handle = Some(s_out.lerp(t_out, time));
+					interpolated[next_index].in_handle = Some(s_in.lerp(t_in, time));
+				}
+				// Both quadratic with handle in the same position — lerp the single handle
+				(Some(s_out), None, Some(t_out), None) => {
+					interpolated[segment_index].out_handle = Some(s_out.lerp(t_out, time));
+				}
+				(None, Some(s_in), None, Some(t_in)) => {
+					interpolated[next_index].in_handle = Some(s_in.lerp(t_in, time));
+				}
+				// Linear vs. quadratic — elevate the linear side to a zero-length quadratic in the matching position
+				(None, None, Some(t_out), None) => {
+					interpolated[segment_index].out_handle = Some(source_manips[segment_index].anchor.lerp(t_out, time));
+				}
+				(None, None, None, Some(t_in)) => {
+					interpolated[next_index].in_handle = Some(source_manips[next_index].anchor.lerp(t_in, time));
+				}
+				(Some(s_out), None, None, None) => {
+					interpolated[segment_index].out_handle = Some(s_out.lerp(target_manips[segment_index].anchor, time));
+				}
+				(None, Some(s_in), None, None) => {
+					interpolated[next_index].in_handle = Some(s_in.lerp(target_manips[next_index].anchor, time));
+				}
+				// Mismatched types — promote both to cubic and lerp
+				_ => {
+					let (s_h1, s_h2) = promote_handles_to_cubic(source_manips[segment_index].anchor, source_out, source_in, source_manips[next_index].anchor);
+					let (t_h1, t_h2) = promote_handles_to_cubic(target_manips[segment_index].anchor, target_out, target_in, target_manips[next_index].anchor);
+					interpolated[segment_index].out_handle = Some(s_h1.lerp(t_h1, time));
+					interpolated[next_index].in_handle = Some(s_h2.lerp(t_h2, time));
+				}
+			}
 		}
 
 		push_manipulators_to_vector(&mut vector, &interpolated, source_closed, &mut point_id, &mut segment_id);
