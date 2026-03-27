@@ -1973,3 +1973,54 @@ pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashS
 
 	filtered_selection
 }
+
+#[cfg(test)]
+mod test {
+	use crate::test_utils::test_prelude::*;
+
+	/// Tests creating a rectangle and selecting it.
+	/// Verifies selection behavior and dragging of the rectangle.
+	#[tokio::test]
+	async fn test_select_tool_on_single_shape() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(10., 10., 100., 100.).await;
+
+		editor.click_tool(ToolType::Select, MouseKeys::LEFT, DVec2::new(500., 500.), ModifierKeys::empty()).await;
+		assert!(editor.get_selected_layer().await.is_none(), "Deselecting should leave zero layers selected.");
+
+		editor.click_tool(ToolType::Select, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		assert!(editor.get_selected_layer().await.is_some(), "Selecting a shape with the select tool is not possible.");
+
+		editor.drag_tool(ToolType::Select, 50., 50., 200., 200., ModifierKeys::empty()).await;
+	}
+
+	/// Tests creating two rectangles, selecting them, and dragging the first.
+	/// Verifies that the original position is empty and both rectangles move correctly.
+	#[tokio::test]
+	async fn test_select_tool_on_multiple_shapes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(10., 10., 100., 100.).await;
+		editor.draw_rect(110., 110., 200., 200.).await;
+
+		editor.click_tool(ToolType::Select, MouseKeys::LEFT, DVec2::new(500., 500.), ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Select, 0., 0., 205., 205., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Select, 50., 50., 200., 200., ModifierKeys::empty()).await;
+
+		assert_selected_at(&mut editor, 50., 50., false).await;
+		assert_selected_at(&mut editor, 210., 210., true).await;
+		assert_selected_at(&mut editor, 300., 300., true).await;
+	}
+
+	async fn assert_selected_at(editor: &mut EditorTestUtils, x: f64, y: f64, should_exist: bool) {
+		// Clicks at a position and asserts whether a layer is selected there
+		editor.click_tool(ToolType::Select, MouseKeys::LEFT, DVec2::new(x, y), ModifierKeys::empty()).await;
+
+		assert_eq!(
+			editor.get_selected_layer().await.is_some(),
+			should_exist,
+			"Selecting and dragging multiple shapes with the select tool fails."
+		);
+	}
+}
