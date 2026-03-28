@@ -172,6 +172,8 @@ pub struct RenderParams {
 	pub hide_artboards: bool,
 	/// Are we exporting
 	pub for_export: bool,
+	/// Sampling pixels for the eyedropper (distinct from main viewport cache identity).
+	pub for_eyedropper: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
@@ -193,6 +195,7 @@ impl Hash for RenderParams {
 		self.thumbnail.hash(state);
 		self.hide_artboards.hash(state);
 		self.for_export.hash(state);
+		self.for_eyedropper.hash(state);
 		self.for_mask.hash(state);
 		if let Some(x) = self.alignment_parent_transform {
 			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
