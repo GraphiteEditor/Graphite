@@ -1,0 +1,25 @@
+editor/src/messages/portfolio/document/node_graph/document_node_definitions.rs
+  efaff98737416c1c 475,493,535,569-570,577,597-598,607-608
+editor/src/messages/portfolio/document/graph_operation/graph_operation_message_handler.rs
+  efaff98737416c1c 191,193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "cfb2b5e3d46060081ee251aa2fcb9367ae6d2a0c",
+  "prompts": {
+    "efaff98737416c1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2776e5ba-a9c1-467d-b388-e414d1bd596b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 14,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}
