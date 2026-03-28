@@ -472,7 +472,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// 0: Separate Subpaths (split path into individual subpaths)
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(vector::separate_subpaths::IDENTIFIER),
-								inputs: vec![NodeInput::import(generic!(T), 2)],
+								inputs: vec![NodeInput::import(generic!(T), 4)],
 								..Default::default()
 							},
 							// 1: Count Elements (number of subpaths)
@@ -490,7 +490,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// 3: Floor (integer count per subpath)
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-								inputs: vec![NodeInput::import(concrete!(f64), 3)],
+								inputs: vec![NodeInput::import(concrete!(f64), 1)],
 								..Default::default()
 							},
 							// 4: Multiply (total_instances = count × subpath_count)
@@ -532,7 +532,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// 10: Path Is Closed (check if current subpath is closed)
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(vector::path_is_closed::IDENTIFIER),
-								inputs: vec![NodeInput::import(generic!(T), 2), NodeInput::node(NodeId(8), 0)],
+								inputs: vec![NodeInput::import(generic!(T), 4), NodeInput::node(NodeId(8), 0)],
 								..Default::default()
 							},
 							// 11: Switch (closed → count, open → count - 1 as denominator)
@@ -566,15 +566,15 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::import(generic!(T), 0),
 									NodeInput::node(NodeId(14), 0),
 									NodeInput::value(TaggedValue::Bool(false), false),
-									NodeInput::import(concrete!(vector::misc::InterpolationDistribution), 1),
-									NodeInput::import(generic!(T), 2),
+									NodeInput::import(concrete!(vector::misc::InterpolationDistribution), 3),
+									NodeInput::import(generic!(T), 4),
 								],
 								..Default::default()
 							},
 							// 16: Repeat
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(15), 0), NodeInput::node(NodeId(4), 0), NodeInput::import(generic!(T), 4)],
+								inputs: vec![NodeInput::node(NodeId(15), 0), NodeInput::node(NodeId(4), 0), NodeInput::import(generic!(T), 2)],
 								..Default::default()
 							},
 							// 17: Max (clamp count to at least 1)
@@ -592,20 +592,20 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Vector(Default::default()), true),
-						NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-						NodeInput::value(TaggedValue::Vector(Default::default()), false),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::Bool(Default::default()), false),
+						NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
+						NodeInput::value(TaggedValue::Vector(Default::default()), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![
 						("Content", "TODO").into(),
-						("Distribution", "TODO").into(),
-						("Path", "TODO").into(),
 						("Count", "TODO").into(),
 						("Reverse", "TODO").into(),
+						("Distribution", "TODO").into(),
+						("Path", "TODO").into(),
 					],
 					output_names: vec!["Out".to_string()],
 					node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
