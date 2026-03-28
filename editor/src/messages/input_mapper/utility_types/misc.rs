@@ -139,7 +139,8 @@ impl FrameTimeInfo {
 	}
 
 	pub fn advance_timestamp(&mut self, next_timestamp: Duration) {
-		debug_assert!(next_timestamp >= self.timestamp);
+		// Guard against non-monotonic timestamps from the browser (Keavon observed this once in Chrome)
+		let next_timestamp = next_timestamp.max(self.timestamp);
 
 		self.prev_timestamp = Some(self.timestamp);
 		self.timestamp = next_timestamp;
