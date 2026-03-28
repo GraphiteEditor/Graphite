@@ -1,0 +1,29 @@
+editor/src/messages/portfolio/document/graph_operation/graph_operation_message.rs
+  efaff98737416c1c 79,84,86
+editor/src/messages/portfolio/document/graph_operation/utility_types.rs
+  efaff98737416c1c 191
+editor/src/messages/portfolio/document/graph_operation/graph_operation_message_handler.rs
+  efaff98737416c1c 177,192-194,197,208,212,214,228,230,239
+editor/src/messages/portfolio/document/document_message_handler.rs
+  efaff98737416c1c 1973,1979,1996-1997,1999
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "21338c250c3822c32f46836d7dd7d2e71ffe4ca3",
+  "prompts": {
+    "efaff98737416c1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2776e5ba-a9c1-467d-b388-e414d1bd596b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 102,
+      "total_deletions": 139,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    }
+  }
+}
