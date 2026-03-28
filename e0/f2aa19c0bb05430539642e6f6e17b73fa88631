@@ -1,0 +1,23 @@
+node-graph/graph-craft/src/document/value.rs
+  efaff98737416c1c 130-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "e0f2aa19c0bb05430539642e6f6e17b73fa88631",
+  "prompts": {
+    "efaff98737416c1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2776e5ba-a9c1-467d-b388-e414d1bd596b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Keavon Chambers <keavon@keavon.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
