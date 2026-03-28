@@ -147,6 +147,7 @@ impl NodeGraphExecutor {
 			resolution: viewport_resolution,
 			..Default::default()
 		};
+		let document_network_hash = document.network_interface.network_hash();
 		let render_config = RenderConfig {
 			viewport,
 			scale: viewport_scale,
@@ -157,6 +158,7 @@ impl NodeGraphExecutor {
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: false,
+			document_network_hash,
 		};
 
 		// Execute the node graph
@@ -212,6 +214,7 @@ impl NodeGraphExecutor {
 		#[cfg(target_family = "wasm")]
 		let render_mode = document.render_mode;
 
+		let document_network_hash = document.network_interface.network_hash();
 		let render_config = RenderConfig {
 			viewport,
 			scale: viewport_scale,
@@ -222,6 +225,7 @@ impl NodeGraphExecutor {
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
+			document_network_hash,
 		};
 
 		// Execute the node graph
@@ -260,6 +264,7 @@ impl NodeGraphExecutor {
 			..Default::default()
 		};
 
+		let document_network_hash = document.network_interface.network_hash();
 		let render_config = RenderConfig {
 			viewport,
 			scale: export_config.scale_factor,
@@ -270,6 +275,7 @@ impl NodeGraphExecutor {
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
 			for_eyedropper: false,
+			document_network_hash,
 		};
 		export_config.size = resolution;
 

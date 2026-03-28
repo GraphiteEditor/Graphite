@@ -50,6 +50,7 @@ pub struct CacheKey {
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
 	pub pointer: [u8; 16],
+	pub document_network_hash: u64,
 }
 
 impl CacheKey {
@@ -69,6 +70,7 @@ impl CacheKey {
 		animation_time: f64,
 		real_time: f64,
 		pointer: Option<DVec2>,
+		document_network_hash: u64,
 	) -> Self {
 		let pointer_bytes = pointer
 			.map(|p| {
@@ -96,6 +98,7 @@ impl CacheKey {
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
 			pointer: pointer_bytes,
+			document_network_hash,
 		}
 	}
 }
@@ -420,6 +423,7 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
 		ctx.try_pointer_position(),
+		render_params.document_network_hash,
 	);
 
 	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_area);

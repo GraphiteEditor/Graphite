@@ -181,6 +181,8 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
+	/// Matches [`graphene_application_io::RenderConfig::document_network_hash`]. When it changes, tile caches must drop stale pixels.
+	pub document_network_hash: u64,
 }
 
 impl Hash for RenderParams {
@@ -199,6 +201,7 @@ impl Hash for RenderParams {
 		self.override_paint_order.hash(state);
 		self.artboard_background.hash(state);
 		self.viewport_zoom.to_bits().hash(state);
+		self.document_network_hash.hash(state);
 	}
 }
 

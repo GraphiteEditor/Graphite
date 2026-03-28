@@ -241,6 +241,9 @@ pub struct RenderConfig {
 	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
+	/// Hash of the document network (inputs and topology). Drives viewport tile-cache invalidation when node data changes.
+	#[serde(default)]
+	pub document_network_hash: u64,
 }
 
 struct Logger;

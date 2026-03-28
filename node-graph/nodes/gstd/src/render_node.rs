@@ -109,6 +109,7 @@ async fn create_context<'a: 'n>(
 		footprint: Footprint::default(),
 		scale: render_config.scale,
 		viewport_zoom: footprint.decompose_scale().x,
+		document_network_hash: render_config.document_network_hash,
 		..Default::default()
 	};
 
