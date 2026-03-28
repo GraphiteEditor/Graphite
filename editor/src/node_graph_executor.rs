@@ -115,8 +115,8 @@ impl NodeGraphExecutor {
 		Ok(instrumented)
 	}
 
-	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	/// Update the cached network if necessary. Returns the current document network hash (same value used for cache sync).
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<u64, String> {
 		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
@@ -129,7 +129,7 @@ impl NodeGraphExecutor {
 				.map_err(|e| e.to_string())?;
 		}
 
-		Ok(())
+		Ok(network_hash)
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
@@ -141,13 +141,13 @@ impl NodeGraphExecutor {
 		viewport_scale: f64,
 		time: TimingInformation,
 		pointer: DVec2,
+		document_network_hash: u64,
 	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
 			resolution: viewport_resolution,
 			..Default::default()
 		};
-		let document_network_hash = document.network_interface.network_hash();
 		let render_config = RenderConfig {
 			viewport,
 			scale: viewport_scale,
@@ -182,8 +182,16 @@ impl NodeGraphExecutor {
 		ignore_hash: bool,
 		pointer: DVec2,
 	) -> Result<Message, String> {
-		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
+		let document_network_hash = self.update_node_graph(document, node_to_inspect, ignore_hash)?;
+		self.submit_current_node_graph_evaluation(
+			document,
+			document_id,
+			viewport_resolution,
+			viewport_scale,
+			time,
+			pointer,
+			document_network_hash,
+		)
 	}
 
 	#[allow(clippy::too_many_arguments)]
