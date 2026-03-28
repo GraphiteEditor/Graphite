@@ -202,3 +202,129 @@ impl Spiral {
 		});
 	}
 }
+
+#[cfg(test)]
+mod test_spiral {
+	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+	use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeType, extract_spiral_parameters};
+	use crate::messages::tool::tool_messages::shape_tool::{ShapeOptionsUpdate, ShapeToolMessage};
+	use crate::test_utils::test_prelude::*;
+	use graphene_std::vector::misc::SpiralType;
+
+	/// Draws a spiral by sending raw editor messages, bypassing `handle_message`'s
+	/// `eval_graph` call. The instrumented graph evaluator does not support `SpiralType`
+	/// as a node input, so `eval_graph` would panic if we used the normal helpers.
+	/// Node inputs are read directly from `document.network_interface` instead.
+	fn draw_spiral_raw(editor: &mut EditorTestUtils, x1: f64, y1: f64, x2: f64, y2: f64, spiral_type: SpiralType) {
+		editor.editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+		editor.editor.handle_message(ToolMessage::Shape(ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::ShapeType(ShapeType::Spiral),
+		}));
+		editor.editor.handle_message(ToolMessage::Shape(ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::SpiralType(spiral_type),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(x1, y1), mouse_keys: MouseKeys::empty(), scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerDown {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(x1, y1), mouse_keys: MouseKeys::LEFT, scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(x2, y2), mouse_keys: MouseKeys::LEFT, scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerUp {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(x2, y2), mouse_keys: MouseKeys::empty(), scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+	}
+
+	fn cancel_spiral_raw(editor: &mut EditorTestUtils) {
+		editor.editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+		editor.editor.handle_message(ToolMessage::Shape(ShapeToolMessage::UpdateOptions {
+			options: ShapeOptionsUpdate::ShapeType(ShapeType::Spiral),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(50., 50.), mouse_keys: MouseKeys::empty(), scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerDown {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(50., 50.), mouse_keys: MouseKeys::LEFT, scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(100., 100.), mouse_keys: MouseKeys::LEFT, scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::empty(),
+		}));
+		// RMB press while LMB held cancels the drag
+		editor.editor.handle_message(Message::InputPreprocessor(InputPreprocessorMessage::PointerDown {
+			editor_mouse_state: EditorMouseState { editor_position: DVec2::new(100., 100.), mouse_keys: MouseKeys::LEFT | MouseKeys::RIGHT, scroll_delta: ScrollDelta::default() },
+			modifier_keys: ModifierKeys::default(),
+		}));
+	}
+
+	#[tokio::test]
+	async fn spiral_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_spiral_raw(&mut editor, 0., 0., 40., 0., SpiralType::Archimedean);
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().expect("Expected a layer");
+		let (_, _, _, outer_radius, _, _) = extract_spiral_parameters(layer, document).expect("Expected spiral parameters");
+
+		assert!((outer_radius - 40.).abs() < 1., "outer_radius should be ~40, got {outer_radius}");
+	}
+
+	#[tokio::test]
+	async fn spiral_archimedean_inner_radius_default() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_spiral_raw(&mut editor, 0., 0., 50., 0., SpiralType::Archimedean);
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().expect("Expected a layer");
+		let (_, _, inner_radius, _, _, _) = extract_spiral_parameters(layer, document).expect("Expected spiral parameters");
+
+		assert_eq!(inner_radius, 0., "Archimedean spiral inner_radius should default to 0.0");
+	}
+
+	#[tokio::test]
+	async fn spiral_logarithmic_inner_radius_default() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_spiral_raw(&mut editor, 0., 0., 50., 0., SpiralType::Logarithmic);
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().expect("Expected a layer");
+		let (_, _, inner_radius, _, _, _) = extract_spiral_parameters(layer, document).expect("Expected spiral parameters");
+
+		assert_eq!(inner_radius, 0.1, "Logarithmic spiral inner_radius should default to 0.1");
+	}
+
+	#[tokio::test]
+	async fn spiral_cancel_rmb() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		cancel_spiral_raw(&mut editor);
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "No layer should be created on RMB cancel");
+	}
+
+	#[tokio::test]
+	async fn spiral_default_turns() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_spiral_raw(&mut editor, 0., 0., 60., 0., SpiralType::Archimedean);
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().expect("Expected a layer");
+		let (_, _, _, _, turns, _) = extract_spiral_parameters(layer, document).expect("Expected spiral parameters");
+
+		assert!(turns >= 1., "Turns should be at least 1, got {turns}");
+	}
+}
