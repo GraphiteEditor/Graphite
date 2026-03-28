@@ -1669,11 +1669,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// The old version would zip the source and target table rows, interpoleating each pair together.
 	// The migrated version will instead deeply flatten both merged tables and morph sequentially between all source vectors and all target vector elements.
 	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
-	// The new signature has 4 inputs too, so we distinguish by checking if input 2 is an f64 (old `time` param) vs an InterpolationSpacing (new `distribution` param).
-	let is_old_morph = reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER)
-		&& ((inputs_count == 3 && node.inputs.get(2).and_then(|i| i.as_value()).is_some_and(|v| matches!(v, TaggedValue::F64(_))))
-			|| (inputs_count == 4 && node.inputs.get(2).and_then(|i| i.as_value()).is_some_and(|v| matches!(v, TaggedValue::F64(_)))));
-	if is_old_morph {
+	// The new v3 signature has 5 inputs, so 3 or 4 inputs can only be old v1 versions.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && (inputs_count == 3 || inputs_count == 4) {
 		// 3 inputs - old signature (#3405):
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
 		//
@@ -1681,7 +1678,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> Table<Vector> { ... }
 		//
 		// New signature:
-		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, content: I, progression: Progression, distribution: InterpolationDistribution, path: Table<Vector>) -> Table<Vector> { ... }
+		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, content: I, progression: Progression, reverse: bool, distribution: InterpolationDistribution, path: Table<Vector>) -> Table<Vector> { ... }
 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1720,7 +1717,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 3;
 	}
 
-	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (3 inputs: content, progression, path).
+	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (5 inputs: content, progression, reverse, distribution, path).
 	// The old progression used integer part for pair selection (range 0..N-1 where N is the number of content objects).
 	// The new progression uses fractional 0..1 for euclidean traversal through all objects.
 	// We insert Count Elements → Subtract 1 → Divide to remap: new_progression = old_progression / max(N - 1, 1).

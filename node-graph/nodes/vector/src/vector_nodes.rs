@@ -2041,6 +2041,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	content: I,
 	/// The fractional part [0, 1) traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
 	progression: Progression,
+	/// Swap the direction of the progression between objects or along the control path.
+	reverse: bool,
 	/// The parameter of change that influences the interpolation speed between each object. Equal slices in this parameter correspond to the rate of progression through the morph. This must be set to a parameter that changes.
 	///
 	/// "Objects" morphs through each group element at an equal rate. "Distances" keeps constant speed with time between objects proportional to their distances. "Angles" keeps constant rotational speed. "Sizes" keeps constant shrink/growth speed. "Slants" keeps constant shearing angle speed.
@@ -2194,6 +2196,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// Select which subpath to use based on the integer part of progression (like the 'Position on Path' node)
 	let progression = progression.max(0.);
 	let subpath_count = control_bezpaths.len() as f64;
+	let progression = if reverse { subpath_count - progression } else { progression };
 	let clamped_progression = progression.clamp(0., subpath_count);
 	let subpath_index = if clamped_progression >= subpath_count { subpath_count - 1. } else { clamped_progression } as usize;
 	let fractional_progression = if clamped_progression >= subpath_count { 1. } else { clamped_progression.fract() };
@@ -3115,7 +3118,7 @@ mod test {
 		second_rectangle.transform *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
-		let morphed = super::morph(Footprint::default(), rectangles, 0.5, InterpolationDistribution::default(), Table::default()).await;
+		let morphed = super::morph(Footprint::default(), rectangles, 0.5, false, InterpolationDistribution::default(), Table::default()).await;
 		let row = morphed.iter().next().unwrap();
 		// Geometry stays in local space (original rectangle coordinates)
 		assert_eq!(

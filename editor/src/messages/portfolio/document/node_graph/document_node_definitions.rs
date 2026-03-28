@@ -559,12 +559,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(8), 0), NodeInput::node(NodeId(13), 0)],
 								..Default::default()
 							},
-							// 15: Morph (content, progression, distribution, path)
+							// 15: Morph (content, progression, reverse, distribution, path)
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(vector::morph::IDENTIFIER),
 								inputs: vec![
 									NodeInput::import(generic!(T), 0),
 									NodeInput::node(NodeId(14), 0),
+									NodeInput::value(TaggedValue::Bool(false), false),
 									NodeInput::import(concrete!(vector::misc::InterpolationDistribution), 1),
 									NodeInput::import(generic!(T), 2),
 								],
