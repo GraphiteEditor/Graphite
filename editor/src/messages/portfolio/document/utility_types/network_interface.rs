@@ -1209,6 +1209,8 @@ impl NodeNetworkInterface {
 				}
 				self.document_metadata.bounding_box_document(layer)
 			})
+			// Skip any layer bounds containing NaN to avoid poisoning the combined result
+			.filter(|[min, max]| min.is_finite() && max.is_finite())
 			.reduce(Quad::combine_bounds)
 	}
 

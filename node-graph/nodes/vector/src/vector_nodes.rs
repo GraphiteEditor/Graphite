@@ -11,7 +11,7 @@ use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
-use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
@@ -2279,11 +2279,13 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// Lerp styles
 	let vector_alpha_blending = source_row.alpha_blending.lerp(target_row.alpha_blending, time as f32);
 
-	// Evaluate the spatial position on the control path for the translation component
+	// Evaluate the spatial position on the control path for the translation component.
+	// When the segment has zero arc length (e.g., two objects at the same position), inv_arclen
+	// produces NaN (0/0), so we fall back to the segment start point to avoid NaN translation.
 	let path_position = {
-		// Use the original path segment index (not the clamped object index)
 		let segment_index = path_segment_index.min(segment_count - 1);
 		let segment = control_bezpath.get_seg(segment_index + 1).unwrap();
+		let parametric_t = if segment.arclen(DEFAULT_ACCURACY) < f64::EPSILON { 0. } else { parametric_t };
 		let point = segment.eval(parametric_t);
 		DVec2::new(point.x, point.y)
 	};
@@ -2315,9 +2317,14 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// the row transform (which will be group_transform * lerped_transform after the
 	// pipeline's Transform node runs), the lerped_transform cancels out and children
 	// get the correct footprint: parent * group_transform * child_transform.
-	let lerped_inverse = lerped_transform.inverse();
-	for row in graphic_table_content.iter_mut() {
-		*row.transform = lerped_inverse * *row.transform;
+	// Only pre-compensate if the lerped transform is invertible (non-zero determinant).
+	// A zero determinant can occur when interpolated scale passes through zero (e.g., flipped axes),
+	// in which case we skip pre-compensation to avoid propagating NaN through upstream_data transforms.
+	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
+		let lerped_inverse = lerped_transform.inverse();
+		for row in graphic_table_content.iter_mut() {
+			*row.transform = lerped_inverse * *row.transform;
+		}
 	}
 
 	let mut vector = Vector {
