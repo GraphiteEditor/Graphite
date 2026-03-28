@@ -2,12 +2,13 @@ use core_types::table::{Table, TableRow};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
+use skrifa::OutlineGlyph;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
-use skrifa::raw::FontRef as ReadFontsRef;
-use skrifa::{MetadataProvider, OutlineGlyph};
 use vector_types::subpath::{ManipulatorGroup, Subpath};
 use vector_types::vector::{PointId, Vector};
+
+use crate::outline_cache;
 
 pub struct PathBuilder<Upstream> {
 	current_subpath: Subpath<PointId>,
@@ -97,12 +98,30 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		let font = run.font();
 		let font_size = run.font_size();
 
-		let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
+		let (normalized_coords, coords_ns) = {
+			#[cfg(feature = "perf-stats")]
+			let t0 = std::time::Instant::now();
+			let v = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
+			#[cfg(feature = "perf-stats")]
+			let ns = t0.elapsed().as_nanos() as u64;
+			#[cfg(not(feature = "perf-stats"))]
+			let ns = 0_u64;
+			(v, ns)
+		};
 
-		// TODO: This can be cached for better performance
-		let font_collection_ref = font.data.as_ref();
-		let font_ref = ReadFontsRef::from_index(font_collection_ref, font.index).unwrap();
-		let outlines = font_ref.outline_glyphs();
+		let (slot, font_outline_ns) = {
+			#[cfg(feature = "perf-stats")]
+			let t1 = std::time::Instant::now();
+			let slot = outline_cache::outlines_for_font(font);
+			#[cfg(feature = "perf-stats")]
+			let ns = t1.elapsed().as_nanos() as u64;
+			#[cfg(not(feature = "perf-stats"))]
+			let ns = 0_u64;
+			(slot, ns)
+		};
+		let outlines = slot.outlines();
+
+		crate::glyph_run_perf::record_glyph_run(coords_ns, font_outline_ns);
 
 		for glyph in glyph_run.glyphs() {
 			let glyph_offset = DVec2::new((run_x + glyph.x) as f64, (run_y - glyph.y) as f64);

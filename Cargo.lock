@@ -5794,6 +5794,7 @@ name = "text-nodes"
 version = "0.1.0"
 dependencies = [
  "core-types",
+ "criterion",
  "dyn-any",
  "glam",
  "log",

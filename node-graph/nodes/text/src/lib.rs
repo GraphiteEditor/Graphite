@@ -1,4 +1,6 @@
 mod font_cache;
+pub mod glyph_run_perf;
+mod outline_cache;
 mod path_builder;
 mod text_context;
 mod to_path;

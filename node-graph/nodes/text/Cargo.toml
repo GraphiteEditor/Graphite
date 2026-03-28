@@ -9,6 +9,8 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["serde"]
 wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
+# Timers + outline-cache hit/miss counters in `PathBuilder::render_glyph_run` (for benchmarks / profiling).
+perf-stats = []
 
 [dependencies]
 # Local dependencies
@@ -27,3 +29,10 @@ log = { workspace = true }
 serde = { workspace = true, optional = true }
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "to_path"
+harness = false
