@@ -172,51 +172,62 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			GraphOperationMessage::NewBlendShapesLayer {
+			GraphOperationMessage::NewInterpolationLayer {
 				id,
-				blend_path_id,
+				control_path_id,
 				parent,
 				insert_index,
-				count,
+				blend_count,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
-				let blend_shapes_node_id = modify_inputs.insert_blend_shapes_data(layer, count as f64);
-				let blend_path_layer = modify_inputs.create_layer(blend_path_id);
-				let path_node_id = modify_inputs.insert_blend_path_data(blend_path_layer);
+
+				// Insert the main chain node (Blend Shapes or Morph) depending on whether a blend count is provided
+				let (chain_node_id, layer_alias, path_alias) = if let Some(count) = blend_count {
+					(modify_inputs.insert_blend_shapes_data(layer, count as f64), "Blend Shape", "Blend Path")
+				} else {
+					(modify_inputs.insert_morph_data(layer), "Morph", "Morph Path")
+				};
+
+				// Create the control path layer (Path → Auto-Tangents → Origins to Polyline)
+				let control_path_layer = modify_inputs.create_layer(control_path_id);
+				let path_node_id = modify_inputs.insert_control_path_data(control_path_layer);
 
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				network_interface.move_layer_to_stack(blend_path_layer, parent, insert_index + 1, &[]);
+				network_interface.move_layer_to_stack(control_path_layer, parent, insert_index + 1, &[]);
 
-				// Connect the Path node's output to the Blend Shapes node's Path parameter input (input 4).
+				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend Shapes).
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.
-				network_interface.set_input(&InputConnector::node(blend_shapes_node_id, 4), NodeInput::node(path_node_id, 0), &[]);
+				network_interface.set_input(&InputConnector::node(chain_node_id, 4), NodeInput::node(path_node_id, 0), &[]);
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
-					alias: "Blend Shape".to_string(),
+					alias: layer_alias.to_string(),
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
-					node_id: blend_path_id,
-					alias: "Blend Path".to_string(),
+					node_id: control_path_id,
+					alias: path_alias.to_string(),
 				});
 			}
-			GraphOperationMessage::ConnectBlendPathToChildren { blend_shape_id, blend_path_id } => {
-				// Find the Blend Shapes node (first in chain of the Blend Shape layer)
-				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(blend_shape_id, 1), &[]) else {
-					log::error!("Could not find Blend Shapes chain node for layer {blend_shape_id}");
+			GraphOperationMessage::ConnectInterpolationControlPathToChildren {
+				interpolation_layer_id,
+				control_path_id,
+			} => {
+				// Find the chain node (Morph or Blend Shapes, first in chain of the layer)
+				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(interpolation_layer_id, 1), &[]) else {
+					log::error!("Could not find chain node for layer {interpolation_layer_id}");
 					return;
 				};
 
-				// Get what feeds into the Blend Shapes node's primary input (the children stack)
+				// Get what feeds into the chain node's primary input (the children stack)
 				let Some(OutputConnector::Node { node_id: children_id, output_index }) = network_interface.upstream_output_connector(&InputConnector::node(chain_node, 0), &[]) else {
-					log::error!("Could not find children stack feeding Blend Shapes node {chain_node}");
+					log::error!("Could not find children stack feeding chain node {chain_node}");
 					return;
 				};
 
-				// Find the deepest node in the Blend Path layer's chain (Origins to Polyline)
+				// Find the deepest node in the control path layer's chain (Origins to Polyline)
 				let mut deepest_chain_node = None;
-				let mut current_connector = InputConnector::node(blend_path_id, 1);
+				let mut current_connector = InputConnector::node(control_path_id, 1);
 				while let Some(OutputConnector::Node { node_id, .. }) = network_interface.upstream_output_connector(&current_connector, &[]) {
 					deepest_chain_node = Some(node_id);
 					current_connector = InputConnector::node(node_id, 0);
@@ -225,24 +236,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// Connect children to the deepest chain node's input 0 (or the layer's input 1 if no chain)
 				let target_connector = match deepest_chain_node {
 					Some(node_id) => InputConnector::node(node_id, 0),
-					None => InputConnector::node(blend_path_id, 1),
+					None => InputConnector::node(control_path_id, 1),
 				};
 				network_interface.set_input(&target_connector, NodeInput::node(children_id, output_index), &[]);
 
 				// Shift the child stack (topmost child only, the rest follow) down 3 and left 10
 				network_interface.shift_node(&children_id, IVec2::new(-10, 3), &[]);
-			}
-			GraphOperationMessage::NewMorphLayer { id, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_morph_data(layer);
-				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-
-				responses.add(NodeGraphMessage::SetDisplayNameImpl {
-					node_id: id,
-					alias: "Morph".to_string(),
-				});
-				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewBooleanOperationLayer { id, operation, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);

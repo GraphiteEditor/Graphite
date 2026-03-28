@@ -2168,15 +2168,17 @@ impl DocumentMessageHandler {
 					});
 				}
 			}
-			GroupFolderType::BlendShapes => {
-				let blend_path_id = NodeId(generate_uuid());
+			GroupFolderType::BlendShapes | GroupFolderType::Morph => {
+				let control_path_id = NodeId(generate_uuid());
 				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
-				responses.add(GraphOperationMessage::NewBlendShapesLayer {
+				let blend_count = matches!(group_folder_type, GroupFolderType::BlendShapes).then(|| all_layers_to_group.len() * 10);
+
+				responses.add(GraphOperationMessage::NewInterpolationLayer {
 					id: folder_id,
-					blend_path_id,
+					control_path_id,
 					parent,
 					insert_index,
-					count: all_layers_to_group.len() * 10,
+					blend_count,
 				});
 
 				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
@@ -2190,33 +2192,11 @@ impl DocumentMessageHandler {
 					});
 				}
 
-				// Connect the child stack to the Blend Path layer as a co-parent
-				responses.add(GraphOperationMessage::ConnectBlendPathToChildren {
-					blend_shape_id: folder_id,
-					blend_path_id,
+				// Connect the child stack to the control path layer as a co-parent
+				responses.add(GraphOperationMessage::ConnectInterpolationControlPathToChildren {
+					interpolation_layer_id: folder_id,
+					control_path_id,
 				});
-
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(DocumentMessage::DocumentStructureChanged);
-				responses.add(NodeGraphMessage::SendGraph);
-
-				return folder_id;
-			}
-			GroupFolderType::Morph => {
-				responses.add(GraphOperationMessage::NewMorphLayer { id: folder_id, parent, insert_index });
-
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
-
-				// Move selected layers into the group as children
-				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
-				for layer_to_group in all_layers_to_group.into_iter().rev() {
-					responses.add(NodeGraphMessage::MoveLayerToStack {
-						layer: layer_to_group,
-						parent: new_group_folder,
-						insert_index: 0,
-					});
-				}
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);

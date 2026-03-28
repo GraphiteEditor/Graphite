@@ -188,7 +188,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Returns the Path node ID (the node closest to the layer's merge node in the chain).
-	pub fn insert_blend_path_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
+	pub fn insert_control_path_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		// Add Origins to Polyline node first (will be pushed deepest in the chain)
 		let origins_to_polyline = resolve_network_node_type("Origins to Polyline")
 			.expect("Origins to Polyline node does not exist")

@@ -74,21 +74,16 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	NewBlendShapesLayer {
+	NewInterpolationLayer {
 		id: NodeId,
-		blend_path_id: NodeId,
+		control_path_id: NodeId,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
-		count: usize,
+		blend_count: Option<usize>,
 	},
-	ConnectBlendPathToChildren {
-		blend_shape_id: NodeId,
-		blend_path_id: NodeId,
-	},
-	NewMorphLayer {
-		id: NodeId,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
+	ConnectInterpolationControlPathToChildren {
+		interpolation_layer_id: NodeId,
+		control_path_id: NodeId,
 	},
 	NewBooleanOperationLayer {
 		id: NodeId,
