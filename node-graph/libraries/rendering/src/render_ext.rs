@@ -107,11 +107,23 @@ impl RenderExt for Stroke {
 		render_params: &RenderParams,
 	) -> Self::Output {
 		// Don't render a stroke at all if it would be invisible
-		let Some(color) = self.color else { return String::new() };
 		if !self.has_renderable_stroke() {
 			return String::new();
 		}
-
+		let paint = match (&self.gradient, self.color) {
+			(Some(gradient), _) => {
+				let gradient_id = gradient.render(_svg_defs, _element_transform, _stroke_transform, _bounds, _transformed_bounds, render_params);
+				format!(r##" stroke="url('#{gradient_id}')""##)
+			}
+			(_, Some(color)) => {
+				let mut result = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+				if color.a() < 1. {
+					let _ = write!(result, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+				}
+				result
+			}
+			_ => return String::new(),
+		};
 		// Set to None if the value is the SVG default
 		let weight = (self.weight != 1.).then_some(self.weight);
 		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
@@ -123,10 +135,7 @@ impl RenderExt for Stroke {
 		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
-		if color.a() < 1. {
-			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
-		}
+		let mut attributes = paint;
 		if let Some(mut weight) = weight {
 			if stroke_align.is_some() && render_params.aligned_strokes {
 				weight *= 2.;

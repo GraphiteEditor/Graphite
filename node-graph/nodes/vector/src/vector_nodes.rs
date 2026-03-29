@@ -203,6 +203,7 @@ where
 {
 	let stroke = Stroke {
 		color: color.into(),
+		gradient: None,
 		weight,
 		dash_lengths: dash_lengths.into_vec(),
 		dash_offset,
