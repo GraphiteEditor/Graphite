@@ -188,4 +188,4 @@ pub const UI_SCALE_MIN: f64 = 0.5;
 pub const UI_SCALE_MAX: f64 = 3.;
 
 // ACTIONS
-pub const BLEND_SHAPE_COUNT_PER_LAYER: usize = 10;
+pub const BLEND_COUNT_PER_LAYER: usize = 10;

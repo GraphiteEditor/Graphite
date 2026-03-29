@@ -462,7 +462,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Blend Shapes",
+			identifier: "Blend",
 			category: "Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {

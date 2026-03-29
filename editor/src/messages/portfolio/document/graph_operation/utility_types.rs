@@ -156,17 +156,17 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[], self.import);
 	}
 
-	pub fn insert_blend_shapes_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
-		let blend_shapes = resolve_network_node_type("Blend Shapes").expect("Blend Shapes node does not exist").node_template_input_override([
+	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
+		let blend = resolve_network_node_type("Blend").expect("Blend node does not exist").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::F64(count), false)),
 		]);
 
-		let blend_shapes_id = NodeId::new();
-		self.network_interface.insert_node(blend_shapes_id, blend_shapes, &[]);
-		self.network_interface.move_node_to_chain_start(&blend_shapes_id, layer, &[], self.import);
+		let blend_id = NodeId::new();
+		self.network_interface.insert_node(blend_id, blend, &[]);
+		self.network_interface.move_node_to_chain_start(&blend_id, layer, &[], self.import);
 
-		blend_shapes_id
+		blend_id
 	}
 
 	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {

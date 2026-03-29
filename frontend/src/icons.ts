@@ -110,7 +110,6 @@ import AlignRight from "/../branding/assets/icon-16px-solid/align-right.svg";
 import AlignTop from "/../branding/assets/icon-16px-solid/align-top.svg";
 import AlignVerticalCenter from "/../branding/assets/icon-16px-solid/align-vertical-center.svg";
 import Artboard from "/../branding/assets/icon-16px-solid/artboard.svg";
-import BlendShapes from "/../branding/assets/icon-16px-solid/blend-shapes.svg";
 import BooleanDifference from "/../branding/assets/icon-16px-solid/boolean-difference.svg";
 import BooleanDivide from "/../branding/assets/icon-16px-solid/boolean-divide.svg";
 import BooleanIntersect from "/../branding/assets/icon-16px-solid/boolean-intersect.svg";
@@ -155,9 +154,10 @@ import HistoryRedo from "/../branding/assets/icon-16px-solid/history-redo.svg";
 import HistoryUndo from "/../branding/assets/icon-16px-solid/history-undo.svg";
 import IconsGrid from "/../branding/assets/icon-16px-solid/icons-grid.svg";
 import Image from "/../branding/assets/icon-16px-solid/image.svg";
+import InterpolationBlend from "/../branding/assets/icon-16px-solid/interpolation-blend.svg";
+import InterpolationMorph from "/../branding/assets/icon-16px-solid/interpolation-morph.svg";
 import Layer from "/../branding/assets/icon-16px-solid/layer.svg";
 import License from "/../branding/assets/icon-16px-solid/license.svg";
-import Morph from "/../branding/assets/icon-16px-solid/morph.svg";
 import NewLayer from "/../branding/assets/icon-16px-solid/new-layer.svg";
 import NodeBlur from "/../branding/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "/../branding/assets/icon-16px-solid/node-brushwork.svg";
@@ -229,7 +229,6 @@ const SOLID_16PX = {
 	AlignTop: { svg: AlignTop, size: 16 },
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
 	Artboard: { svg: Artboard, size: 16 },
-	BlendShapes: { svg: BlendShapes, size: 16 },
 	BooleanDifference: { svg: BooleanDifference, size: 16 },
 	BooleanDivide: { svg: BooleanDivide, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
@@ -274,9 +273,10 @@ const SOLID_16PX = {
 	HistoryUndo: { svg: HistoryUndo, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },
 	Image: { svg: Image, size: 16 },
+	InterpolationBlend: { svg: InterpolationBlend, size: 16 },
+	InterpolationMorph: { svg: InterpolationMorph, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
-	Morph: { svg: Morph, size: 16 },
 	NewLayer: { svg: NewLayer, size: 16 },
 	Node: { svg: Node, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },

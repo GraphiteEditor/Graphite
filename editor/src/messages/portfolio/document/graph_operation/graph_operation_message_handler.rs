@@ -182,9 +182,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 
-				// Insert the main chain node (Blend Shapes or Morph) depending on whether a blend count is provided
+				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided
 				let (chain_node_id, layer_alias, path_alias) = if let Some(count) = blend_count {
-					(modify_inputs.insert_blend_shapes_data(layer, count as f64), "Blend Shape", "Blend Path")
+					(modify_inputs.insert_blend_data(layer, count as f64), "Blend", "Blend Path")
 				} else {
 					(modify_inputs.insert_morph_data(layer), "Morph", "Morph Path")
 				};
@@ -196,7 +196,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				network_interface.move_layer_to_stack(control_path_layer, parent, insert_index + 1, &[]);
 
-				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend Shapes).
+				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend).
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.
 				network_interface.set_input(&InputConnector::node(chain_node_id, 4), NodeInput::node(path_node_id, 0), &[]);
 
@@ -213,7 +213,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				interpolation_layer_id,
 				control_path_id,
 			} => {
-				// Find the chain node (Morph or Blend Shapes, first in chain of the layer)
+				// Find the chain node (Blend or Morph, first in chain of the layer)
 				let Some(OutputConnector::Node { node_id: chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(interpolation_layer_id, 1), &[]) else {
 					log::error!("Could not find chain node for layer {interpolation_layer_id}");
 					return;

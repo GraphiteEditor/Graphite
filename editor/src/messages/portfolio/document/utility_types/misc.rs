@@ -1,5 +1,6 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
 use glam::DVec2;
+use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
 #[repr(transparent)]
@@ -710,7 +711,7 @@ impl PTZ {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GroupFolderType {
 	Layer,
-	BooleanOperation(graphene_std::vector::misc::BooleanOperation),
-	BlendShapes,
+	BooleanOperation(BooleanOperation),
+	Blend,
 	Morph,
 }

@@ -474,13 +474,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
+		node: graphene_std::raster_nodes::blending_nodes::mix::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::BlendNode",
 			"raster_nodes::adjustments::BlendNode",
 			"graphene_core::raster::adjustments::BlendNode",
 			"graphene_core::raster::BlendNode",
 			"graphene_raster_nodes::blending_nodes::BlendNode",
+			"raster_nodes::blending_nodes::BlendNode",
 		],
 	},
 	NodeReplacement {

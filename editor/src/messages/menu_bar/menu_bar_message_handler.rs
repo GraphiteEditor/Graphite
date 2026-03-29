@@ -497,13 +497,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 							]]),
 						MenuListEntry::new("Blend")
 							.label("Blend")
-							.icon("BlendShapes")
+							.icon("InterpolationBlend")
 							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::BlendSelectedLayers))
 							.on_commit(|_| DocumentMessage::BlendSelectedLayers.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Morph")
 							.label("Morph")
-							.icon("Morph")
+							.icon("InterpolationMorph")
 							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::MorphSelectedLayers))
 							.on_commit(|_| DocumentMessage::MorphSelectedLayers.into())
 							.disabled(no_active_document || !has_selected_layers),
