@@ -5,7 +5,8 @@ use super::utility_types::network_interface::{self, NodeNetworkInterface, Transa
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
-	ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL,
+	ASYMPTOTIC_EFFECT, BLEND_SHAPE_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -2171,7 +2172,7 @@ impl DocumentMessageHandler {
 			GroupFolderType::BlendShapes | GroupFolderType::Morph => {
 				let control_path_id = NodeId(generate_uuid());
 				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
-				let blend_count = matches!(group_folder_type, GroupFolderType::BlendShapes).then(|| all_layers_to_group.len() * 10);
+				let blend_count = matches!(group_folder_type, GroupFolderType::BlendShapes).then(|| all_layers_to_group.len() * BLEND_SHAPE_COUNT_PER_LAYER);
 
 				responses.add(GraphOperationMessage::NewInterpolationLayer {
 					id: folder_id,
