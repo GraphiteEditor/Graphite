@@ -124,8 +124,11 @@ impl RenderExt for Stroke {
 			}
 			_ => return String::new(),
 		};
+
+		let default_weight = if self.align != StrokeAlign::Center && render_params.aligned_strokes { 1. / 2. } else { 1. };
+
 		// Set to None if the value is the SVG default
-		let weight = (self.weight != 1.).then_some(self.weight);
+		let weight = (self.weight != default_weight).then_some(self.weight);
 		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
 		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
 		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);

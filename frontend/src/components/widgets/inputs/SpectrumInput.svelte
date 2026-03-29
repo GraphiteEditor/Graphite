@@ -4,15 +4,13 @@
 </script>
 
 <script lang="ts">
-	import { createEventDispatcher, onDestroy } from "svelte";
-
-	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Color, GradientStops } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
-
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
+	import { evaluateGradientAtPosition } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { Color, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
@@ -338,7 +336,9 @@
 		document.removeEventListener("keydown", onKeyDown);
 	}
 
-	document.addEventListener("keydown", deleteStop);
+	onMount(() => {
+		document.addEventListener("keydown", deleteStop);
+	});
 	onDestroy(() => {
 		removeEvents();
 		document.removeEventListener("keydown", deleteStop);

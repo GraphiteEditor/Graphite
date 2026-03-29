@@ -203,7 +203,7 @@ pub fn mask(
 		.into_iter()
 		.filter_map(|mut row| {
 			let image_size = DVec2::new(row.element.width as f64, row.element.height as f64);
-			let mask_size = stencil.transform.decompose_scale();
+			let mask_size = stencil.transform.scale_magnitudes();
 
 			if mask_size == DVec2::ZERO {
 				return None;

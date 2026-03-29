@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 authors.workspace = true
 
 [features]
-default = ["dealloc_nodes", "wgpu"]
+default = ["dealloc_nodes", "wgpu", "loading"]
 dealloc_nodes = ["core-types/dealloc_nodes"]
 wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
