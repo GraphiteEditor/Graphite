@@ -1115,7 +1115,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 	content
 		.into_iter()
 		.flat_map(|row| {
-			let vector = row.element;
+			let mut vector = row.element;
 			let transform = row.transform;
 			let alpha_blending = row.alpha_blending;
 			let source_node_id = row.source_node_id;
@@ -1176,11 +1176,10 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			// If the original vector has a fill, preserve it as a separate row with the stroke cleared.
 			let has_fill = !vector.style.fill().is_none();
-			let fill_row = has_fill.then(|| {
-				let mut fill_vector = vector.clone();
-				fill_vector.style.clear_stroke();
+			let fill_row = has_fill.then(move || {
+				vector.style.clear_stroke();
 				TableRow {
-					element: fill_vector,
+					element: vector,
 					transform,
 					alpha_blending,
 					source_node_id,
@@ -1236,7 +1235,7 @@ async fn path_is_closed(
 ) -> bool {
 	content
 		.iter()
-		.flat_map(|row| row.element.stroke_bezpath_iter().map(|bezpath| bezpath.elements().last() == Some(&kurbo::PathEl::ClosePath)))
+		.flat_map(|row| row.element.build_stroke_path_iter().map(|(_, closed)| closed))
 		.nth(index.max(0.) as usize)
 		.unwrap_or(false)
 }
