@@ -174,7 +174,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: Some("monitor_properties"),
 		},
 		DocumentNodeDefinition {
-			identifier: "Default Network",
+			identifier: "Custom Node",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {

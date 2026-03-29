@@ -108,7 +108,7 @@ async fn create_context<'a: 'n>(
 		render_output_type,
 		footprint: Footprint::default(),
 		scale: render_config.scale,
-		viewport_zoom: footprint.decompose_scale().x,
+		viewport_zoom: footprint.scale_magnitudes().x,
 		..Default::default()
 	};
 

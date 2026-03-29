@@ -29,9 +29,8 @@ impl CefContext for SingleThreadedCefContext {
 		host.set_zoom_level(view_info.zoom());
 		host.was_resized();
 
-		// Fix for CEF not updating the view after resize on windows and mac
+		// Fix for CEF not updating the view after resize
 		// TODO: remove once https://github.com/chromiumembedded/cef/issues/3822 is fixed
-		#[cfg(any(target_os = "windows", target_os = "macos"))]
 		host.invalidate(cef::PaintElementType::default());
 	}
 

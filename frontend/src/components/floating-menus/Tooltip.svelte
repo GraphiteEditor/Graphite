@@ -1,17 +1,14 @@
 <script lang="ts">
 	import { getContext } from "svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { EditorWrapper, LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { LabeledShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-
-	const tooltip = getContext<TooltipState>("tooltip");
-	const editor = getContext<Editor>("editor");
+	const tooltip = getContext<TooltipStore>("tooltip");
+	const editor = getContext<EditorWrapper>("editor");
 
 	let self: FloatingMenu | undefined;
 
@@ -32,7 +29,7 @@
 
 	// TODO: Once all TODOs are replaced with real text, remove this function
 	function filterTodo(text: string | undefined): string | undefined {
-		if (text?.trim().toUpperCase() === "TODO" && !editor.handle.inDevelopmentMode()) return "";
+		if (text?.trim().toUpperCase() === "TODO" && !editor.inDevelopmentMode()) return "";
 		return text;
 	}
 

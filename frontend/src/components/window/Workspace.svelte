@@ -1,13 +1,10 @@
 <script lang="ts">
-	import { getContext } from "svelte";
-
-	import type { OpenDocument } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Panel from "@graphite/components/window/Panel.svelte";
+	import { getContext, onDestroy } from "svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Panel from "/src/components/window/Panel.svelte";
+	import type { PortfolioStore } from "/src/stores/portfolio";
+	import type { EditorWrapper, OpenDocument } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
@@ -24,20 +21,25 @@
 	let documentPanel: Panel | undefined;
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
+	let activeResizeCleanup: (() => void) | undefined = undefined;
+
+	onDestroy(() => {
+		activeResizeCleanup?.();
+	});
 
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
 		const unsaved = !doc.details.isSaved;
-		if (!editor.handle.inDevelopmentMode()) return { name, unsaved };
+		if (!editor.inDevelopmentMode()) return { name, unsaved };
 
 		const tooltipDescription = `Document ID: ${doc.id}`;
 		return { name, unsaved, tooltipLabel: name, tooltipDescription };
 	});
 
-	const editor = getContext<Editor>("editor");
-	const portfolio = getContext<PortfolioState>("portfolio");
+	const editor = getContext<EditorWrapper>("editor");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = e.target;
@@ -76,6 +78,7 @@
 		const abortResize = () => {
 			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
 			removeListeners();
+			activeResizeCleanup = undefined;
 
 			pointerCaptureId = e.pointerId;
 			gutter.setPointerCapture(pointerCaptureId);
@@ -104,6 +107,7 @@
 			gutterResizeRestore = undefined;
 			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
 			removeListeners();
+			activeResizeCleanup = undefined;
 		};
 
 		const onMouseDown = (e: MouseEvent) => {
@@ -130,6 +134,7 @@
 		};
 
 		addListeners();
+		activeResizeCleanup = removeListeners;
 	}
 </script>
 
@@ -143,9 +148,9 @@
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
-					emptySpaceAction={() => editor.handle.newDocumentDialog()}
-					clickAction={(tabIndex) => editor.handle.selectDocument($portfolio.documents[tabIndex].id)}
-					closeAction={(tabIndex) => editor.handle.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
+					emptySpaceAction={() => editor.newDocumentDialog()}
+					clickAction={(tabIndex) => editor.selectDocument($portfolio.documents[tabIndex].id)}
+					closeAction={(tabIndex) => editor.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 					tabActiveIndex={$portfolio.activeDocumentIndex}
 					bind:this={documentPanel}
 				/>

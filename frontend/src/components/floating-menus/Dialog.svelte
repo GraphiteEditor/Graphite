@@ -1,20 +1,17 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { DialogStore } from "/src/stores/dialog";
+	import { crashReportUrl } from "/src/utility-functions/crash-report";
+	import { wipeDocuments } from "/src/utility-functions/persistence";
 
-	import { githubUrl } from "@graphite/io-managers/panic";
-	import { wipeDocuments } from "@graphite/io-managers/persistence";
-
-	import type { DialogState } from "@graphite/state-providers/dialog";
-
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	const dialog = getContext<DialogState>("dialog");
+	const dialog = getContext<DialogStore>("dialog");
 
 	let self: FloatingMenu | undefined;
 
@@ -43,7 +40,7 @@
 				<div class="widget-layout details">
 					<div class="widget-span row"><TextLabel bold={true}>The editor crashed — sorry about that</TextLabel></div>
 					<div class="widget-span row"><TextLabel>Please report this by filing an issue on GitHub:</TextLabel></div>
-					<div class="widget-span row"><TextButton label="Report Bug" icon="Warning" flush={true} action={() => window.open(githubUrl($dialog.panicDetails), "_blank")} /></div>
+					<div class="widget-span row"><TextButton label="Report Bug" icon="Warning" flush={true} action={() => window.open(crashReportUrl($dialog.panicDetails), "_blank")} /></div>
 					<div class="widget-span row"><TextLabel multiline={true}>Reload the editor to continue. If this occurs<br />immediately on repeated reloads, clear storage:</TextLabel></div>
 					<div class="widget-span row">
 						<TextButton

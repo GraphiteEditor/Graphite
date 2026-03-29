@@ -62,7 +62,7 @@ fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 
-# Workspace wasm dependencies
+# Workspace Wasm dependencies
 tsify = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 

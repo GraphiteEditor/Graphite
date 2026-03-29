@@ -485,9 +485,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
 				match Self::read_file(&path, content) {
 					FileContent::Document(content) => {
+						let document_path = if path.is_absolute() { Some(path) } else { None };
 						responses.add(PortfolioMessage::OpenDocumentFile {
 							document_name: name,
-							document_path: Some(path),
+							document_path,
 							document_serialized_content: content,
 						});
 					}
@@ -680,11 +681,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					image,
 					mouse: None,
 					parent_and_insert_index: None,
+					place_at_origin: true,
 				});
 
 				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
 				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					messages: vec![
+						DocumentMessage::WrapContentInArtboard {
+							place_artboard_at_origin: true,
+							artboard_canvas: None,
+						}
+						.into(),
+					],
 				});
 				responses.add(DeferMessage::AfterNavigationReady {
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
@@ -695,16 +703,51 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
 				});
 
+				// Parse the SVG to extract its declared canvas origin and dimensions from the viewBox attribute.
+				// This preserves the full canvas rather than measuring only the tighter rendered content bounding box.
+				let artboard_canvas = usvg::roxmltree::Document::parse(&svg)
+					.ok()
+					.and_then(|doc| {
+						let vb = doc.root_element().attribute("viewBox")?;
+						let nums: Vec<f64> = vb
+							.split(|c: char| c.is_ascii_whitespace() || c == ',')
+							.filter(|s| !s.is_empty())
+							.filter_map(|s| s.parse().ok())
+							.collect();
+						if nums.len() >= 4 {
+							Some((
+								glam::IVec2::new(nums[0].round() as i32, nums[1].round() as i32),
+								glam::IVec2::new(nums[2].round() as i32, nums[3].round() as i32),
+							))
+						} else {
+							None
+						}
+					})
+					.or_else(|| {
+						// Fall back to the viewport size when there is no viewBox attribute
+						usvg::Tree::from_str(&svg, &usvg::Options::default()).ok().map(|tree| {
+							let size = tree.size();
+							(glam::IVec2::ZERO, glam::IVec2::new(size.width().round() as i32, size.height().round() as i32))
+						})
+					});
+
 				responses.add(DocumentMessage::PasteSvg {
 					name,
 					svg,
 					mouse: None,
 					parent_and_insert_index: None,
+					place_at_origin: true,
 				});
 
 				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
 				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					messages: vec![
+						DocumentMessage::WrapContentInArtboard {
+							place_artboard_at_origin: true,
+							artboard_canvas,
+						}
+						.into(),
+					],
 				});
 				responses.add(DeferMessage::AfterNavigationReady {
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
@@ -979,6 +1022,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						image,
 						mouse,
 						parent_and_insert_index,
+						place_at_origin: false,
 					});
 				}
 			}
@@ -996,6 +1040,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						svg,
 						mouse,
 						parent_and_insert_index,
+						place_at_origin: false,
 					});
 				}
 			}
