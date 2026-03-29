@@ -1001,16 +1001,10 @@ async fn auto_tangents(
 				for (i, _) in auto_tangented.iter().enumerate().filter(|&(_, &tangented)| tangented) {
 					// For interior point i, the incoming segment is segment_offset + (i - 1) and outgoing is segment_offset + i.
 					// For closed paths, point 0's incoming segment is the last one (segment_offset + num_manipulators - 1).
-					let in_segment_index = if i == 0 {
-						if is_closed { segment_offset + num_manipulators - 1 } else { continue }
-					} else {
-						segment_offset + i - 1
-					};
-					let out_segment_index = if i == num_manipulators - 1 {
-						if is_closed { segment_offset } else { continue }
-					} else {
-						segment_offset + i
-					};
+					// For open paths, endpoints are never auto-tangented (the `is_endpoint` check above ensures that),
+					// so `i == 0` and `i == num_manipulators - 1` only occur here when the path is closed
+					let in_segment_index = if i == 0 { segment_offset + num_manipulators - 1 } else { segment_offset + i - 1 };
+					let out_segment_index = if i == num_manipulators - 1 { segment_offset } else { segment_offset + i };
 
 					if in_segment_index < segment_ids.len() && out_segment_index < segment_ids.len() {
 						result
