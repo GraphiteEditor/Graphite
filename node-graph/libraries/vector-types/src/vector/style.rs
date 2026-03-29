@@ -64,8 +64,8 @@ impl Fill {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		let transparent = Self::solid(Color::TRANSPARENT);
-		let a = if *self == Self::None { &transparent } else { self };
-		let b = if *other == Self::None { &transparent } else { other };
+		let a = if *self == Self::None && *other != Self::None { &transparent } else { self };
+		let b = if *other == Self::None && *self != Self::None { &transparent } else { other };
 
 		match (a, b) {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
@@ -82,7 +82,7 @@ impl Fill {
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Gradient(b)) => Self::Gradient(a.lerp(b, time)),
-			_ => Self::None,
+			(Self::None, _) | (_, Self::None) => Self::None,
 		}
 	}
 

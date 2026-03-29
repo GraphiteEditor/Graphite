@@ -116,7 +116,7 @@
 			background-repeat: var(--color-transparent-checkered-background-repeat);
 		}
 
-		&:not(.disabled).none > button {
+		&.none > button {
 			background: var(--color-none);
 			background-repeat: var(--color-none-repeat);
 			background-position: var(--color-none-position);
@@ -132,6 +132,7 @@
 			left: 0;
 			right: 0;
 			background: var(--color-4-dimgray);
+			opacity: 0.5;
 		}
 
 		&:not(.disabled):hover > button .text-label,
