@@ -535,10 +535,10 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::import(generic!(T), 4), NodeInput::node(NodeId(8), 0)],
 								..Default::default()
 							},
-							// 11: Switch (closed → count, open → count - 1 as denominator)
+							// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(logic::switch::IDENTIFIER),
-								inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(5), 0)],
+								inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
 								..Default::default()
 							},
 							// 12: Divide (local_index / denominator = within-subpath fraction)
@@ -581,6 +581,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(3), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+								..Default::default()
+							},
+							// 18: Max (clamp open-path denominator to at least 1 to avoid division by zero when count = 1)
+							DocumentNode {
+								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
+								inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::value(TaggedValue::F64(1.), false)],
 								..Default::default()
 							},
 						]
@@ -703,7 +709,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								// 11: Switch (denominator)
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 12)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 12)),
 										..Default::default()
 									},
 									..Default::default()
@@ -752,6 +758,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 13)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								// 18: Max (clamp open-path denominator)
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 14)),
 										..Default::default()
 									},
 									..Default::default()
