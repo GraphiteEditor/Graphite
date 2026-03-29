@@ -1669,7 +1669,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// The old version would zip the source and target table rows, interpoleating each pair together.
 	// The migrated version will instead deeply flatten both merged tables and morph sequentially between all source vectors and all target vector elements.
 	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
-	// The new v3 signature has 5 inputs, so 3 or 4 inputs can only be old v1 versions.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && (inputs_count == 3 || inputs_count == 4) {
 		// 3 inputs - old signature (#3405):
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
@@ -1677,8 +1676,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> Table<Vector> { ... }
 		//
-		// New signature:
-		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, content: I, progression: Progression, reverse: bool, distribution: InterpolationDistribution, path: Table<Vector>) -> Table<Vector> { ... }
+		// v2 signature:
+		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }
 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1714,19 +1713,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Connect the old 'progression' input to the new 'progression' input of the Morph node
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
 
-		inputs_count = 3;
+		inputs_count = 2;
 	}
 
 	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (5 inputs: content, progression, reverse, distribution, path).
 	// The old progression used integer part for pair selection (range 0..N-1 where N is the number of content objects).
 	// The new progression uses fractional 0..1 for euclidean traversal through all objects.
-	// We insert Count Elements → Subtract 1 → Divide to remap: new_progression = old_progression / max(N - 1, 1).
+	// We insert Count Elements → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
 	// For the common 2-object case (N=2), this divides by 1 which is a no-op, preserving identical behavior.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
-		// Reconnect content (input 0) and leave path (input 2) as default
+		// Reconnect content (input 0) and leave path (input 4) as default
 		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 
 		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
