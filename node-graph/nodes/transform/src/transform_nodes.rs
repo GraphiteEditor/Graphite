@@ -159,7 +159,7 @@ fn decompose_scale(_: impl Ctx, transform: DAffine2, scale_type: ScaleType) -> D
 	}
 }
 
-/// Extracts the skew coefficient (in degrees) from the input transform.
+/// Extracts the skew angle (in degrees) from the input transform.
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_skew(_: impl Ctx, transform: DAffine2) -> f64 {
 	transform.decompose_skew().atan().to_degrees()
