@@ -1110,14 +1110,19 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+	// TODO: Make this node support stroke align, which it currently ignores
+
 	content
 		.into_iter()
-		.map(|mut row| {
-			let vector = row.element;
+		.flat_map(|row| {
+			let mut vector = row.element;
+			let transform = row.transform;
+			let alpha_blending = row.alpha_blending;
+			let source_node_id = row.source_node_id;
 
 			let stroke = vector.style.stroke().clone().unwrap_or_default();
 			let bezpaths = vector.stroke_bezpath_iter();
-			let mut result = Vector::default();
+			let mut solidified_stroke = Vector::default();
 
 			// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
 			let join = match stroke.join {
@@ -1133,6 +1138,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 			let dash_offset = stroke.dash_offset;
 			let dash_pattern = stroke.dash_lengths;
 			let miter_limit = stroke.join_miter_limit;
+			let paint_order = stroke.paint_order;
 
 			let stroke_style = kurbo::Stroke::new(stroke.weight)
 				.with_caps(cap)
@@ -1153,17 +1159,38 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 					solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
 				}
 
-				result.append_bezpath(solidified);
+				solidified_stroke.append_bezpath(solidified);
 			}
 
-			// We set our fill to our stroke's color, then clear our stroke.
+			// We set the solidified stroke's fill to the stroke's color and without a stroke.
 			if let Some(stroke) = vector.style.stroke() {
-				result.style.set_fill(Fill::solid_or_none(stroke.color));
-				result.style.set_stroke(Stroke::default());
+				solidified_stroke.style.set_fill(Fill::solid_or_none(stroke.color));
 			}
 
-			row.element = result;
-			row
+			let stroke_row = TableRow {
+				element: solidified_stroke,
+				transform,
+				alpha_blending,
+				source_node_id,
+			};
+
+			// If the original vector has a fill, preserve it as a separate row with the stroke cleared.
+			let has_fill = !vector.style.fill().is_none();
+			let fill_row = has_fill.then(move || {
+				vector.style.clear_stroke();
+				TableRow {
+					element: vector,
+					transform,
+					alpha_blending,
+					source_node_id,
+				}
+			});
+
+			// Ordering based on the paint order. The first row in the table is rendered below the second.
+			match paint_order {
+				PaintOrder::StrokeAbove => fill_row.into_iter().chain(std::iter::once(stroke_row)).collect::<Vec<_>>(),
+				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
+			}
 		})
 		.collect()
 }
@@ -1208,7 +1235,7 @@ async fn path_is_closed(
 ) -> bool {
 	content
 		.iter()
-		.flat_map(|row| row.element.stroke_bezpath_iter().map(|bezpath| bezpath.elements().last() == Some(&kurbo::PathEl::ClosePath)))
+		.flat_map(|row| row.element.build_stroke_path_iter().map(|(_, closed)| closed))
 		.nth(index.max(0.) as usize)
 		.unwrap_or(false)
 }
