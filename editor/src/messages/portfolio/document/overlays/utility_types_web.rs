@@ -160,6 +160,8 @@ pub struct OverlayContext {
 	pub render_context: web_sys::CanvasRenderingContext2d,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,
+	/// Current time in milliseconds (e.g. from `js_sys::Date::now()`), used to animate effects like marching ants.
+	pub animation_time: f64,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {

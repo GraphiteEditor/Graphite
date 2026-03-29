@@ -170,6 +170,8 @@ pub struct OverlayContext {
 	internal: Arc<Mutex<OverlayContextInternal>>,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,
+	/// Current time in milliseconds, used to animate effects like marching ants.
+	pub animation_time: f64,
 }
 
 impl Clone for OverlayContext {
@@ -181,6 +183,7 @@ impl Clone for OverlayContext {
 			internal: self.internal.clone(),
 			viewport: self.viewport,
 			visibility_settings,
+			animation_time: self.animation_time,
 		}
 	}
 }
@@ -198,6 +201,7 @@ impl std::fmt::Debug for OverlayContext {
 			.field("scene", &"Scene { ... }")
 			.field("viewport", &self.viewport)
 			.field("visibility_settings", &self.visibility_settings)
+			.field("animation_time", &self.animation_time)
 			.finish()
 	}
 }
@@ -209,6 +213,7 @@ impl Default for OverlayContext {
 			internal: Mutex::new(OverlayContextInternal::default()).into(),
 			viewport: ViewportMessageHandler::default(),
 			visibility_settings: OverlaysVisibilitySettings::default(),
+			animation_time: 0.,
 		}
 	}
 }
@@ -220,7 +225,7 @@ impl core::hash::Hash for OverlayContext {
 
 impl OverlayContext {
 	#[allow(dead_code)]
-	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
+	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings, animation_time: f64) -> Self {
 		Self {
 			internal: Arc::new(Mutex::new(OverlayContextInternal::new(viewport, visibility_settings))),
 			viewport,

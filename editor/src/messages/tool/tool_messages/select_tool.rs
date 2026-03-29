@@ -406,6 +406,8 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	drag_start_center: ViewportPosition,
+	/// Whether the tool is currently subscribed to animation frame events to drive the marching ants animation.
+	marching_ants_subscribed: bool,
 }
 
 impl SelectToolData {
@@ -419,6 +421,27 @@ impl SelectToolData {
 				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 			}
+		}
+	}
+/// Subscribe to per-frame animation ticks so the marching ants selection border animates continuously.
+	fn start_marching_ants(&mut self, responses: &mut VecDeque<Message>) {
+		if !self.marching_ants_subscribed {
+			self.marching_ants_subscribed = true;
+			responses.add(BroadcastMessage::SubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send: Box::new(OverlaysMessage::Draw.into()),
+			});
+		}
+	}
+
+	/// Unsubscribe from per-frame animation ticks when the selection box is no longer being drawn.
+	fn stop_marching_ants(&mut self, responses: &mut VecDeque<Message>) {
+		if self.marching_ants_subscribed {
+			self.marching_ants_subscribed = false;
+			responses.add(BroadcastMessage::UnsubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send: Box::new(OverlaysMessage::Draw.into()),
+			});
 		}
 	}
 
@@ -965,10 +988,17 @@ impl Fsm for SelectToolFsmState {
 					let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 					let polygon = &tool_data.lasso_polygon;
+					// Animate the dash offset to produce the "marching ants" effect. The dash pattern repeats every 8 px (4 px dash + 4 px gap),
+					// so wrapping the time to [0, 8) via the modulo gives a smooth, continuously looping animation.
+					// MARCHING_ANTS_PIXELS_PER_SECOND controls how fast the dashes march around the selection border.
+					const MARCHING_ANTS_PIXELS_PER_SECOND: f64 = 100.; // How many pixels the pattern advances per second
+					const MARCHING_ANTS_PERIOD: f64 = 8.; // One full cycle = dash length (4 px) + gap length (4 px)
+					let marching_ants_offset = (overlay_context.animation_time / 1000. * MARCHING_ANTS_PIXELS_PER_SECOND) % MARCHING_ANTS_PERIOD;
+
 
 					match (selection_shape, current_selection_mode) {
-						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(marching_ants_offset)),
+						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(marching_ants_offset)),
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
@@ -1125,6 +1155,8 @@ impl Fsm for SelectToolFsmState {
 						}
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+						// Subscribe to animation frames so the marching ants selection border animates continuously.
+						tool_data.start_marching_ants(responses);
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
 					}
 				};
@@ -1556,7 +1588,8 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				tool_data.lasso_polygon.clear();
-
+                // Unsubscribe from animation frames now that the selection box is finalized.
+				tool_data.stop_marching_ants(responses);
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1603,6 +1636,8 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.lasso_polygon.clear();
+				// Unsubscribe from marching ants animation in case we were in Drawing state.
+				tool_data.stop_marching_ants(responses);
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
