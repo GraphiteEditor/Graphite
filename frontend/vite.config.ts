@@ -85,7 +85,11 @@ function thirdPartyLicenses(): PluginOption {
 	return {
 		name: "third-party-licenses",
 		buildStart() {
-			execSync("cargo run -p third-party-licenses", { stdio: "inherit" });
+			try {
+				execSync("cargo run -p third-party-licenses", { stdio: "inherit" });
+			} catch (e) {
+				throw new Error("Failed to generate third-party licenses", { cause: e });
+			}
 		},
 		writeBundle(options) {
 			copyFileSync(path.resolve(projectRootDir, "third-party-licenses.txt"), path.join(options.dir || "dist", "third-party-licenses.txt"));
