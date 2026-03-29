@@ -44,7 +44,7 @@ pub trait Transform {
 
 		let scale_x = if cos.abs() > 1e-10 { x_axis.x / cos } else { x_axis.y / sin };
 
-		let mut skew = (sin * y_axis.y + cos * y_axis.x) / (sin * sin * scale_x + cos * cos * scale_x);
+		let mut skew = (sin * y_axis.y + cos * y_axis.x) / scale_x;
 		if !skew.is_finite() {
 			skew = 0.;
 		}
