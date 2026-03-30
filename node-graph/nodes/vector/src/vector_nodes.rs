@@ -2389,6 +2389,32 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let extra_source = source_subpaths.split_off(matched_count);
 	let extra_target = target_subpaths.split_off(matched_count);
 
+	// Pre-allocate domain storage based on total manipulator counts across all subpaths
+	let mut total_points = 0;
+	let mut total_segments = 0;
+	let mut total_regions = 0;
+	for ((source_manips, source_closed), (target_manips, _)) in source_subpaths.iter().zip(target_subpaths.iter()) {
+		if source_manips.is_empty() || target_manips.is_empty() {
+			continue;
+		}
+		let manip_count = source_manips.len().max(target_manips.len());
+		total_points += manip_count;
+		total_segments += if *source_closed { manip_count } else { manip_count.saturating_sub(1) };
+		if *source_closed {
+			total_regions += 1;
+		}
+	}
+	for (manips, closed) in extra_source.iter().chain(extra_target.iter()) {
+		total_points += manips.len();
+		total_segments += if *closed { manips.len() } else { manips.len().saturating_sub(1) };
+		if *closed {
+			total_regions += 1;
+		}
+	}
+	vector.point_domain.reserve(total_points);
+	vector.segment_domain.reserve(total_segments);
+	vector.region_domain.reserve(total_regions);
+
 	let mut point_id = PointId::ZERO;
 	let mut segment_id = SegmentId::ZERO;
 

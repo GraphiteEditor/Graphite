@@ -104,6 +104,11 @@ impl PointDomain {
 		self.position.clear();
 	}
 
+	pub fn reserve(&mut self, additional: usize) {
+		self.id.reserve(additional);
+		self.position.reserve(additional);
+	}
+
 	pub fn retain(&mut self, segment_domain: &mut SegmentDomain, f: impl Fn(&PointId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.position.retain(|_| keep.next().unwrap_or_default());
@@ -234,6 +239,14 @@ impl SegmentDomain {
 		self.end_point.clear();
 		self.handles.clear();
 		self.stroke.clear();
+	}
+
+	pub fn reserve(&mut self, additional: usize) {
+		self.id.reserve(additional);
+		self.start_point.reserve(additional);
+		self.end_point.reserve(additional);
+		self.handles.reserve(additional);
+		self.stroke.reserve(additional);
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
@@ -602,6 +615,12 @@ impl RegionDomain {
 		self.id.clear();
 		self.segment_range.clear();
 		self.fill.clear();
+	}
+
+	pub fn reserve(&mut self, additional: usize) {
+		self.id.reserve(additional);
+		self.segment_range.reserve(additional);
+		self.fill.reserve(additional);
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
