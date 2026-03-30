@@ -112,5 +112,7 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+		/// When true, centers the SVG at the transform origin (clipboard paste / drag-drop). When false, keeps natural SVG coordinates (file-open flow).
+		center: bool,
 	},
 }

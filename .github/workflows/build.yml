@@ -1,0 +1,730 @@
+name: "Build"
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - latest-stable
+  workflow_dispatch:
+    inputs:
+      web:
+        description: "Web"
+        type: boolean
+      windows:
+        description: "Windows"
+        type: boolean
+      mac:
+        description: "Mac"
+        type: boolean
+      linux:
+        description: "Linux"
+        type: boolean
+      push_to_nix_cache:
+        description: "Linux: push to Nix cache"
+        type: boolean
+      debug:
+        description: "Debug build"
+        type: boolean
+  workflow_call:
+    inputs:
+      web:
+        type: boolean
+      windows:
+        type: boolean
+      mac:
+        type: boolean
+      linux:
+        type: boolean
+      push_to_nix_cache:
+        type: boolean
+      debug:
+        type: boolean
+      checkout_repo:
+        type: string
+      checkout_ref:
+        type: string
+      pr_number:
+        type: string
+      merge_queue:
+        type: boolean
+
+jobs:
+  web:
+    if: github.event_name == 'push' || inputs.web
+    runs-on: [self-hosted, target/wasm]
+    permissions:
+      contents: write
+      deployments: write
+      pull-requests: write
+      actions: write
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repo || github.repository }}
+          ref: ${{ inputs.checkout_ref || '' }}
+
+      - name: 🗑 Clear wasm-bindgen cache
+        run: rm -r ~/.cache/.wasm-pack || true
+
+      - name: 🟢 Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: 🚧 Install build dependencies
+        run: |
+          cd frontend
+          npm run setup
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+          target: wasm32-unknown-unknown
+
+      - name: 🔀 Choose production deployment environment and insert template
+        id: production-env
+        if: github.event_name == 'push'
+        run: |
+          if [[ "${{ github.ref }}" == "refs/tags/latest-stable" ]]; then
+            echo "cf_project=graphite-editor" >> $GITHUB_OUTPUT
+            DOMAIN="editor.graphite.art"
+          else
+            echo "cf_project=graphite-dev" >> $GITHUB_OUTPUT
+            DOMAIN="dev.graphite.art"
+          fi
+          TEMPLATE="<script defer data-domain=\"$DOMAIN\" data-api=\"https://graphite.art/visit/event\" src=\"https://graphite.art/visit/script.hash.js\"></script>"
+          echo "template=$TEMPLATE" >> $GITHUB_OUTPUT
+          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$TEMPLATE|" frontend/index.html
+
+      - name: 🌐 Build Graphite web code
+        env:
+          NODE_ENV: production
+        run: mold -run cargo run build web${{ inputs.debug && ' debug' || '' }}
+
+      - name: 📤 Publish to Cloudflare Pages
+        if: inputs.merge_queue == false
+        id: cloudflare
+        continue-on-error: ${{ github.event_name != 'push' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "No Cloudflare API token available (fork PR), skipping deploy."
+            exit 0
+          fi
+          MAX_ATTEMPTS=8
+          DELAY=15
+          for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
+            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
+            if [ ${PIPESTATUS[0]} -eq 0 ]; then
+              URL=$(grep -oP 'https://[^\s]+\.pages\.dev' /tmp/wrangler_output | head -1)
+              echo "url=$URL" >> "$GITHUB_OUTPUT"
+              echo "Published successfully: $URL"
+              exit 0
+            fi
+            echo "Attempt $ATTEMPT failed."
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              echo "Retrying in ${DELAY}s..."
+              sleep $DELAY
+              DELAY=$((DELAY * 2))
+            fi
+          done
+          echo "All $MAX_ATTEMPTS Cloudflare Pages publish attempts failed."
+          exit 1
+
+      - name: 🚀 Create a GitHub environment deployment
+        if: (inputs.checkout_repo == '' || inputs.checkout_repo == github.repository) && inputs.merge_queue == false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_URL: ${{ steps.cloudflare.outputs.url }}
+        run: |
+          if [ -z "$CF_URL" ]; then
+            echo "No Cloudflare URL available, skipping deployment."
+            exit 0
+          fi
+          if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
+            REF="latest-stable"
+            ENVIRONMENT="graphite-editor (Production)"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            REF="master"
+            ENVIRONMENT="graphite-dev (Production)"
+          else
+            REF="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
+            ENVIRONMENT="graphite-dev (Preview)"
+          fi
+          DEPLOY_ID=$(gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/deployments \
+            --input - \
+            --jq '.id' <<EOF
+            {"ref":"$REF","environment":"$ENVIRONMENT","auto_merge":false,"required_contexts":[]}
+          EOF
+          )
+          gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            repos/${{ github.repository }}/deployments/$DEPLOY_ID/statuses \
+            -f state=success \
+            -f environment_url="$CF_URL" \
+            -f log_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: 💬 Comment with the build link
+        if: github.event_name != 'pull_request' && inputs.merge_queue == false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_URL: ${{ steps.cloudflare.outputs.url }}
+        run: |
+          if [ -z "$CF_URL" ]; then
+            echo "No Cloudflare URL available, skipping comment."
+            exit 0
+          fi
+
+          COMMENT_BODY="| 📦 **Web Build Complete for** $(git rev-parse HEAD) |
+          |-|
+          | $CF_URL |"
+
+          if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
+            # Push tag: skip commenting (commit was already commented on master merge)
+            echo "Tag push, skipping comment."
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # Push master: comment on the commit hash page
+            gh api \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
+              -f body="$COMMENT_BODY"
+          elif [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Manual trigger (workflow_dispatch, !build): comment on the PR
+            PR_NUMBER="${{ inputs.pr_number }}"
+            if [ -z "$PR_NUMBER" ]; then
+              BRANCH=$(git rev-parse --abbrev-ref HEAD)
+              PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+            fi
+
+            if [ -n "$PR_NUMBER" ]; then
+              gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$COMMENT_BODY"
+            else
+              echo "No open PR found, skipping comment."
+            fi
+          fi
+
+      - name: ✂ Strip template from completed build for a clean artifact
+        if: github.event_name == 'push'
+        env:
+          TEMPLATE: ${{ steps.production-env.outputs.template }}
+        run: sed -i "s|$TEMPLATE||" frontend/dist/index.html
+
+      - name: 📦 Upload web bundle artifact
+        if: github.event_name != 'pull_request' && inputs.merge_queue == false
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-web-bundle
+          path: frontend/dist
+
+      - name: 👕 Lint Graphite web formatting
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          npm run check
+
+      - name: 📃 Trigger website rebuild if auto-generated code docs are stale
+        if: github.event_name == 'push' && github.ref != 'refs/tags/latest-stable'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo run -p editor-message-tree -- website/generated
+          TREE=volunteer/guide/codebase-overview/hierarchical-message-system-tree
+          curl -sf "https://graphite.art/$TREE.txt" -o "website/static/$TREE.live.txt" \
+            && diff -q "website/static/$TREE.txt" "website/static/$TREE.live.txt" > /dev/null \
+            || gh workflow run website.yml --ref master
+
+  windows:
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.windows
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+    env:
+      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repo || github.repository }}
+          ref: ${{ inputs.checkout_ref || '' }}
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+          target: wasm32-unknown-unknown
+
+      - name: 💾 Set up Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: 🟢 Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: 📦 Install Cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: 🚧 Install native dependencies
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BINSTALL_DISABLE_TELEMETRY: "true"
+        run: |
+          winget install --id LLVM.LLVM -e --accept-package-agreements --accept-source-agreements
+          winget install --id Kitware.CMake -e --accept-package-agreements --accept-source-agreements
+          winget install --id OpenSSL.OpenSSL -e --accept-package-agreements --accept-source-agreements
+          winget install --id WebAssembly.Binaryen -e --accept-package-agreements --accept-source-agreements
+          winget install --id GnuWin32.PkgConfig -e --accept-package-agreements --accept-source-agreements
+
+          "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PKG_CONFIG_PATH=C:\Program Files\OpenSSL-Win64\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          cargo binstall --no-confirm --force wasm-pack
+          cargo binstall --no-confirm --force cargo-about
+          cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
+
+      - name: 🏗 Build Windows bundle
+        shell: bash # `cargo-about` refuses to run in powershell
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo run build desktop${{ inputs.debug && ' debug' || '' }}
+
+      - name: 📁 Stage artifacts
+        shell: bash
+        run: |
+          PROFILE=${{ inputs.debug && 'debug' || 'release' }}
+          rm -rf target/artifacts
+          mkdir -p target/artifacts
+          cp -R target/$PROFILE/Graphite target/artifacts/Graphite
+
+      - name: 📦 Upload Windows bundle
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-windows-bundle
+          path: target/artifacts
+
+      - name: 💬 Comment artifact link on PR
+        if: github.event_name != 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-windows-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+          PR_NUMBER="${{ inputs.pr_number }}"
+          if [ -z "$PR_NUMBER" ]; then
+            BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          fi
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
+            BODY="| 📦 **Windows Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
+          fi
+
+      - name: 🔑 Azure login
+        if: github.event_name == 'push'
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      - name: 🔏 Sign
+        if: github.event_name == 'push'
+        uses: azure/artifact-signing-action@v1
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: Graphite
+          certificate-profile-name: Graphite
+          files: |
+            ${{ github.workspace }}\target\artifacts\Graphite\Graphite.exe
+            ${{ github.workspace }}\target\artifacts\Graphite\libcef.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\chrome_elf.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\vulkan-1.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\dxcompiler.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\libEGL.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\libGLESv2.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\vk_swiftshader.dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          correlation-id: ${{ github.sha }}
+
+      - name: ✅ Verify signatures
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $TargetDir = "target\artifacts\Graphite"
+
+          if (-not (Test-Path $TargetDir)) {
+              throw "TargetDir not found: $TargetDir"
+          }
+
+          $UnsignedOrBad = @()
+
+          Get-ChildItem -Path $TargetDir -Recurse -File -Include *.exe,*.dll | ForEach-Object {
+              $sig = Get-AuthenticodeSignature -FilePath $_.FullName
+
+              if ($sig.Status -ne 'Valid') {
+                  $UnsignedOrBad += "$($_.FullName) (Status=$($sig.Status))"
+              }
+          }
+
+          if ($UnsignedOrBad.Count -gt 0) {
+              Write-Host "Unsigned or invalid binaries detected:"
+              $UnsignedOrBad | ForEach-Object {
+                  Write-Host "::error::$_"
+              }
+
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  "### ❌ Unsigned or invalid binaries detected" |
+                      Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                  "" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                  $UnsignedOrBad | ForEach-Object {
+                      "* `$_" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                  }
+              }
+
+              exit 1
+          }
+
+          Write-Host "All binaries are signed and valid."
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+              "### ✅ All binaries are signed and valid" |
+                  Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      - name: 📦 Upload signed Windows bundle
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-windows-bundle-signed
+          path: target/artifacts
+
+  mac:
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.mac
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    env:
+      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repo || github.repository }}
+          ref: ${{ inputs.checkout_ref || '' }}
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+          target: wasm32-unknown-unknown
+
+      - name: 💾 Set up Cargo cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: 🟢 Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: 🚧 Install native dependencies
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BINSTALL_DISABLE_TELEMETRY: "true"
+        run: |
+          brew update
+          brew install \
+            pkg-config \
+            openssl@3 \
+            binaryen \
+            llvm \
+            cargo-binstall
+
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "$(brew --prefix llvm)/bin" >> $GITHUB_PATH
+
+          cargo binstall --no-confirm --force wasm-pack
+          cargo binstall --no-confirm --force cargo-about
+          cargo binstall --no-confirm --force "wasm-bindgen-cli@${WASM_BINDGEN_CLI_VERSION}"
+
+      - name: 🏗 Build Mac bundle
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo run build desktop${{ inputs.debug && ' debug' || '' }}
+
+      - name: 📁 Stage artifacts
+        shell: bash
+        run: |
+          PROFILE=${{ inputs.debug && 'debug' || 'release' }}
+          rm -rf target/artifacts
+          mkdir -p target/artifacts
+          cp -R target/$PROFILE/Graphite.app target/artifacts/Graphite.app
+
+      - name: 📦 Upload Mac bundle
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-mac-bundle
+          path: target/artifacts
+
+      - name: 💬 Comment artifact link on PR
+        if: github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-mac-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+          PR_NUMBER="${{ inputs.pr_number }}"
+          if [ -z "$PR_NUMBER" ]; then
+            BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          fi
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
+            BODY="| 📦 **Mac Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
+          fi
+
+      - name: 🔏 Sign and notarize (preparation)
+        if: github.event_name == 'push'
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          mkdir -p .sign
+          echo "$APPLE_CERT_BASE64" | base64 --decode > .sign/certificate.p12
+
+          security create-keychain -p "" .sign/main.keychain
+          security default-keychain -s .sign/main.keychain
+          security unlock-keychain -p "" .sign/main.keychain
+          security set-keychain-settings -t 3600 -u .sign/main.keychain
+
+          security import .sign/certificate.p12 -k .sign/main.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" .sign/main.keychain
+
+          cat > .sign/entitlements.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.cs.allow-jit</key>
+              <true/>
+              <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+              <true/>
+              <key>com.apple.security.cs.disable-executable-page-protection</key>
+              <true/>
+              <key>com.apple.security.cs.disable-library-validation</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 🔏 Sign and notarize
+        if: github.event_name == 'push'
+        env:
+          APPLE_EMAIL: ${{ secrets.APPLE_EMAIL }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_CERT_NAME: ${{ secrets.APPLE_CERT_NAME }}
+        run: |
+          CERTIFICATE="$APPLE_CERT_NAME"
+          ENTITLEMENTS=".sign/entitlements.plist"
+          APP_PATH="target/artifacts/Graphite.app"
+          ZIP_PATH=".sign/Graphite.zip"
+
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Graphite Helper.app"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Graphite Helper (GPU).app"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Graphite Helper (Renderer).app"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libcef_sandbox.dylib"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libEGL.dylib"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libGLESv2.dylib"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH/Contents/Frameworks/Chromium Embedded Framework.framework/Libraries/libvk_swiftshader.dylib"
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$CERTIFICATE" "$APP_PATH" --deep
+
+          codesign --verify --deep --strict --verbose=4 "$APP_PATH"
+
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+          xcrun notarytool submit "$ZIP_PATH" --wait --apple-id "$APPLE_EMAIL" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
+          rm "$ZIP_PATH"
+
+          xcrun stapler staple -v "$APP_PATH"
+
+          spctl -a -vv "$APP_PATH"
+
+      - name: 📦 Upload signed Mac bundle
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-mac-bundle-signed
+          path: target/artifacts
+
+  linux:
+    if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repo || github.repository }}
+          ref: ${{ inputs.checkout_ref || '' }}
+
+      - name: ❄ Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: 🗑 Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+
+      - name: 📦 Build Nix package
+        run: nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths
+
+      - name: 📤 Push to Nix cache
+        if: (github.event_name == 'push' || inputs.push_to_nix_cache) && !inputs.debug
+        env:
+          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN }}
+        run: |
+          nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
+          nix build --no-link --print-out-paths | nix run nixpkgs#cachix -- push graphite
+
+      - name: 🏗 Build Linux bundle
+        run: nix build .#graphite${{ inputs.debug && '-dev' || '' }}-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
+
+      - name: 📦 Upload Linux bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-linux-bundle
+          path: graphite-linux-bundle.tar.xz
+          compression-level: 0
+
+      - name: 💬 Comment artifact link on PR
+        id: linux-comment
+        if: github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-linux-bundle") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+          PR_NUMBER="${{ inputs.pr_number }}"
+          if [ -z "$PR_NUMBER" ]; then
+            BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            PR_NUMBER=$(gh pr list --repo ${{ github.repository }} --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          fi
+          if [ -n "$PR_NUMBER" ] && [ -n "$ARTIFACT_ID" ]; then
+            BODY="| 📦 **Linux Build Complete for** $(git rev-parse HEAD) |"$'\n'
+            BODY+="|-|"$'\n'
+            BODY+="| [Download binary]($ARTIFACT_URL) |"
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$BODY" --jq '.id')
+            echo "comment_id=$COMMENT_ID" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 🔧 Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: 🏗 Build Flatpak
+        run: |
+          nix build .#graphite${{ inputs.debug && '-dev' || '' }}-flatpak-manifest
+
+          rm -rf .flatpak
+          mkdir -p .flatpak
+
+          cp ./result .flatpak/manifest.json
+
+          cd .flatpak
+          mkdir -p repo
+
+          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build ./manifest.json
+
+          flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: 📦 Upload Flatpak package
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphite-flatpak
+          path: .flatpak/Graphite.flatpak
+          compression-level: 0
+
+      - name: 💬 Update PR comment with Flatpak artifact link
+        if: github.event_name != 'push' && steps.linux-comment.outputs.comment_id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[] | select(.name == "graphite-flatpak") | .id')
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID"
+          COMMENT_ID="${{ steps.linux-comment.outputs.comment_id }}"
+          if [ -n "$ARTIFACT_ID" ]; then
+            EXISTING_BODY=$(gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID --jq '.body')
+            BODY="$EXISTING_BODY"$'\n'
+            BODY+="| [Download Flatpak]($ARTIFACT_URL) |"
+            gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID -X PATCH -f body="$BODY"
+          fi

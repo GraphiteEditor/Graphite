@@ -33,6 +33,8 @@ pub struct ModifyInputsContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	// Cannot be LayerNodeIdentifier::ROOT_PARENT
 	pub layer_node: Option<LayerNodeIdentifier>,
+	/// When true, uses lightweight import paths that skip expensive checks during bulk import.
+	pub import: bool,
 }
 
 impl<'a> ModifyInputsContext<'a> {
@@ -42,6 +44,7 @@ impl<'a> ModifyInputsContext<'a> {
 			network_interface,
 			responses,
 			layer_node: None,
+			import: false,
 		}
 	}
 
@@ -150,7 +153,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let boolean_id = NodeId::new();
 		self.network_interface.insert_node(boolean_id, boolean, &[]);
-		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[], self.import);
 	}
 
 	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
@@ -161,13 +164,13 @@ impl<'a> ModifyInputsContext<'a> {
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector), false))]);
 		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
-		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[], self.import);
 
 		if include_transform {
 			let transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
 			let transform_id = NodeId::new();
 			self.network_interface.insert_node(transform_id, transform, &[]);
-			self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+			self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
 		}
 
 		if include_stroke {
@@ -176,7 +179,7 @@ impl<'a> ModifyInputsContext<'a> {
 				.default_node_template();
 			let stroke_id = NodeId::new();
 			self.network_interface.insert_node(stroke_id, stroke, &[]);
-			self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
+			self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[], self.import);
 		}
 
 		if include_fill {
@@ -185,7 +188,7 @@ impl<'a> ModifyInputsContext<'a> {
 				.default_node_template();
 			let fill_id = NodeId::new();
 			self.network_interface.insert_node(fill_id, fill, &[]);
-			self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+			self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 		}
 	}
 
@@ -216,19 +219,19 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let text_id = NodeId::new();
 		self.network_interface.insert_node(text_id, text, &[]);
-		self.network_interface.move_node_to_chain_start(&text_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&text_id, layer, &[], self.import);
 
 		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
-		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
 
 		let stroke_id = NodeId::new();
 		self.network_interface.insert_node(stroke_id, stroke, &[]);
-		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[], self.import);
 
 		let fill_id = NodeId::new();
 		self.network_interface.insert_node(fill_id, fill, &[]);
-		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 	}
 
 	pub fn insert_image_data(&mut self, image_frame: Table<Raster<CPU>>, layer: LayerNodeIdentifier) {
@@ -239,11 +242,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
-		self.network_interface.move_node_to_chain_start(&image_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&image_id, layer, &[], self.import);
 
 		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
-		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
+		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
 	}
 
 	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
@@ -328,12 +331,12 @@ impl<'a> ModifyInputsContext<'a> {
 				};
 				let node_id = NodeId::new();
 				self.network_interface.insert_node(node_id, flatten_path_definition.default_node_template(), &[]);
-				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
 			}
 		}
 		let node_id = NodeId::new();
 		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
-		self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+		self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[], self.import);
 		Some(node_id)
 	}
 

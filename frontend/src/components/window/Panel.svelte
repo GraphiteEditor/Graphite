@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
-
-	import type { Editor } from "@graphite/editor";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Data from "@graphite/components/panels/Data.svelte";
-	import Document from "@graphite/components/panels/Document.svelte";
-	import Layers from "@graphite/components/panels/Layers.svelte";
-	import Properties from "@graphite/components/panels/Properties.svelte";
-	import Welcome from "@graphite/components/panels/Welcome.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Data from "/src/components/panels/Data.svelte";
+	import Document from "/src/components/panels/Document.svelte";
+	import Layers from "/src/components/panels/Layers.svelte";
+	import Properties from "/src/components/panels/Properties.svelte";
+	import Welcome from "/src/components/panels/Welcome.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 
@@ -25,7 +23,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
@@ -56,7 +54,7 @@
 	}
 </script>
 
-<LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
+<LayoutCol on:pointerdown={() => panelType && editor.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
 			{#each tabLabels as tabLabel, tabIndex}

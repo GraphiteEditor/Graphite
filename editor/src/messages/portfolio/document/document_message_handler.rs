@@ -4,7 +4,9 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{
+	ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL,
+};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -658,29 +660,35 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				image,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
+				let layer_parent = self.new_layer_parent(true);
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				// Align the layer with the mouse or center of viewport
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
-				let center_in_viewport_layerspace = center_in_viewport;
-
-				// Make layer the size of the image
-				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
-
-				let transform = center_in_viewport_layerspace * fit_image_size;
+				let mut transform = if place_at_origin {
+					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
+					DAffine2::from_scale(image_size)
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					let cursor_in_parent = parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport);
+					cursor_in_parent * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
+				};
+				transform.translation = transform.translation.round();
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -715,17 +723,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				svg,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
+				let layer_parent = self.new_layer_parent(true);
+				let transform = if place_at_origin {
+					// File-open flow: place at document origin so `WrapContentInArtboard` can wrap it without extra Transform nodes
+					DAffine2::IDENTITY
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport)
+				};
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -835,26 +855,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
-				if let DocumentMessage::SaveDocumentAs = message {
-					self.path = None;
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+
+				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
+				if path.is_some() {
+					responses.add(DocumentMessage::MarkAsSaved);
 				}
 
-				self.set_save_state(true);
-				responses.add(PortfolioMessage::AutoSaveActiveDocument);
-				// Update the save status of the just saved document
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
 				responses.add(FrontendMessage::TriggerSaveDocument {
 					document_id,
 					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path: self.path.clone(),
+					path,
+					folder,
 					content: self.serialize_document().into_bytes().into(),
-				})
+				});
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
 
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+				responses.add(DocumentMessage::MarkAsSaved);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
@@ -1345,27 +1367,46 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.selection_step_forward(&self.selection_network_path);
 				responses.add(EventMessage::SelectionChanged);
 			}
-			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
-				// Get bounding box of all layers
+			DocumentMessage::WrapContentInArtboard {
+				place_artboard_at_origin,
+				artboard_canvas,
+			} => {
+				// Get bounding box of all layers (always needed to confirm there is content)
 				let bounds = self.network_interface.document_bounds_document_space(false);
 				let Some(bounds) = bounds else { return };
-				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
+
+				// When artboard_canvas is provided (SVG file-open flow), use the declared canvas origin and dimensions;
+				// no content-shift Transform node needed since the SVG was already placed at its natural coordinates.
+				let (artboard_location, artboard_dimensions, content_shift) = if let Some((origin, dimensions)) = artboard_canvas {
+					(origin, dimensions, DVec2::ZERO)
+				} else {
+					// No declared canvas (image or clipboard paste): derive location and dimensions from the content bounding box.
+					let location = if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() };
+					(location, (bounds[1] - bounds[0]).round().as_ivec2(), -bounds[0].round())
+				};
 
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
 				let new_artboard_node = document_node_definitions::resolve_network_node_type("Artboard")
 					.expect("Failed to create artboard node")
-					.default_node_template();
+					// Enable clipping by default (input index 5) so imported content is masked to the artboard bounds
+					.node_template_input_override([None, None, None, None, None, Some(NodeInput::value(TaggedValue::Bool(true), false))]);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
 					node_template: Box::new(new_artboard_node),
 				});
-				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: 15, y: -3 });
+				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
+				// With a content Transform node: shift by the layer indent plus the node width. Without: use just the layer indent.
+				responses.add(NodeGraphMessage::ShiftNodePosition {
+					node_id,
+					x: if needs_content_transform { LAYER_INDENT_OFFSET + NODE_CHAIN_WIDTH } else { LAYER_INDENT_OFFSET },
+					y: -3,
+				});
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: LayerNodeIdentifier::new_unchecked(node_id),
-					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
-					dimensions: bounds_rounded_dimensions.as_ivec2(),
+					location: artboard_location,
+					dimensions: artboard_dimensions,
 				});
 
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
@@ -1375,10 +1416,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					insert_node_input_index: 1,
 				});
 
-				// Shift the content by half its width and height so it gets centered in the artboard
+				// Shift the content to align its top-left to the artboard's origin (no-op when content is already at origin)
 				responses.add(GraphOperationMessage::TransformChange {
 					layer: node_layer_id,
-					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
+					transform: DAffine2::from_translation(content_shift),
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
@@ -1472,6 +1513,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
+	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
+		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_pos - viewport.offset().into_dvec2()))
+	}
+
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);

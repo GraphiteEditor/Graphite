@@ -1,12 +1,11 @@
 <script lang="ts">
-	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { IconName, PopoverButtonStyle } from "@graphite/icons";
-
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { IconName, PopoverButtonStyle } from "/src/icons";
+	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let layoutTarget: LayoutTarget;
 

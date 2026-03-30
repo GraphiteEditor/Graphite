@@ -1,28 +1,32 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { getContext, onMount, onDestroy } from "svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
 	let statusBarHintsLayout: Layout = [];
 	let statusBarInfoLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("StatusBarHints", (data) => {
+		subscriptions.subscribeLayoutUpdate("StatusBarHints", (data) => {
 			patchLayout(statusBarHintsLayout, data);
 			statusBarHintsLayout = statusBarHintsLayout;
 		});
-		editor.subscriptions.subscribeLayoutUpdate("StatusBarInfo", (data) => {
+
+		subscriptions.subscribeLayoutUpdate("StatusBarInfo", (data) => {
 			patchLayout(statusBarInfoLayout, data);
 			statusBarInfoLayout = statusBarInfoLayout;
 		});
+	});
+
+	onDestroy(() => {
+		subscriptions.unsubscribeLayoutUpdate("StatusBarHints");
+		subscriptions.unsubscribeLayoutUpdate("StatusBarInfo");
 	});
 </script>
 

@@ -10,6 +10,7 @@ members = [
 	"editor",
 	"frontend/wasm",
 	"libraries/ai-models",
+	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"node-graph/libraries/*",
@@ -31,7 +32,7 @@ members = [
 ]
 default-members = [
 	"editor",
-	"frontend/wasm",
+	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"node-graph/graph-craft",

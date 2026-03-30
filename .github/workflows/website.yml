@@ -1,6 +1,7 @@
 name: "Website"
 
 on:
+  workflow_dispatch: {}
   push:
     branches:
       - master
@@ -9,7 +10,6 @@ on:
   pull_request:
     paths:
       - website/**
-  workflow_dispatch: {}
 env:
   CARGO_TERM_COLOR: always
   INDEX_HTML_HEAD_INCLUSION: <script defer data-domain="graphite.art" data-api="/visit/event" src="/visit/script.hash.js"></script>
@@ -23,16 +23,13 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
 
-      # We can remove this step once `ubuntu-latest` has Node.js 22 or newer for its native TypeScript support. See:
-      # https://github.com/actions/runner-images?tab=readme-ov-file#available-images
-      # https://nodejs.org/en/learn/typescript/run-natively
-      - name: 📦 Install the latest Node.js
-        uses: actions/setup-node@v4
+      - name: 🟢 Install Node.js
+        uses: actions/setup-node@v6
         with:
-          node-version: "latest"
+          node-version-file: .nvmrc
 
       - name: 🕸 Install Zola
         uses: taiki-e/install-action@v2
@@ -52,58 +49,31 @@ jobs:
           # Remove the INDEX_HTML_HEAD_INCLUSION environment variable for build links (not master deploys)
           git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_INCLUSION=""
 
-      - name: 💿 Obtain cache of auto-generated code docs artifacts
-        id: cache-website-code-docs
-        uses: actions/cache/restore@v3
-        with:
-          path: artifacts
-          key: website-code-docs
-
-      - name: 📁 Fallback in case auto-generated code docs artifacts weren't cached
-        if: steps.cache-website-code-docs.outputs.cache-hit != 'true'
+      - name: 🦀 Produce auto-generated code docs data
         run: |
-          echo "🦀 Initial system version of Rust:"
-          rustc --version
           rustup update stable
-          echo "🦀 Latest updated version of Rust:"
-          rustc --version
-          cd tools/editor-message-tree
-          cargo run
-          cd ../..
-          mkdir artifacts
-          mv website/generated/hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
+          cargo run -p crate-hierarchy-viz -- website/generated
+          cargo run -p editor-message-tree -- website/generated
 
-      - name: 🚚 Move `artifacts` contents to website/generated
-        run: |
-          mkdir -p website/generated
-          mv artifacts/* website/generated/
-
-      - name: 🔧 Build auto-generated code docs artifacts into HTML
+      - name: 🔧 Install website npm dependencies
         run: |
           cd website
-          npm run generate-editor-structure
+          npm ci
 
       - name: 📃 Generate node catalog documentation
-        run: |
-          cd tools/node-docs
-          cargo run
+        run: cargo run -p node-docs -- website/content/learn/node-catalog
 
       - name: 🌐 Build Graphite website with Zola
         env:
           MODE: prod
         run: |
           cd website
-          npm ci
           npm run check
           zola --config config.toml build --minify
 
       - name: 📤 Publish to Cloudflare Pages
-        id: cloudflare
-        uses: cloudflare/pages-action@1
         continue-on-error: true
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          projectName: graphite-website
-          directory: website/public
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler@3 pages deploy "website/public" --project-name="graphite-website" --commit-dirty=true
