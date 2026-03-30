@@ -2373,6 +2373,20 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		}
 	}
 
+	// Fast path: when exactly at the source object, clone its geometry directly instead of
+	// extracting manipulator groups, subdividing, interpolating, and rebuilding the vector.
+	if time == 0. {
+		let mut vector = source_row.element.clone();
+		vector.upstream_data = Some(graphic_table_content);
+
+		return Table::new_from_row(TableRow {
+			element: vector,
+			transform: lerped_transform,
+			alpha_blending: *source_row.alpha_blending,
+			..Default::default()
+		});
+	}
+
 	let mut vector = Vector {
 		upstream_data: Some(graphic_table_content),
 		..Default::default()
