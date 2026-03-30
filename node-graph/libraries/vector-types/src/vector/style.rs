@@ -463,7 +463,7 @@ impl Stroke {
 			join: if time < 0.5 { self.join } else { other.join },
 			join_miter_limit: self.join_miter_limit + (other.join_miter_limit - self.join_miter_limit) * time,
 			align: if time < 0.5 { self.align } else { other.align },
-transform: {
+			transform: {
 				// Decompose into scale/rotation/skew and interpolate each component separately.
 				// We do this instead of linear matrix interpolation because that passes through a zero matrix
 				// (and thus a division by 0 when rendering) when transforms have opposing rotations (e.g. 0° vs 180°).

@@ -1282,8 +1282,6 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			// We set the solidified stroke's fill to the stroke's color and without a stroke.
 			if let Some(stroke) = vector.style.stroke() {
-// We set the solidified stroke's fill to the stroke's color and without a stroke.
-			if let Some(stroke) = vector.style.stroke() {
 				let mut paint = stroke.paint.clone();
 
 				// Remap gradient start/end from the original bounding box space to the new solidified bounding box space
@@ -1306,7 +1304,6 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 				solidified_stroke.style.set_fill(paint);
 				solidified_stroke.style.clear_stroke();
-			}
 			}
 
 			let stroke_row = TableRow {
