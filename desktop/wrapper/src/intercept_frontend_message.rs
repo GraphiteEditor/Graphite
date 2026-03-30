@@ -1,7 +1,6 @@
 #[cfg(target_os = "macos")]
 use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use graphite_editor::messages::prelude::FrontendMessage;
-use std::path::PathBuf;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
@@ -25,7 +24,13 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				context: OpenFileDialogContext::Import,
 			});
 		}
-		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
+		FrontendMessage::TriggerSaveDocument {
+			document_id,
+			name,
+			path,
+			folder,
+			content,
+		} => {
 			let content = content.into_vec();
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
@@ -33,7 +38,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 					title: "Save Document".to_string(),
 					default_filename: name,
-					default_folder: path.and_then(|p| p.parent().map(PathBuf::from)),
+					default_folder: folder,
 					filters: vec![FileFilter {
 						name: "Graphite".to_string(),
 						extensions: vec!["graphite".to_string()],
@@ -42,12 +47,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				});
 			}
 		}
-		FrontendMessage::TriggerSaveFile { name, content } => {
+		FrontendMessage::TriggerSaveFile { name, folder, content } => {
 			let content = content.into_vec();
 			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 				title: "Save File".to_string(),
 				default_filename: name,
-				default_folder: None,
+				default_folder: folder,
 				filters: Vec::new(),
 				context: SaveFileDialogContext::File { content },
 			});

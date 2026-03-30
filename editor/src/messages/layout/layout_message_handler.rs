@@ -33,6 +33,20 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 				// Resend that diff
 				self.send_diff(vec![diff], layout_target, responses, action_input_mapping);
 			}
+			LayoutMessage::ResendAllLayouts => {
+				// Collect non-empty layouts and their indices, then clear the stored copies so diffs compute as full re-sends
+				let layouts_to_resend: Vec<_> = self
+					.layouts
+					.iter_mut()
+					.enumerate()
+					.filter(|(_, layout)| !layout.0.is_empty())
+					.map(|(i, layout)| (LayoutTarget::from(i as u8), std::mem::take(layout)))
+					.collect();
+
+				for (layout_target, layout) in layouts_to_resend {
+					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+				}
+			}
 			LayoutMessage::SendLayout { layout, layout_target } => {
 				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
 			}

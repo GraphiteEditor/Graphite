@@ -1,13 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
-
-	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
+	import type { EditorWrapper, LayoutTarget, WidgetSection as WidgetSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let widgetData: WidgetSectionData;
 	export let layoutTarget: LayoutTarget;
@@ -18,7 +15,7 @@
 
 	let expanded = true;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
@@ -31,7 +28,7 @@
 			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
-				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
+				editor.setNodePinned(widgetData.id, !widgetData.pinned);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -41,7 +38,7 @@
 			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
-				editor.handle.deleteNode(widgetData.id);
+				editor.deleteNode(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -52,7 +49,7 @@
 			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
-				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
+				editor.toggleNodeVisibilityLayerPanel(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class={widgetData.visible ? "show-only-on-hover" : ""}

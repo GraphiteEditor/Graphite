@@ -127,6 +127,9 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						Some(match concrete_type.id? {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
+							// Table-wrapped types need a single-row default with the element's default, not an empty table
+							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
+							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_element(GradientStops::default())),
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
 						})
@@ -267,8 +270,9 @@ tagged_value! {
 	GradientType(vector::style::GradientType),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
-	BooleanOperation(path_bool_nodes::BooleanOperation),
+	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
+	ScaleType(core_types::transform::ScaleType),
 }
 
 impl TaggedValue {

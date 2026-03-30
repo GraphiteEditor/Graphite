@@ -185,7 +185,6 @@ impl NodeGraphExecutor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn submit_eyedropper_preview(
 		&mut self,
 		document: &DocumentMessageHandler,
@@ -201,13 +200,25 @@ impl NodeGraphExecutor {
 			resolution: viewport_resolution,
 			..Default::default()
 		};
+
+		// TODO: On desktop, SVG Preview mode cannot work with the Eyedropper tool until <https://github.com/GraphiteEditor/Graphite/issues/3796> is implemented.
+		// TODO: So for now, we fall back to the Eyedropper using Normal mode (Vello) rendering, which looks similar enough to SVG Preview.
+		#[cfg(not(target_family = "wasm"))]
+		let render_mode = match document.render_mode {
+			graphene_std::vector::style::RenderMode::SvgPreview => graphene_std::vector::style::RenderMode::Normal,
+			other => other,
+		};
+		// On web, SVG Preview is handled by the frontend's SVG rasterization path instead, producing the correct result, so we keep it enabled.
+		#[cfg(target_family = "wasm")]
+		let render_mode = document.render_mode;
+
 		let render_config = RenderConfig {
 			viewport,
 			scale: viewport_scale,
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			render_mode: document.render_mode,
+			render_mode,
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
@@ -321,7 +332,7 @@ impl NodeGraphExecutor {
 
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
-						self.process_export(node_graph_output, export_config, responses)?;
+						self.process_export(node_graph_output, export_config, document, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
@@ -424,13 +435,11 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let ExportConfig {
 			file_type,
 			name,
 			size,
-			#[cfg(feature = "gpu")]
-			transparent_background,
 			artboard_name,
 			artboard_count,
 			..
@@ -446,6 +455,7 @@ impl NodeGraphExecutor {
 			_ => name,
 		};
 		let name = format!("{base_name}.{file_extension}");
+		let folder = document.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -455,6 +465,7 @@ impl NodeGraphExecutor {
 				if file_type == FileType::Svg {
 					responses.add(FrontendMessage::TriggerSaveFile {
 						name,
+						folder,
 						content: svg.into_bytes().into(),
 					});
 				} else {
@@ -480,12 +491,7 @@ impl NodeGraphExecutor {
 
 				match file_type {
 					FileType::Png => {
-						let result = if transparent_background {
-							image.write_to(&mut cursor, ImageFormat::Png)
-						} else {
-							let image: RgbImage = image.convert();
-							image.write_to(&mut cursor, ImageFormat::Png)
-						};
+						let result = image.write_to(&mut cursor, ImageFormat::Png);
 						if let Err(err) = result {
 							return Err(format!("Failed to encode PNG: {err}"));
 						}
@@ -502,7 +508,11 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
+				responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder,
+					content: encoded.into(),
+				});
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));

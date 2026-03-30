@@ -1,11 +1,10 @@
 <script lang="ts">
-	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { IconName } from "@graphite/icons";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { IconName } from "/src/icons";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let shortcut: ActionShortcut;

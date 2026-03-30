@@ -1,21 +1,19 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
-
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -41,9 +39,10 @@
 		startY: number;
 	};
 
-	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorWrapper>("editor");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -69,26 +68,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -107,11 +106,11 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
@@ -125,17 +124,17 @@
 	});
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -162,7 +161,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -200,7 +199,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -247,7 +246,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -256,7 +255,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -389,7 +388,7 @@
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -445,7 +444,7 @@
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
 			const name = inputElement.value || "";
-			editor.handle.setLayerName(currentListing.entry.id, name);
+			editor.setLayerName(currentListing.entry.id, name);
 			currentListing.entry.alias = name;
 		}
 

@@ -89,10 +89,12 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 		name: String,
 		path: Option<PathBuf>,
+		folder: Option<PathBuf>,
 		content: serde_bytes::ByteBuf,
 	},
 	TriggerSaveFile {
 		name: String,
+		folder: Option<PathBuf>,
 		content: serde_bytes::ByteBuf,
 	},
 	TriggerExportImage {
@@ -225,8 +227,6 @@ pub enum FrontendMessage {
 	UpdateDocumentArtwork {
 		svg: String,
 	},
-	// This message is intercepted before being sent to the frontend
-	#[serde(skip)]
 	UpdateImageData {
 		image_data: Vec<(u64, Image<Color>)>,
 	},

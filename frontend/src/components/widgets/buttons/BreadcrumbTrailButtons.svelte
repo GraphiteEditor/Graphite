@@ -1,8 +1,7 @@
 <script lang="ts">
-	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let labels: string[];
