@@ -9,6 +9,7 @@ members = [
 	"desktop/platform/win",
 	"editor",
 	"frontend/wasm",
+	"libraries/ai-models",
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"node-graph/libraries/*",

@@ -54,7 +54,15 @@ checksum = "8e60d3430d3a69478ad0993f19238d2df97c507009a52b3c10addcd7f6bcb916"
 dependencies = [
  "memchr",
 ]
-
+[[package]]
+name = "ai-models"
+version = "0.0.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
 [[package]]
 name = "allocator-api2"
 version = "0.2.21"

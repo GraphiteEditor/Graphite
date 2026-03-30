@@ -1,0 +1,14 @@
+[package]
+name = "ai-models"
+version = "0.0.0"
+rust-version = "1.88"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.art>"]
+description = "Model Registry & Metadata Schema for Graphite AI capabilities"
+license = "Apache-2.0"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
