@@ -2120,18 +2120,18 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		let Some(first) = manips.first() else { return };
 
 		let first_point_index = vector.point_domain.ids().len();
-		vector.point_domain.push(point_id.next_id(), first.anchor);
+		vector.point_domain.push_unchecked(point_id.next_id(), first.anchor);
 		let mut prev_point_index = first_point_index;
 		let mut first_segment_id = None;
 
 		for manip_window in manips.windows(2) {
 			let point_index = vector.point_domain.ids().len();
-			vector.point_domain.push(point_id.next_id(), manip_window[1].anchor);
+			vector.point_domain.push_unchecked(point_id.next_id(), manip_window[1].anchor);
 
 			let handles = handles_from_manips(manip_window[0].out_handle, manip_window[1].in_handle);
 			let seg_id = segment_id.next_id();
 			first_segment_id.get_or_insert(seg_id);
-			vector.segment_domain.push(seg_id, prev_point_index, point_index, handles, StrokeId::ZERO);
+			vector.segment_domain.push_unchecked(seg_id, prev_point_index, point_index, handles, StrokeId::ZERO);
 
 			prev_point_index = point_index;
 		}
@@ -2140,10 +2140,10 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 			let handles = handles_from_manips(manips.last().unwrap().out_handle, manips[0].in_handle);
 			let closing_seg_id = segment_id.next_id();
 			first_segment_id.get_or_insert(closing_seg_id);
-			vector.segment_domain.push(closing_seg_id, prev_point_index, first_point_index, handles, StrokeId::ZERO);
+			vector.segment_domain.push_unchecked(closing_seg_id, prev_point_index, first_point_index, handles, StrokeId::ZERO);
 
 			let region_id = vector.region_domain.next_id();
-			vector.region_domain.push(region_id, first_segment_id.unwrap()..=closing_seg_id, FillId::ZERO);
+			vector.region_domain.push_unchecked(region_id, first_segment_id.unwrap()..=closing_seg_id, FillId::ZERO);
 		}
 	}
 
