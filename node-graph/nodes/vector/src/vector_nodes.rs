@@ -364,13 +364,13 @@ async fn round_corners(
 					}
 
 					// Not the prettiest, but it makes the rest of the logic more readable
-					let prev_idx = if i == 0 { if is_closed { manipulator_groups.len() - 1 } else { 0 } } else { i - 1 };
-					let curr_idx = i;
-					let next_idx = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
+					let prev_index = if i == 0 { if is_closed { manipulator_groups.len() - 1 } else { 0 } } else { i - 1 };
+					let curr_index = i;
+					let next_index = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
 
-					let prev = manipulator_groups[prev_idx].anchor;
-					let curr = manipulator_groups[curr_idx].anchor;
-					let next = manipulator_groups[next_idx].anchor;
+					let prev = manipulator_groups[prev_index].anchor;
+					let curr = manipulator_groups[curr_index].anchor;
+					let next = manipulator_groups[next_index].anchor;
 
 					let dir1 = (curr - prev).normalize_or(DVec2::X);
 					let dir2 = (next - curr).normalize_or(DVec2::X);
@@ -379,7 +379,7 @@ async fn round_corners(
 
 					// Skip near-straight corners
 					if theta > PI - min_angle_threshold.to_radians() {
-						new_manipulator_groups.push(manipulator_groups[curr_idx]);
+						new_manipulator_groups.push(manipulator_groups[curr_index]);
 						continue;
 					}
 
@@ -2032,14 +2032,14 @@ async fn offset_points(
 
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
-/// Progression [0, 1) morphs through all objects at uniform speed. A path may be provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
+/// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	#[implementations(Table<Graphic>, Table<Vector>)]
 	content: I,
-	/// The fractional part [0, 1) traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
+	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
 	progression: Progression,
 	/// Swap the direction of the progression between objects or along the control path.
 	reverse: bool,
@@ -2047,7 +2047,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	///
 	/// "Objects" morphs through each group element at an equal rate. "Distances" keeps constant speed with time between objects proportional to their distances. "Angles" keeps constant rotational speed. "Sizes" keeps constant shrink/growth speed. "Slants" keeps constant shearing angle speed.
 	distribution: InterpolationDistribution,
-	/// An optional control path whose anchor points correspond to each object. Curved segments between points will shape the morph trajectory instead of traveling straight. If there is a break between path segments, the separate subpaths are selected by index from the integer part of the progression value. For example, [1, 2) morphs along the segments of the second subpath, and so on.
+	/// An optional control path whose anchor points correspond to each object. Curved segments between points will shape the morph trajectory instead of traveling straight. If there is a break between path segments, the separate subpaths are selected by index from the integer part of the progression value. For example, `[1, 2)` morphs along the segments of the second subpath, and so on.
 	path: Table<Vector>,
 ) -> Table<Vector> {
 	/// Promotes a segment's handle pair to cubic-equivalent Bézier control points.
@@ -2074,11 +2074,11 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 			return;
 		}
 
-		let (prev_idx, next_idx) = if closed { (len - 1, 0) } else { (len - 2, len - 1) };
+		let (prev_index, next_index) = if closed { (len - 1, 0) } else { (len - 2, len - 1) };
 
-		let prev_anchor = manips[prev_idx].anchor;
-		let next_anchor = manips[next_idx].anchor;
-		let (h1, h2) = promote_handles_to_cubic(prev_anchor, manips[prev_idx].out_handle, manips[next_idx].in_handle, next_anchor);
+		let prev_anchor = manips[prev_index].anchor;
+		let next_anchor = manips[next_index].anchor;
+		let (h1, h2) = promote_handles_to_cubic(prev_anchor, manips[prev_index].out_handle, manips[next_index].in_handle, next_anchor);
 
 		// De Casteljau subdivision at t=0.5
 		let m01 = prev_anchor.lerp(h1, 0.5);
@@ -2088,8 +2088,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		let m123 = m12.lerp(m23, 0.5);
 		let mid = m012.lerp(m123, 0.5);
 
-		manips[prev_idx].out_handle = Some(m01);
-		manips[next_idx].in_handle = Some(m23);
+		manips[prev_index].out_handle = Some(m01);
+		manips[next_index].in_handle = Some(m23);
 
 		let mid_manip = ManipulatorGroup {
 			anchor: mid,
@@ -2101,7 +2101,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		if closed {
 			manips.push(mid_manip);
 		} else {
-			manips.insert(next_idx, mid_manip);
+			manips.insert(next_index, mid_manip);
 		}
 	}
 
@@ -2235,16 +2235,18 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		InterpolationDistribution::Distances => segment_lengths.clone(),
 		InterpolationDistribution::Angles | InterpolationDistribution::Sizes | InterpolationDistribution::Slants => (0..segment_count)
 			.map(|i| {
-				let src_idx = (content_offset + i).min(max_content_index);
-				let tgt_idx = if is_closed && i >= subpath_anchors - 1 {
+				let source_index = (content_offset + i).min(max_content_index);
+				let target_index = if is_closed && i >= subpath_anchors - 1 {
 					content_offset
 				} else {
 					(content_offset + i + 1).min(max_content_index)
 				};
 
-				let (Some(src), Some(tgt)) = (content.get(src_idx), content.get(tgt_idx)) else { return 0. };
-				let (s_angle, s_scale, s_skew) = src.transform.decompose_rotation_scale_skew();
-				let (t_angle, t_scale, t_skew) = tgt.transform.decompose_rotation_scale_skew();
+				let (Some(source), Some(target)) = (content.get(source_index), content.get(target_index)) else {
+					return 0.;
+				};
+				let (s_angle, s_scale, s_skew) = source.transform.decompose_rotation_scale_skew();
+				let (t_angle, t_scale, t_skew) = target.transform.decompose_rotation_scale_skew();
 
 				match distribution {
 					InterpolationDistribution::Angles => {
@@ -2291,8 +2293,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// Convert the blend time to a parametric t for evaluating spatial position on the control path
 	let path_segment_index = local_source_index;
 	let parametric_t = {
-		let seg_idx = path_segment_index.min(segment_count - 1);
-		let segment = control_bezpath.get_seg(seg_idx + 1).unwrap();
+		let segment_index = path_segment_index.min(segment_count - 1);
+		let segment = control_bezpath.get_seg(segment_index + 1).unwrap();
 		eval_pathseg_euclidean(segment, time, DEFAULT_ACCURACY)
 	};
 

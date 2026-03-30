@@ -1744,7 +1744,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let count_elements_template = count_elements_def.default_node_template();
 		let count_elements_id = NodeId::new();
 
-		// Create Subtract node: N - 1 → N-1
+		// Create Subtract node: N → N-1
 		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
 			log::error!("Could not get subtract node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);

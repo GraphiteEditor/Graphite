@@ -175,9 +175,6 @@ impl<'a> ModifyInputsContext<'a> {
 			.node_template_input_override([
 				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
 				Some(NodeInput::value(TaggedValue::F64(0.5), false)),
-				None,
-				None,
-				Some(NodeInput::value(TaggedValue::Vector(Default::default()), false)),
 			]);
 
 		let morph_id = NodeId::new();
