@@ -6,8 +6,10 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::Alpha;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::Table;
+use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::DAffine2;
+use std::f64::consts::{PI, TAU};
 
 /// Describes the fill of a layer.
 ///
@@ -85,8 +87,8 @@ impl Fill {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		let transparent = Self::solid(Color::TRANSPARENT);
-		let a = if *self == Self::None { &transparent } else { self };
-		let b = if *other == Self::None { &transparent } else { other };
+		let a = if *self == Self::None && *other != Self::None { &transparent } else { self };
+		let b = if *other == Self::None && *self != Self::None { &transparent } else { other };
 
 		match (a, b) {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
@@ -103,7 +105,7 @@ impl Fill {
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Gradient(b)) => Self::Gradient(a.lerp(b, time)),
-			_ => Self::None,
+			(Self::None, _) | (_, Self::None) => Self::None,
 		}
 	}
 
@@ -461,10 +463,32 @@ impl Stroke {
 			join: if time < 0.5 { self.join } else { other.join },
 			join_miter_limit: self.join_miter_limit + (other.join_miter_limit - self.join_miter_limit) * time,
 			align: if time < 0.5 { self.align } else { other.align },
-			transform: DAffine2::from_mat2_translation(
-				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
-				self.transform.translation * time + other.transform.translation * (1. - time),
-			),
+transform: {
+				// Decompose into scale/rotation/skew and interpolate each component separately.
+				// We do this instead of linear matrix interpolation because that passes through a zero matrix
+				// (and thus a division by 0 when rendering) when transforms have opposing rotations (e.g. 0° vs 180°).
+
+				let (s_angle, s_scale, s_skew) = self.transform.decompose_rotation_scale_skew();
+				let (t_angle, t_scale, t_skew) = other.transform.decompose_rotation_scale_skew();
+
+				let lerped_translation = self.transform.translation.lerp(other.transform.translation, time);
+
+				// Shortest-arc rotation interpolation
+				let mut rotation_diff = t_angle - s_angle;
+				if rotation_diff > PI {
+					rotation_diff -= TAU;
+				} else if rotation_diff < -PI {
+					rotation_diff += TAU;
+				}
+				let lerped_angle = s_angle + rotation_diff * time;
+
+				let lerped_scale = s_scale.lerp(t_scale, time);
+				let lerped_skew = s_skew.lerp(t_skew, time);
+
+				let trs = DAffine2::from_scale_angle_translation(lerped_scale, lerped_angle, lerped_translation);
+				let skew = DAffine2::from_cols_array(&[1., lerped_skew.y, lerped_skew.x, 1., 0., 0.]);
+				trs * skew
+			},
 			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
@@ -775,8 +799,8 @@ pub enum RenderMode {
 	Normal = 0,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
-	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
-	// PixelPreview,
+	/// Render with normal coloration at the document export resolution; at zoom > 100% this shows individual export pixels upscaled with nearest-neighbor filtering
+	PixelPreview,
 	/// Render a preview of how the object would be exported as an SVG.
 	SvgPreview,
 }

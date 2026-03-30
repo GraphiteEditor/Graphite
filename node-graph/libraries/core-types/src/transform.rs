@@ -36,6 +36,30 @@ pub trait Transform {
 		// Non-orthogonal columns or different lengths indicate skew/non-uniform scaling
 		col0.dot(col1).abs() > EPSILON || (col0.length() - col1.length()).abs() > EPSILON
 	}
+
+	/// Decomposes the transform into its rotation (angle), scale, and skew components.
+	fn decompose_rotation_scale_skew(&self) -> (f64, DVec2, DVec2) {
+		let transform = self.transform();
+		let x_axis = transform.matrix2.x_axis;
+		let y_axis = transform.matrix2.y_axis;
+
+		// Assuming there is no vertical shear
+		let angle = x_axis.y.atan2(x_axis.x);
+		let (sin, cos) = angle.sin_cos();
+		let scale_x = if cos.abs() > 1e-10 { x_axis.x / cos } else { x_axis.y / sin };
+
+		let mut shear_x = (sin * y_axis.y + cos * y_axis.x) / (sin * sin * scale_x + cos * cos * scale_x);
+		if !shear_x.is_finite() {
+			shear_x = 0.;
+		}
+		let scale_y = if cos.abs() > 1e-10 {
+			(y_axis.y - scale_x * sin * shear_x) / cos
+		} else {
+			(scale_x * cos * shear_x - y_axis.x) / sin
+		};
+
+		(angle, DVec2::new(scale_x, scale_y), DVec2::new(shear_x, 0.))
+	}
 }
 
 pub trait TransformMut: Transform {
