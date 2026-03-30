@@ -483,10 +483,10 @@ impl Stroke {
 				let lerped_angle = s_angle + rotation_diff * time;
 
 				let lerped_scale = s_scale.lerp(t_scale, time);
-				let lerped_skew = s_skew.lerp(t_skew, time);
+				let lerped_skew = s_skew + (t_skew - s_skew) * time;
 
 				let trs = DAffine2::from_scale_angle_translation(lerped_scale, lerped_angle, lerped_translation);
-				let skew = DAffine2::from_cols_array(&[1., lerped_skew.y, lerped_skew.x, 1., 0., 0.]);
+				let skew = DAffine2::from_cols_array(&[1., 0., lerped_skew, 1., 0., 0.]);
 				trs * skew
 			},
 			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
