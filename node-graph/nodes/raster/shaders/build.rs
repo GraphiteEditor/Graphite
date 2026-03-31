@@ -5,14 +5,6 @@ use std::path::PathBuf;
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	env_logger::builder().filter_level(log::LevelFilter::Debug).init();
 
-	// This crate is often built for wasm32 via wasm-pack, which sets `CARGO_BUILD_TARGET`.
-	// cargo-gpu then spawns nested `cargo` to build `rustc_codegen_spirv` for the host; if that
-	// variable is inherited, the nested build targets wasm32 and fails with "cannot produce dylib".
-	// SAFETY: Build script is single-threaded.
-	unsafe {
-		std::env::remove_var("CARGO_BUILD_TARGET");
-	}
-
 	// Skip building the shaders if they are provided externally
 	println!("cargo:rerun-if-env-changed=RASTER_NODES_SHADER_PATH");
 	if !std::env::var("RASTER_NODES_SHADER_PATH").unwrap_or_default().is_empty() {
