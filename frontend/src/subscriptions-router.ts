@@ -1,4 +1,4 @@
-import type { FrontendMessage, LayoutTarget, WidgetDiff } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { FrontendMessage, LayoutTarget, WidgetDiff } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Type convert a union of messages into a map of messages
 export type ToMessageMap<T> = {
@@ -9,26 +9,26 @@ export type MessageMap = ToMessageMap<FrontendMessage>;
 export type MessageName = keyof MessageMap;
 export type MessageBody<T extends MessageName> = Extract<FrontendMessage, Record<T, unknown>>[T];
 
-export function createSubscriptionRouter() {
+export function createSubscriptionsRouter() {
 	// Callbacks are wrapped at subscription time to capture their type-specific data extraction in a closure,
 	// so the stored function has a uniform signature and the map doesn't need per-key generic value types.
-	const subscriptions: Partial<Record<MessageName, (taggedMessage: MessageMap) => void>> = {};
-	const layoutCallbacks: Partial<Record<LayoutTarget, (diffs: WidgetDiff[]) => void>> = {};
+	const subscriptions = new Map<MessageName, (taggedMessage: MessageMap) => void>();
+	const layoutCallbacks = new Map<LayoutTarget, (diffs: WidgetDiff[]) => void>();
 
 	const subscribeFrontendMessage = <T extends MessageName>(messageType: T, callback: (data: MessageMap[T]) => void) => {
-		subscriptions[messageType] = (taggedMessage: MessageMap) => callback(taggedMessage[messageType]);
+		subscriptions.set(messageType, (taggedMessage: MessageMap) => callback(taggedMessage[messageType]));
 	};
 
 	const unsubscribeFrontendMessage = (messageType: MessageName) => {
-		delete subscriptions[messageType];
+		subscriptions.delete(messageType);
 	};
 
 	const subscribeLayoutUpdate = (target: LayoutTarget, callback: (diffs: WidgetDiff[]) => void) => {
-		layoutCallbacks[target] = callback;
+		layoutCallbacks.set(target, callback);
 	};
 
 	const unsubscribeLayoutUpdate = (target: LayoutTarget) => {
-		delete layoutCallbacks[target];
+		layoutCallbacks.delete(target);
 	};
 
 	function normalizeMessage<T extends string | object>(message: T): ToMessageMap<T>;
@@ -52,7 +52,7 @@ export function createSubscriptionRouter() {
 		// Resolve the dispatch thunk, depending on whether this is a layout update or a regular message.
 		// UpdateLayout messages are dispatched to layout-specific callbacks based on the layout target.
 		// The thunk is re-evaluated on each retry because the callback may not be registered yet.
-		let getHandler: () => ((taggedMessage: MessageMap) => void) | undefined = () => subscriptions[messageType];
+		let getHandler: () => ((taggedMessage: MessageMap) => void) | undefined = () => subscriptions.get(messageType);
 
 		// Handle layout updates specially to route them to layout-specific callbacks and extract the diffs as the data to pass
 		let target: LayoutTarget | undefined;
@@ -61,7 +61,7 @@ export function createSubscriptionRouter() {
 			target = layoutTarget;
 
 			getHandler = () => {
-				const layoutCallback = layoutCallbacks[layoutTarget];
+				const layoutCallback = layoutCallbacks.get(layoutTarget);
 				if (!layoutCallback) return undefined;
 				return () => layoutCallback(diff);
 			};
@@ -75,10 +75,14 @@ export function createSubscriptionRouter() {
 
 			if (handler) {
 				handler(taggedMessage);
-			} else if (retries <= 3) {
+			}
+			// Try again on the next stack frame, if the retry limit hasn't been exceeded yet
+			else if (retries <= 3) {
 				retries += 1;
 				setTimeout(callCallback, 0);
-			} else {
+			}
+			// Guard against this firing after a teardown during HMR, if no handlers are registered anymore
+			else if (subscriptions.size + layoutCallbacks.size > 0) {
 				// eslint-disable-next-line no-console
 				console.error(`Received a frontend message of type ${messageType}${target ? ` (${target})` : ""} but no handler was registered for it from the client.`);
 			}
@@ -95,4 +99,4 @@ export function createSubscriptionRouter() {
 		handleFrontendMessage,
 	};
 }
-export type SubscriptionRouter = ReturnType<typeof createSubscriptionRouter>;
+export type SubscriptionsRouter = ReturnType<typeof createSubscriptionsRouter>;

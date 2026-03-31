@@ -1,14 +1,4 @@
-import type { Editor } from "@graphite/editor";
-
-export function createLocalizationManager(editor: Editor) {
-	// Subscribe to process backend event
-	editor.subscriptions.subscribeFrontendMessage("TriggerAboutGraphiteLocalizedCommitDate", (data) => {
-		const localized = localizeTimestamp(data.commitDate);
-		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
-	});
-}
-
-function localizeTimestamp(utc: string): { timestamp: string; year: string } {
+export function localizeTimestamp(utc: string): { timestamp: string; year: string } {
 	// Timestamp
 	const date = new Date(utc);
 	if (Number.isNaN(date.getTime())) return { timestamp: utc, year: `${new Date().getFullYear()}` };

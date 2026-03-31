@@ -26,11 +26,7 @@ export function browserVersion(): string {
 export type OperatingSystem = "Windows" | "Mac" | "Linux";
 
 export function operatingSystem(): OperatingSystem {
-	const osTable: Record<string, OperatingSystem> = {
-		Windows: "Windows",
-		Mac: "Mac",
-		Linux: "Linux",
-	};
+	const osTable: Record<string, OperatingSystem> = { Windows: "Windows", Mac: "Mac", Linux: "Linux" };
 
 	const userAgentOS = Object.keys(osTable).find((key) => window.navigator.userAgent.includes(key));
 	return osTable[userAgentOS || "Windows"];

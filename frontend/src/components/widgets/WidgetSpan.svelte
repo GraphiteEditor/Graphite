@@ -1,33 +1,29 @@
 <script lang="ts">
 	import { getContext } from "svelte";
-
-	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import { parseFillChoice } from "@graphite/utility-functions/colors";
-	import { debouncer } from "@graphite/utility-functions/debounce";
-
-	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
-	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import ImageButton from "@graphite/components/widgets/buttons/ImageButton.svelte";
-	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
-	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
-	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
-	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
-	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
-	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
-	import ReferencePointInput from "@graphite/components/widgets/inputs/ReferencePointInput.svelte";
-	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
-	import WorkingColorsInput from "@graphite/components/widgets/inputs/WorkingColorsInput.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
+	import BreadcrumbTrailButtons from "/src/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import ImageButton from "/src/components/widgets/buttons/ImageButton.svelte";
+	import ParameterExposeButton from "/src/components/widgets/buttons/ParameterExposeButton.svelte";
+	import PopoverButton from "/src/components/widgets/buttons/PopoverButton.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import CheckboxInput from "/src/components/widgets/inputs/CheckboxInput.svelte";
+	import ColorInput from "/src/components/widgets/inputs/ColorInput.svelte";
+	import CurveInput from "/src/components/widgets/inputs/CurveInput.svelte";
+	import DropdownInput from "/src/components/widgets/inputs/DropdownInput.svelte";
+	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
+	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
+	import ReferencePointInput from "/src/components/widgets/inputs/ReferencePointInput.svelte";
+	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
+	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import WorkingColorsInput from "/src/components/widgets/inputs/WorkingColorsInput.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import ImageLabel from "/src/components/widgets/labels/ImageLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import { parseFillChoice } from "/src/utility-functions/colors";
+	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Extract the discriminant key names from the Widget tagged enum union (e.g. "TextButton" | "CheckboxInput" | ...)
 	type WidgetKind = Widget extends infer T ? (T extends Record<infer K, unknown> ? K & string : never) : never;
@@ -36,7 +32,7 @@
 	// A Widget tagged enum unwrapped into a correlated [kind, props] tuple
 	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	export let widgets: WidgetInstance[];
 	export let direction: "row" | "column";
@@ -53,15 +49,15 @@
 		.join(" ");
 
 	function widgetValueCommit(widgetIndex: number, value: unknown) {
-		editor.handle.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
+		editor.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
 	}
 
 	function widgetValueUpdate(widgetIndex: number, value: unknown, resendWidget: boolean) {
-		editor.handle.widgetValueUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
+		editor.widgetValueUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
 	}
 
 	function widgetValueCommitAndUpdate(widgetIndex: number, value: unknown, resendWidget: boolean) {
-		editor.handle.widgetValueCommitAndUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
+		editor.widgetValueCommitAndUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
 	}
 
 	// Extracts the kind and props from a Widget tagged enum, validated against the widget registry.
@@ -137,7 +133,7 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					value: (e: CustomEvent) => debouncer((value: unknown) => widgetValueCommitAndUpdate(index, value, false), { debounceTime: 120 }).debounceUpdateValue(e.detail),
+					value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false),
 				},
 			}),
 		},
@@ -202,7 +198,7 @@
 				incrementCallbackIncrease: () => widgetValueCommitAndUpdate(index, "Increment", false),
 				incrementCallbackDecrease: () => widgetValueCommitAndUpdate(index, "Decrement", false),
 				$$events: {
-					value: (e: CustomEvent) => debouncer((value: unknown) => widgetValueUpdate(index, value, true)).debounceUpdateValue(e.detail),
+					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
 				},
 			}),

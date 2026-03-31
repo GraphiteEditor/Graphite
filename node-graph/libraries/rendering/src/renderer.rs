@@ -522,18 +522,21 @@ impl Render for Artboard {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		// Render background
-		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-		scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
-		scene.pop_layer();
+		// Render background
+		if !render_params.hide_artboards {
+			let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
+			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
+			scene.pop_layer();
+		}
 
 		if self.clip {
 			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
+
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
 		let mut render_params = render_params.clone();
@@ -727,11 +730,14 @@ impl Render for Table<Graphic> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for row in self.iter() {
-			if let Some(element_id) = row.source_node_id {
-				let mut footprint = footprint;
-				footprint.transform *= *row.transform;
+			let mut footprint = footprint;
+			footprint.transform *= *row.transform;
 
+			if let Some(element_id) = row.source_node_id {
 				row.element.collect_metadata(metadata, footprint, Some(*element_id));
+			} else {
+				// Recurse through anonymous wrapper rows to reach nested content with source_node_ids
+				row.element.collect_metadata(metadata, footprint, None);
 			}
 		}
 
@@ -1226,12 +1232,20 @@ impl Render for Table<Vector> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		for row in self.iter() {
 			let transform = *row.transform;
 			let vector = row.element;
 
-			if let Some(element_id) = element_id {
+			if let Some(element_id) = caller_element_id.or(*row.source_node_id) {
+				// When recovering element_id from the row's source_node_id (because the caller
+				// passed None), also store the transform metadata that Graphic::collect_metadata
+				// normally provides but skipped due to the None element_id.
+				if caller_element_id.is_none() {
+					metadata.upstream_footprints.entry(element_id).or_insert(footprint);
+					metadata.local_transforms.entry(element_id).or_insert(transform);
+				}
+
 				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let filled = vector.style.fill() != &Fill::None;
 				let fill = |mut subpath: Subpath<_>| {
@@ -1266,8 +1280,9 @@ impl Render for Table<Vector> {
 			}
 
 			if let Some(upstream_nested_layers) = &vector.upstream_data {
-				footprint.transform *= transform;
-				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+				let mut upstream_footprint = footprint;
+				upstream_footprint.transform *= transform;
+				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
 			}
 		}
 	}
