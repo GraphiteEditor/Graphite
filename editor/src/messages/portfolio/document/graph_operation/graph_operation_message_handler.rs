@@ -193,8 +193,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let control_path_layer = modify_inputs.create_layer(control_path_id);
 				let path_node_id = modify_inputs.insert_control_path_data(control_path_layer);
 
-				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				network_interface.move_layer_to_stack(control_path_layer, parent, insert_index + 1, &[]);
+				network_interface.move_layer_to_stack(control_path_layer, parent, insert_index, &[]);
+				network_interface.move_layer_to_stack(layer, parent, insert_index + 1, &[]);
 
 				// Connect the Path node's output to the chain node's path parameter input (input 4 for both Morph and Blend).
 				// Done after move_layer_to_stack so chain nodes have correct positions when converted to absolute.

@@ -2204,6 +2204,20 @@ impl DocumentMessageHandler {
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 
+				// The control path layer (Blend Path / Morph Path) should start collapsed.
+				let instance_path = {
+					// Build instance path from root down to the control path layer, which is a sibling of the main layer under `parent`.
+					let mut instance_path: Vec<NodeId> = parent
+						.ancestors(network_interface.document_metadata())
+						.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+						.map(LayerNodeIdentifier::to_node)
+						.collect();
+					instance_path.reverse();
+					instance_path.push(control_path_id);
+					instance_path
+				};
+				responses.add(DocumentMessage::ToggleLayerExpansion { instance_path, recursive: false });
+
 				return folder_id;
 			}
 		}
