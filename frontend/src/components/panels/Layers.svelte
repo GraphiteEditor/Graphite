@@ -20,6 +20,14 @@
 		bottomLayer: boolean;
 		editingName: boolean;
 		entry: LayerPanelEntry;
+		depth: number;
+		parentId: bigint | undefined;
+		childrenPresent: boolean;
+		expanded: boolean;
+		ancestorOfSelected: boolean;
+		parentsVisible: boolean;
+		parentsUnlocked: boolean;
+		instancePath: bigint[];
 	};
 
 	type DraggingData = {
@@ -131,10 +139,10 @@
 		editor.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, instancePath: bigint[]) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(BigUint64Array.from(instancePath), collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -279,40 +287,40 @@
 			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
 				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+				const listing = layers[parseInt(indexAttribute, 10)];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
 					return;
 				}
 				const pointerPercentage = (clientY - rect.top) / rect.height;
-				if (layer.childrenAllowed) {
+				if (listing.entry.childrenAllowed || listing.childrenPresent) {
 					if (pointerPercentage < 0.25) {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
-					} else if (pointerPercentage < 0.75 || (layer.childrenPresent && layer.expanded)) {
-						insertParentId = layer.id;
-						insertDepth = layer.depth;
+					} else if (pointerPercentage < 0.75 || (listing.childrenPresent && listing.expanded)) {
+						insertParentId = listing.entry.id;
+						insertDepth = listing.depth;
 						insertIndex = 0;
 						highlightFolder = true;
 					} else {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex + 1;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex + 1;
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				} else {
 					if (pointerPercentage < 0.5) {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
 					} else {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex + 1;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex + 1;
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
@@ -320,7 +328,7 @@
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
-				const numberRootLayers = layers.filter((layer) => layer.entry.depth === 1).length;
+				const numberRootLayers = layers.filter((listing) => listing.depth === 1).length;
 				insertParentId = undefined;
 				insertDepth = 0;
 				insertIndex = numberRootLayers;
@@ -493,42 +501,57 @@
 	}
 
 	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
-		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
-		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
+		// Track the editing state by flat list index, not layer ID, since a layer can appear at multiple positions
+		const editingIndex = layers.findIndex((layer: LayerListingInfo) => layer.editingName);
 
 		// Clear the layer hierarchy before rebuilding it
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (children: LayerStructureEntry[]) => {
+		const recurse = (children: LayerStructureEntry[], depth: number, parentId: bigint | undefined, parentPath: bigint[], parentsVisible: boolean, parentsUnlocked: boolean) => {
 			children.forEach((item, index) => {
+				const instancePath = [...parentPath, item.layerId];
 				const mapping = layerCache.get(String(item.layerId));
+
 				if (mapping) {
 					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
 						bottomLayer: index === children.length - 1,
 						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === item.layerId,
+						editingName: editingIndex === layers.length,
+						depth,
+						parentId,
+						childrenPresent: item.childrenPresent,
+						expanded: item.childrenPresent && item.children.length > 0,
+						ancestorOfSelected: item.descendantSelected,
+						parentsVisible,
+						parentsUnlocked,
+						instancePath,
 					});
 				}
 
-				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item.children);
+				// Call self recursively, propagating this layer's visibility/lock state to its children
+				const childParentsVisible = parentsVisible && (mapping?.visible ?? true);
+				const childParentsUnlocked = parentsUnlocked && (mapping?.unlocked ?? true);
+				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, instancePath, childParentsVisible, childParentsUnlocked);
 			});
 		};
-		recurse(layerStructure);
+		recurse(layerStructure, 1, undefined, [], true, true);
 		layers = layers;
 	}
 
 	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
 		layerCache.set(String(targetId), targetLayer);
 
-		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
-		if (layer) {
-			layer.entry = targetLayer;
-			layers = layers;
-		}
+		let changed = false;
+		layers.forEach((layer) => {
+			if (layer.entry.id === targetId) {
+				layer.entry = targetLayer;
+				changed = true;
+			}
+		});
+		if (changed) layers = layers;
 	}
 </script>
 
@@ -556,29 +579,29 @@
 					class="layer"
 					classes={{
 						selected,
-						"ancestor-of-selected": listing.entry.ancestorOfSelected,
+						"ancestor-of-selected": listing.ancestorOfSelected,
 						"descendant-of-selected": listing.entry.descendantOfSelected,
 						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
-					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
+					styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
 					data-layer
 					data-index={index}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
-					{#if listing.entry.childrenAllowed}
+					{#if listing.entry.childrenAllowed || listing.childrenPresent}
 						<button
 							class="expand-arrow"
-							class:expanded={listing.entry.expanded}
-							disabled={!listing.entry.childrenPresent}
-							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
-							data-tooltip-description={(listing.entry.expanded
-								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
-								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
-								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							class:expanded={listing.expanded}
+							disabled={!listing.childrenPresent}
+							data-tooltip-label={listing.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.expanded
+								? "Hide this layer's children. (To recursively collapse all descendants, perform the shortcut shown.)"
+								: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
+								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
 							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.instancePath)}
 							tabindex="0"
 						></button>
 					{:else}
@@ -628,27 +651,27 @@
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
-					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
+					{#if !listing.entry.unlocked || !listing.parentsUnlocked}
 						<IconButton
 							class="status-toggle"
-							classes={{ inherited: !listing.entry.parentsUnlocked }}
+							classes={{ inherited: !listing.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
 							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
-							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+							tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
 						/>
 					{/if}
 					<IconButton
 						class="status-toggle"
-						classes={{ inherited: !listing.entry.parentsVisible }}
+						classes={{ inherited: !listing.parentsVisible }}
 						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
 						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
 					/>
 				</LayoutRow>
 			{/each}
