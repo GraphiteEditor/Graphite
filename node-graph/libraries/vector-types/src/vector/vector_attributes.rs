@@ -104,6 +104,7 @@ impl PointDomain {
 		self.position.clear();
 	}
 
+	#[inline(always)]
 	pub fn reserve(&mut self, additional: usize) {
 		self.id.reserve(additional);
 		self.position.reserve(additional);
@@ -241,6 +242,7 @@ impl SegmentDomain {
 		self.stroke.clear();
 	}
 
+	#[inline(always)]
 	pub fn reserve(&mut self, additional: usize) {
 		self.id.reserve(additional);
 		self.start_point.reserve(additional);
@@ -617,6 +619,7 @@ impl RegionDomain {
 		self.fill.clear();
 	}
 
+	#[inline(always)]
 	pub fn reserve(&mut self, additional: usize) {
 		self.id.reserve(additional);
 		self.segment_range.reserve(additional);
