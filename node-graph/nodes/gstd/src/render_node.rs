@@ -1,22 +1,23 @@
 use core_types::table::Table;
-use core_types::transform::Footprint;
+use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig};
-use graphic_types::Artboard;
-use graphic_types::Graphic;
-use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use rendering::{RenderMetadata, SvgSegment};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
+
+// Re-export render_output_cache from render_cache module
+pub use crate::render_cache::render_output_cache;
 
 /// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
 type ImageData = HashMap<Image<Color>, u64>;
@@ -28,9 +29,9 @@ pub enum RenderIntermediateType {
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
-	ty: RenderIntermediateType,
-	metadata: RenderMetadata,
-	contains_artboard: bool,
+	pub(crate) ty: RenderIntermediateType,
+	pub(crate) metadata: RenderMetadata,
+	pub(crate) contains_artboard: bool,
 }
 
 #[node_macro::node(category(""))]
@@ -107,6 +108,7 @@ async fn create_context<'a: 'n>(
 		render_output_type,
 		footprint: Footprint::default(),
 		scale: render_config.scale,
+		viewport_zoom: footprint.scale_magnitudes().x,
 		..Default::default()
 	};
 
@@ -182,8 +184,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
 			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
-			let encoding = scene.encoding_mut();
-			for transform in encoding.transforms.iter_mut() {
+			for transform in scene.encoding_mut().transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}
@@ -195,10 +196,11 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				None
 			};
 
-			let texture = exec
-				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
-				.await
-				.expect("Failed to render Vello scene");
+			let texture = Arc::new(
+				exec.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
+					.await
+					.expect("Failed to render Vello scene"),
+			);
 
 			RenderOutputType::Texture(ImageTexture { texture })
 		}

@@ -1,28 +1,19 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
-
-	import type { Editor } from "@graphite/editor";
-	import {
-		patchLayout,
-		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerStructureJs,
-		UpdateLayersPanelControlBarLeftLayout,
-		UpdateLayersPanelControlBarRightLayout,
-		UpdateLayersPanelBottomBarLayout,
-	} from "@graphite/messages";
-	import type { DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -48,9 +39,10 @@
 		startY: number;
 	};
 
-	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorWrapper>("editor");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -76,27 +68,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
-			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
-			rebuildLayerHierarchy(structure);
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -107,6 +98,7 @@
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("mousedown", draggingMouseDown);
 		addEventListener("keydown", draggingKeyDown);
+		addEventListener("keydown", handleLayerPanelKeyDown);
 
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
@@ -114,93 +106,35 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarLeftLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarRightLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructureJs);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("keydown", draggingKeyDown);
+		removeEventListener("keydown", handleLayerPanelKeyDown);
 
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
 	});
 
-	type DocumentLayerStructure = {
-		layerId: bigint;
-		children: DocumentLayerStructure[];
-	};
-
-	function newUpdateDocumentLayerStructure(dataBuffer: DataBuffer): DocumentLayerStructure {
-		const pointerNum = Number(dataBuffer.pointer);
-		const lengthNum = Number(dataBuffer.length);
-
-		const wasmMemoryBuffer = editor.raw.buffer;
-
-		// Decode the folder structure encoding
-		const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
-
-		// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
-		const structureSectionLength = Number(encoding.getBigUint64(0, true));
-		const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
-
-		// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-		const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
-
-		let layersEncountered = 0;
-		let currentFolder: DocumentLayerStructure = { layerId: BigInt(-1), children: [] };
-		const currentFolderStack = [currentFolder];
-
-		for (let i = 0; i < structureSectionLength; i += 1) {
-			const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
-			const msbMask = BigInt(1) << BigInt(64 - 1);
-
-			// Set the MSB to 0 to clear the sign and then read the number as usual
-			const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
-
-			// Store child folders in the current folder (until we are interrupted by an indent)
-			for (let j = 0; j < numberOfLayersAtThisDepth; j += 1) {
-				const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
-				layersEncountered += 1;
-
-				const childLayer: DocumentLayerStructure = { layerId, children: [] };
-				currentFolder.children.push(childLayer);
-			}
-
-			// Check the sign of the MSB, where a 1 is a negative (outward) indent
-			const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
-			// Inward
-			if (subsequentDirectionOfDepthChange) {
-				currentFolderStack.push(currentFolder);
-				currentFolder = currentFolder.children[currentFolder.children.length - 1];
-			}
-			// Outward
-			else {
-				const popped = currentFolderStack.pop();
-				if (!popped) throw Error("Too many negative indents in the folder structure");
-				if (popped) currentFolder = popped;
-			}
-		}
-
-		return currentFolder;
-	}
-
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -227,7 +161,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -265,7 +199,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -312,7 +246,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -321,7 +255,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -454,7 +388,7 @@
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -491,6 +425,49 @@
 		}
 	}
 
+	function handleLayerPanelKeyDown(e: KeyboardEvent) {
+		// TODO: Handle this F2 shortcut detection in the backend, not frontend, so it uses the standard key binding system
+
+		// Only handle F2 if not currently editing a layer name
+		if (e.key === "F2" && !layers.some((layer) => layer.editingName)) {
+			// Find the first selected layer
+			const selectedLayer = layers.find((layer) => layer.entry.selected);
+			if (selectedLayer) {
+				e.preventDefault();
+				onEditLayerName(selectedLayer);
+			}
+		}
+	}
+
+	async function navigateToLayer(currentListing: LayerListingInfo, direction: "Up" | "Down") {
+		// Save the current layer name
+		const inputElement = document.activeElement;
+		if (inputElement instanceof HTMLInputElement) {
+			const name = inputElement.value || "";
+			editor.setLayerName(currentListing.entry.id, name);
+			currentListing.entry.alias = name;
+		}
+
+		// Find current layer index
+		const currentIndex = layers.findIndex((layer) => layer.entry.id === currentListing.entry.id);
+		if (currentIndex === -1) return;
+
+		// Calculate target index based on direction
+		const targetIndex = direction === "Down" ? currentIndex + 1 : currentIndex - 1;
+		if (targetIndex >= layers.length || targetIndex < 0) return;
+
+		const targetListing = layers[targetIndex];
+		if (!targetListing) return;
+
+		// Exit edit mode on current layer
+		currentListing.editingName = false;
+		draggable = true;
+		layers = layers;
+
+		// Start edit mode on target layer
+		await onEditLayerName(targetListing);
+	}
+
 	function fileDragOver(e: DragEvent) {
 		if (!draggable || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
 
@@ -515,7 +492,7 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
+	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
@@ -523,24 +500,24 @@
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (folder: DocumentLayerStructure) => {
-			folder.children.forEach((item, index) => {
+		const recurse = (children: LayerStructureEntry[]) => {
+			children.forEach((item, index) => {
 				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {
 					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
-						bottomLayer: index === folder.children.length - 1,
+						bottomLayer: index === children.length - 1,
 						entry: mapping,
 						editingName: layerIdWithNameBeingEdited === item.layerId,
 					});
 				}
 
 				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item);
+				if (item.children.length >= 1) recurse(item.children);
 			});
 		};
-		recurse(updateDocumentLayerStructure);
+		recurse(layerStructure);
 		layers = layers;
 	}
 
@@ -632,8 +609,22 @@
 							placeholder={listing.entry.implementationName}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
+							on:keydown={(e) => {
+								if (e.key === "Escape") {
+									onEditLayerNameDeselect(listing);
+								} else if (e.key === "Enter") {
+									onEditLayerNameChange(listing, e);
+								} else if (e.key === "Tab") {
+									e.preventDefault();
+									navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
+								} else if (e.key === "ArrowUp") {
+									e.preventDefault();
+									navigateToLayer(listing, "Up");
+								} else if (e.key === "ArrowDown") {
+									e.preventDefault();
+									navigateToLayer(listing, "Down");
+								}
+							}}
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>

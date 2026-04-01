@@ -1,0 +1,73 @@
+.crate-hierarchy {
+	position: relative;
+	margin-top: 20px;
+
+	.crate-hierarchy-controls {
+		position: absolute;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		top: 8px;
+		right: 8px;
+		z-index: 1;
+
+		button {
+			position: relative;
+			border: none;
+			border-radius: 2px;
+			width: 32px;
+			height: 32px;
+			background: var(--color-navy);
+			user-select: none;
+
+			&:hover:not(:disabled) {
+				opacity: 0.5;
+			}
+
+			&:disabled {
+				opacity: 0.25;
+			}
+
+			// + and - icon geometry
+			&::before,
+			&.zoom-in::after {
+				content: "";
+				background: white;
+				position: absolute;
+				transform: translate(-50%, -50%);
+				top: 50%;
+				left: 50%;
+			}
+
+			&::before {
+				width: 14px;
+				height: 2px;
+			}
+
+			&.zoom-in::after {
+				width: 2px;
+				height: 14px;
+			}
+		}
+	}
+
+	.crate-hierarchy-viewport {
+		touch-action: none;
+		overflow: hidden;
+		cursor: grab;
+
+		svg {
+			display: block;
+			transform-origin: 0 0;
+			width: 100%;
+			height: auto;
+			pointer-events: none;
+			user-select: none;
+
+			text {
+				font-family: inherit;
+				font-size: 0.7em;
+			}
+		}
+	}
+}

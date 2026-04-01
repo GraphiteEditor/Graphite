@@ -40,14 +40,21 @@
 {% endmacro text_balancer %}
 
 {% macro hierarchical_message_system_tree() %}
-{%- set content = load_data(path = "../generated/hierarchical_message_system_tree.html", format = "plain", required = false) -%}
+{%- set content = load_data(path = "../generated/hierarchical-message-system-tree.html", format = "plain", required = false) -%}
 {%- set fallback = "<pre>THIS CONTENT IS FILLED IN WHEN CI BUILDS THE WEBSITE.
 
 TO TEST IT LOCALLY, FROM THE ROOT OF THE PROJECT, RUN:
 
-cd tools/editor-message-tree
-cargo run
-cd ../../website
-npm run generate-editor-structure</pre>" -%}
+cargo run -p editor-message-tree -- website/generated</pre>" -%}
 {{ content | default(value = fallback) | safe }}
 {% endmacro hierarchical_message_system_tree %}
+
+{% macro crate_hierarchy() %}
+{%- set content = load_data(path = "../generated/crate-hierarchy.svg", format = "plain", required = false) -%}
+{%- set fallback = "<pre>THIS CONTENT IS FILLED IN WHEN CI BUILDS THE WEBSITE.
+
+TO TEST IT LOCALLY, FROM THE ROOT OF THE PROJECT, RUN:
+
+cargo run -p crate-hierarchy-viz -- website/generated</pre>" -%}
+{{ content | default(value = fallback) | safe }}
+{% endmacro crate_hierarchy %}

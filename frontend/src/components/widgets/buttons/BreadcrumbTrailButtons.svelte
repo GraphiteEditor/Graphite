@@ -1,8 +1,7 @@
 <script lang="ts">
-	import type { ActionShortcut } from "@graphite/messages";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let labels: string[];
@@ -33,13 +32,11 @@
 				&::before {
 					content: "";
 					position: absolute;
-					top: 0;
 					left: -4px;
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 12px 0 12px 4px;
-					border-color: var(--button-background-color) var(--button-background-color) var(--button-background-color) transparent;
+					width: 8px;
+					height: 100%;
+					background: var(--button-background-color);
+					clip-path: polygon(8px -1px, 0 -1px, 4px 12px, 0 25px, 8px 25px);
 				}
 			}
 
@@ -50,13 +47,11 @@
 				&::after {
 					content: "";
 					position: absolute;
-					top: 0;
 					right: -4px;
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 12px 0 12px 4px;
-					border-color: transparent transparent transparent var(--button-background-color);
+					width: 8px;
+					height: 100%;
+					background: var(--button-background-color);
+					clip-path: polygon(0 -1px, 4px -1px, 8px 12px, 4px 25px, 0 25px);
 				}
 			}
 

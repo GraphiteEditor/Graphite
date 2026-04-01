@@ -77,7 +77,7 @@ fn menu_items_from_wrapper(entries: Vec<WrapperMenuItem>) -> Vec<MenuItemKind> {
 			}
 			WrapperMenuItem::SubMenu { text: name, items, .. } => {
 				let items = menu_items_from_wrapper(items);
-				let items = items.iter().map(|item| menu_item_kind_to_dyn(item)).collect::<Vec<&dyn IsMenuItem>>();
+				let items = items.iter().map(menu_item_kind_to_dyn).collect::<Vec<&dyn IsMenuItem>>();
 				let submenu = Submenu::with_items(name, true, &items).unwrap();
 				menu_items.push(MenuItemKind::Submenu(submenu));
 			}
@@ -106,7 +106,7 @@ fn replace_children<'a, T: Into<MenuContainer<'a>>>(menu: T, new_items: Vec<Menu
 	for item in items.iter() {
 		menu.remove(menu_item_kind_to_dyn(item)).unwrap();
 	}
-	let items = new_items.iter().map(|item| menu_item_kind_to_dyn(item)).collect::<Vec<&dyn IsMenuItem>>();
+	let items = new_items.iter().map(menu_item_kind_to_dyn).collect::<Vec<&dyn IsMenuItem>>();
 	menu.append_items(items.as_ref()).unwrap();
 }
 

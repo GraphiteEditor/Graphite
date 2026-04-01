@@ -30,6 +30,9 @@ pub struct DocumentMetadata {
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
+	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
+	/// This provides accurate SegmentIds for layers without explicit Path nodes.
+	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -231,7 +234,8 @@ impl DocumentMetadata {
 // ===================
 
 /// ID of a layer node
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LayerNodeIdentifier(NonZeroU64);
 
 impl core::fmt::Debug for LayerNodeIdentifier {

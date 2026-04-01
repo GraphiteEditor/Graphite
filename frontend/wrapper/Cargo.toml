@@ -1,0 +1,66 @@
+[package]
+name = "graphite-wasm-wrapper"
+publish = false
+version = "0.0.0"
+rust-version = "1.88"
+authors = ["Graphite Authors <contact@graphite.art>"]
+edition = "2024"
+readme = "../../README.md"
+homepage = "https://graphite.art"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"
+
+[features]
+default = ["gpu", "shader-nodes"]
+gpu = ["editor/gpu"]
+shader-nodes = ["graphene-std/shader-nodes", "gpu"]
+native = ["node-macro/disable-registration"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Local dependencies
+editor = { path = "../../editor", package = "graphite-editor", features = [
+	"gpu",
+] }
+graphene-std = { workspace = true }
+
+# Workspace dependencies
+graph-craft = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+wasm-bindgen = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+math-parser = { workspace = true }
+wgpu = { workspace = true }
+web-sys = { workspace = true }
+ron = { workspace = true }
+serde_json = { workspace = true }
+node-macro = { workspace = true }
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+debug-js-glue = true
+demangle-name-section = true
+dwarf-debug-info = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os", "-g"]
+
+[package.metadata.wasm-pack.profile.release.wasm-bindgen]
+debug-js-glue = false
+demangle-name-section = false
+dwarf-debug-info = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+	'cfg(wasm_bindgen_unstable_test_coverage)',
+] }
+
+[package.metadata.cargo-shear]
+ignored = ["wgpu"]

@@ -1,57 +1,46 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-
-	import type { Editor } from "@graphite/editor";
-	import {
-		type MouseCursorIcon,
-		type XY,
-		DisplayEditableTextbox,
-		DisplayEditableTextboxUpdateFontData,
-		DisplayEditableTextboxTransform,
-		DisplayRemoveEditableTextbox,
-		TriggerTextCommit,
-		UpdateDocumentArtwork,
-		UpdateDocumentRulers,
-		UpdateDocumentScrollbars,
-		UpdateEyedropperSamplingState,
-		UpdateMouseCursor,
-		isWidgetSpanRow,
-	} from "@graphite/messages";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { DocumentState } from "@graphite/state-providers/document";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
-
-	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Graph from "@graphite/components/views/Graph.svelte";
-	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
-	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import Graph from "/src/components/views/Graph.svelte";
+	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
+	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { AppWindowStore } from "/src/stores/app-window";
+	import type { DocumentStore } from "/src/stores/document";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import type { MessageBody } from "/src/subscriptions-router";
+	import { fillChoiceColor, createColor } from "/src/utility-functions/colors";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
+	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
+	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
+	import type { Color, EditorWrapper, MenuDirection, MouseCursorIcon } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
 	let viewport: HTMLDivElement | undefined;
+	let gradientStopPicker: ColorPicker | undefined;
 
-	const editor = getContext<Editor>("editor");
-	const appWindow = getContext<AppWindowState>("appWindow");
-	const document = getContext<DocumentState>("document");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorWrapper>("editor");
+	const appWindow = getContext<AppWindowStore>("appWindow");
+	const document = getContext<DocumentStore>("document");
 
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
-	let textInputMatrix: number[];
+	let textInputMatrix: [number, number, number, number, number, number];
 
 	// Scrollbars
-	let scrollbarPos: XY = { x: 0.5, y: 0.5 };
-	let scrollbarSize: XY = { x: 0.5, y: 0.5 };
-	let scrollbarMultiplier: XY = { x: 0, y: 0 };
+	let scrollbarPos = { x: 0.5, y: 0.5 };
+	let scrollbarSize = { x: 0.5, y: 0.5 };
+	let scrollbarMultiplier = { x: 0, y: 0 };
 
 	// Rulers
-	let rulerOrigin: XY = { x: 0, y: 0 };
+	let rulerOrigin = { x: 0, y: 0 };
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
 	let rulersVisible = true;
@@ -75,11 +64,19 @@
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
 
+	// Gradient stop color picker
+	let gradientStopPickerColor: Color | undefined = undefined;
+	let gradientStopPickerPosition: { x: number; y: number } | undefined = undefined;
+
 	// Canvas dimensions
 	let canvasWidth: number | undefined = undefined;
 	let canvasHeight: number | undefined = undefined;
 
 	let devicePixelRatio: number | undefined;
+	let removeUpdatePixelRatio: (() => void) | undefined;
+	let viewportResizeObserver: ResizeObserver | undefined;
+	let cleanupViewportResizeObserver: (() => void) | undefined;
+	let addedFontFaces: FontFace[] = [];
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
@@ -97,7 +94,7 @@
 	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
-		if (!isWidgetSpanRow(layoutGroup)) return undefined;
+		if (!layoutGroup || !("Row" in layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
 		let totalToolRowsFor1Columns = 0;
@@ -112,8 +109,8 @@
 		};
 
 		let toolsInCurrentGroup = 0;
-		layoutGroup.rowWidgets.forEach((widget) => {
-			if (widget.props.kind === "Separator") {
+		layoutGroup.Row.rowWidgets.forEach((widget) => {
+			if ("Separator" in widget.widget) {
 				totalSeparators += 1;
 				tally();
 			} else {
@@ -144,13 +141,13 @@
 	function panCanvasX(newValue: number) {
 		const delta = newValue - scrollbarPos.x;
 		scrollbarPos.x = newValue;
-		editor.handle.panCanvas(-delta * scrollbarMultiplier.x, 0);
+		editor.panCanvas(-delta * scrollbarMultiplier.x, 0);
 	}
 
 	function panCanvasY(newValue: number) {
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
-		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
+		editor.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -180,8 +177,7 @@
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let canvas = (window as any).imageCanvases[canvasName];
+			let canvas = window.imageCanvases[canvasName];
 
 			// Get logical dimensions from foreignObject parent (set by backend)
 			const foreignObject = placeholder.parentElement;
@@ -189,9 +185,13 @@
 			const logicalWidth = parseFloat(foreignObject.getAttribute("width") || "0");
 			const logicalHeight = parseFloat(foreignObject.getAttribute("height") || "0");
 
-			// Clone canvas for repeated instances (layers that appear multiple times)
-			// Viewport canvas is marked with data-is-viewport and should never be cloned
+			// Viewport canvas is marked with data-is-viewport and should never be cloned.
+			// If it's already mounted in the viewport, skip the DOM replacement since it's already showing the rendered content.
+			// We check `canvas.isConnected` to ensure it's in the live DOM, not a detached tree from a destroyed component.
 			const isViewport = placeholder.hasAttribute("data-is-viewport");
+			if (isViewport && canvas.isConnected && canvas.parentElement?.closest("[data-viewport]")) return;
+
+			// Clone canvas for repeated instances (layers that appear multiple times)
 			if (!isViewport && canvas.parentElement) {
 				const newCanvas = window.document.createElement("canvas");
 				const context = newCanvas.getContext("2d");
@@ -215,7 +215,7 @@
 	export async function updateEyedropperSamplingState(
 		// `image` is currently only used for Vello renders
 		image: ImageData | undefined,
-		mousePosition: XY | undefined,
+		mousePosition: [number, number] | undefined,
 		colorPrimary: string,
 		colorSecondary: string,
 	): Promise<[number, number, number] | undefined> {
@@ -227,8 +227,8 @@
 
 		if (canvasWidth === undefined || canvasHeight === undefined) return undefined;
 
-		cursorLeft = mousePosition.x;
-		cursorTop = mousePosition.y;
+		cursorLeft = mousePosition[0];
+		cursorTop = mousePosition[1];
 
 		let preview = image;
 		if (!preview) {
@@ -240,7 +240,7 @@
 			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
 			const svg = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
+				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
 				`.trim();
 
 			if (!rasterizedCanvas) {
@@ -250,8 +250,8 @@
 			if (!rasterizedContext) return undefined;
 
 			preview = rasterizedContext.getImageData(
-				mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-				mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition[0] * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition[1] * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
 				ZOOM_WINDOW_DIMENSIONS,
 				ZOOM_WINDOW_DIMENSIONS,
 			);
@@ -281,14 +281,14 @@
 	}
 
 	// Update scrollbars and rulers
-	export function updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
-		scrollbarPos = position;
-		scrollbarSize = size;
-		scrollbarMultiplier = multiplier;
+	export function updateDocumentScrollbars(position: [number, number], size: [number, number], multiplier: [number, number]) {
+		scrollbarPos = { x: position[0], y: position[1] };
+		scrollbarSize = { x: size[0], y: size[1] };
+		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: XY, spacing: number, interval: number, visible: boolean) {
-		rulerOrigin = origin;
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean) {
+		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
@@ -296,10 +296,25 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
-		let cursorString: string = cursor;
+		const mouseCursorIconCSSNames: Record<MouseCursorIcon, string> = {
+			Default: "default",
+			None: "none",
+			ZoomIn: "zoom-in",
+			ZoomOut: "zoom-out",
+			Grabbing: "grabbing",
+			Crosshair: "crosshair",
+			Text: "text",
+			Move: "move",
+			NSResize: "ns-resize",
+			EWResize: "ew-resize",
+			NESWResize: "nesw-resize",
+			NWSEResize: "nwse-resize",
+			Rotate: "custom-rotate",
+		};
+		let cursorString = mouseCursorIconCSSNames[cursor] || "alias";
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
-		if (cursor === "custom-rotate") {
+		if (cursor === "Rotate") {
 			const svg = `
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
 					<path fill="none" stroke="black" stroke-width="2" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
@@ -326,10 +341,10 @@
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned, false);
+		editor.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
 		showTextInput = true;
 
 		await tick();
@@ -351,19 +366,21 @@
 		textInput.style.height = height;
 		textInput.style.lineHeight = `${data.lineHeightRatio}`;
 		textInput.style.fontSize = `${data.fontSize}px`;
-		textInput.style.color = data.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.color = data.color;
 		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
-			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
+			editor.updateBounds(textInputCleanup(textInput.innerText));
 		};
 
 		textInputMatrix = data.transform;
 
-		const bytes = new Uint8Array(data.fontData);
-		if (bytes.length > 0) {
-			window.document.fonts.add(new FontFace("text-font", bytes));
+		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
+			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
+			const face = new FontFace("text-font", fontView);
+			window.document.fonts.add(face);
+			addedFontFaces.push(face);
 			textInput.style.fontFamily = "text-font";
 		}
 
@@ -406,11 +423,24 @@
 		// which provides pixel-perfect physical dimensions via devicePixelContentBoxSize
 	}
 
+	function gradientStopPickerDirection(position: { x: number; y: number } | undefined, viewport: HTMLDivElement | undefined): MenuDirection {
+		const element = gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]");
+		const picker = element instanceof HTMLElement ? element : undefined;
+		if (!picker || !position || !viewport) return "Bottom";
+
+		const roomRight = position.x + picker.offsetWidth - viewport.clientWidth;
+		const roomBelow = position.y + picker.offsetHeight - viewport.clientHeight;
+
+		// Prefer bottom if there's room
+		if (roomBelow <= 0) return "Bottom";
+		// Otherwise choose the direction with more room
+		return roomRight > roomBelow ? "Bottom" : "Right";
+	}
+
 	onMount(() => {
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
 		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
-		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
 		const updatePixelRatio = () => {
 			removeUpdatePixelRatio?.();
 			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
@@ -423,12 +453,12 @@
 		updatePixelRatio();
 
 		// Update rendered SVGs
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
 			await tick();
 
 			updateDocumentArtwork(data.svg);
 		});
-		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
 			await tick();
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
@@ -436,19 +466,25 @@
 			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
+				if (setColorChoice === "Primary") editor.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.updateSecondaryColor(...rgb, 1);
 			}
 		});
 
+		// Gradient stop color picker
+		subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
+			gradientStopPickerColor = data.color;
+			gradientStopPickerPosition = { x: data.position[0], y: data.position[1] };
+		});
+
 		// Update scrollbars and rulers
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentScrollbars, async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
 			await tick();
 
 			const { position, size, multiplier } = data;
 			updateDocumentScrollbars(position, size, multiplier);
 		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
 			const { origin, spacing, interval, visible } = data;
@@ -456,37 +492,38 @@
 		});
 
 		// Update mouse cursor icon
-		editor.subscriptions.subscribeJsMessage(UpdateMouseCursor, async (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
 			await tick();
 
-			const { cursor } = data;
-			updateMouseCursor(cursor);
+			updateMouseCursor(data.cursor);
 		});
 
 		// Text entry
-		editor.subscriptions.subscribeJsMessage(TriggerTextCommit, async () => {
+		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
 
 			triggerTextCommit();
 		});
-		editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
 			await tick();
 
 			displayEditableTextbox(data);
 		});
-		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxUpdateFontData, async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
 			await tick();
 
-			const fontData = new Uint8Array(data.fontData);
-			if (fontData.length > 0 && textInput) {
-				window.document.fonts.add(new FontFace("text-font", fontData));
+			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
+				const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
+				const face = new FontFace("text-font", fontView);
+				window.document.fonts.add(face);
+				addedFontFaces.push(face);
 				textInput.style.fontFamily = "text-font";
 			}
 		});
-		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
+		subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
 			textInputMatrix = data.transform;
 		});
-		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
+		subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
 			await tick();
 
 			displayRemoveEditableTextbox();
@@ -494,18 +531,32 @@
 
 		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
 		// This must happen in onMount to ensure the viewport container element exists
-		setupViewportResizeObserver(editor);
+		cleanupViewportResizeObserver = setupViewportResizeObserver(editor);
 
 		// Also observe the inner viewport for canvas sizing and ruler updates
-		const viewportResizeObserver = new ResizeObserver(() => {
+		viewportResizeObserver = new ResizeObserver(() => {
 			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});
 
 	onDestroy(() => {
-		// Cleanup the viewport resize observer
-		cleanupViewportResizeObserver();
+		cleanupViewportResizeObserver?.();
+		viewportResizeObserver?.disconnect();
+		removeUpdatePixelRatio?.();
+		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
+
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
+		subscriptions.unsubscribeFrontendMessage("UpdateEyedropperSamplingState");
+		subscriptions.unsubscribeFrontendMessage("UpdateGradientStopColorPickerPosition");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
+		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
+		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxTransform");
+		subscriptions.unsubscribeFrontendMessage("DisplayRemoveEditableTextbox");
 	});
 </script>
 
@@ -565,6 +616,33 @@
 						/>
 					{/if}
 					<div
+						style:left={gradientStopPickerPosition ? `${gradientStopPickerPosition?.x}px` : undefined}
+						style:top={gradientStopPickerPosition ? `${gradientStopPickerPosition?.y}px` : undefined}
+						style:position="absolute"
+						data-floating-menu-no-position
+					>
+						<div data-floating-menu-spawner></div>
+						<ColorPicker
+							direction={gradientStopPickerDirection(gradientStopPickerPosition, viewport)}
+							open={Boolean(gradientStopPickerPosition && gradientStopPickerColor)}
+							on:open={({ detail }) => {
+								if (!detail) {
+									editor.closeGradientStopColorPicker();
+									gradientStopPickerPosition = undefined;
+									gradientStopPickerColor = undefined;
+								}
+							}}
+							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
+							on:colorOrGradient={({ detail }) => {
+								const color = fillChoiceColor(detail);
+								if (color) editor.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
+							}}
+							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}
+							on:commitHistoryTransaction={() => editor.commitGradientStopColorTransaction()}
+							bind:this={gradientStopPicker}
+						/>
+					</div>
+					<div
 						class:viewport={!$appWindow.viewportHolePunch}
 						class:viewport-transparent={$appWindow.viewportHolePunch}
 						on:pointerdown={(e) => canvasPointerDown(e)}
@@ -603,10 +681,10 @@
 						direction="Vertical"
 						thumbLength={scrollbarSize.y}
 						thumbPosition={scrollbarPos.y}
-						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
+						on:trackShift={({ detail }) => editor.panCanvasByFraction(0, detail)}
 						on:thumbPosition={({ detail }) => panCanvasY(detail)}
-						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
-						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
+						on:thumbDragStart={() => editor.panCanvasAbortPrepare(false)}
+						on:thumbDragAbort={() => editor.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
@@ -615,10 +693,10 @@
 					direction="Horizontal"
 					thumbLength={scrollbarSize.x}
 					thumbPosition={scrollbarPos.x}
-					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
+					on:trackShift={({ detail }) => editor.panCanvasByFraction(detail, 0)}
 					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
-					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
+					on:thumbDragStart={() => editor.panCanvasAbortPrepare(true)}
+					on:thumbDragAbort={() => editor.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

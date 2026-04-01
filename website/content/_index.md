@@ -426,7 +426,7 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 
 <h1 class="feature-box-header">Stay in the loop</h1>
 
-Subscribe to the newsletter for quarterly updates on major development progress. And follow along, or join the conversation, on social media.
+Subscribe to the newsletter for future updates on major development progress. And follow along, or join the conversation, on social media.
 
 <div class="newsletter-success">
 

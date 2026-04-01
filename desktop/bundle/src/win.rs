@@ -12,9 +12,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 	let executable = bundle(&profile_path(), &app_bin);
 
 	// TODO: Consider adding more useful cli
-	if std::env::args().any(|a| a == "open") {
-		let executable_path = executable.to_string_lossy();
-		run_command(&executable_path, &[]).expect("failed to open app")
+	let args: Vec<String> = std::env::args().collect();
+	if let Some(pos) = args.iter().position(|a| a == "open") {
+		let extra_args: Vec<&str> = args[pos + 1..].iter().map(|s| s.as_str()).collect();
+		run_command(&executable.to_string_lossy(), &extra_args).expect("failed to open app")
 	}
 
 	Ok(())
@@ -54,6 +55,7 @@ fn remove_unnecessary_cef_files(app_dir: &Path) -> Result<(), Box<dyn Error>> {
 	fs::remove_file(app_dir.join("bootstrapc.exe"))?;
 	fs::remove_file(app_dir.join("bootstrap.exe"))?;
 	fs::remove_file(app_dir.join("libcef.lib"))?;
+	fs::remove_file(app_dir.join("CREDITS.html"))?;
 
 	Ok(())
 }

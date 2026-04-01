@@ -2,18 +2,16 @@
 
 <script lang="ts">
 	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
-
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages";
-
-	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import MenuList from "/src/components/floating-menus/MenuList.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
@@ -45,8 +43,10 @@
 	let openChildValue: string | undefined = undefined;
 	let search = "";
 	let reactiveEntries = entries;
-	let highlighted = activeEntry as MenuListEntry | undefined;
+	let highlighted: MenuListEntry | undefined = activeEntry;
 	let virtualScrollingEntriesStart = 0;
+	let keydownListenerAdded = false;
+	let destroyed = false;
 
 	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
@@ -67,11 +67,15 @@
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
 	onMount(async () => {
 		await tick();
-		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+		if (!destroyed && open && !inNestedMenuList() && !keydownListenerAdded) {
+			addEventListener("keydown", keydown);
+			keydownListenerAdded = true;
+		}
 	});
-	onDestroy(async () => {
-		await tick();
-		if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+	onDestroy(() => {
+		removeEventListener("keydown", keydown);
+		// Set the destroyed status in the closure kept by the awaited `tick()` in `onMount` in case that delayed run occurs after the component is destroyed
+		destroyed = true;
 	});
 
 	function inNestedMenuList(): boolean {
@@ -129,8 +133,13 @@
 	}
 
 	function watchOpen(open: boolean) {
-		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
-		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+		if (open && !inNestedMenuList() && !keydownListenerAdded) {
+			addEventListener("keydown", keydown);
+			keydownListenerAdded = true;
+		} else if (!open && !inNestedMenuList() && keydownListenerAdded) {
+			removeEventListener("keydown", keydown);
+			keydownListenerAdded = false;
+		}
 
 		highlighted = activeEntry;
 		dispatch("open", open);
@@ -154,7 +163,7 @@
 
 	function onScroll(e: Event) {
 		if (!virtualScrollingEntryHeight) return;
-		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+		virtualScrollingEntriesStart = e.target instanceof HTMLElement ? e.target.scrollTop : 0;
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {
@@ -252,9 +261,6 @@
 	/// Handles keyboard navigation for the menu.
 	// Returns a boolean indicating whether the entire menu stack should be dismissed.
 	export function keydown(e: KeyboardEvent, submenu = false): boolean {
-		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive) highlighted = activeEntry;
-
 		const menuOpen = open;
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
 		const openChild = (openChildValue !== undefined && flatEntries.findIndex((entry) => entry.value === openChildValue)) || -1;

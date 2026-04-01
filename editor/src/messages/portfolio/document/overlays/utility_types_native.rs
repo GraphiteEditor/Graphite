@@ -1,16 +1,15 @@
 use crate::consts::{
-	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
-	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
+	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
-use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT};
+use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
-use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
@@ -34,8 +33,17 @@ pub fn empty_provider() -> OverlayProvider {
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoEmphasis {
+	Regular,
+	Hovered,
+	Active,
+}
+
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysType {
 	ArtboardName,
 	CompassRose,
@@ -53,7 +61,8 @@ pub enum OverlaysType {
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
@@ -153,11 +162,11 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-#[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip)]
-	#[specta(skip)]
 	internal: Arc<Mutex<OverlayContextInternal>>,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,
@@ -271,6 +280,14 @@ impl OverlayContext {
 
 	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		self.internal().manipulator_anchor(position, selected, color);
+	}
+
+	pub fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
+		self.internal().gradient_color_stop(position, emphasis, color, small);
+	}
+
+	pub fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
+		self.internal().gradient_midpoint(position, emphasis, angle);
 	}
 
 	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
@@ -388,9 +405,9 @@ impl OverlayContext {
 		self.internal().fill_path(subpaths, transform, color);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.internal().fill_path_pattern(subpaths, transform, color);
 	}
 
@@ -441,11 +458,7 @@ impl OverlayContextInternal {
 	}
 
 	fn parse_color(color: &str) -> peniko::Color {
-		let hex = color.trim_start_matches('#');
-		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-		let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-		let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-		let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
+		let [r, g, b, a] = hex_to_rgba_u8(color);
 		peniko::Color::from_rgba8(r, g, b, a)
 	}
 
@@ -583,6 +596,63 @@ impl OverlayContextInternal {
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
+	fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
+		let transform = self.get_transform();
+		let position = position.round() - DVec2::splat(0.5);
+
+		let radius_offset = match emphasis {
+			GizmoEmphasis::Regular => 0.,
+			GizmoEmphasis::Hovered => 0.5,
+			GizmoEmphasis::Active => 1.,
+		};
+		let stroke_width = radius_offset * 2. + 1.;
+		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset) * if small { 0.5 } else { 1. };
+
+		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
+			let circle = kurbo::Circle::new((position.x, position.y), radius);
+			if let Some(width) = width {
+				self.scene.stroke(&kurbo::Stroke::new(width), transform, Self::parse_color(color), None, &circle);
+			} else {
+				self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color), None, &circle);
+			}
+		};
+		// Fill
+		draw_circle(radius, None, color);
+		// Stroke (inner)
+		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
+		// Stroke (outer)
+		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
+	}
+
+	fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
+		let transform = self.get_transform();
+		let position = position.round() - DVec2::splat(0.5);
+
+		// Rotate diamond points by the gradient line angle
+		let (sin, cos) = angle.sin_cos();
+		let rotate = |dx: f64, dy: f64| DVec2::new(dx * cos - dy * sin, dx * sin + dy * cos);
+
+		let top = rotate(0., -GRADIENT_MIDPOINT_DIAMOND_RADIUS);
+		let right = rotate(GRADIENT_MIDPOINT_DIAMOND_RADIUS, 0.);
+		let bottom = rotate(0., GRADIENT_MIDPOINT_DIAMOND_RADIUS);
+		let left = rotate(-GRADIENT_MIDPOINT_DIAMOND_RADIUS, 0.);
+
+		let mut path = BezPath::new();
+		path.move_to(kurbo::Point::new(position.x + top.x, position.y + top.y));
+		path.line_to(kurbo::Point::new(position.x + right.x, position.y + right.y));
+		path.line_to(kurbo::Point::new(position.x + bottom.x, position.y + bottom.y));
+		path.line_to(kurbo::Point::new(position.x + left.x, position.y + left.y));
+		path.close_path();
+
+		let (fill, stroke_width) = match emphasis {
+			GizmoEmphasis::Regular => (COLOR_OVERLAY_WHITE, 1.),
+			GizmoEmphasis::Hovered => (COLOR_OVERLAY_WHITE, 2.),
+			GizmoEmphasis::Active => (COLOR_OVERLAY_BLUE, 1.),
+		};
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(stroke_width), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+	}
+
 	fn resize_handle(&mut self, position: DVec2, rotation: f64) {
 		let quad = DAffine2::from_angle_translation(rotation, position) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
 		self.quad(quad, None, Some(COLOR_OVERLAY_WHITE));
@@ -711,9 +781,7 @@ impl OverlayContextInternal {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
-		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
-		fill_color.insert(0, '#');
-		let fill_color = Some(fill_color.as_str());
+		let fill_color = Some(COLOR_OVERLAY_WHITE_05);
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * radius * scale.abs(), None, None);
 		self.circle(start, radius, fill_color, None);
 		self.circle(start, radius * scale.abs(), fill_color, None);
@@ -744,12 +812,9 @@ impl OverlayContextInternal {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
-			fill_color.insert(0, '#');
-
 			let circle = kurbo::Circle::new((center.x, center.y), hover_ring_centerline_radius);
 			self.scene
-				.stroke(&kurbo::Stroke::new(hover_ring_stroke_width), transform, Self::parse_color(&fill_color), None, &circle);
+				.stroke(&kurbo::Stroke::new(hover_ring_stroke_width), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
 		}
 
 		// Arrows
@@ -832,7 +897,7 @@ impl OverlayContextInternal {
 		path.move_to(kurbo::Point::new(x, y));
 		path.line_to(kurbo::Point::new(start1_x, start1_y));
 
-		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.0);
+		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.);
 		arc1.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
@@ -844,7 +909,7 @@ impl OverlayContextInternal {
 		path.move_to(kurbo::Point::new(x, y));
 		path.line_to(kurbo::Point::new(start2_x, start2_y));
 
-		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.0);
+		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.);
 		arc2.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
@@ -891,7 +956,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(4.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
@@ -899,7 +964,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(4.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
 	}
 
 	fn bezier_to_path(&self, bezier: PathSeg, transform: DAffine2, move_to: bool, path: &mut BezPath) {
@@ -988,16 +1053,16 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		const PATTERN_WIDTH: u32 = 4;
 		const PATTERN_HEIGHT: u32 = 4;
 
 		// Create a 4x4 pixel pattern with colored pixels at (0,0) and (2,2)
 		// This matches the Canvas2D checkerboard pattern
 		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
-		let rgba = color.to_rgba8_srgb();
+		let rgba = hex_to_rgba_u8(color);
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
@@ -1035,16 +1100,16 @@ impl OverlayContextInternal {
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
 		// Use the proper text-to-path system for accurate text rendering
-		const FONT_SIZE: f64 = 12.0;
+		const FONT_SIZE: f64 = 12.;
 
 		// Create typesetting configuration
 		let typesetting = TypesettingConfig {
 			font_size: FONT_SIZE,
 			line_height_ratio: 1.2,
-			character_spacing: 0.0,
+			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
-			tilt: 0.0,
+			tilt: 0.,
 			align: TextAlign::Left, // We'll handle alignment manually via pivot
 		};
 
@@ -1059,7 +1124,7 @@ impl OverlayContextInternal {
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
-		let text_bounds = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
+		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
 
 		// Convert text to vector paths for rendering
 		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
@@ -1068,7 +1133,7 @@ impl OverlayContextInternal {
 		let mut position = DVec2::ZERO;
 		match pivot[0] {
 			Pivot::Start => position.x = padding,
-			Pivot::Middle => position.x = -text_width / 2.0,
+			Pivot::Middle => position.x = -text_width / 2.,
 			Pivot::End => position.x = -padding - text_width,
 		}
 		match pivot[1] {
