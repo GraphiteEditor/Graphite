@@ -1930,9 +1930,10 @@ async fn jitter_points(
 				let col1_exists = col1.length_squared() > (f64::EPSILON * 1e3).powi(2);
 
 				let repaired = match (col0_exists, col1_exists) {
-					(true, false) => DMat2::from_cols(col0, col0.perp().normalize()),
+					// Replace the collapsed axis (like scale.x=2, skew.y=2) with a unit perpendicular of the surviving one
+					(true, _) => DMat2::from_cols(col0, col0.perp().normalize()),
 					(false, true) => DMat2::from_cols(col1.perp().normalize(), col1),
-					_ => DMat2::IDENTITY,
+					(false, false) => DMat2::IDENTITY,
 				};
 				repaired.inverse()
 			};
