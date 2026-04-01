@@ -23,7 +23,7 @@ use graphene_std::raster::{
 };
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
-use graphene_std::transform::{Footprint, ReferencePoint, Transform};
+use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::QRCodeErrorCorrectionLevel;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
@@ -265,6 +265,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<QRCodeErrorCorrectionLevel>() => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<ScaleType>() => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
 						// =====
 						// OTHER
 						// =====
@@ -566,8 +567,8 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 
 	let widgets = if let Some(&TaggedValue::DAffine2(transform)) = input.as_non_exposed_value() {
 		let translation = transform.translation;
-		let rotation = transform.decompose_rotation();
-		let scale = transform.decompose_scale();
+		let (rotation, scale, skew) = transform.decompose_rotation_scale_skew();
+		let skew_matrix = DAffine2::from_cols_array(&[1., 0., skew, 1., 0., 0.]);
 
 		location_widgets.extend_from_slice(&[
 			NumberInput::new(Some(translation.x))
@@ -608,7 +609,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 			.range_max(Some(180.))
 			.on_update(update_value(
 				move |r: &NumberInput| {
-					let transform = DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation);
+					let transform = DAffine2::from_scale_angle_translation(scale, r.value.map(|r| r.to_radians()).unwrap_or(rotation), translation) * skew_matrix;
 					TaggedValue::DAffine2(transform)
 				},
 				node_id,
@@ -623,7 +624,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				.unit("x")
 				.on_update(update_value(
 					move |w: &NumberInput| {
-						let transform = DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation);
+						let transform = DAffine2::from_scale_angle_translation(DVec2::new(w.value.unwrap_or(scale.x), scale.y), rotation, translation) * skew_matrix;
 						TaggedValue::DAffine2(transform)
 					},
 					node_id,
@@ -637,7 +638,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				.unit("x")
 				.on_update(update_value(
 					move |h: &NumberInput| {
-						let transform = DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation);
+						let transform = DAffine2::from_scale_angle_translation(DVec2::new(scale.x, h.value.unwrap_or(scale.y)), rotation, translation) * skew_matrix;
 						TaggedValue::DAffine2(transform)
 					},
 					node_id,

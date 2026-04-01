@@ -483,7 +483,7 @@ impl<Upstream> BoundingBox for Vector<Upstream> {
 		// Include stroke by adding offset based on stroke width
 		let stroke_width = self.style.stroke().map(|s| s.weight()).unwrap_or_default();
 		let miter_limit = self.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
-		let scale = transform.decompose_scale();
+		let scale = transform.scale_magnitudes();
 
 		// Use the full line width to account for different styles of stroke caps
 		let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
