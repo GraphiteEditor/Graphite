@@ -16,7 +16,7 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
@@ -1355,11 +1355,12 @@ async fn sample_polyline(
 			// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
 			let mut next_segment_index = 0;
 
-			for mut bezpath in bezpaths {
-				// Apply the tranformation to the current bezpath to calculate points after transformation.
-				bezpath.apply_affine(Affine::new(row.transform.to_cols_array()));
+			for local_bezpath in bezpaths {
+				// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
+				let mut world_bezpath = local_bezpath.clone();
+				world_bezpath.apply_affine(Affine::new(row.transform.to_cols_array()));
 
-				let segment_count = bezpath.segments().count();
+				let segment_count = world_bezpath.segments().count();
 
 				// For the current bezpath we get its segment's length by calculating the start index and end index.
 				let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
@@ -1371,14 +1372,30 @@ async fn sample_polyline(
 					PointSpacingType::Separation => separation,
 					PointSpacingType::Quantity => quantity as f64,
 				};
-				let Some(mut sample_bezpath) = sample_polyline_on_bezpath(bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
+
+				// Compute sample locations using world-space distances, then evaluate positions on the untransformed bezpath.
+				// This avoids needing to invert the transform (which fails when the transform is singular, e.g. zero scale).
+				let Some((locations, was_closed)) =
+					bezpath_algorithms::compute_sample_locations(&world_bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length)
+				else {
 					continue;
 				};
 
-				// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
-				sample_bezpath.apply_affine(Affine::new(row.transform.to_cols_array()).inverse());
+				// Evaluate the sample locations on the untransformed bezpath and append the result
+				let mut sample_bezpath = BezPath::new();
+				for &(segment_index, t) in &locations {
+					let segment = local_bezpath.get_seg(segment_index + 1).unwrap();
+					let point = segment.eval(t);
 
-				// Append the bezpath (subpath) that connects generated points by lines.
+					if sample_bezpath.elements().is_empty() {
+						sample_bezpath.move_to(point);
+					} else {
+						sample_bezpath.line_to(point);
+					}
+				}
+				if was_closed {
+					sample_bezpath.close_path();
+				}
 				result.append_bezpath(sample_bezpath);
 			}
 
