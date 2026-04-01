@@ -57,7 +57,8 @@ impl NodePropertiesContext<'_> {
 /// The key used to access definitions for a network node or proto node.
 /// For proto nodes, this is their [`ProtoNodeIdentifier`].
 /// For network nodes, it doesn't necessarily have to be the same as the network's display name, but it often is.
-#[derive(Debug, Clone, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum DefinitionIdentifier {
 	ProtoNode(ProtoNodeIdentifier),
@@ -173,7 +174,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: Some("monitor_properties"),
 		},
 		DocumentNodeDefinition {
-			identifier: "Default Network",
+			identifier: "Custom Node",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -466,22 +467,22 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			// [IMPORTS]2 -> 0[0:Floor]
 			// [0:Floor]0 -> 0[1:Subtract]
 			// "1: f64" -> 1[1:Subtract]
-			// "(): ()" -> 0[2:Instance Index]
-			// "0: u32" -> 1[2:Instance Index]
-			// [2:Instance Index]0 -> 0[3:Divide]
+			// "(): ()" -> 0[2:Read Index]
+			// "0: u32" -> 1[2:Read Index]
+			// [2:Read Index]0 -> 0[3:Divide]
 			// [1:Subtract]0 -> 1[3:Divide]
 			// [IMPORTS]1 -> 0[4:Position on Path]
 			// [3:Divide]0 -> 1[4:Position on Path]
 			// "false: bool" -> 2[4:Position on Path]
 			// "false: bool" -> 3[4:Position on Path]
-			// "(): ()" -> 0[5:Instance Vector]
-			// [5:Instance Vector]0 -> 0[6:Reset Transform]
+			// "(): ()" -> 0[5:Read Vector]
+			// [5:Read Vector]0 -> 0[6:Reset Transform]
 			// "true: bool" -> 1[6:Reset Transform]
 			// "false: bool" -> 2[6:Reset Transform]
 			// "false: bool" -> 3[6:Reset Transform]
-			// [12:Flatten Vector]0 -> 0[7:Instance Map]
-			// [6:Reset Transform]0 -> 1[7:Instance Map]
-			// [7:Instance Map]0 -> 0[8:Morph]
+			// [12:Flatten Vector]0 -> 0[7:Map]
+			// [6:Reset Transform]0 -> 1[7:Map]
+			// [7:Map]0 -> 0[8:Morph]
 			// [15:Multiply]0 -> 1[8:Morph]
 			// [8:Morph]0 -> 0[9:Transform]
 			// [4:Position on Path]0 -> 1[9:Transform]
@@ -502,10 +503,10 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			// [11:Equals]0 -> 0[17:Switch]
 			// [9:Transform]0 -> 1[17:Switch]
 			// [16:Morph]0 -> 2[17:Switch]
-			// [17:Switch]0 -> 0[18:Instance Repeat]
-			// [0:Floor]0 -> 1[18:Instance Repeat]
-			// [IMPORTS]3 -> 2[18:Instance Repeat]
-			// [18:Instance Repeat]0 -> 0[EXPORTS]
+			// [17:Switch]0 -> 0[18:Repeat]
+			// [0:Floor]0 -> 1[18:Repeat]
+			// [IMPORTS]3 -> 2[18:Repeat]
+			// [18:Repeat]0 -> 0[EXPORTS]
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -523,9 +524,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(1.), false)],
 								..Default::default()
 							},
-							// 2: Instance Index
+							// 2: Read Index
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_index::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(context::read_index::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::U32(0), false)],
 								..Default::default()
 							},
@@ -546,9 +547,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 5: Instance Vector
+							// 5: Read Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(context::read_vector::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false)],
 								..Default::default()
 							},
@@ -563,9 +564,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 7: Instance Map
+							// 7: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::node(NodeId(6), 0)],
 								..Default::default()
 							},
@@ -635,9 +636,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(9), 0), NodeInput::node(NodeId(16), 0)],
 								..Default::default()
 							},
-							// 18: Instance Repeat
+							// 18: Repeat
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_repeat::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(0), 0), NodeInput::import(generic!(T), 3)],
 								..Default::default()
 							},
@@ -679,7 +680,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 2: Instance Index
+								// 2: Read Index
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, -2)),
@@ -703,7 +704,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 5: Instance Vector
+								// 5: Read Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
@@ -719,7 +720,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 7: Instance Map
+								// 7: Map
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
@@ -807,7 +808,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 18: Instance Repeat
+								// 18: Repeat
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(49, -1)),
@@ -833,14 +834,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
 			category: "Vector",
-			// "(): ()" -> 0[0:Instance Vector]
-			// [0:Instance Vector]0 -> 0[1:Extract Transform]
+			// "(): ()" -> 0[0:Read Vector]
+			// [0:Read Vector]0 -> 0[1:Extract Transform]
 			// [1:Extract Transform]0 -> 0[2:Decompose Translation]
 			// [2:Decompose Translation]0 -> 0[3:Vec2 to Point]
 			// [IMPORTS]0 -> 0[4:Flatten Vector]
-			// [4:Flatten Vector]0 -> 0[5:Instance Map]
-			// [3:Vec2 to Point]0 -> 1[5:Instance Map]
-			// [5:Instance Map]0 -> 0[6: Flatten Path]
+			// [4:Flatten Vector]0 -> 0[5:Map]
+			// [3:Vec2 to Point]0 -> 1[5:Map]
+			// [5:Map]0 -> 0[6: Flatten Path]
 			// [6:Flatten Path]0 -> 0[7:Points to Polyline]
 			// "false: bool" -> 1[7:Points to Polyline]
 			// [7:Points to Polyline]0 -> 0[EXPORTS]
@@ -849,9 +850,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(7), 0)],
 						nodes: [
-							// 0: Instance Vector
+							// 0: Read Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(context::read_vector::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false)],
 								..Default::default()
 							},
@@ -879,9 +880,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::import(generic!(T), 0)],
 								..Default::default()
 							},
-							// 5: Instance Map
+							// 5: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
@@ -914,7 +915,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
-								// 0: Instance Vector
+								// 0: Read Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 1)),
@@ -954,7 +955,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 5: Instance Map
+								// 5: Map
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
@@ -1782,7 +1783,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::import(concrete!(Table<Vector>), 0), NodeInput::import(concrete!(vector::style::Fill), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(path_bool::boolean_operation::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(path_bool_nodes::boolean_operation::IDENTIFIER),
 								call_argument: generic!(T),
 								..Default::default()
 							},
@@ -1801,7 +1802,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(path_bool::BooleanOperation::Union), false),
+						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 					],
 					..Default::default()
 				},
@@ -2043,7 +2044,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					input_metadata: vec![
 						("Content", "TODO").into(),
 						InputMetadata::with_name_description_override(
-							"Separation Disk Diameter",
+							"Separation",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.01),
@@ -2191,9 +2192,10 @@ fn static_input_properties() -> InputProperties {
 					true
 				});
 
-			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input),
-			}])
+			Ok(vec![LayoutGroup::row(node_properties::number_widget(
+				ParameterWidgetsInfo::new(node_id, index, blank_assist, context),
+				number_input,
+			))])
 		}),
 	);
 	map.insert(
@@ -2227,10 +2229,12 @@ fn static_input_properties() -> InputProperties {
 					number_input = number_input.step(number_step);
 				}
 			};
-			Ok(vec![LayoutGroup::Row {
-				// NOTE: The bool input MUST be at the input index directly before the f64 input!
-				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input),
-			}])
+			// NOTE: The bool input MUST be at the input index directly before the f64 input!
+			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
+				ParameterWidgetsInfo::new(node_id, index, false, context),
+				index - 1,
+				number_input,
+			))])
 		}),
 	);
 	map.insert(
@@ -2298,7 +2302,7 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
 			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
-			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
+			Ok(vec![noise_type_row, LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
@@ -2320,7 +2324,7 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
-			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::Row { widgets: Vec::new() }])
+			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
@@ -2408,7 +2412,7 @@ fn static_input_properties() -> InputProperties {
 					.range_max(Some(10.))
 					.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
 			);
-			Ok(vec![fractal_ping_pong_strength.into(), LayoutGroup::Row { widgets: Vec::new() }])
+			Ok(vec![fractal_ping_pong_strength.into(), LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
@@ -2504,7 +2508,7 @@ fn static_input_properties() -> InputProperties {
 				]);
 			}
 
-			Ok(vec![LayoutGroup::Row { widgets }])
+			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);
 	// Skew has a custom override that maps to degrees
@@ -2548,24 +2552,20 @@ fn static_input_properties() -> InputProperties {
 				]);
 			}
 
-			Ok(vec![LayoutGroup::Row { widgets }])
+			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);
 	map.insert(
 		"text_area".to_string(),
-		Box::new(|node_id, index, context| {
-			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)),
-			}])
-		}),
+		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)))])),
 	);
 	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
 			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
-			let mut result = vec![LayoutGroup::Row { widgets: font }];
+			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {
-				result.push(LayoutGroup::Row { widgets: style });
+				result.push(LayoutGroup::row(style));
 			}
 			Ok(result)
 		}),

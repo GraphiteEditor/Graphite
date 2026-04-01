@@ -1,14 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
-
-	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
-	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
-
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
+	import { browserVersion } from "/src/utility-functions/platform";
+	import { evaluateMathExpression, isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
@@ -17,7 +14,7 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	// Content
 	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
@@ -43,8 +40,8 @@
 	export let isInteger = false;
 	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
 	/// "Add"/"Multiply": The value is added or multiplied by `step`.
-	/// "None": the increment arrows are not shown.
 	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+	/// "None": the increment arrows are not shown.
 	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
@@ -87,6 +84,12 @@
 	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
+	// Cleanup function for active drag interactions, called on destroy to prevent leaked listeners
+	let activeDragCleanup: (() => void) | undefined;
+	// Track the slider abort state for cleanup on destroy
+	let sliderResetAbortHandler: (() => void) | undefined;
+	let sliderAbortTimeout1: ReturnType<typeof setTimeout> | undefined;
+	let sliderAbortTimeout2: ReturnType<typeof setTimeout> | undefined;
 
 	$: watchValue(value, unit);
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
@@ -107,10 +110,31 @@
 		addEventListener("mousemove", trackShiftAndCtrl);
 	});
 	onDestroy(() => {
+		clearTimeout(repeatTimeout);
+		clearTimeout(sliderAbortTimeout1);
+		clearTimeout(sliderAbortTimeout2);
+
+		activeDragCleanup?.();
+
+		// Exit pointer lock if active (non-Safari path)
+		if (document.pointerLockElement) document.exitPointerLock();
+
+		// Remove Safari cursor-hidden workaround class if present
+		const isSafari = browserVersion().toLowerCase().includes("safari");
+		if (isSafari) document.body.classList.remove("cursor-hidden");
+
+		// Clean up any listeners related to tracking the Shift and Ctrl keys
 		removeEventListener("keydown", trackShiftAndCtrl);
 		removeEventListener("keyup", trackShiftAndCtrl);
 		removeEventListener("mousemove", trackShiftAndCtrl);
-		clearTimeout(repeatTimeout);
+
+		// Clean up any slider-related listeners that may be active
+		removeEventListener("mousedown", sliderAbortFromMousedown);
+		removeEventListener("keydown", sliderAbortFromMousedown);
+		removeEventListener("pointermove", sliderAbortFromDragging);
+		removeEventListener("keydown", sliderAbortFromDragging);
+		removeEventListener("keydown", incrementPressAbort);
+		if (sliderResetAbortHandler) removeEventListener("pointerup", sliderResetAbortHandler);
 	});
 
 	// ===============================
@@ -297,7 +321,7 @@
 		pressingArrow = false;
 		clearTimeout(repeatTimeout);
 		updateValue(initialValueBeforeDragging);
-		removeEventListener("keydown", onIncrementPointerUp);
+		removeEventListener("keydown", incrementPressAbort);
 	}
 
 	// =======================================
@@ -333,10 +357,9 @@
 			alreadyActedGuard = true;
 
 			isDragging = true;
-			beginDrag(e);
 
-			removeEventListener("pointermove", onMove);
-			removeEventListener("pointerup", onUp);
+			activeDragCleanup?.();
+			beginDrag(e);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
 		const onUp = () => {
@@ -346,11 +369,15 @@
 			isDragging = false;
 			self?.focus();
 
-			removeEventListener("pointermove", onMove);
-			removeEventListener("pointerup", onUp);
+			activeDragCleanup?.();
 		};
 		addEventListener("pointermove", onMove);
 		addEventListener("pointerup", onUp);
+		activeDragCleanup = () => {
+			removeEventListener("pointermove", onMove);
+			removeEventListener("pointerup", onUp);
+			activeDragCleanup = undefined;
+		};
 	}
 
 	function beginDrag(e: PointerEvent) {
@@ -364,7 +391,7 @@
 		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
 		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
 		const isSafari = browserVersion().toLowerCase().includes("safari");
-		const usePointerLock = !isSafari && !isDesktop();
+		const usePointerLock = !isSafari && !isPlatformNative();
 
 		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
 		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
@@ -377,8 +404,8 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
-		if (isDesktop()) {
-			editor.handle.appWindowPointerLock();
+		if (isPlatformNative()) {
+			editor.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
@@ -427,11 +454,11 @@
 			}
 			ignoredFirstMovement = true;
 		};
-		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// On desktop we don't get `pointermove` events while in pointer lock (CEF doesn't support pointer lock).
 		// We have to listen for our custom `pointerlockmove` events instead.
-		const pointerLockMove = (e: Event) => {
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
-				const delta = (e.detail as { x: number }).x;
+		const pointerLockMove = ({ detail }: WindowEventMap["pointerlockmove"]) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
+				const delta = detail.x;
 				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
@@ -449,16 +476,20 @@
 			cumulativeDragDelta = 0;
 
 			// Clean up the event listeners.
-			removeEventListener("pointerup", pointerUp);
-			removeEventListener("pointermove", pointerMove);
-			removeEventListener("pointerlockmove", pointerLockMove);
-			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
+			activeDragCleanup?.();
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
 		addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
+		activeDragCleanup = () => {
+			removeEventListener("pointerup", pointerUp);
+			removeEventListener("pointermove", pointerMove);
+			removeEventListener("pointerlockmove", pointerLockMove);
+			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
+			activeDragCleanup = undefined;
+		};
 	}
 
 	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
@@ -657,7 +688,7 @@
 
 		// End the user's drag by instantaneously disabling and re-enabling the range input element
 		if (inputRangeElement) inputRangeElement.disabled = true;
-		setTimeout(() => {
+		sliderAbortTimeout1 = setTimeout(() => {
 			if (inputRangeElement) inputRangeElement.disabled = false;
 		}, 0);
 
@@ -680,11 +711,13 @@
 			// dragging the slider, hitting Escape, then releasing the mouse button. This results in being transferred by `onSliderInput()` to the
 			// "Deciding" state when we should remain in the "Ready" state as set here. (For debugging, this can be visualized in CSS by
 			// recoloring the fake slider handle, which is shown in the "Deciding" state.)
-			setTimeout(() => (rangeSliderClickDragState = "Ready"), 0);
+			sliderAbortTimeout2 = setTimeout(() => (rangeSliderClickDragState = "Ready"), 0);
 
 			// Clean up the event listener that was used to call this function.
 			removeEventListener("pointerup", sliderResetAbort);
+			sliderResetAbortHandler = undefined;
 		};
+		sliderResetAbortHandler = sliderResetAbort;
 		addEventListener("pointerup", sliderResetAbort);
 
 		// Clean up the event listeners that were for tracking an abort while dragging the slider, now that we're no longer dragging it.

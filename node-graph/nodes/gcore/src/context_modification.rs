@@ -5,7 +5,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::{Artboard, Graphic, Vector, vector_types::GradientStops};
+use graphic_types::vector_types::GradientStops;
+use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Filters out what should be unused components of the context based on the specified requirements.
@@ -37,7 +38,6 @@ async fn context_modification<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
-		Context -> GradientStops,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.

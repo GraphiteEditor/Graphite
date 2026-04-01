@@ -1,28 +1,19 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
-
-	import type { Editor } from "@graphite/editor";
-	import {
-		patchLayout,
-		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerStructure,
-		UpdateLayersPanelControlBarLeftLayout,
-		UpdateLayersPanelControlBarRightLayout,
-		UpdateLayersPanelBottomBarLayout,
-	} from "@graphite/messages";
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/messages";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -48,9 +39,10 @@
 		startY: number;
 	};
 
-	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorWrapper>("editor");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -76,26 +68,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructure, (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -106,6 +98,7 @@
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("mousedown", draggingMouseDown);
 		addEventListener("keydown", draggingKeyDown);
+		addEventListener("keydown", handleLayerPanelKeyDown);
 
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
@@ -113,16 +106,17 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarLeftLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarRightLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructure);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("keydown", draggingKeyDown);
+		removeEventListener("keydown", handleLayerPanelKeyDown);
 
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
@@ -130,17 +124,17 @@
 	});
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -167,7 +161,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -205,7 +199,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -252,7 +246,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -261,7 +255,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -394,7 +388,7 @@
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -429,6 +423,49 @@
 			justFinishedDrag = true;
 			abortDrag();
 		}
+	}
+
+	function handleLayerPanelKeyDown(e: KeyboardEvent) {
+		// TODO: Handle this F2 shortcut detection in the backend, not frontend, so it uses the standard key binding system
+
+		// Only handle F2 if not currently editing a layer name
+		if (e.key === "F2" && !layers.some((layer) => layer.editingName)) {
+			// Find the first selected layer
+			const selectedLayer = layers.find((layer) => layer.entry.selected);
+			if (selectedLayer) {
+				e.preventDefault();
+				onEditLayerName(selectedLayer);
+			}
+		}
+	}
+
+	async function navigateToLayer(currentListing: LayerListingInfo, direction: "Up" | "Down") {
+		// Save the current layer name
+		const inputElement = document.activeElement;
+		if (inputElement instanceof HTMLInputElement) {
+			const name = inputElement.value || "";
+			editor.setLayerName(currentListing.entry.id, name);
+			currentListing.entry.alias = name;
+		}
+
+		// Find current layer index
+		const currentIndex = layers.findIndex((layer) => layer.entry.id === currentListing.entry.id);
+		if (currentIndex === -1) return;
+
+		// Calculate target index based on direction
+		const targetIndex = direction === "Down" ? currentIndex + 1 : currentIndex - 1;
+		if (targetIndex >= layers.length || targetIndex < 0) return;
+
+		const targetListing = layers[targetIndex];
+		if (!targetListing) return;
+
+		// Exit edit mode on current layer
+		currentListing.editingName = false;
+		draggable = true;
+		layers = layers;
+
+		// Start edit mode on target layer
+		await onEditLayerName(targetListing);
 	}
 
 	function fileDragOver(e: DragEvent) {
@@ -572,8 +609,22 @@
 							placeholder={listing.entry.implementationName}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
+							on:keydown={(e) => {
+								if (e.key === "Escape") {
+									onEditLayerNameDeselect(listing);
+								} else if (e.key === "Enter") {
+									onEditLayerNameChange(listing, e);
+								} else if (e.key === "Tab") {
+									e.preventDefault();
+									navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
+								} else if (e.key === "ArrowUp") {
+									e.preventDefault();
+									navigateToLayer(listing, "Up");
+								} else if (e.key === "ArrowDown") {
+									e.preventDefault();
+									navigateToLayer(listing, "Down");
+								}
+							}}
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>

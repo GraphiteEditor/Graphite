@@ -1,11 +1,10 @@
 <script lang="ts">
-	import type { IconName } from "@graphite/icons";
-	import type { ActionShortcut, KeyRaw, LabeledShortcut, MouseMotion } from "@graphite/messages";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { IconName } from "/src/icons";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let shortcut: ActionShortcut;
@@ -16,7 +15,7 @@
 			if (typeof labeledKeyOrMouseMotion === "string") return { mouseMotion: labeledKeyOrMouseMotion };
 
 			// `key` is the name of the `Key` enum in Rust, while `label` is the localized string to display (if it doesn't become an icon)
-			let key = labeledKeyOrMouseMotion.key;
+			let key: Key | "Option" = labeledKeyOrMouseMotion.key;
 			const label = labeledKeyOrMouseMotion.label;
 
 			// Replace Alt and Accel keys with their Mac-specific equivalents
@@ -57,7 +56,7 @@
 		return consolidatedList;
 	}
 
-	function keyboardHintIcon(input: KeyRaw): IconName | undefined {
+	function keyboardHintIcon(input: Key | "Option"): IconName | undefined {
 		switch (input) {
 			case "ArrowDown":
 				return "KeyboardArrowDown";
@@ -89,7 +88,20 @@
 	}
 
 	function mouseHintIcon(input: MouseMotion): IconName {
-		return `MouseHint${input}` as IconName;
+		return {
+			None: "MouseHintNone" as const,
+			Lmb: "MouseHintLmb" as const,
+			Rmb: "MouseHintRmb" as const,
+			Mmb: "MouseHintMmb" as const,
+			ScrollUp: "MouseHintScrollUp" as const,
+			ScrollDown: "MouseHintScrollDown" as const,
+			Drag: "MouseHintDrag" as const,
+			LmbDouble: "MouseHintLmbDouble" as const,
+			LmbDrag: "MouseHintLmbDrag" as const,
+			RmbDrag: "MouseHintRmbDrag" as const,
+			RmbDouble: "MouseHintRmbDouble" as const,
+			MmbDrag: "MouseHintMmbDrag" as const,
+		}[input];
 	}
 </script>
 

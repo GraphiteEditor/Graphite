@@ -67,7 +67,7 @@ impl TypeSource {
 				TaggedValue::Raster(_) => FrontendGraphDataType::Raster,
 				TaggedValue::Vector(_) => FrontendGraphDataType::Vector,
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
-				TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
+				TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
 				_ => FrontendGraphDataType::General,
 			},

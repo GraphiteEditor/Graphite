@@ -16,6 +16,14 @@ wasm = [
 	"web-sys",
 	"graphene-application-io/wasm",
 	"image/png",
+	"core-types/wasm",
+	"vector-types/wasm",
+	"graphic-types/wasm",
+	"text-nodes/wasm",
+	"raster-nodes/wasm",
+	"vector-nodes/wasm",
+	"graphene-core/wasm",
+	"graph-craft/wasm",
 ]
 image-compare = []
 vello = ["gpu"]
@@ -42,6 +50,7 @@ raster-nodes = { workspace = true }
 brush-nodes = { workspace = true }
 graphene-core = { workspace = true }
 graphic-nodes = { workspace = true }
+repeat-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
@@ -50,6 +59,7 @@ node-macro = { workspace = true }
 reqwest = { workspace = true }
 image = { workspace = true }
 base64 = { workspace = true }
+wgpu = { workspace = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }

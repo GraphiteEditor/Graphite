@@ -1,0 +1,102 @@
+name: "Check"
+
+on:
+  pull_request: {}
+  merge_group: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Check if CI can be skipped (for merge queue deduplication)
+  skip-check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip-check }}
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 🚦 Check if CI can be skipped
+        id: check
+        uses: cariad-tech/merge-queue-ci-skipper@cf80db21fc70244e36487acc531b3f1118889b0a
+
+  # Build the web app via the shared build workflow
+  build:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      web: true
+      merge_queue: ${{ github.event_name == 'merge_group' }}
+
+  # Run the Rust tests on the self-hosted native runner
+  test:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: [self-hosted, target/native]
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 🦀 Fetch Rust dependencies
+        run: cargo fetch --locked
+
+      - name: 🧪 Run Rust tests
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: mold -run cargo test --all-features
+
+  # Rust format check on GitHub runner
+  rust-fmt:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+          components: rustfmt
+
+      - name: 🔬 Check Rust formatting
+        run: cargo fmt --all -- --check
+
+  # License compatibility check on GitHub runner
+  check-licenses:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+
+      - name: 📜 Check crate license compatibility for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+
+      - name: 📜 Check crate license compatibility for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+          manifest-path: libraries/rawkit/Cargo.toml

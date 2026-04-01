@@ -2,7 +2,8 @@ use super::network_interface::NodeTemplate;
 use graph_craft::document::NodeId;
 
 #[repr(u8)]
-#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Eq, Debug, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Clipboard {
 	Internal,
 	Device,

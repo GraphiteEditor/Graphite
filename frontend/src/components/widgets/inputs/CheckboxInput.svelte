@@ -1,18 +1,16 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { IconName } from "@graphite/icons";
-	import type { ActionShortcut } from "@graphite/messages";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import type { IconName } from "/src/icons";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
 	const backupId = String(Math.random()).substring(2);
 
 	// Content
 	export let checked = false;
-	export let icon: IconName = "Checkmark";
+	export let icon: IconName | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
 	export let disabled = false;
 	// Tooltips
@@ -23,7 +21,7 @@
 	let inputElement: HTMLInputElement | undefined;
 
 	$: id = forLabel !== undefined ? String(forLabel) : backupId;
-	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
+	$: displayIcon = !checked && (!icon || icon === "Checkmark") ? "Empty12px" : icon || "Checkmark";
 
 	export function isChecked() {
 		return checked;
@@ -34,8 +32,8 @@
 	}
 
 	function toggleCheckboxFromLabel(e: KeyboardEvent) {
-		const target = (e.target || undefined) as HTMLLabelElement | undefined;
-		const previousSibling = (target?.previousSibling || undefined) as HTMLInputElement | undefined;
+		const target = e.target instanceof HTMLLabelElement ? e.target : undefined;
+		const previousSibling = target?.previousSibling instanceof HTMLInputElement ? target.previousSibling : undefined;
 		previousSibling?.click();
 	}
 </script>
@@ -99,7 +97,8 @@
 			}
 
 			// Hovered while unchecked
-			&:hover .checkbox-box {
+			&:hover .checkbox-box,
+			&.label-is-hovered .checkbox-box {
 				background: var(--color-6-lowergray);
 			}
 
@@ -120,7 +119,8 @@
 			}
 
 			// Hovered while checked
-			&:hover .checkbox-box {
+			&:hover .checkbox-box,
+			&.label-is-hovered .checkbox-box {
 				background: var(--color-f-white);
 			}
 

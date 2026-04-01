@@ -1,14 +1,12 @@
 <script lang="ts">
 	import { getContext } from "svelte";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { fillChoiceColor, colorToRgbaCSS } from "/src/utility-functions/colors";
+	import type { Color, EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { Editor } from "@graphite/editor";
-	import { Color } from "@graphite/messages";
-
-	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 
 	// Content
 	export let primary: Color;
@@ -28,32 +26,38 @@
 	}
 
 	function primaryColorChanged(color: Color) {
-		editor.handle.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
+		editor.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
 	}
 
 	function secondaryColorChanged(color: Color) {
-		editor.handle.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
+		editor.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
 	}
 </script>
 
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
-		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner data-block-hover-transfer tabindex="0"></button>
+		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={colorToRgbaCSS(primary)} data-floating-menu-spawner data-block-hover-transfer tabindex="0"></button>
 		<ColorPicker
 			open={primaryOpen}
 			on:open={({ detail }) => (primaryOpen = detail)}
-			colorOrGradient={primary}
-			on:colorOrGradient={({ detail }) => detail instanceof Color && primaryColorChanged(detail)}
+			colorOrGradient={{ Solid: primary }}
+			on:colorOrGradient={({ detail }) => {
+				const color = fillChoiceColor(detail);
+				if (color) primaryColorChanged(color);
+			}}
 			direction="Right"
 		/>
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
-		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner data-block-hover-transfer tabindex="0"></button>
+		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={colorToRgbaCSS(secondary)} data-floating-menu-spawner data-block-hover-transfer tabindex="0"></button>
 		<ColorPicker
 			open={secondaryOpen}
 			on:open={({ detail }) => (secondaryOpen = detail)}
-			colorOrGradient={secondary}
-			on:colorOrGradient={({ detail }) => detail instanceof Color && secondaryColorChanged(detail)}
+			colorOrGradient={{ Solid: secondary }}
+			on:colorOrGradient={({ detail }) => {
+				const color = fillChoiceColor(detail);
+				if (color) secondaryColorChanged(color);
+			}}
 			direction="Right"
 		/>
 	</LayoutRow>

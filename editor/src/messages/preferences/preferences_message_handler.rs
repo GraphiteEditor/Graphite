@@ -11,26 +11,42 @@ pub struct PreferencesMessageContext<'a> {
 	pub tool_message_handler: &'a ToolMessageHandler,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
-	pub use_vello: bool,
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
+	pub max_render_region_size: u32,
+	pub disable_ui_acceleration: bool,
+	#[cfg(target_os = "macos")]
+	pub vsync: bool,
 }
 
 impl PreferencesMessageHandler {
+	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
+		let mut requiring_restart = Vec::new();
+		if self.disable_ui_acceleration != other.disable_ui_acceleration {
+			requiring_restart.push("Disable UI Acceleration");
+		}
+		#[cfg(target_os = "macos")]
+		if self.vsync != other.vsync {
+			requiring_restart.push("Enable V-Sync");
+		}
+		requiring_restart.into_iter().map(String::from).collect()
+	}
+
 	pub fn get_selection_mode(&self) -> SelectionMode {
 		self.selection_mode
 	}
 
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
-			use_vello: self.use_vello && self.supports_wgpu(),
+			max_render_region_size: self.max_render_region_size,
 		}
 	}
 
@@ -44,11 +60,14 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
-			use_vello: EditorPreferences::default().use_vello,
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
+			max_render_region_size: EditorPreferences::default().max_render_region_size,
+			disable_ui_acceleration: false,
+			#[cfg(target_os = "macos")]
+			vsync: false,
 		}
 	}
 }
@@ -61,30 +80,20 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
-				if let Some(preferences) = preferences {
-					*self = preferences;
-				}
+				*self = preferences;
 
 				responses.add(PortfolioMessage::EditorPreferences);
-				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 			PreferencesMessage::ResetToDefaults => {
-				refresh_dialog(responses);
-				responses.add(KeyMappingMessage::ModifyMapping { mapping: MappingVariant::Default });
-
-				*self = Self::default()
+				responses.add(PreferencesMessage::Load { preferences: Self::default() });
+				responses.add(DialogMessage::RequestPreferencesDialog);
 			}
 
 			// Per-preference messages
-			PreferencesMessage::UseVello { use_vello } => {
-				self.use_vello = use_vello;
-				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::EditorPreferences);
-			}
 			PreferencesMessage::BrushTool { enabled } => {
 				self.brush_tool = enabled;
 
@@ -115,6 +124,18 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
+			PreferencesMessage::MaxRenderRegionSize { size } => {
+				self.max_render_region_size = size;
+				responses.add(PortfolioMessage::EditorPreferences);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
+				self.disable_ui_acceleration = disable_ui_acceleration;
+			}
+			#[cfg(target_os = "macos")]
+			PreferencesMessage::VSync { vsync } => {
+				self.vsync = vsync;
+			}
 		}
 
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
@@ -122,10 +143,4 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 
 	advertise_actions!(PreferencesMessageDiscriminant;
 	);
-}
-
-fn refresh_dialog(responses: &mut VecDeque<Message>) {
-	responses.add(DialogMessage::CloseDialogAndThen {
-		followups: vec![DialogMessage::RequestPreferencesDialog.into()],
-	});
 }

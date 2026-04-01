@@ -133,7 +133,9 @@
 {%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
 {%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}
 {%- filter replace(from = "<!-- replacements::hierarchical_message_system_tree() -->", to = replacements::hierarchical_message_system_tree()) -%}
+{%- filter replace(from = "<!-- replacements::crate_hierarchy() -->", to = replacements::crate_hierarchy()) -%}
 {%- block content -%}{%- endblock -%}
+{%- endfilter -%}
 {%- endfilter -%}
 {%- endfilter -%}
 {%- endfilter -%}

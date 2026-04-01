@@ -1,6 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::frontend::utility_types::EyedropperPreviewImage;
 use crate::messages::tool::utility_types::DocumentToolData;
+use graphene_std::vector::style::RenderMode;
 
 #[derive(Default, ExtractField)]
 pub struct EyedropperTool {
@@ -9,7 +10,8 @@ pub struct EyedropperTool {
 }
 
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum EyedropperToolMessage {
 	// Standard messages
 	Abort,
@@ -46,9 +48,9 @@ impl LayoutHolder for EyedropperTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for EyedropperTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		if let ToolMessage::Eyedropper(EyedropperToolMessage::PreviewImage { data, width, height }) = message {
-			let image = EyedropperPreviewImage { data, width, height };
+			let image = EyedropperPreviewImage { data: data.into(), width, height };
 
-			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice.clone());
+			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice);
 
 			if !self.data.preview {
 				disable_cursor_preview(responses, &mut self.data);
@@ -87,10 +89,18 @@ enum EyedropperToolFsmState {
 	SamplingSecondary,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PrimarySecondary {
+	#[default]
+	Primary,
+	Secondary,
+}
+
 #[derive(Clone, Debug, Default)]
 struct EyedropperToolData {
 	preview: bool,
-	color_choice: Option<String>,
+	color_choice: Option<PrimarySecondary>,
 }
 
 impl Fsm for EyedropperToolFsmState {
@@ -99,14 +109,19 @@ impl Fsm for EyedropperToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionMessageContext {
-			global_tool_data, input, viewport, ..
+			document,
+			global_tool_data,
+			input,
+			viewport,
+			..
 		} = tool_action_data;
+		let render_mode = document.render_mode;
 
 		let ToolMessage::Eyedropper(event) = event else { return self };
 		match (self, event) {
 			// Ready -> Sampling
 			(EyedropperToolFsmState::Ready, mouse_down) if matches!(mouse_down, EyedropperToolMessage::SamplePrimaryColorBegin | EyedropperToolMessage::SampleSecondaryColorBegin) => {
-				update_cursor_preview(responses, tool_data, input, global_tool_data, None);
+				update_cursor_preview(responses, tool_data, input, global_tool_data, None, render_mode);
 
 				if mouse_down == EyedropperToolMessage::SamplePrimaryColorBegin {
 					EyedropperToolFsmState::SamplingPrimary
@@ -118,7 +133,7 @@ impl Fsm for EyedropperToolFsmState {
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
 				let mouse_position = viewport.logical(input.mouse.position);
 				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
-					update_cursor_preview(responses, tool_data, input, global_tool_data, None);
+					update_cursor_preview(responses, tool_data, input, global_tool_data, None, render_mode);
 				} else {
 					disable_cursor_preview(responses, tool_data);
 				}
@@ -127,8 +142,12 @@ impl Fsm for EyedropperToolFsmState {
 			}
 			// Sampling -> Ready
 			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::SamplePrimaryColorEnd) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::SampleSecondaryColorEnd) => {
-				let set_color_choice = if self == EyedropperToolFsmState::SamplingPrimary { "Primary" } else { "Secondary" }.to_string();
-				update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice));
+				let set_color_choice = match self {
+					EyedropperToolFsmState::SamplingPrimary => PrimarySecondary::Primary,
+					EyedropperToolFsmState::SamplingSecondary => PrimarySecondary::Secondary,
+					_ => unreachable!(),
+				};
+				update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice), render_mode);
 				disable_cursor_preview(responses, tool_data);
 
 				EyedropperToolFsmState::Ready
@@ -179,31 +198,29 @@ fn disable_cursor_preview(responses: &mut VecDeque<Message>, tool_data: &mut Eye
 	});
 }
 
-#[cfg(not(target_family = "wasm"))]
-fn update_cursor_preview(
-	responses: &mut VecDeque<Message>,
-	tool_data: &mut EyedropperToolData,
-	_input: &InputPreprocessorMessageHandler,
-	_global_tool_data: &DocumentToolData,
-	set_color_choice: Option<String>,
-) {
-	tool_data.preview = true;
-	tool_data.color_choice = set_color_choice;
-	responses.add(PortfolioMessage::SubmitEyedropperPreviewRender);
-}
-
-#[cfg(target_family = "wasm")]
 fn update_cursor_preview(
 	responses: &mut VecDeque<Message>,
 	tool_data: &mut EyedropperToolData,
 	input: &InputPreprocessorMessageHandler,
 	global_tool_data: &DocumentToolData,
-	set_color_choice: Option<String>,
+	set_color_choice: Option<PrimarySecondary>,
+	render_mode: RenderMode,
 ) {
 	tool_data.preview = true;
-	tool_data.color_choice = set_color_choice.clone();
+	tool_data.color_choice = set_color_choice;
 
-	update_cursor_preview_common(responses, None, input, global_tool_data, set_color_choice);
+	// On web, SVG Preview mode uses the frontend's SVG rasterization to sample pixels directly
+	#[cfg(target_family = "wasm")]
+	if render_mode == RenderMode::SvgPreview {
+		update_cursor_preview_common(responses, None, input, global_tool_data, set_color_choice);
+		return;
+	}
+
+	let _ = (&input, &global_tool_data, &render_mode);
+
+	// For Vello-rendered modes (Normal, Outline, and Pixel Preview), submit a backend render request
+	// which will return a zoomed-in pixel preview image via the EyedropperToolMessage::PreviewImage path
+	responses.add(PortfolioMessage::SubmitEyedropperPreviewRender);
 }
 
 fn update_cursor_preview_common(
@@ -211,7 +228,7 @@ fn update_cursor_preview_common(
 	image: Option<EyedropperPreviewImage>,
 	input: &InputPreprocessorMessageHandler,
 	global_tool_data: &DocumentToolData,
-	set_color_choice: Option<String>,
+	set_color_choice: Option<PrimarySecondary>,
 ) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
 		image,

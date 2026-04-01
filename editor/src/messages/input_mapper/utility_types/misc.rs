@@ -106,8 +106,10 @@ pub struct MappingEntry {
 	pub disabled: bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ActionShortcut {
+	#[serde(skip)]
 	Action(MessageDiscriminant),
 	#[serde(rename = "shortcut")]
 	Shortcut(LabeledShortcut),
@@ -137,7 +139,8 @@ impl FrameTimeInfo {
 	}
 
 	pub fn advance_timestamp(&mut self, next_timestamp: Duration) {
-		debug_assert!(next_timestamp >= self.timestamp);
+		// Guard against non-monotonic timestamps from the browser (Keavon observed this once in Chrome)
+		let next_timestamp = next_timestamp.max(self.timestamp);
 
 		self.prev_timestamp = Some(self.timestamp);
 		self.timestamp = next_timestamp;
