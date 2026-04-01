@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { FillChoice, MenuDirection, ActionShortcut } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
-
-	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradientStops, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
+	import type { FillChoice, MenuDirection, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 
@@ -26,17 +24,19 @@
 
 	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
 	$: outlined = outlineFactor > 0.0001;
-	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
-	$: none = value instanceof Color ? value.none : false;
-	$: transparency = value instanceof Gradient ? value.color.some((color) => color.alpha < 1) : value.alpha < 1;
+	$: gradientStops = fillChoiceGradientStops(value);
+	$: solidColor = fillChoiceColor(value);
+	$: chosenGradient = gradientStops
+		? gradientToLinearGradientCSS(gradientStops)
+		: solidColor
+			? `linear-gradient(${colorToHexOptionalAlpha(solidColor)}, ${colorToHexOptionalAlpha(solidColor)})`
+			: undefined;
+	$: none = value === "None";
+	$: transparency = gradientStops ? gradientStops.color.some((color) => color.alpha < 1) : solidColor ? solidColor.alpha < 1 : false;
 </script>
 
 <LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
-	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
-		<!-- {#if disabled && value instanceof Color && !value.none}
-			<TextLabel>sRGB</TextLabel>
-		{/if} -->
-	</button>
+	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
 	<ColorPicker
 		{open}
 		{disabled}

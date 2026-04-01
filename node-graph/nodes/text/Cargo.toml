@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
@@ -24,3 +25,5 @@ log = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }

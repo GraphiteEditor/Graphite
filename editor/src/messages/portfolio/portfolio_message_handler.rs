@@ -485,9 +485,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
 				match Self::read_file(&path, content) {
 					FileContent::Document(content) => {
+						let document_path = if path.is_absolute() { Some(path) } else { None };
 						responses.add(PortfolioMessage::OpenDocumentFile {
 							document_name: name,
-							document_path: Some(path),
+							document_path,
 							document_serialized_content: content,
 						});
 					}
@@ -680,11 +681,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					image,
 					mouse: None,
 					parent_and_insert_index: None,
+					place_at_origin: true,
 				});
 
 				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
 				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					messages: vec![
+						DocumentMessage::WrapContentInArtboard {
+							place_artboard_at_origin: true,
+							artboard_canvas: None,
+						}
+						.into(),
+					],
 				});
 				responses.add(DeferMessage::AfterNavigationReady {
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
@@ -695,16 +703,51 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
 				});
 
+				// Parse the SVG to extract its declared canvas origin and dimensions from the viewBox attribute.
+				// This preserves the full canvas rather than measuring only the tighter rendered content bounding box.
+				let artboard_canvas = usvg::roxmltree::Document::parse(&svg)
+					.ok()
+					.and_then(|doc| {
+						let vb = doc.root_element().attribute("viewBox")?;
+						let nums: Vec<f64> = vb
+							.split(|c: char| c.is_ascii_whitespace() || c == ',')
+							.filter(|s| !s.is_empty())
+							.filter_map(|s| s.parse().ok())
+							.collect();
+						if nums.len() >= 4 {
+							Some((
+								glam::IVec2::new(nums[0].round() as i32, nums[1].round() as i32),
+								glam::IVec2::new(nums[2].round() as i32, nums[3].round() as i32),
+							))
+						} else {
+							None
+						}
+					})
+					.or_else(|| {
+						// Fall back to the viewport size when there is no viewBox attribute
+						usvg::Tree::from_str(&svg, &usvg::Options::default()).ok().map(|tree| {
+							let size = tree.size();
+							(glam::IVec2::ZERO, glam::IVec2::new(size.width().round() as i32, size.height().round() as i32))
+						})
+					});
+
 				responses.add(DocumentMessage::PasteSvg {
 					name,
 					svg,
 					mouse: None,
 					parent_and_insert_index: None,
+					place_at_origin: true,
 				});
 
 				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
 				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+					messages: vec![
+						DocumentMessage::WrapContentInArtboard {
+							place_artboard_at_origin: true,
+							artboard_canvas,
+						}
+						.into(),
+					],
 				});
 				responses.add(DeferMessage::AfterNavigationReady {
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
@@ -979,6 +1022,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						image,
 						mouse,
 						parent_and_insert_index,
+						place_at_origin: false,
 					});
 				}
 			}
@@ -996,6 +1040,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						svg,
 						mouse,
 						parent_and_insert_index,
+						place_at_origin: false,
 					});
 				}
 			}
@@ -1011,12 +1056,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
-				let table = LayoutGroup::Table {
-					unstyled: true,
-					rows: vec![
+				let table = LayoutGroup::table(
+					vec![
 						vec![
 							TextButton::new("New Document")
-								.icon(Some("File".into()))
+								.icon("File")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 								.widget_instance(),
@@ -1024,7 +1068,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Document")
-								.icon(Some("Folder".into()))
+								.icon("Folder")
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::Open.into())
 								.widget_instance(),
@@ -1032,20 +1076,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
-								.icon(Some("Image".into()))
+								.icon("Image")
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into())
 								.widget_instance(),
 						],
 						vec![
 							TextButton::new("Support the Development Fund")
-								.icon(Some("Heart".into()))
+								.icon("Heart")
 								.flush(true)
 								.on_commit(move |_| FrontendMessage::TriggerVisitLink { url: donate.to_string() }.into())
 								.widget_instance(),
 						],
 					],
-				};
+					true,
+				);
 
 				responses.add(LayoutMessage::DestroyLayout {
 					layout_target: LayoutTarget::WelcomeScreenButtons,
@@ -1057,11 +1102,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC4").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
-				let row = LayoutGroup::Row { widgets };
+				let row = LayoutGroup::row(widgets);
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),
@@ -1191,7 +1236,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
-			#[cfg(not(target_family = "wasm"))]
 			PortfolioMessage::SubmitEyedropperPreviewRender => {
 				use crate::consts::EYEDROPPER_PREVIEW_AREA_RESOLUTION;
 
@@ -1222,10 +1266,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 					Ok(message) => responses.add_front(message),
 				}
-			}
-			#[cfg(target_family = "wasm")]
-			PortfolioMessage::SubmitEyedropperPreviewRender => {
-				// TODO: Currently for Wasm, this is implemented through SVG rendering but the Eyedropper tool doesn't work at all when Vello is enabled as the renderer
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;

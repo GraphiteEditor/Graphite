@@ -13,7 +13,8 @@ use glam::DAffine2;
 ///
 /// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum Fill {
 	#[default]
 	None,
@@ -157,7 +158,8 @@ impl From<Gradient> for Fill {
 ///
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum FillChoice {
 	#[default]
 	None,
@@ -204,7 +206,8 @@ impl From<Fill> for FillChoice {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum FillType {
 	#[default]
@@ -214,7 +217,8 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
@@ -234,7 +238,8 @@ impl StrokeCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
@@ -254,7 +259,8 @@ impl StrokeJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
@@ -270,7 +276,8 @@ impl StrokeAlign {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
@@ -289,7 +296,8 @@ fn daffine2_identity() -> DAffine2 {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 #[serde(default)]
 pub struct Stroke {
 	/// Stroke color
@@ -309,8 +317,6 @@ pub struct Stroke {
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
-	pub non_scaling: bool,
-	#[serde(default)]
 	pub paint_order: PaintOrder,
 }
 
@@ -328,7 +334,6 @@ impl std::hash::Hash for Stroke {
 		self.join_miter_limit.to_bits().hash(state);
 		self.align.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
 }
@@ -345,7 +350,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
@@ -364,7 +368,6 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
-			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
@@ -462,11 +465,6 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
-		self.non_scaling = non_scaling;
-		self
-	}
-
 	pub fn has_renderable_stroke(&self) -> bool {
 		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
 	}
@@ -485,14 +483,14 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::default(),
 		}
 	}
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
@@ -659,15 +657,16 @@ impl PathStyle {
 }
 
 /// Ways the user can choose to view the artwork in the viewport.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
 pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]
 	Normal = 0,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
-	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
-	// PixelPreview,
+	/// Render with normal coloration at the document export resolution; at zoom > 100% this shows individual export pixels upscaled with nearest-neighbor filtering
+	PixelPreview,
 	/// Render a preview of how the object would be exported as an SVG.
 	SvgPreview,
 }

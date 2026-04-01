@@ -15,7 +15,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DialogClose.into()).widget_instance()];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 
 	fn layout_column_2(&self) -> Layout {
@@ -29,7 +29,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 			.into_iter()
 			.map(|(icon, label, url)| {
 				TextButton::new(label)
-					.icon(Some(icon.into()))
+					.icon(icon)
 					.flush(true)
 					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
 					.widget_instance()
@@ -40,7 +40,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 		let localized_commit_year = self.localized_commit_year.clone();
 		widgets.push(
 			TextButton::new("Licenses")
-				.icon(Some("License".into()))
+				.icon("License")
 				.flush(true)
 				.on_update(move |_| {
 					DialogMessage::RequestLicensesDialogWithLocalizedCommitDate {
@@ -51,22 +51,16 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 				.widget_instance(),
 		);
 
-		Layout(vec![LayoutGroup::Column { widgets }])
+		Layout(vec![LayoutGroup::column(widgets)])
 	}
 }
 
 impl LayoutHolder for AboutGraphiteDialog {
 	fn layout(&self) -> Layout {
 		Layout(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("About this release").bold(true).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(commit_info_localized(&self.localized_commit_date)).multiline(true).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(format!("Copyright © {} Graphite contributors", self.localized_commit_year)).widget_instance()],
-			},
+			LayoutGroup::row(vec![TextLabel::new("About this release").bold(true).widget_instance()]),
+			LayoutGroup::row(vec![TextLabel::new(commit_info_localized(&self.localized_commit_date)).multiline(true).widget_instance()]),
+			LayoutGroup::row(vec![TextLabel::new(format!("Copyright © {} Graphite contributors", self.localized_commit_year)).widget_instance()]),
 		])
 	}
 }

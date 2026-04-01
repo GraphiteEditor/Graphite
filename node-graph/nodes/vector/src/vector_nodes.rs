@@ -10,6 +10,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
+use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
@@ -60,7 +61,7 @@ async fn assign_colors<T>(
 	stroke: bool,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: GradientStops,
+	gradient: Table<GradientStops>,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -76,8 +77,10 @@ async fn assign_colors<T>(
 where
 	T: VectorTableIterMut + 'n + Send,
 {
+	let Some(row) = gradient.into_iter().next() else { return content };
+
 	let length = content.vector_iter_mut().count();
-	let gradient = if reverse { gradient.reversed() } else { gradient };
+	let gradient = if reverse { row.element.reversed() } else { row.element };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
@@ -209,7 +212,6 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		non_scaling: false,
 		paint_order,
 	};
 
@@ -222,7 +224,7 @@ where
 	content
 }
 
-#[node_macro::node(name("Copy to Points"), category("Instancing"), path(core_types::vector))]
+#[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: Table<Vector>,
@@ -1212,66 +1214,28 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 	content
 }
 
+// TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn flatten_path<T: 'n + Send>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-	)]
-	content: Table<T>,
-) -> Table<Vector>
-where
-	Graphic: From<Table<T>>,
-{
-	// NOTE(AdamGerhant):
-	// A node-based solution to support passing through vector data could be a network node with a cache node
-	// connected to a Flatten Path connected to an if else node, another connection from the cache directly to
-	// the if else node, and another connection from the cache to a matches type node connected to the if else node.
-
-	fn flatten_table(output: &mut TableRowMut<Vector>, graphic_table: &Table<Graphic>) {
-		for (current_index, current_element) in graphic_table.iter().enumerate() {
-			match current_element.element {
-				Graphic::Vector(vector) => {
-					// Loop through every row of the `Table<Vector>` and concatenate each element's subpath into the output `Vector` element.
-					for (vector_index, row) in vector.iter().enumerate() {
-						let other = row.element;
-						let transform = *current_element.transform * *row.transform;
-						let node_id = current_element.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
-
-						let mut hasher = DefaultHasher::new();
-						(current_index, vector_index, node_id).hash(&mut hasher);
-						let collision_hash_seed = hasher.finish();
-
-						output.element.concat(other, transform, collision_hash_seed);
-
-						// TODO: Make this instead use the first encountered style
-						// Use the last encountered style as the output style
-						output.element.style = row.element.style.clone();
-					}
-				}
-				Graphic::Graphic(graphic) => {
-					let mut graphic = graphic.clone();
-					for row in graphic.iter_mut() {
-						*row.transform = *current_element.transform * *row.transform;
-					}
-
-					flatten_table(output, &graphic);
-				}
-				_ => {}
-			}
-		}
-	}
-
+pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
-	let Some(mut output) = output_table.iter_mut().next() else { return output_table };
+	let Some(output) = output_table.iter_mut().next() else { return output_table };
 
-	// Flatten the graphic input into the output `Vector` element
-	let base_graphic_table = Table::new_from_element(Graphic::from(content));
-	flatten_table(&mut output, &base_graphic_table);
+	// Concatenate every vector element's subpaths into the single output compound path
+	for (index, row) in content.into_flattened_table().iter().enumerate() {
+		let node_id = row.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
 
-	// Return the single-row Table<Vector> containing the flattened Vector subpaths
+		let mut hasher = DefaultHasher::new();
+		(index, node_id).hash(&mut hasher);
+		let collision_hash_seed = hasher.finish();
+
+		output.element.concat(row.element, *row.transform, collision_hash_seed);
+
+		// TODO: Make this instead use the first encountered style
+		// Use the last encountered style as the output style
+		output.element.style = row.element.style.clone();
+	}
+
 	output_table
 }
 
@@ -1335,6 +1299,176 @@ async fn sample_polyline(
 
 				// Append the bezpath (subpath) that connects generated points by lines.
 				result.append_bezpath(sample_bezpath);
+			}
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
+/// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn simplify(
+	_: impl Ctx,
+	/// The vector paths to simplify.
+	content: Table<Vector>,
+	/// The maximum distance the simplified path may deviate from the original.
+	#[default(5.)]
+	#[unit(" px")]
+	tolerance: Length,
+) -> Table<Vector> {
+	if tolerance <= 0. {
+		return content;
+	}
+
+	let options = SimplifyOptions::default();
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let inverse_transform = transform.inverse();
+
+			let mut result = Vector {
+				style: std::mem::take(&mut row.element.style),
+				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
+			};
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(transform);
+
+				let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
+
+				simplified.apply_affine(inverse_transform);
+				result.append_bezpath(simplified);
+			}
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
+/// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn decimate(
+	_: impl Ctx,
+	/// The vector paths to decimate.
+	content: Table<Vector>,
+	/// The maximum distance a point can deviate from the simplified path before it is kept.
+	#[default(5.)]
+	#[unit(" px")]
+	tolerance: Length,
+) -> Table<Vector> {
+	// Tolerance of 0 means no simplification is possible, so return immediately
+	if tolerance <= 0. {
+		return content;
+	}
+
+	// Below this squared length, a line segment is treated as a degenerate point and the distance
+	// falls back to a simple point-to-point measurement to avoid division by near-zero.
+	const NEAR_ZERO_LENGTH_SQUARED: f64 = 1e-20;
+
+	fn perpendicular_distance(point: DVec2, line_start: DVec2, line_end: DVec2) -> f64 {
+		let line_vector = line_end - line_start;
+		let line_length_squared = line_vector.length_squared();
+		if line_length_squared < NEAR_ZERO_LENGTH_SQUARED {
+			return point.distance(line_start);
+		}
+		(point - line_start).perp_dot(line_vector).abs() / line_length_squared.sqrt()
+	}
+
+	fn rdp_simplify(points: &[DVec2], tolerance: f64) -> Vec<DVec2> {
+		if points.len() < 3 {
+			return points.to_vec();
+		}
+
+		let mut keep = vec![false; points.len()];
+		keep[0] = true;
+		keep[points.len() - 1] = true;
+
+		let mut stack = vec![(0, points.len() - 1)];
+
+		while let Some((start_index, end_index)) = stack.pop() {
+			let start = points[start_index];
+			let end = points[end_index];
+
+			let mut max_distance = 0.;
+			let mut max_index = 0;
+
+			for (i, &point) in points.iter().enumerate().take(end_index).skip(start_index + 1) {
+				let distance = perpendicular_distance(point, start, end);
+				if distance > max_distance {
+					max_distance = distance;
+					max_index = i;
+				}
+			}
+
+			if max_distance > tolerance {
+				keep[max_index] = true;
+				if max_index - start_index > 1 {
+					stack.push((start_index, max_index));
+				}
+				if end_index - max_index > 1 {
+					stack.push((max_index, end_index));
+				}
+			}
+		}
+
+		points.iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| *p).collect()
+	}
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let inverse_transform = transform.inverse();
+
+			let mut result = Vector {
+				style: std::mem::take(&mut row.element.style),
+				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
+			};
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(transform);
+
+				let is_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
+
+				// Flatten the bezpath into line segments, then collect the points
+				let mut points = Vec::new();
+				kurbo::flatten(bezpath, tolerance * 0.5, |el| match el {
+					PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+						points.push(DVec2::new(p.x, p.y));
+					}
+					_ => {}
+				});
+
+				// For closed paths, the last point duplicates the first, so remove it
+				if is_closed && points.len() > 1 && points.last() == points.first() {
+					points.pop();
+				}
+
+				// Apply RDP simplification
+				let simplified = rdp_simplify(&points, tolerance);
+				if simplified.is_empty() {
+					continue;
+				}
+
+				// Reconstruct as a polyline
+				let mut new_bezpath = BezPath::new();
+				new_bezpath.move_to((simplified[0].x, simplified[0].y));
+				for &point in &simplified[1..] {
+					new_bezpath.line_to((point.x, point.y));
+				}
+				if is_closed {
+					new_bezpath.close_path();
+				}
+
+				new_bezpath.apply_affine(inverse_transform);
+				result.append_bezpath(new_bezpath);
 			}
 
 			row.element = result;
@@ -1782,7 +1916,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let graphic_table_content = content.clone().into_graphic_table();
 
 	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
-	let content = content.into_flattened_vector_table();
+	let content = content.into_flattened_table::<Vector>();
 
 	// Determine source and target indices and interpolation time fraction
 	let progression = progression.max(0.);

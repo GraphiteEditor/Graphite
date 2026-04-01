@@ -136,7 +136,6 @@ fn blend<T: Blend<Color> + Send>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	over: T,
@@ -145,7 +144,6 @@ fn blend<T: Blend<Color> + Send>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	under: T,
@@ -162,7 +160,6 @@ fn color_overlay<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,

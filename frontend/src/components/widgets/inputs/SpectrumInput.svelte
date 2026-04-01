@@ -4,23 +4,22 @@
 </script>
 
 <script lang="ts">
-	import { createEventDispatcher, onDestroy } from "svelte";
-
-	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { Color, type Gradient } from "@graphite/messages";
-
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
+	import { evaluateGradientAtPosition } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { Color, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: { activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }; gradient: Gradient; dragging: boolean }>();
+	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: { activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }; gradient: GradientStops; dragging: boolean }>();
 
-	export let gradient: Gradient;
+	export let gradient: GradientStops;
 	export let disabled = false;
-	export let activeMarkerIndex = 0 as number | undefined;
+	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
 	// export let disabled = false;
 	// export let tooltipLabel: string | undefined = undefined;
@@ -113,9 +112,7 @@
 		if (index === -1) index = gradient.position.length;
 
 		// Determine the color of the new stop by evaluating the gradient at the position of the new stop
-		type ReturnedColor = { red: number; green: number; blue: number; alpha: number };
-		const evaluated = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color) as ReturnedColor;
-		const color = new Color(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
+		const color: Color = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color);
 
 		// Insert the new stop into the gradient
 		gradient.position.splice(index, 0, position);
@@ -242,7 +239,7 @@
 		dispatch("gradient", gradient);
 	}
 
-	function toMarkers(gradient: Gradient): { position: number; midpoint: number; color: Color }[] {
+	function toMarkers(gradient: GradientStops): { position: number; midpoint: number; color: Color }[] {
 		return gradient.position.map((position, i) => ({
 			position,
 			midpoint: gradient.midpoint[i],
@@ -250,7 +247,7 @@
 		}));
 	}
 
-	function toMidpoints(gradient: Gradient): number[] {
+	function toMidpoints(gradient: GradientStops): number[] {
 		if (gradient.position.length < 2) return [];
 
 		return gradient.midpoint.slice(0, -1).map((midpoint, i) => {
@@ -339,7 +336,9 @@
 		document.removeEventListener("keydown", onKeyDown);
 	}
 
-	document.addEventListener("keydown", deleteStop);
+	onMount(() => {
+		document.addEventListener("keydown", deleteStop);
+	});
 	onDestroy(() => {
 		removeEvents();
 		document.removeEventListener("keydown", deleteStop);
@@ -368,9 +367,9 @@
 	class="spectrum-input"
 	classes={{ disabled }}
 	styles={{
-		"--gradient-start": gradient.firstColor()?.toHexOptionalAlpha() || "black",
-		"--gradient-end": gradient.lastColor()?.toHexOptionalAlpha() || "black",
-		"--gradient-stops": gradient.toLinearGradientCSS(),
+		"--gradient-start": ((color) => (color ? colorToHexOptionalAlpha(color) : "black"))(gradientFirstColor(gradient)),
+		"--gradient-end": ((color) => (color ? colorToHexOptionalAlpha(color) : "black"))(gradientLastColor(gradient)),
+		"--gradient-stops": gradientToLinearGradientCSS(gradient),
 	}}
 >
 	<LayoutRow class="gradient-strip" on:pointerdown={insertStop}></LayoutRow>
@@ -396,7 +395,7 @@
 				class="marker"
 				class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
 				style:--marker-position={marker.position}
-				style:--marker-color={marker.color.toRgbCSS()}
+				style:--marker-color={colorToRgbCSS(marker.color)}
 				on:pointerdown={(e) => markerPointerDown(e, index)}
 				data-gradient-marker
 				xmlns="http://www.w3.org/2000/svg"

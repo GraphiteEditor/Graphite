@@ -3,7 +3,7 @@ pub mod guide_line_overlays;
 mod overlays_message;
 mod overlays_message_handler;
 pub mod utility_functions;
-// Native (non‑wasm)
+// Native (non‑Wasm)
 #[cfg(not(target_family = "wasm"))]
 pub mod utility_types_native;
 #[cfg(not(target_family = "wasm"))]

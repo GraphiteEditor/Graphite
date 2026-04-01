@@ -361,10 +361,15 @@ impl Dispatcher {
 	/// with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
-		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
-		let is_empty_batched = if let Message::Batched { messages } = message { messages.is_empty() } else { false };
+		let is_blocked =
+			|discriminant| DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_batch_all_blocked = if let Message::Batched { messages } = message {
+			messages.iter().all(|message| is_blocked(MessageDiscriminant::from(message)))
+		} else {
+			false
+		};
 
-		if !is_blocked && !is_empty_batched {
+		if !is_blocked(discriminant) && !is_batch_all_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
@@ -587,9 +592,13 @@ mod test {
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
+				if let FrontendMessage::UpdateLayout {
+					layout_target: LayoutTarget::DialogColumn1,
+					diff,
+				} = response
+				{
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
-						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
+						if let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0] {
 							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}
