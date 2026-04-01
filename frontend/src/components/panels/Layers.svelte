@@ -36,6 +36,7 @@
 		insertDepth: number;
 		insertIndex: number | undefined;
 		highlightFolder: boolean;
+		highlightFolderIndex: number | undefined;
 		markerHeight: number;
 	};
 
@@ -279,6 +280,7 @@
 
 		// Whether you are inserting into a folder and should show the folder outline
 		let highlightFolder = false;
+		let highlightFolderIndex: number | undefined = undefined;
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
@@ -305,6 +307,7 @@
 						insertDepth = listing.depth;
 						insertIndex = 0;
 						highlightFolder = true;
+						highlightFolderIndex = parseInt(indexAttribute, 10);
 					} else {
 						insertParentId = listing.parentId;
 						insertDepth = listing.depth - 1;
@@ -342,6 +345,7 @@
 			insertDepth,
 			insertIndex,
 			highlightFolder,
+			highlightFolderIndex,
 			markerHeight,
 		};
 	}
@@ -582,7 +586,7 @@
 						"ancestor-of-selected": listing.ancestorOfSelected,
 						"descendant-of-selected": listing.entry.descendantOfSelected,
 						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
-						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
+						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.highlightFolderIndex === index,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
 					data-layer
@@ -760,9 +764,13 @@
 					background: rgba(var(--color-4-dimgray-rgb), 0.5);
 				}
 
-				&.insert-folder {
-					outline: 3px solid var(--color-e-nearwhite);
-					outline-offset: -3px;
+				&.insert-folder::after {
+					content: "";
+					position: absolute;
+					inset: 0;
+					border: 3px solid var(--color-e-nearwhite);
+					border-radius: 2px;
+					pointer-events: none;
 				}
 
 				.expand-arrow {
