@@ -1,22 +1,20 @@
 <script lang="ts">
 	import { getContext } from "svelte";
+	import Dialog from "/src/components/floating-menus/Dialog.svelte";
+	import Tooltip from "/src/components/floating-menus/Tooltip.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import StatusBar from "/src/components/window/StatusBar.svelte";
+	import TitleBar from "/src/components/window/TitleBar.svelte";
+	import Workspace from "/src/components/window/Workspace.svelte";
+	import type { AppWindowStore } from "/src/stores/app-window";
+	import type { DialogStore } from "/src/stores/dialog";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { DialogState } from "@graphite/state-providers/dialog";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-
-	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
-	import Tooltip from "@graphite/components/floating-menus/Tooltip.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import StatusBar from "@graphite/components/window/StatusBar.svelte";
-	import TitleBar from "@graphite/components/window/TitleBar.svelte";
-	import Workspace from "@graphite/components/window/Workspace.svelte";
-
-	const dialog = getContext<DialogState>("dialog");
-	const tooltip = getContext<TooltipState>("tooltip");
-	const appWindow = getContext<AppWindowState>("appWindow");
+	const dialog = getContext<DialogStore>("dialog");
+	const tooltip = getContext<TooltipStore>("tooltip");
+	const appWindow = getContext<AppWindowStore>("appWindow");
 </script>
 
 <LayoutCol class="main-window" classes={{ "viewport-hole-punch": $appWindow.viewportHolePunch }}>

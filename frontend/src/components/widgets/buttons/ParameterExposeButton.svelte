@@ -1,7 +1,6 @@
 <script lang="ts">
-	import type { FrontendGraphDataType, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import type { FrontendGraphDataType, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let exposed: boolean;

@@ -1,5 +1,5 @@
-import type { Editor } from "@graphite/editor";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
+import { extractPixelData } from "/src/utility-functions/rasterization";
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
@@ -66,18 +66,18 @@ export async function upload(accept: string, textOrData: "text" | "data" | "both
 }
 export type UploadResult<T> = { filename: string; type: string; content: T };
 
-export async function pasteFile(item: DataTransferItem, editor: Editor, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
+export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
 	const file = item.getAsFile();
 	if (!file) return;
 
 	if (file.type.startsWith("image/svg")) {
 		const svg = await file.text();
-		editor.handle.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+		editor.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
 	} else if (file.type.startsWith("image/")) {
 		const imageData = await extractPixelData(file);
-		editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
-	} else if (file.name.endsWith("." + editor.handle.fileExtension())) {
+		editor.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+	} else if (file.name.endsWith("." + editor.fileExtension())) {
 		// TODO: When we eventually have sub-documents, this should be changed to import the document as a node instead of opening it in a separate tab
-		editor.handle.openFile(file.name, await file.bytes());
+		editor.openFile(file.name, await file.bytes());
 	}
 }

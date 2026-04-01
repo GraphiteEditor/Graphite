@@ -1,4 +1,4 @@
-import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance } from "@graphite/../wasm/pkg/graphite_wasm";
+import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument

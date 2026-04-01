@@ -4,6 +4,9 @@
   system,
   ...
 }:
+{
+  graphite ? self.packages.${system}.graphite,
+}:
 let
   bundle =
     {
@@ -13,7 +16,6 @@ let
     }:
     (
       let
-        graphite = self.packages.${system}.graphite;
         tar = if compression == null then archive else true;
         nameArchiveSuffix = if tar then ".tar" else "";
         nameCompressionSuffix = if compression == null then "" else "." + compression;
