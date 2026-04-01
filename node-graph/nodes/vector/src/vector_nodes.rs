@@ -6,7 +6,7 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::Footprint;
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
@@ -1917,8 +1917,25 @@ async fn jitter_points(
 		.map(|mut row| {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-			let transform = row.transform;
-			let inverse_transform = if transform.matrix2.determinant() != 0. { transform.inverse() } else { Default::default() };
+			// Map world-space jitter offsets back to local space, compensating for the transform's scaling.
+			// When the transform is singular (e.g. zero scale on one axis), the collapsed axis is replaced
+			// with a unit perpendicular so jitter still applies there (visible if the transform is later replaced).
+			let linear = row.transform.matrix2;
+			let inverse_linear = if linear.determinant() != 0. {
+				linear.inverse()
+			} else {
+				let col0 = linear.col(0);
+				let col1 = linear.col(1);
+				let col0_exists = col0.length_squared() > (f64::EPSILON * 1e3).powi(2);
+				let col1_exists = col1.length_squared() > (f64::EPSILON * 1e3).powi(2);
+
+				let repaired = match (col0_exists, col1_exists) {
+					(true, false) => DMat2::from_cols(col0, col0.perp().normalize()),
+					(false, true) => DMat2::from_cols(col1.perp().normalize(), col1),
+					_ => DMat2::IDENTITY,
+				};
+				repaired.inverse()
+			};
 
 			let deltas = (0..row.element.point_domain.positions().len())
 				.map(|point_index| {
@@ -1934,7 +1951,7 @@ async fn jitter_points(
 						rng.random::<f64>() * DVec2::from_angle(rng.random::<f64>() * TAU)
 					};
 
-					inverse_transform.transform_vector2(offset * amount)
+					inverse_linear * (offset * amount)
 				})
 				.collect::<Vec<_>>();
 			let mut already_applied = vec![false; row.element.point_domain.positions().len()];
@@ -1966,7 +1983,6 @@ async fn jitter_points(
 				}
 			}
 
-			row.element.style.set_stroke_transform(DAffine2::IDENTITY);
 			row
 		})
 		.collect()
