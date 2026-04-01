@@ -406,8 +406,32 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
+	let display_name_header = format!("# {display_name}");
+	let mut description_doc_attrs = vec![quote!(#[doc = #display_name_header]), quote!(#[doc = ""])];
+	description_doc_attrs.extend(description.lines().map(|line| quote!(#[doc = #line])));
+
+	// Add parameter list to doc comment
+	if !input_names.is_empty() {
+		description_doc_attrs.push(quote!(#[doc = ""]));
+		description_doc_attrs.push(quote!(#[doc = "## Parameters"]));
+		for (name, desc) in input_names.iter().zip(input_descriptions.iter()) {
+			if desc.is_empty() {
+				let header = format!("- **{name}**");
+				description_doc_attrs.push(quote!(#[doc = #header]));
+			} else {
+				let first_line = desc.lines().next().unwrap_or("");
+				let header = format!("- **{name}**: {first_line}");
+				description_doc_attrs.push(quote!(#[doc = #header]));
+				for line in desc.lines().skip(1) {
+					let continuation = format!("  {line}");
+					description_doc_attrs.push(quote!(#[doc = #continuation]));
+				}
+			}
+		}
+	}
+
 	Ok(quote! {
-		/// Underlying implementation for [#struct_name]
+		#(#description_doc_attrs)*
 		#[inline]
 		#[allow(clippy::too_many_arguments)]
 		#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body

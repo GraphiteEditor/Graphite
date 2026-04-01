@@ -4005,6 +4005,14 @@ impl NodeNetworkInterface {
 				}
 			}
 			(_, NodeInput::Node { node_id: upstream_node_id, .. }) => {
+				// If the old input wasn't exposed but the new one is (`Node` inputs are always exposed),
+				// the node's port count changed, so its click targets need to be recomputed
+				if !old_input.is_exposed()
+					&& let InputConnector::Node { node_id, .. } = input_connector
+				{
+					self.unload_node_click_targets(node_id, network_path);
+				}
+
 				// Load structure if the change is to the document network and to the first or second
 				if network_path.is_empty() {
 					if matches!(input_connector, InputConnector::Export(0)) {
