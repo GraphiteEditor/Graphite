@@ -3086,6 +3086,10 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
 	}
 
+	pub fn vector_data_from_layer(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+	}
+
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self) {
 		self.document_metadata.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);

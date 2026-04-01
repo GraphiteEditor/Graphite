@@ -148,8 +148,7 @@ impl Fsm for FillToolFsmState {
 				}
 				// Get the layer the user is hovering
 				if let Some(layer) = document.click(input, viewport) {
-					if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-						document.network_interface.compute_modified_vector(layer)
+					if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer) {
 						let mut subpaths = vector_data.stroke_bezier_paths();
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 
@@ -157,10 +156,10 @@ impl Fsm for FillToolFsmState {
 						let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
 						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
 
-						let stroke = vector_data.style.stroke().unwrap();
+						let stroke = vector_data.style.stroke();
 						let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
 						let zoom = document.document_ptz.zoom();
-						let modified_stroke_width = stroke_width * zoom * 1.25;
+						let modified_stroke_width = stroke_width * zoom;
 						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
 
 						// Fill
@@ -168,11 +167,10 @@ impl Fsm for FillToolFsmState {
 						let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
 						subpaths = vector_data.stroke_bezier_paths();
-						// let stroke_transform = document.network_interface.compute_modified_vector(layer).unwrap().style.stroke
 						if stroke_exists_and_visible && close_to_stroke {
 							let overlay_stroke = || {
 								let mut overlay_stroke = Stroke::new(Some(preview_color), modified_stroke_width);
-								overlay_stroke.transform = document.metadata().transform_to_viewport_with_stroke_transform(layer, stroke);
+								overlay_stroke.transform = DAffine2::IDENTITY;
 								let line_cap = graph_layer.find_input(&STROKE_ID, CapInput::INDEX).unwrap();
 								overlay_stroke.cap = if let TaggedValue::StrokeCap(line_cap) = line_cap { *line_cap } else { StrokeCap::default() };
 								let line_join = graph_layer.find_input(&STROKE_ID, JoinInput::INDEX).unwrap();
@@ -183,11 +181,12 @@ impl Fsm for FillToolFsmState {
 								overlay_stroke
 							};
 
-							overlay_context.fill_stroke(subpaths, &overlay_stroke());
+							overlay_context.fill_stroke(subpaths, document.metadata().transform_to_viewport_with_stroke_transform(layer, vector_data.clone()), &overlay_stroke());
 						} else if fill_exists_and_visible {
 							overlay_context.fill_path(
 								subpaths,
-								document.metadata().transform_to_viewport_with_stroke_transform(layer, stroke),
+								document.metadata().transform_to_viewport_with_stroke_transform(layer, vector_data.clone()),
+								DAffine2::IDENTITY,
 								&preview_color,
 								true,
 								stroke_exists_and_visible,

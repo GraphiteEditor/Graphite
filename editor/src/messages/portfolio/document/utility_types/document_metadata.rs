@@ -87,22 +87,26 @@ impl DocumentMetadata {
 		footprint * local_transform
 	}
 
-	pub fn transform_to_viewport_with_stroke_transform(&self, layer: LayerNodeIdentifier, stroke: Stroke) -> DAffine2 {
+	pub fn transform_to_viewport_with_stroke_transform(&self, layer: LayerNodeIdentifier, vector: Vector) -> DAffine2 {
 		// We're not allowed to convert the root parent to a node id
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			return self.document_to_viewport;
 		}
 
 		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
-		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
+		let local_transform_for_layer = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
 
-		// let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
-		// let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-		// let applied_stroke_transform = set_stroke_transform.unwrap_or(*instance.transform);
-		// let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-		// let stroke_transform = self.upstream_transform(stroke_node);
-
-		footprint * local_transform
+		let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
+		let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+		if let Some(stroke_transform) = set_stroke_transform {
+			// Both upstream and downstream (from stroke node) contains stroke transforms
+			// which shouldn't be the case. This branch should only execute for downstreamed.
+			footprint * stroke_transform * local_transform_for_layer * stroke_transform.inverse()
+		} else {
+			// This branch is not executed on upstream or downstream transforms (from stroke node) layers.
+			// This branch should only execute for upstreamed.
+			footprint * local_transform_for_layer
+		}
 	}
 
 	pub fn transform_to_viewport_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {

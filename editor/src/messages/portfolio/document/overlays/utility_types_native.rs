@@ -17,6 +17,7 @@ use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
+use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
@@ -937,7 +938,7 @@ impl OverlayContextInternal {
 		path.push(bezier.as_path_el());
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
+	fn path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
 		let mut path = BezPath::new();
 
 		for subpath in subpaths {
@@ -1000,24 +1001,14 @@ impl OverlayContextInternal {
 		}
 
 		if !subpaths.is_empty() {
-			let path = self.push_path(subpaths.iter(), transform);
+			let path = self.path_from_subpaths(subpaths.iter(), transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 
 			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 		}
 	}
 
-	/// Fills the area inside the path. Assumes `color` is in gamma space.
-	/// Used by the Pen tool to show the path being closed.
-	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		let path = self.push_path(subpaths, transform);
-
-		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
-	}
-
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
-	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	pub fn fill_canvas_pattern_image(&self, color: &Color) -> peniko::ImageBrush {
 		const PATTERN_WIDTH: u32 = 4;
 		const PATTERN_HEIGHT: u32 = 4;
 
@@ -1054,10 +1045,31 @@ impl OverlayContextInternal {
 			},
 		};
 
-		let path = self.push_path(subpaths, transform);
-		let brush = peniko::Brush::Image(image);
+		image
+	}
+
+	/// Fills the area inside the path. Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed.
+	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		let path = self.path_from_subpaths(subpaths, transform);
+
+		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
+	}
+
+	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Used by the fill tool to show the area to be filled.
+	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+		let path = self.path_from_subpaths(subpaths, transform);
+		let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
+	}
+
+	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, overlay_stroke: &Stroke) {
+		let path = self.path_from_subpaths(subpaths, transform);
+		let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
+
+		self.scene.stroke(&kurbo::Stroke::new(overlay_stroke.weight), self.get_transform(), &brush, None, &path);
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

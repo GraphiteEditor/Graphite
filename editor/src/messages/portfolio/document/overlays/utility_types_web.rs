@@ -907,12 +907,18 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, stroke_transform: Option<DAffine2>) {
 		self.start_dpi_aware_transform();
 
+		// let a = stroke_transform.matrix2.x_axis.x;
+		// let b = stroke_transform.matrix2.y_axis.x;
+		// let c = stroke_transform.matrix2.x_axis.y;
+		// let d = stroke_transform.matrix2.y_axis.y;
+		// let e = stroke_transform.translation.x;
+		// let f = stroke_transform.translation.y;
 		self.render_context.begin_path();
 		for subpath in subpaths {
-			let subpath = subpath.borrow();
+			let mut subpath = subpath.borrow().clone();
 			let mut curves = subpath.iter().peekable();
 
 			let Some(&first) = curves.peek() else {
@@ -968,7 +974,7 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			self.draw_path_from_subpaths(subpaths.iter(), transform);
+			self.draw_path_from_subpaths(subpaths.iter(), transform, None);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
@@ -1016,6 +1022,7 @@ impl OverlayContext {
 		&mut self,
 		subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>,
 		transform: DAffine2,
+		stroke_transform: DAffine2,
 		color: &Color,
 		with_pattern: bool,
 		clear_stroke_part: bool,
@@ -1023,7 +1030,7 @@ impl OverlayContext {
 	) {
 		self.render_context.save();
 		self.render_context.set_line_width(stroke_width.unwrap_or(1.));
-		self.draw_path_from_subpaths(subpaths, transform);
+		self.draw_path_from_subpaths(subpaths, transform, Some(stroke_transform));
 
 		if with_pattern {
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
@@ -1035,20 +1042,41 @@ impl OverlayContext {
 
 		// Make the stroke transparent and erase the fill area overlapping the stroke.
 		if clear_stroke_part {
+			// self.render_context.save();
+			// let stroke_transform = Some(stroke_transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
+			// let a = stroke_transform.matrix2.x_axis.x;
+			// let b = stroke_transform.matrix2.y_axis.x;
+			// let c = stroke_transform.matrix2.x_axis.y;
+			// let d = stroke_transform.matrix2.y_axis.y;
+			// let e = stroke_transform.translation.x;
+			// let f = stroke_transform.translation.y;
+			// self.render_context.set_transform(a, b, c, d, e, f);
+
 			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
 			self.render_context.set_stroke_style_str(&"#000000");
 			self.render_context.stroke();
+			// self.render_context.restore();
 		}
 
 		self.render_context.restore();
 	}
 
-	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, overlay_stroke: &Stroke) {
+	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, overlay_stroke: &Stroke) {
 		self.render_context.save();
 
 		// debug!("overlay_stroke.weight * ptz.zoom(): {:?}", overlay_stroke.weight);
 		self.render_context.set_line_width(overlay_stroke.weight);
-		self.draw_path_from_subpaths(subpaths, overlay_stroke.transform);
+		self.draw_path_from_subpaths(subpaths, transform, Some(overlay_stroke.transform));
+
+		// self.render_context.save();
+		// let stroke_transform = Some(overlay_stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
+		// let a = stroke_transform.matrix2.x_axis.x;
+		// let b = stroke_transform.matrix2.y_axis.x;
+		// let c = stroke_transform.matrix2.x_axis.y;
+		// let d = stroke_transform.matrix2.y_axis.y;
+		// let e = stroke_transform.translation.x;
+		// let f = stroke_transform.translation.y;
+		// self.render_context.set_transform(a, b, c, d, e, f);
 
 		self.render_context
 			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
@@ -1056,6 +1084,7 @@ impl OverlayContext {
 		self.render_context.set_line_join(overlay_stroke.join.html_canvas_name().as_str());
 		self.render_context.set_miter_limit(overlay_stroke.join_miter_limit);
 		self.render_context.stroke();
+		// self.render_context.restore();
 
 		self.render_context.restore();
 	}

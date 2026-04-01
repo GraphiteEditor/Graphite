@@ -725,14 +725,13 @@ impl Render for Table<Graphic> {
 impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
-			let multiplied_transform = *row.transform;
 			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*row.transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+			let element_transform = set_stroke_transform.map(|stroke_transform| *row.transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
@@ -743,6 +742,7 @@ impl Render for Table<Vector> {
 			let mut path = String::new();
 
 			for mut bezpath in row.element.stroke_bezpath_iter() {
+				// Only affects upstream-transformed (from stroke node) layers with row.transform
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				path.push_str(bezpath.to_svg().as_str());
 			}
@@ -826,6 +826,8 @@ impl Render for Table<Vector> {
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
+				// Only affects layers with downstream-transformed layers (from stroke node) with row.transform*stroke_transform.inverse()
+				// and affect layers with upstream-transformed (from stroke node) layers with IDENTITY
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
@@ -871,6 +873,7 @@ impl Render for Table<Vector> {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
+				// Look here to see how to adjust the stroke
 				attributes.push_val(fill_and_stroke);
 
 				let opacity = row.alpha_blending.opacity(render_params.for_mask);
