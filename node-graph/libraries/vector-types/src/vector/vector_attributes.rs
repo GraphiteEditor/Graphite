@@ -472,20 +472,28 @@ impl SegmentDomain {
 		let mut connection_count = 0;
 
 		for (segment_index, (&start, &end)) in self.start_point.iter().zip(&self.end_point).enumerate() {
-			let at_start = if start == point_index {
-				true
-			} else if end == point_index {
-				false
-			} else {
-				continue;
-			};
+			// Self-loop segments count as two connections (outgoing and incoming)
+			let is_start = start == point_index;
+			let is_end = end == point_index;
 
-			if connection_count >= 2 {
-				// With 3+ connections, the average tangent would be ambiguous
-				return None;
+			if !is_start && !is_end {
+				continue;
 			}
-			connections[connection_count] = (segment_index, at_start);
-			connection_count += 1;
+
+			if is_start {
+				if connection_count >= 2 {
+					return None;
+				}
+				connections[connection_count] = (segment_index, true);
+				connection_count += 1;
+			}
+			if is_end {
+				if connection_count >= 2 {
+					return None;
+				}
+				connections[connection_count] = (segment_index, false);
+				connection_count += 1;
+			}
 		}
 
 		if connection_count == 0 {
