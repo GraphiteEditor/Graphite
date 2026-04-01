@@ -436,6 +436,85 @@ impl SegmentDomain {
 		self.all_connected(point).next().is_some()
 	}
 
+	/// Computes the direction-of-travel tangent at one endpoint of a segment.
+	/// Uses the "first distinct control point" pattern: iterates through the Bezier control points
+	/// from the anchor outward, returning the direction to the first one that differs in position.
+	/// This handles zero-length handles by finding the tangent direction in the limit.
+	/// Returns `DVec2::ZERO` if all control points coincide (fully degenerate segment).
+	fn segment_tangent_at_endpoint(&self, segment_index: usize, positions: &[DVec2], at_start: bool) -> DVec2 {
+		let anchor_start = positions[self.start_point[segment_index]];
+		let anchor_end = positions[self.end_point[segment_index]];
+
+		// Build ordered control points for this segment
+		let (points, count) = match self.handles[segment_index] {
+			BezierHandles::Linear => ([anchor_start, anchor_end, DVec2::ZERO, DVec2::ZERO], 2),
+			BezierHandles::Quadratic { handle } => ([anchor_start, handle, anchor_end, DVec2::ZERO], 3),
+			BezierHandles::Cubic { handle_start, handle_end } => ([anchor_start, handle_start, handle_end, anchor_end], 4),
+		};
+
+		let not_near = |a: DVec2, b: DVec2| a.distance_squared(b) > f64::EPSILON * 1e3;
+
+		if at_start {
+			let anchor = points[0];
+			points[1..count].iter().find(|&&p| not_near(p, anchor)).map_or(DVec2::ZERO, |&point| point - anchor)
+		} else {
+			let anchor = points[count - 1];
+			points[..count - 1].iter().rev().find(|&&p| not_near(p, anchor)).map_or(DVec2::ZERO, |&point| anchor - point)
+		}
+	}
+
+	/// Computes the average tangent direction at a point based on its 1 or 2 connected segments.
+	/// Returns `None` for points with 0 or 3+ connections (ambiguous or undefined tangent),
+	/// or if the tangent is degenerate (all control points coincide).
+	pub fn point_tangent(&self, point_index: usize, positions: &[DVec2]) -> Option<DVec2> {
+		// Collect connected segments with their relationship to this point (at_start flag)
+		let mut connections: [(usize, bool); 2] = [(0, false); 2];
+		let mut connection_count = 0;
+
+		for (segment_index, (&start, &end)) in self.start_point.iter().zip(&self.end_point).enumerate() {
+			let at_start = if start == point_index {
+				true
+			} else if end == point_index {
+				false
+			} else {
+				continue;
+			};
+
+			if connection_count >= 2 {
+				// With 3+ connections, the average tangent would be ambiguous
+				return None;
+			}
+			connections[connection_count] = (segment_index, at_start);
+			connection_count += 1;
+		}
+
+		if connection_count == 0 {
+			return None;
+		}
+
+		// Compute the direction-of-travel tangent for the first connection
+		let (segment_index, at_start) = connections[0];
+		let tangent1 = self.segment_tangent_at_endpoint(segment_index, positions, at_start).try_normalize();
+
+		if connection_count == 1 {
+			return tangent1;
+		}
+
+		// Compute the direction-of-travel tangent for the second connection
+		let (segment_index, at_start) = connections[1];
+		let tangent2 = self.segment_tangent_at_endpoint(segment_index, positions, at_start).try_normalize();
+
+		// Average the two normalized tangents
+		let average = tangent1? + tangent2?;
+
+		// If the tangents are nearly opposite (straight-through), use t1 directly
+		if average.length_squared() < (f64::EPSILON * 1e3).powi(2) {
+			return tangent1;
+		}
+
+		average.try_normalize()
+	}
+
 	/// Iterates over segments in the domain.
 	///
 	/// Tuple is: (id, start point, end point, handles)

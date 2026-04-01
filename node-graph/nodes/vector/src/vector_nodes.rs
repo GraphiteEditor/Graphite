@@ -1879,14 +1879,21 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 		.collect()
 }
 
+/// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn jitter_points(
 	_: impl Ctx,
+	/// The vector geometry with points to be jittered.
 	content: Table<Vector>,
-	#[unit(" px")]
+	/// The maximum extent of the random distance each point can be offset.
 	#[default(5.)]
+	#[unit(" px")]
 	amount: f64,
+	/// Seed used to determine unique variations on all randomized offsets.
 	seed: SeedValue,
+	/// Whether to offset anchor points along their normal direction (perpendicular to the path) or in a random direction. Free-floating and branching points have no normal direction, so they receive a random-angled offset regardless of this setting.
+	#[default(true)]
+	along_normals: bool,
 ) -> Table<Vector> {
 	content
 		.into_iter()
@@ -1897,10 +1904,20 @@ async fn jitter_points(
 			let inverse_transform = if transform.matrix2.determinant() != 0. { transform.inverse() } else { Default::default() };
 
 			let deltas = (0..row.element.point_domain.positions().len())
-				.map(|_| {
-					let angle = rng.random::<f64>() * TAU;
+				.map(|point_index| {
+					let normal = if along_normals {
+						row.element.segment_domain.point_tangent(point_index, row.element.point_domain.positions()).map(|t| t.perp())
+					} else {
+						None
+					};
 
-					inverse_transform.transform_vector2(DVec2::from_angle(angle) * rng.random::<f64>() * amount)
+					let offset = if let Some(normal) = normal {
+						(rng.random::<f64>() * 2. - 1.) * normal
+					} else {
+						rng.random::<f64>() * DVec2::from_angle(rng.random::<f64>() * TAU)
+					};
+
+					inverse_transform.transform_vector2(offset * amount)
 				})
 				.collect::<Vec<_>>();
 			let mut already_applied = vec![false; row.element.point_domain.positions().len()];
