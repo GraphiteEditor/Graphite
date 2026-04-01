@@ -35,7 +35,7 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -52,12 +52,8 @@ impl LayoutHolder for CloseDocumentDialog {
 		let break_lines = if self.document_name.len() > max_one_line_length { '\n' } else { ' ' };
 
 		Layout(vec![
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Save document before closing it?").bold(true).widget_instance()],
-			},
-			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(format!("\"{name}{ellipsis}\"{break_lines}has unsaved changes")).multiline(true).widget_instance()],
-			},
+			LayoutGroup::row(vec![TextLabel::new("Save document before closing it?").bold(true).widget_instance()]),
+			LayoutGroup::row(vec![TextLabel::new(format!("\"{name}{ellipsis}\"{break_lines}has unsaved changes")).multiline(true).widget_instance()]),
 		])
 	}
 }

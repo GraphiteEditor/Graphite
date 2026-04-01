@@ -336,7 +336,8 @@ pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 #[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandleFrame = graphene_application_io::SurfaceHandleFrame<wgpu_executor::Window>;
 
-#[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
 	/// Maximum render region size in pixels along one dimension of the square area.
 	pub max_render_region_size: u32,

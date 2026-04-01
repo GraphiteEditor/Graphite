@@ -1,13 +1,15 @@
 use super::input_widgets::CheckboxId;
-use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
+use crate::messages::{frontend::IconName, input_mapper::utility_types::misc::ActionShortcut};
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder)]
 pub struct IconLabel {
 	// Content
 	#[widget_builder(constructor)]
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: IconName,
 	pub disabled: bool,
 
 	// Tooltips
@@ -19,7 +21,8 @@ pub struct IconLabel {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 pub struct Separator {
 	// Content
 	pub direction: SeparatorDirection,
@@ -27,14 +30,16 @@ pub struct Separator {
 	pub style: SeparatorStyle,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SeparatorDirection {
 	#[default]
 	Horizontal,
 	Vertical,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SeparatorStyle {
 	Related,
 	#[default]
@@ -42,7 +47,8 @@ pub enum SeparatorStyle {
 	Section,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Eq, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Eq, Default, WidgetBuilder)]
 #[derivative(PartialEq)]
 pub struct TextLabel {
 	// Content
@@ -78,7 +84,8 @@ pub struct TextLabel {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct ImageLabel {
 	// Content
@@ -96,7 +103,8 @@ pub struct ImageLabel {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct ShortcutLabel {
 	// Content

@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, UVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -56,9 +56,12 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, Vector>,
 
-	/// Cached surface for WASM viewport rendering (reused across frames)
+	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	current_viewport_texture: Option<ImageTexture>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -84,7 +87,7 @@ pub struct ExportConfig {
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
-	pub size: DVec2,
+	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
@@ -144,6 +147,8 @@ impl NodeRuntime {
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_viewport_surface: None,
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			current_viewport_texture: None,
 		}
 	}
 
@@ -275,7 +280,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -299,9 +304,13 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
+							continue;
+						}
+						// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
+						_ if render_config.for_eyedropper => {
 							continue;
 						}
 						#[cfg(all(target_family = "wasm", feature = "gpu"))]
@@ -309,7 +318,7 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On WASM, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
@@ -354,13 +363,22 @@ impl NodeRuntime {
 							);
 
 							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
+							self.current_viewport_texture = Some(image_texture.clone());
 
-							// Blit the rendered texture to the surface
-							surface.surface.blitter.copy(
-								&executor.context.device,
-								&mut encoder,
-								&image_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
-								&surface_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
+							encoder.copy_texture_to_texture(
+								vello::wgpu::TexelCopyTextureInfoBase {
+									texture: image_texture.texture.as_ref(),
+									mip_level: 0,
+									origin: Default::default(),
+									aspect: Default::default(),
+								},
+								vello::wgpu::TexelCopyTextureInfoBase {
+									texture: &surface_texture.texture,
+									mip_level: 0,
+									origin: Default::default(),
+									aspect: Default::default(),
+								},
+								image_texture.texture.size(),
 							);
 
 							executor.context.queue.submit([encoder.finish()]);
@@ -514,33 +532,36 @@ impl NodeRuntime {
 		}
 
 		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
-			RenderBoundingBox::None => return,
-			RenderBoundingBox::Infinite => [DVec2::ZERO, DVec2::new(300., 200.)],
-			RenderBoundingBox::Rectangle(bounds) => bounds,
+			RenderBoundingBox::None => None,
+			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
+			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		};
-		let footprint = Footprint {
-			transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
-			resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
-			quality: RenderQuality::Full,
+		let new_thumbnail_svg = if let Some(bounds) = bounds {
+			let footprint = Footprint {
+				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
+				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
+				quality: RenderQuality::Full,
+			};
+
+			// Render the thumbnail from a `Graphic` into an SVG string
+			let render_params = RenderParams {
+				footprint,
+				thumbnail: true,
+				..Default::default()
+			};
+			let mut render = SvgRender::new();
+			graphic.render_svg(&mut render, &render_params);
+
+			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+			render.format_svg(bounds[0], bounds[1]);
+
+			render.svg
+		} else {
+			Vec::new()
 		};
 
-		// Render the thumbnail from a `Graphic` into an SVG string
-		let render_params = RenderParams {
-			footprint,
-			thumbnail: true,
-			..Default::default()
-		};
-		let mut render = SvgRender::new();
-		graphic.render_svg(&mut render, &render_params);
-
-		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		render.format_svg(bounds[0], bounds[1]);
-
-		// UPDATE FRONTEND THUMBNAIL
-
-		let new_thumbnail_svg = render.svg;
+		// Update frontend thumbnail
 		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
-
 		if old_thumbnail_svg != &new_thumbnail_svg {
 			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
 				id: parent_network_node_id,

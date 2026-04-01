@@ -5,10 +5,10 @@ pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
 pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
-pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
-
 pub use graphite_editor::messages::prelude::DocumentId;
+pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
+
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
 	OpenLaunchDocuments,
@@ -75,6 +75,7 @@ pub enum DesktopFrontendMessage {
 	WindowHideOthers,
 	WindowShowAll,
 	Restart,
+	LoadThirdPartyLicenses,
 }
 
 pub enum DesktopWrapperMessage {
@@ -125,6 +126,9 @@ pub enum DesktopWrapperMessage {
 	PointerLockMove {
 		x: f64,
 		y: f64,
+	},
+	LoadThirdPartyLicenses {
+		text: String,
 	},
 }
 

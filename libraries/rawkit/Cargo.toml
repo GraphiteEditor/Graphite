@@ -34,6 +34,6 @@ thiserror = "2.0.17"
 
 # Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
 image = { version = "0.25.9", optional = true }
-reqwest = { version = "0.12.26", optional = true, features = ["blocking"] }
+reqwest = { version = "0.13", optional = true, features = ["blocking"] }
 libraw-rs = { version = "0.0.4", optional = true }
 rayon = { version = "1.11.0", optional = true }

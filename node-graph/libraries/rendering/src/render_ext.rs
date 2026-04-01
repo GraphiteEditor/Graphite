@@ -16,14 +16,17 @@ impl RenderExt for Gradient {
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
 		let mut stop = String::new();
-		for (position, color) in self.stops.0.iter() {
+		for (position, color, original_midpoint) in self.stops.interpolated_samples() {
 			stop.push_str("<stop");
-			if *position != 0. {
+			if position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
 			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+			}
+			if let Some(midpoint) = original_midpoint {
+				let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
 			}
 			stop.push_str(" />")
 		}
@@ -109,8 +112,10 @@ impl RenderExt for Stroke {
 			return String::new();
 		}
 
+		let default_weight = if self.align != StrokeAlign::Center && render_params.aligned_strokes { 1. / 2. } else { 1. };
+
 		// Set to None if the value is the SVG default
-		let weight = (self.weight != 1.).then_some(self.weight);
+		let weight = (self.weight != default_weight).then_some(self.weight);
 		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
 		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
 		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);
@@ -144,10 +149,6 @@ impl RenderExt for Stroke {
 		}
 		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
-		}
-		// Add vector-effect attribute to make strokes non-scaling
-		if self.non_scaling {
-			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
 		}
 		if paint_order.is_some() {
 			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
