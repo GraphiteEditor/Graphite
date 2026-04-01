@@ -136,11 +136,9 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.on_dismiss = Some(PreferencesDialogMessage::Confirm.into());
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
 			}
-			DialogMessage::RequestConfirmRestartDialog => {
+			DialogMessage::RequestConfirmRestartDialog { preferences_requiring_restart } => {
 				self.on_dismiss = Some(DialogMessage::Close.into());
-				let dialog = ConfirmRestartDialog {
-					changed_settings: vec!["Disable UI Acceleration".into()],
-				};
+				let dialog = ConfirmRestartDialog { preferences_requiring_restart };
 				dialog.send_dialog_to_frontend(responses);
 			}
 		}

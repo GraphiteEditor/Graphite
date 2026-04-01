@@ -1,31 +1,30 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy } from "svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorWrapper>("editor");
 
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
+		subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
 			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
+		subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	});
 
 	function dropFile(e: DragEvent) {

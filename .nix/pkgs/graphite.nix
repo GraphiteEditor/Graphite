@@ -32,7 +32,7 @@ let
     ];
     buildInputs = [ pkgs.openssl ];
     env.CARGO_PROFILE = if dev then "dev" else "release";
-    cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm --no-default-features --features native";
+    cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm-wrapper --no-default-features --features native";
     doCheck = false;
   };
   resources = deps.crane.lib.buildPackage (

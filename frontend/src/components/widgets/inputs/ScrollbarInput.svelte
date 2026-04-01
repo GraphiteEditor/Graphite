@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
-	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "@graphite/io-managers/input";
+	import { createEventDispatcher, onDestroy } from "svelte";
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS, PRESS_REPEAT_INTERVAL_RAPID_MS } from "/src/managers/input";
 
 	const ARROW_CLICK_DISTANCE = 0.05;
 	const ARROW_REPEAT_DISTANCE = 0.01;
@@ -186,6 +185,10 @@
 	function onKeyDown(e: KeyboardEvent) {
 		if (e.key === "Escape") abortInteraction();
 	}
+
+	onDestroy(() => {
+		removeEvents();
+	});
 
 	function addEvents() {
 		window.addEventListener("pointerup", onPointerUp);

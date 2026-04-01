@@ -129,7 +129,7 @@ impl WgpuExecutor {
 		if let Some(target_texture) = output.as_mut() {
 			target_texture.ensure_size(&self.context.device, size);
 
-			let [r, g, b, a] = background.unwrap_or(Color::TRANSPARENT).to_rgba8_srgb();
+			let [r, g, b, a] = background.unwrap_or(Color::TRANSPARENT).to_rgba8();
 			let render_params = RenderParams {
 				base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
 				width: size.x,

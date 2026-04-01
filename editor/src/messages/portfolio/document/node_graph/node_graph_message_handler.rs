@@ -645,7 +645,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = resolve_network_node_type("Default Network").expect("Default Network node should exist").default_node_template();
+				let mut default_node_template = resolve_network_node_type("Custom Node").expect("Custom Node should exist").default_node_template();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
 					log::error!("Could not get center of selected_nodes");
 					return;
@@ -717,7 +717,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.move_layer_to_stack(layer, parent, insert_index, selection_network_path);
 			}
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
-				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path);
+				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
 			NodeGraphMessage::SetChainPosition { node_id } => {
 				network_interface.set_chain_position(&node_id, selection_network_path);
@@ -1521,10 +1521,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
 						let input_connector = InputConnector::node(*selected_node, input_index);
 						// Only disconnect inputs to non selected nodes
-						if !network_interface
+						if network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
-							.and_then(|connector| connector.node_id())
-							.is_some_and(|node_id| all_selected_nodes.contains(&node_id))
+							.is_some_and(|connector| connector.node_id().map_or(true, |node_id| !all_selected_nodes.contains(&node_id)))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}
@@ -1949,15 +1948,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
 				if let Some((box_selection_start, _)) = self.box_selection_start {
-					// The mouse button was released but we missed the pointer up event
-					// if ((e.buttons & 1) === 0) {
-					// 	completeBoxSelection();
-					// 	boxSelection = undefined;
-					// } else if ((e.buttons & 2) !== 0) {
-					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
-					// 	boxSelection = undefined;
-					// }
-
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 						log::error!("Could not get network metadata in UpdateBoxSelection");
 						return;

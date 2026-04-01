@@ -15,6 +15,7 @@ fn usage() {
 	println!("<command>:");
 	println!("  [run]        Run the selected target (default)");
 	println!("  build        Build the selected target");
+	println!("  explore      Open an assortment of tools for exploring the codebase");
 	println!("  help         Show this message");
 	println!("<target>:");
 	println!("  [web]        Web app (default)");
@@ -50,7 +51,37 @@ fn main() -> ExitCode {
 	ExitCode::SUCCESS
 }
 
+fn explore_usage() {
+	println!();
+	println!("USAGE:");
+	println!("  cargo run explore <tool>");
+	println!();
+	println!("OPTIONS:");
+	println!("<tool>:");
+	println!("  bisect    Binary search through recent commits to find which introduced a bug or feature");
+	println!("  deps      View the crate dependency graph for the workspace");
+	println!("  editor    View an interactive outline of the editor's message system architecture");
+	println!();
+}
+
 fn run_task(task: &Task) -> Result<(), Error> {
+	if let Action::Explore(tool) = &task.action {
+		match tool.as_deref() {
+			Some("bisect") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/debugging-tips/#build-bisect-tool"),
+			Some("deps") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/#crate-dependency-graph"),
+			Some("editor") => return open_url("https://graphite.art/volunteer/guide/codebase-overview/editor-structure/#editor-outline"),
+			None | Some("--help") => {
+				explore_usage();
+				return Ok(());
+			}
+			Some(other) => {
+				eprintln!("Unknown explore tool: '{other}'");
+				explore_usage();
+				return Ok(());
+			}
+		}
+	}
+
 	requirements::check(task)?;
 
 	match (&task.action, &task.target, &task.profile) {
@@ -65,6 +96,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				profile = match action {
 					Action::Run => &Profile::Debug,
 					Action::Build => &Profile::Release,
+					Action::Explore(_) => unreachable!(),
 				}
 			}
 
@@ -94,6 +126,8 @@ fn run_task(task: &Task) -> Result<(), Error> {
 
 		(Action::Build, Target::Cli, Profile::Debug) => run("cargo build -p graphene-cli")?,
 		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => run("cargo build -r -p graphene-cli")?,
+
+		(Action::Explore(_), _, _) => unreachable!(),
 	}
 	Ok(())
 }

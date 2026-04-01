@@ -393,7 +393,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let device_scale = render_params.scale;
-	let zoom = footprint.decompose_scale().x;
+	let zoom = footprint.scale_magnitudes().x;
 	let rotation = footprint.decompose_rotation();
 
 	let viewport_origin_offset = footprint.transform.translation;
