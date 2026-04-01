@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SeparatorDirection, SeparatorStyle } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { SeparatorDirection, SeparatorStyle } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let direction: SeparatorDirection = "Horizontal";

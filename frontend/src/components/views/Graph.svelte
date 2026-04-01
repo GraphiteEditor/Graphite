@@ -2,26 +2,24 @@
 	import { getContext } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
-
-	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import type { DocumentState } from "@graphite/state-providers/document";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-
-	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { DocumentStore } from "/src/stores/document";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import { closeContextMenu } from "/src/stores/node-graph";
+	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
 	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
 
-	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const documentState = getContext<DocumentState>("document");
+	const editor = getContext<EditorWrapper>("editor");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const documentState = getContext<DocumentStore>("document");
 
 	let graph: HTMLDivElement | undefined;
 
@@ -29,7 +27,7 @@
 	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	// Close the context menu when the graph view overlay is closed
-	$: if (!$documentState.graphViewOverlayOpen) nodeGraph.closeContextMenu();
+	$: if (!$documentState.graphViewOverlayOpen) closeContextMenu();
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;
@@ -82,7 +80,7 @@
 		if (editingNameImportIndex !== undefined) {
 			if (!(event.target instanceof HTMLInputElement)) return;
 			let text = event.target.value;
-			editor.handle.setImportName(editingNameImportIndex, text);
+			editor.setImportName(editingNameImportIndex, text);
 			editingNameImportIndex = undefined;
 		}
 	}
@@ -91,7 +89,7 @@
 		if (editingNameExportIndex !== undefined) {
 			if (!(event.target instanceof HTMLInputElement)) return;
 			let text = event.target.value;
-			editor.handle.setExportName(editingNameExportIndex, text);
+			editor.setExportName(editingNameExportIndex, text);
 			editingNameExportIndex = undefined;
 		}
 	}
@@ -110,7 +108,7 @@
 	function createNode(identifier: string) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
-		editor.handle.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates[0], $nodeGraph.contextMenuInformation.contextMenuCoordinates[1]);
+		editor.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates[0], $nodeGraph.contextMenuInformation.contextMenuCoordinates[1]);
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {
@@ -173,11 +171,11 @@
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
-		return editor.handle.inDevelopmentMode() ? output.connectedTo.join("\n") : "";
+		return editor.inDevelopmentMode() ? output.connectedTo.join("\n") : "";
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		return editor.handle.inDevelopmentMode() ? input.connectedTo : "";
+		return editor.inDevelopmentMode() ? input.connectedTo : "";
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
@@ -219,8 +217,8 @@
 					<TextButton
 						label="Merge Selected Nodes"
 						action={() => {
-							editor.handle.mergeSelectedNodes();
-							nodeGraph.closeContextMenu();
+							editor.mergeSelectedNodes();
+							closeContextMenu();
 						}}
 						flush={true}
 					/>
@@ -229,9 +227,9 @@
 						label={currentlyIsNode ? "Display as Layer" : "Display as Node"}
 						action={() => {
 							if ($nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode") {
-								editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, currentlyIsNode);
+								editor.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, currentlyIsNode);
 							}
-							nodeGraph.closeContextMenu();
+							closeContextMenu();
 						}}
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 						flush={true}
@@ -243,11 +241,11 @@
 							label={allLocked ? "Unlock" : "Lock"}
 							action={() => {
 								if ($nodeGraph.selected.includes(nodeId)) {
-									editor.handle.toggleSelectedLocked();
+									editor.toggleSelectedLocked();
 								} else {
-									editor.handle.toggleLayerLock(nodeId);
+									editor.toggleLayerLock(nodeId);
 								}
-								nodeGraph.closeContextMenu();
+								closeContextMenu();
 							}}
 							flush={true}
 						/>
@@ -382,7 +380,7 @@
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 12) / 24}
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 12) / 24}
 					>
-						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryImport()} />
+						<IconButton size={24} icon="Add" action={() => editor.addPrimaryImport()} />
 					</div>
 				{/if}
 			{/each}
@@ -453,7 +451,7 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 12) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 12) / 24}
 					>
-						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryExport()} />
+						<IconButton size={24} icon="Add" action={() => editor.addPrimaryExport()} />
 					</div>
 				{/if}
 			{/each}
@@ -464,14 +462,14 @@
 					style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 12) / 24}
 					style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
 				>
-					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryImport()} />
+					<IconButton size={24} icon="Add" action={() => editor.addSecondaryImport()} />
 				</div>
 				<div
 					class="plus"
 					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 12) / 24}
 					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
 				>
-					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryExport()} />
+					<IconButton size={24} icon="Add" action={() => editor.addSecondaryExport()} />
 				</div>
 			{/if}
 
@@ -521,7 +519,7 @@
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
+					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
@@ -684,7 +682,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
+					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
