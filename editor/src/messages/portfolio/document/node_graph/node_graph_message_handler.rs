@@ -189,7 +189,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
 				network_interface.load_structure();
-				collapsed.0.retain(|&layer| network_interface.document_metadata().layer_exists(layer));
+				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();
@@ -2047,7 +2047,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, collapsed, layers_panel_open, responses);
+				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, responses);
 			}
 			NodeGraphMessage::UpdateEdges => {
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
@@ -2684,7 +2684,7 @@ impl NodeGraphMessageHandler {
 		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, responses: &mut VecDeque<Message>) {
 		if !layers_panel_open {
 			return;
 		}
@@ -2695,14 +2695,8 @@ impl NodeGraphMessageHandler {
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
 
-		let mut ancestors_of_selected = HashSet::new();
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
-			for ancestor in LayerNodeIdentifier::new(*selected_layer, network_interface).ancestors(network_interface.document_metadata()) {
-				if ancestor != LayerNodeIdentifier::ROOT_PARENT && ancestor.to_node() != *selected_layer {
-					ancestors_of_selected.insert(ancestor.to_node());
-				}
-			}
 			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface).descendants(network_interface.document_metadata()) {
 				descendants_of_selected.insert(descendant.to_node());
 			}
@@ -2727,22 +2721,6 @@ impl NodeGraphMessageHandler {
 								}))
 						);
 
-				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network_interface.document_node(&layer.to_node(), &[]).map(|node| node.visible).unwrap_or_default()
-					} else {
-						true
-					}
-				});
-
-				let parents_unlocked: bool = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						!network_interface.is_locked(&layer.to_node(), &[])
-					} else {
-						true
-					}
-				});
-
 				let clippable = layer.can_be_clipped(network_interface.document_metadata());
 
 				let data = LayerPanelEntry {
@@ -2752,18 +2730,9 @@ impl NodeGraphMessageHandler {
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
-					children_present: layer.has_children(network_interface.document_metadata()),
-					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
-					depth: layer.ancestors(network_interface.document_metadata()).count() as u32 - 1,
 					visible: network_interface.is_visible(&node_id, &[]),
-					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
-					parents_unlocked,
-					parent_id: layer
-						.parent(network_interface.document_metadata())
-						.and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
 					selected: selected_layers.contains(&node_id),
-					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
 					descendant_of_selected: descendants_of_selected.contains(&node_id),
 					clipped: get_clip_mode(layer, network_interface).unwrap_or(false) && clippable,
 					clippable,

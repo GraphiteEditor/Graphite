@@ -52,8 +52,7 @@
 		"tar": "^7.5.12",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.57.1",
-		"vite": "^8.0.1",
-		"vite-multiple-assets": "2.2.6"
+		"vite": "^8.0.1"
 	},
 	"homepage": "https://graphite.art",
 	"license": "Apache-2.0",
