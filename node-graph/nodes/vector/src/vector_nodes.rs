@@ -1947,9 +1947,9 @@ async fn jitter_points(
 					};
 
 					let offset = if let Some(normal) = normal {
-						(rng.random::<f64>() * 2. - 1.) * normal
+						normal * (rng.random::<f64>() * 2. - 1.)
 					} else {
-						rng.random::<f64>() * DVec2::from_angle(rng.random::<f64>() * TAU)
+						DVec2::from_angle(rng.random::<f64>() * TAU) * rng.random::<f64>()
 					};
 
 					inverse_linear * (offset * amount)
