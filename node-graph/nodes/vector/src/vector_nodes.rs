@@ -1958,7 +1958,7 @@ async fn jitter_points(
 	/// The maximum extent of the random distance each point can be offset.
 	#[default(5.)]
 	#[unit(" px")]
-	amount: f64,
+	max_distance: f64,
 	/// Seed used to determine unique variations on all randomized offsets.
 	seed: SeedValue,
 	/// Whether to offset anchor points along their normal direction (perpendicular to the path) or in a random direction. Free-floating and branching points have no normal direction, so they receive a random-angled offset regardless of this setting.
@@ -1974,7 +1974,7 @@ async fn jitter_points(
 			let deltas: Vec<_> = (0..row.element.point_domain.positions().len())
 				.map(|point_index| {
 					let normal = if along_normals {
-						row.element.segment_domain.point_tangent(point_index, row.element.point_domain.positions()).map(|t| t.perp())
+						row.element.segment_domain.point_tangent(point_index, row.element.point_domain.positions()).map(|t| -t.perp())
 					} else {
 						None
 					};
@@ -1985,7 +1985,41 @@ async fn jitter_points(
 						DVec2::from_angle(rng.random::<f64>() * TAU) * rng.random::<f64>()
 					};
 
-					inverse_linear * (offset * amount)
+					inverse_linear * offset * max_distance
+				})
+				.collect();
+
+			apply_point_deltas(&mut row.element, &deltas, row.transform);
+
+			row
+		})
+		.collect()
+}
+
+/// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
+/// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn offset_points(
+	_: impl Ctx,
+	/// The vector geometry with points to be offset.
+	content: Table<Vector>,
+	/// The distance to offset each anchor point along its normal. Positive values move outward, negative values move inward.
+	#[default(10.)]
+	#[unit(" px")]
+	distance: f64,
+) -> Table<Vector> {
+	content
+		.into_iter()
+		.map(|mut row| {
+			let inverse_linear = inverse_linear_or_repair(row.transform.matrix2);
+
+			let deltas: Vec<_> = (0..row.element.point_domain.positions().len())
+				.map(|point_index| {
+					let Some(normal) = row.element.segment_domain.point_tangent(point_index, row.element.point_domain.positions()).map(|t| -t.perp()) else {
+						return DVec2::ZERO;
+					};
+
+					inverse_linear * normal * distance
 				})
 				.collect();
 
