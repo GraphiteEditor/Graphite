@@ -134,9 +134,15 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
-	// Navigation requests: serve cached index.html
+	// Navigation requests: serve cached index.html for all routes (SPA pattern)
 	if (request.mode === "navigate") {
-		event.respondWith(cacheFirst(request, STATIC_CACHE_NAME));
+		event.respondWith(
+			(async () => {
+				const cache = await caches.open(STATIC_CACHE_NAME);
+				const cached = await cache.match("/index.html");
+				return cached || fetch(request);
+			})(),
+		);
 		return;
 	}
 
@@ -158,11 +164,17 @@ self.addEventListener("message", (event) => {
 
 				// Skip if already cached with the same revision
 				const existing = await cache.match(fullUrl);
-				if (existing) return;
+				if (existing?.headers.get("x-sw-revision") === entry.revision) return;
 
 				try {
 					const response = await fetch(fullUrl);
-					if (response.ok) await cache.put(fullUrl, response);
+					if (response.ok) {
+						// Store the service worker revision in a custom header so we can check it on future installs
+						const headers = new Headers(response.headers);
+						headers.set("x-sw-revision", entry.revision);
+						const taggedResponse = new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers });
+						await cache.put(fullUrl, taggedResponse);
+					}
 				} catch {
 					// Best-effort: skip files that fail to fetch
 				}

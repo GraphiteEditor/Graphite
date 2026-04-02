@@ -47,6 +47,9 @@
 	let virtualScrollingEntriesStart = 0;
 	let keydownListenerAdded = false;
 	let destroyed = false;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- `loadedFonts` reactivity is driven by `loadedFontsGeneration`, not the Set itself
+	let loadedFonts = new Set<string>();
+	let loadedFontsGeneration = 0;
 
 	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
@@ -462,14 +465,23 @@
 						<link
 							rel="stylesheet"
 							href={entry.font}
-							onload={(e) => {
-								const row = e.currentTarget.parentElement;
-								document.fonts.load(`16px "${entry.value}"`).then(() => row?.classList.add("font-loaded"));
+							onload={() => {
+								document.fonts.load(`16px "${entry.value}"`).then(() => {
+									loadedFonts.add(entry.value);
+									loadedFontsGeneration += 1; // Modify the dirty trigger
+								});
 							}}
 						/>
 					{/if}
 
-					<TextLabel class="entry-label" classes={{ "font-preview": Boolean(entry.font) }} styles={entry.font ? { "font-family": `"${entry.value}", "Source Sans Pro"` } : {}}>
+					<TextLabel
+						class="entry-label"
+						classes={{
+							"font-preview": Boolean(entry.font),
+							"font-loaded": loadedFontsGeneration >= 0 && loadedFonts.has(entry.value),
+						}}
+						styles={entry.font ? { "font-family": `"${entry.value}", "Source Sans Pro"` } : {}}
+					>
 						{entry.label}
 					</TextLabel>
 
@@ -557,7 +569,7 @@
 					margin: 0 4px;
 				}
 
-				&:not(.font-loaded) .font-preview {
+				.font-preview:not(.font-loaded) {
 					opacity: 0.5;
 				}
 
