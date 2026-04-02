@@ -1896,6 +1896,59 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 		.collect()
 }
 
+/// Computes the inverse of a transform's linear (matrix2) part, handling singular transforms
+/// (e.g. zero scale on one axis) by replacing the collapsed axis with a unit perpendicular
+/// so offsets still apply there (visible if the transform is later replaced).
+fn inverse_linear_or_repair(linear: DMat2) -> DMat2 {
+	if linear.determinant() != 0. {
+		return linear.inverse();
+	}
+
+	let col0 = linear.col(0);
+	let col1 = linear.col(1);
+	let col0_exists = col0.length_squared() > (f64::EPSILON * 1e3).powi(2);
+	let col1_exists = col1.length_squared() > (f64::EPSILON * 1e3).powi(2);
+
+	let repaired = match (col0_exists, col1_exists) {
+		(true, _) => DMat2::from_cols(col0, col0.perp().normalize()),
+		(false, true) => DMat2::from_cols(col1.perp().normalize(), col1),
+		(false, false) => DMat2::IDENTITY,
+	};
+	repaired.inverse()
+}
+
+/// Applies per-point displacement deltas to the point and handle positions of a vector element.
+fn apply_point_deltas(element: &mut Vector, deltas: &[DVec2], transform: DAffine2) {
+	let mut already_applied = vec![false; element.point_domain.positions().len()];
+
+	for (handles, start, end) in element.segment_domain.handles_and_points_mut() {
+		let start_delta = deltas[*start];
+		let end_delta = deltas[*end];
+
+		if !already_applied[*start] {
+			let start_position = element.point_domain.positions()[*start];
+			element.point_domain.set_position(*start, start_position + start_delta);
+			already_applied[*start] = true;
+		}
+		if !already_applied[*end] {
+			let end_position = element.point_domain.positions()[*end];
+			element.point_domain.set_position(*end, end_position + end_delta);
+			already_applied[*end] = true;
+		}
+
+		match handles {
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				*handle_start += start_delta;
+				*handle_end += end_delta;
+			}
+			BezierHandles::Quadratic { handle } => {
+				*handle = transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+			}
+			BezierHandles::Linear => {}
+		}
+	}
+}
+
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn jitter_points(
@@ -1916,29 +1969,9 @@ async fn jitter_points(
 		.into_iter()
 		.map(|mut row| {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+			let inverse_linear = inverse_linear_or_repair(row.transform.matrix2);
 
-			// Map world-space jitter offsets back to local space, compensating for the transform's scaling.
-			// When the transform is singular (e.g. zero scale on one axis), the collapsed axis is replaced
-			// with a unit perpendicular so jitter still applies there (visible if the transform is later replaced).
-			let linear = row.transform.matrix2;
-			let inverse_linear = if linear.determinant() != 0. {
-				linear.inverse()
-			} else {
-				let col0 = linear.col(0);
-				let col1 = linear.col(1);
-				let col0_exists = col0.length_squared() > (f64::EPSILON * 1e3).powi(2);
-				let col1_exists = col1.length_squared() > (f64::EPSILON * 1e3).powi(2);
-
-				let repaired = match (col0_exists, col1_exists) {
-					// Replace the collapsed axis (like scale.x=2, skew.y=2) with a unit perpendicular of the surviving one
-					(true, _) => DMat2::from_cols(col0, col0.perp().normalize()),
-					(false, true) => DMat2::from_cols(col1.perp().normalize(), col1),
-					(false, false) => DMat2::IDENTITY,
-				};
-				repaired.inverse()
-			};
-
-			let deltas = (0..row.element.point_domain.positions().len())
+			let deltas: Vec<_> = (0..row.element.point_domain.positions().len())
 				.map(|point_index| {
 					let normal = if along_normals {
 						row.element.segment_domain.point_tangent(point_index, row.element.point_domain.positions()).map(|t| t.perp())
@@ -1954,35 +1987,9 @@ async fn jitter_points(
 
 					inverse_linear * (offset * amount)
 				})
-				.collect::<Vec<_>>();
-			let mut already_applied = vec![false; row.element.point_domain.positions().len()];
+				.collect();
 
-			for (handles, start, end) in row.element.segment_domain.handles_and_points_mut() {
-				let start_delta = deltas[*start];
-				let end_delta = deltas[*end];
-
-				if !already_applied[*start] {
-					let start_position = row.element.point_domain.positions()[*start];
-					row.element.point_domain.set_position(*start, start_position + start_delta);
-					already_applied[*start] = true;
-				}
-				if !already_applied[*end] {
-					let end_position = row.element.point_domain.positions()[*end];
-					row.element.point_domain.set_position(*end, end_position + end_delta);
-					already_applied[*end] = true;
-				}
-
-				match handles {
-					BezierHandles::Cubic { handle_start, handle_end } => {
-						*handle_start += start_delta;
-						*handle_end += end_delta;
-					}
-					BezierHandles::Quadratic { handle } => {
-						*handle = row.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
-					}
-					BezierHandles::Linear => {}
-				}
-			}
+			apply_point_deltas(&mut row.element, &deltas, row.transform);
 
 			row
 		})
