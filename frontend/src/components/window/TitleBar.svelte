@@ -94,7 +94,7 @@
 			> .layout-row {
 				&.window-frame {
 					-webkit-app-region: drag;
-					app-region: drag;
+					// app-region: drag; // TODO: Uncomment this when SCSS doesn't consider it an unknown property, which produces a warning that CI treats as a failure
 				}
 
 				&:first-child {
