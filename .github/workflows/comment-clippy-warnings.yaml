@@ -1,4 +1,4 @@
-name: Clippy Check
+name: "Clippy Check"
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -52,7 +52,7 @@ jobs:
           fi
 
       - name: Delete previous comments
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -76,7 +76,7 @@ jobs:
 
       - name: Comment PR
         if: steps.clippy.outputs.CLIPPY_ISSUES_FOUND == 'true'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |

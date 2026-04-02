@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
-
-	import type { FrontendNodeType } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { FrontendNodeType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 
 	// Content
 	export let disabled = false;

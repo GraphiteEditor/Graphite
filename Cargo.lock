@@ -380,9 +380,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.16.1"
+version = "1.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94bffc006df10ac2a68c83692d734a465f8ee6c5b384d8545a636f81d858f4bf"
+checksum = "a054912289d18629dc78375ba2c3726a3afe3ff71b4edba9dedfca0e3446d1fc"
 dependencies = [
  "aws-lc-sys",
  "zeroize",
@@ -390,9 +390,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.38.0"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4321e568ed89bb5a7d291a7f37997c2c0df89809d7b6d12062c81ddb54aa782e"
+checksum = "1fa7e52a4c5c547c741610a2c6f123f3881e409b714cd27e6798ef020c514f0a"
 dependencies = [
  "cc",
  "cmake",
@@ -450,7 +450,7 @@ name = "blending-nodes"
 version = "0.1.0"
 dependencies = [
  "core-types",
- "glam 0.29.3",
+ "glam",
  "graphic-types",
  "node-macro",
  "serde",
@@ -518,7 +518,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "node-macro",
  "raster-nodes",
  "raster-types",
@@ -1064,7 +1064,7 @@ dependencies = [
  "bytemuck",
  "ctor",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "image",
  "kurbo",
  "log",
@@ -1110,7 +1110,7 @@ name = "crate-hierarchy-viz"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "clap",
+ "glob",
  "serde",
  "toml 0.8.23",
 ]
@@ -1480,7 +1480,7 @@ name = "dyn-any"
 version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
- "glam 0.29.3",
+ "glam",
  "reqwest",
 ]
 
@@ -2082,14 +2082,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "glam"
-version = "0.30.10"
+name = "glob"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
-dependencies = [
- "bytemuck",
- "libm",
-]
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "glow"
@@ -2171,7 +2167,7 @@ dependencies = [
  "core-types",
  "criterion",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
@@ -2203,7 +2199,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "log",
  "serde",
  "text-nodes",
@@ -2237,7 +2233,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "graphic-types",
  "log",
  "node-macro",
@@ -2257,7 +2253,7 @@ dependencies = [
  "brush-nodes",
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
@@ -2292,7 +2288,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "graphic-types",
  "node-macro",
  "raster-types",
@@ -2306,7 +2302,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "node-macro",
  "raster-types",
  "serde",
@@ -2328,7 +2324,7 @@ dependencies = [
  "dirs",
  "fd-lock",
  "futures",
- "glam 0.29.3",
+ "glam",
  "graphite-desktop-embedded-resources",
  "graphite-desktop-wrapper",
  "lzma-rust2",
@@ -2422,7 +2418,7 @@ dependencies = [
  "dyn-any",
  "env_logger",
  "futures",
- "glam 0.29.3",
+ "glam",
  "graph-craft",
  "graphene-std",
  "graphite-proc-macros",
@@ -2460,7 +2456,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphite-wasm"
+name = "graphite-wasm-wrapper"
 version = "0.0.0"
 dependencies = [
  "graph-craft",
@@ -2965,7 +2961,7 @@ dependencies = [
  "criterion",
  "dyn-any",
  "futures",
- "glam 0.29.3",
+ "glam",
  "graph-craft",
  "graphene-core",
  "graphene-std",
@@ -3338,7 +3334,7 @@ name = "math-nodes"
 version = "0.1.0"
 dependencies = [
  "core-types",
- "glam 0.29.3",
+ "glam",
  "log",
  "math-parser",
  "node-macro",
@@ -3560,7 +3556,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "half",
  "log",
  "node-macro",
@@ -4057,7 +4053,7 @@ name = "path-bool-nodes"
 version = "0.1.0"
 dependencies = [
  "core-types",
- "glam 0.29.3",
+ "glam",
  "graphic-types",
  "linesweeper",
  "log",
@@ -4599,7 +4595,7 @@ dependencies = [
  "dyn-any",
  "fastnoise-lite",
  "futures",
- "glam 0.29.3",
+ "glam",
  "image",
  "kurbo",
  "ndarray",
@@ -4644,7 +4640,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "image",
  "node-macro",
  "serde",
@@ -4820,7 +4816,7 @@ dependencies = [
  "base64",
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "graphic-types",
  "kurbo",
  "log",
@@ -4837,7 +4833,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "graphene-core",
  "graphic-types",
  "kurbo",
@@ -5091,9 +5087,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.9"
+version = "0.103.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7df23109aa6c1567d1c575b9952556388da57401e4ace1d15f79eedad0d8f53"
+checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -5603,7 +5599,7 @@ source = "git+https://github.com/Firestar99/rust-gpu-new?rev=c12f216121820580731
 dependencies = [
  "bitflags 1.3.2",
  "bytemuck",
- "glam 0.30.10",
+ "glam",
  "libm",
  "num-traits",
  "spirv-std-macros",
@@ -5844,7 +5840,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.29.3",
+ "glam",
  "log",
  "node-macro",
  "parley",
@@ -6260,7 +6256,7 @@ name = "transform-nodes"
 version = "0.1.0"
 dependencies = [
  "core-types",
- "glam 0.29.3",
+ "glam",
  "graphic-types",
  "node-macro",
  "rand",
@@ -6524,7 +6520,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
- "glam 0.29.3",
+ "glam",
  "graphene-core",
  "graphic-types",
  "kurbo",
@@ -6550,7 +6546,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "fixedbitset",
- "glam 0.29.3",
+ "glam",
  "kurbo",
  "log",
  "lyon_geom",
@@ -7049,7 +7045,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
- "glam 0.29.3",
+ "glam",
  "graphene-application-io",
  "node-macro",
  "raster-types",

@@ -72,6 +72,8 @@ pub async fn export_document(
 				let gpu_raster = Raster::<GPU>::new_gpu(image_texture.texture.as_ref().clone());
 				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
+				// Explicitly drop texture to make sure it lives long enough
+				std::mem::drop(image_texture);
 
 				// Encode and write raster image
 				write_raster_image(output_path, file_type, data, width, height, transparent)?;
@@ -200,8 +202,10 @@ pub async fn export_gif(
 		let (data, img_width, img_height) = match result {
 			TaggedValue::RenderOutput(output) => match output.data {
 				RenderOutputType::Texture(image_texture) => {
-					let gpu_raster = Raster::<GPU>::new_gpu(image_texture.texture);
+					let gpu_raster = Raster::<GPU>::new_gpu(image_texture.texture.as_ref().clone());
 					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+					// Explicitly drop texture to make sure it lives long enough
+					std::mem::drop(image_texture);
 					cpu_raster.to_flat_u8()
 				}
 				RenderOutputType::Buffer { data, width, height } => (data, width, height),
