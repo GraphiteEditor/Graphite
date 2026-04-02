@@ -181,11 +181,15 @@
 
 	async function startMenuWidthObserver() {
 		await tick();
+		// Guard against the menu having closed during the tick
+		if (!open) return;
 
 		const floatingMenuContentDiv = self?.div()?.querySelector("[data-floating-menu-content]");
 		if (!(floatingMenuContentDiv instanceof HTMLElement)) return;
 
 		maxMenuWidth = 0;
+
+		resizeObserver?.disconnect();
 		resizeObserver = new ResizeObserver(() => {
 			const width = floatingMenuContentDiv.scrollWidth;
 			if (width > maxMenuWidth) {
