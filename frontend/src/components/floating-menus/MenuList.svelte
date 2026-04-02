@@ -459,10 +459,19 @@
 					{/if}
 
 					{#if entry.font}
-						<link rel="stylesheet" href={entry.font} />
+						<link
+							rel="stylesheet"
+							href={entry.font}
+							onload={(e) => {
+								const row = e.currentTarget.parentElement;
+								document.fonts.load(`16px "${entry.value}"`).then(() => row?.classList.add("font-loaded"));
+							}}
+						/>
 					{/if}
 
-					<TextLabel class="entry-label" styles={entry.font ? { "font-family": entry.value } : {}}>{entry.label}</TextLabel>
+					<TextLabel class="entry-label" classes={{ "font-preview": Boolean(entry.font) }} styles={entry.font ? { "font-family": `"${entry.value}", "Source Sans Pro"` } : {}}>
+						{entry.label}
+					</TextLabel>
 
 					{#if entry.tooltipShortcut?.shortcut.length}
 						<ShortcutLabel shortcut={entry.tooltipShortcut} />
@@ -546,6 +555,10 @@
 				.entry-label {
 					flex: 1 1 100%;
 					margin: 0 4px;
+				}
+
+				&:not(.font-loaded) .font-preview {
+					opacity: 0.5;
 				}
 
 				.entry-icon,
