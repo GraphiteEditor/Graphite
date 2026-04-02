@@ -172,7 +172,7 @@ self.addEventListener("message", (event) => {
 						// Store the service worker revision in a custom header so we can check it on future installs
 						const headers = new Headers(response.headers);
 						headers.set("x-sw-revision", entry.revision);
-						const taggedResponse = new Response(await response.blob(), { status: response.status, statusText: response.statusText, headers });
+						const taggedResponse = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 						await cache.put(fullUrl, taggedResponse);
 					}
 				} catch {
