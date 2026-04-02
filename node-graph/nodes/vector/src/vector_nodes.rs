@@ -2226,68 +2226,72 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let subpath_anchors = anchor_count(control_bezpath);
 	let max_content_index = content.len().saturating_sub(1);
 
-	// Compute per-segment arc lengths for spatial positioning along the control path
-	let segment_lengths: Vec<f64> = control_bezpath.segments().map(|seg| seg.perimeter(DEFAULT_ACCURACY)).collect();
-
-	// Compute segment weights based on the user's chosen spacing metric
-	let segment_weights: Vec<f64> = match distribution {
-		InterpolationDistribution::Objects => vec![1.; segment_count],
-		InterpolationDistribution::Distances => segment_lengths.clone(),
-		InterpolationDistribution::Angles | InterpolationDistribution::Sizes | InterpolationDistribution::Slants => (0..segment_count)
-			.map(|i| {
-				let source_index = (content_offset + i).min(max_content_index);
-				let target_index = if is_closed && i >= subpath_anchors - 1 {
-					content_offset
-				} else {
-					(content_offset + i + 1).min(max_content_index)
-				};
-
-				let (Some(source), Some(target)) = (content.get(source_index), content.get(target_index)) else {
-					return 0.;
-				};
-				let (s_angle, s_scale, s_skew) = source.transform.decompose_rotation_scale_skew();
-				let (t_angle, t_scale, t_skew) = target.transform.decompose_rotation_scale_skew();
-
-				match distribution {
-					InterpolationDistribution::Angles => {
-						let mut diff = t_angle - s_angle;
-						if diff > PI {
-							diff -= TAU;
-						} else if diff < -PI {
-							diff += TAU;
-						}
-						diff.abs()
-					}
-					InterpolationDistribution::Sizes => (t_scale - s_scale).length(),
-					InterpolationDistribution::Slants => (t_skew.atan() - s_skew.atan()).abs(),
-					_ => unreachable!(),
-				}
-			})
-			.collect(),
-	};
-
-	let total_weight: f64 = segment_weights.iter().sum();
-
 	// Map the fractional progression to a segment index and local blend time using the chosen weights.
-	// When all weights are zero (all elements identical in the chosen metric), there's zero interval to traverse.
-	let (local_source_index, time) = if total_weight <= f64::EPSILON {
-		(0, 0.)
-	} else if fractional_progression >= 1. {
+	let (local_source_index, time) = if fractional_progression >= 1. {
 		(segment_count - 1, 1.)
+	} else if matches!(distribution, InterpolationDistribution::Objects) {
+		// Fast path for uniform distribution: direct index calculation without allocation or iteration
+		let scaled = fractional_progression * segment_count as f64;
+		let index = (scaled.ceil() as usize).saturating_sub(1);
+		(index, scaled - index as f64)
 	} else {
-		let mut accumulator = 0.;
-		let mut found_index = segment_count - 1;
-		let mut found_t = 1.;
-		for (i, weight) in segment_weights.iter().enumerate() {
-			let ratio = weight / total_weight;
-			if fractional_progression <= accumulator + ratio {
-				found_index = i;
-				found_t = if ratio > f64::EPSILON { (fractional_progression - accumulator) / ratio } else { 0. };
-				break;
+		// Compute segment weights based on the user's chosen spacing metric
+		let segment_weights: Vec<f64> = match distribution {
+			InterpolationDistribution::Objects => unreachable!(),
+			InterpolationDistribution::Distances => control_bezpath.segments().map(|seg| seg.perimeter(DEFAULT_ACCURACY)).collect(),
+			InterpolationDistribution::Angles | InterpolationDistribution::Sizes | InterpolationDistribution::Slants => (0..segment_count)
+				.map(|i| {
+					let source_index = (content_offset + i).min(max_content_index);
+					let target_index = if is_closed && i >= subpath_anchors - 1 {
+						content_offset
+					} else {
+						(content_offset + i + 1).min(max_content_index)
+					};
+
+					let (Some(source), Some(target)) = (content.get(source_index), content.get(target_index)) else {
+						return 0.;
+					};
+					let (s_angle, s_scale, s_skew) = source.transform.decompose_rotation_scale_skew();
+					let (t_angle, t_scale, t_skew) = target.transform.decompose_rotation_scale_skew();
+
+					match distribution {
+						InterpolationDistribution::Angles => {
+							let mut diff = t_angle - s_angle;
+							if diff > PI {
+								diff -= TAU;
+							} else if diff < -PI {
+								diff += TAU;
+							}
+							diff.abs()
+						}
+						InterpolationDistribution::Sizes => (t_scale - s_scale).length(),
+						InterpolationDistribution::Slants => (t_skew.atan() - s_skew.atan()).abs(),
+						_ => unreachable!(),
+					}
+				})
+				.collect(),
+		};
+
+		let total_weight: f64 = segment_weights.iter().sum();
+
+		// When all weights are zero (all elements identical in the chosen metric), there's zero interval to traverse.
+		if total_weight <= f64::EPSILON {
+			(0, 0.)
+		} else {
+			let mut accumulator = 0.;
+			let mut found_index = segment_count - 1;
+			let mut found_t = 1.;
+			for (i, weight) in segment_weights.iter().enumerate() {
+				let ratio = weight / total_weight;
+				if fractional_progression <= accumulator + ratio {
+					found_index = i;
+					found_t = if ratio > f64::EPSILON { (fractional_progression - accumulator) / ratio } else { 0. };
+					break;
+				}
+				accumulator += ratio;
 			}
-			accumulator += ratio;
+			(found_index, found_t)
 		}
-		(found_index, found_t)
 	};
 
 	// Convert the blend time to a parametric t for evaluating spatial position on the control path
@@ -2311,11 +2315,6 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// Clamp to valid content range
 	let source_index = source_index.min(max_content_index);
 	let target_index = target_index.min(max_content_index);
-
-	// At the end of an open subpath with no more interpolation needed, return the final element
-	if !is_closed && time >= 1. && local_source_index >= subpath_anchors - 2 {
-		return content.into_iter().nth(target_index).into_iter().collect();
-	}
 
 	// Use indexed access to borrow only the two rows we need, avoiding collecting the entire table
 	let (Some(source_row), Some(target_row)) = (content.get(source_index), content.get(target_index)) else {
@@ -2373,16 +2372,17 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		}
 	}
 
-	// Fast path: when exactly at the source object, clone its geometry directly instead of
-	// extracting manipulator groups, subdividing, interpolating, and rebuilding the vector.
-	if time == 0. {
-		let mut vector = source_row.element.clone();
-		vector.upstream_data = Some(graphic_table_content);
-
+	// Fast path: when exactly at either endpoint, clone the corresponding geometry directly
+	// instead of extracting manipulator groups, subdividing, interpolating, and rebuilding.
+	if time == 0. || time == 1. {
+		let row = if time == 0. { source_row } else { target_row };
 		return Table::new_from_row(TableRow {
-			element: vector,
+			element: Vector {
+				upstream_data: Some(graphic_table_content),
+				..row.element.clone()
+			},
+			alpha_blending: *row.alpha_blending,
 			transform: lerped_transform,
-			alpha_blending: *source_row.alpha_blending,
 			..Default::default()
 		});
 	}
