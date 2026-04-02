@@ -6,7 +6,7 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::Footprint;
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
@@ -16,7 +16,7 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
@@ -1355,11 +1355,12 @@ async fn sample_polyline(
 			// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
 			let mut next_segment_index = 0;
 
-			for mut bezpath in bezpaths {
-				// Apply the tranformation to the current bezpath to calculate points after transformation.
-				bezpath.apply_affine(Affine::new(row.transform.to_cols_array()));
+			for local_bezpath in bezpaths {
+				// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
+				let mut world_bezpath = local_bezpath.clone();
+				world_bezpath.apply_affine(Affine::new(row.transform.to_cols_array()));
 
-				let segment_count = bezpath.segments().count();
+				let segment_count = world_bezpath.segments().count();
 
 				// For the current bezpath we get its segment's length by calculating the start index and end index.
 				let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
@@ -1371,14 +1372,30 @@ async fn sample_polyline(
 					PointSpacingType::Separation => separation,
 					PointSpacingType::Quantity => quantity as f64,
 				};
-				let Some(mut sample_bezpath) = sample_polyline_on_bezpath(bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
+
+				// Compute sample locations using world-space distances, then evaluate positions on the untransformed bezpath.
+				// This avoids needing to invert the transform (which fails when the transform is singular, e.g. zero scale).
+				let Some((locations, was_closed)) =
+					bezpath_algorithms::compute_sample_locations(&world_bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length)
+				else {
 					continue;
 				};
 
-				// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
-				sample_bezpath.apply_affine(Affine::new(row.transform.to_cols_array()).inverse());
+				// Evaluate the sample locations on the untransformed bezpath and append the result
+				let mut sample_bezpath = BezPath::new();
+				for &(segment_index, t) in &locations {
+					let segment = local_bezpath.get_seg(segment_index + 1).unwrap();
+					let point = segment.eval(t);
 
-				// Append the bezpath (subpath) that connects generated points by lines.
+					if sample_bezpath.elements().is_empty() {
+						sample_bezpath.move_to(point);
+					} else {
+						sample_bezpath.line_to(point);
+					}
+				}
+				if was_closed {
+					sample_bezpath.close_path();
+				}
 				result.append_bezpath(sample_bezpath);
 			}
 
@@ -1879,6 +1896,59 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 		.collect()
 }
 
+/// Computes the inverse of a transform's linear (matrix2) part, handling singular transforms
+/// (e.g. zero scale on one axis) by replacing the collapsed axis with a unit perpendicular
+/// so offsets still apply there (visible if the transform is later replaced).
+fn inverse_linear_or_repair(linear: DMat2) -> DMat2 {
+	if linear.determinant() != 0. {
+		return linear.inverse();
+	}
+
+	let col0 = linear.col(0);
+	let col1 = linear.col(1);
+	let col0_exists = col0.length_squared() > (f64::EPSILON * 1e3).powi(2);
+	let col1_exists = col1.length_squared() > (f64::EPSILON * 1e3).powi(2);
+
+	let repaired = match (col0_exists, col1_exists) {
+		(true, _) => DMat2::from_cols(col0, col0.perp().normalize()),
+		(false, true) => DMat2::from_cols(col1.perp().normalize(), col1),
+		(false, false) => DMat2::IDENTITY,
+	};
+	repaired.inverse()
+}
+
+/// Applies per-point displacement deltas to the point and handle positions of a vector element.
+fn apply_point_deltas(element: &mut Vector, deltas: &[DVec2], transform: DAffine2) {
+	let mut already_applied = vec![false; element.point_domain.positions().len()];
+
+	for (handles, start, end) in element.segment_domain.handles_and_points_mut() {
+		let start_delta = deltas[*start];
+		let end_delta = deltas[*end];
+
+		if !already_applied[*start] {
+			let start_position = element.point_domain.positions()[*start];
+			element.point_domain.set_position(*start, start_position + start_delta);
+			already_applied[*start] = true;
+		}
+		if !already_applied[*end] {
+			let end_position = element.point_domain.positions()[*end];
+			element.point_domain.set_position(*end, end_position + end_delta);
+			already_applied[*end] = true;
+		}
+
+		match handles {
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				*handle_start += start_delta;
+				*handle_end += end_delta;
+			}
+			BezierHandles::Quadratic { handle } => {
+				*handle = transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+			}
+			BezierHandles::Linear => {}
+		}
+	}
+}
+
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn jitter_points(
@@ -1899,11 +1969,9 @@ async fn jitter_points(
 		.into_iter()
 		.map(|mut row| {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+			let inverse_linear = inverse_linear_or_repair(row.transform.matrix2);
 
-			let transform = row.transform;
-			let inverse_transform = if transform.matrix2.determinant() != 0. { transform.inverse() } else { Default::default() };
-
-			let deltas = (0..row.element.point_domain.positions().len())
+			let deltas: Vec<_> = (0..row.element.point_domain.positions().len())
 				.map(|point_index| {
 					let normal = if along_normals {
 						row.element.segment_domain.point_tangent(point_index, row.element.point_domain.positions()).map(|t| t.perp())
@@ -1912,44 +1980,17 @@ async fn jitter_points(
 					};
 
 					let offset = if let Some(normal) = normal {
-						(rng.random::<f64>() * 2. - 1.) * normal
+						normal * (rng.random::<f64>() * 2. - 1.)
 					} else {
-						rng.random::<f64>() * DVec2::from_angle(rng.random::<f64>() * TAU)
+						DVec2::from_angle(rng.random::<f64>() * TAU) * rng.random::<f64>()
 					};
 
-					inverse_transform.transform_vector2(offset * amount)
+					inverse_linear * (offset * amount)
 				})
-				.collect::<Vec<_>>();
-			let mut already_applied = vec![false; row.element.point_domain.positions().len()];
+				.collect();
 
-			for (handles, start, end) in row.element.segment_domain.handles_and_points_mut() {
-				let start_delta = deltas[*start];
-				let end_delta = deltas[*end];
+			apply_point_deltas(&mut row.element, &deltas, row.transform);
 
-				if !already_applied[*start] {
-					let start_position = row.element.point_domain.positions()[*start];
-					row.element.point_domain.set_position(*start, start_position + start_delta);
-					already_applied[*start] = true;
-				}
-				if !already_applied[*end] {
-					let end_position = row.element.point_domain.positions()[*end];
-					row.element.point_domain.set_position(*end, end_position + end_delta);
-					already_applied[*end] = true;
-				}
-
-				match handles {
-					BezierHandles::Cubic { handle_start, handle_end } => {
-						*handle_start += start_delta;
-						*handle_end += end_delta;
-					}
-					BezierHandles::Quadratic { handle } => {
-						*handle = row.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
-					}
-					BezierHandles::Linear => {}
-				}
-			}
-
-			row.element.style.set_stroke_transform(DAffine2::IDENTITY);
 			row
 		})
 		.collect()

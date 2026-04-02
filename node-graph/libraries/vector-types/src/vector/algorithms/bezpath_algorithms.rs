@@ -85,17 +85,18 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: O
 	}
 }
 
-pub fn sample_polyline_on_bezpath(
-	bezpath: BezPath,
+/// Computes sample locations along a bezpath, returning parametric `(segment_index, t)` pairs and whether the path was closed.
+/// The `bezpath` is used for euclidean-to-parametric conversion, and `segments_length` provides pre-calculated world-space segment lengths.
+/// Callers can evaluate these locations on any bezpath with the same topology (e.g., an untransformed version).
+pub fn compute_sample_locations(
+	bezpath: &BezPath,
 	point_spacing_type: PointSpacingType,
 	amount: f64,
 	start_offset: f64,
 	stop_offset: f64,
 	adaptive_spacing: bool,
 	segments_length: &[f64],
-) -> Option<BezPath> {
-	let mut sample_bezpath = BezPath::new();
-
+) -> Option<(Vec<(usize, f64)>, bool)> {
 	let was_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
 
 	// Calculate the total length of the collected segments.
@@ -142,7 +143,8 @@ pub fn sample_polyline_on_bezpath(
 	let sample_count_usize = sample_count as usize;
 	let max_i = if was_closed { sample_count_usize } else { sample_count_usize + 1 };
 
-	// Generate points along the path based on calculated intervals.
+	// Generate sample locations along the path based on calculated intervals.
+	let mut locations = Vec::with_capacity(max_i);
 	let mut length_up_to_previous_segment = 0.;
 	let mut next_segment_index = 0;
 
@@ -167,20 +169,11 @@ pub fn sample_polyline_on_bezpath(
 
 		let segment = bezpath.get_seg(next_segment_index + 1).unwrap();
 		let t = eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY);
-		let point = segment.eval(t);
 
-		if sample_bezpath.elements().is_empty() {
-			sample_bezpath.move_to(point)
-		} else {
-			sample_bezpath.line_to(point)
-		}
+		locations.push((next_segment_index, t));
 	}
 
-	if was_closed {
-		sample_bezpath.close_path();
-	}
-
-	Some(sample_bezpath)
+	Some((locations, was_closed))
 }
 
 #[derive(Debug, Clone, Copy)]
