@@ -74,10 +74,7 @@ where
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div), just(Token::Modulo).to(BinaryOp::Modulo)));
 		let pow_op = just(Token::Caret).to(BinaryOp::Pow);
-		let unary_op = choice((
-			just(Token::Minus).to(UnaryOp::Neg),
-			just(Token::Bang).to(UnaryOp::Not),
-		));
+		let unary_op = choice((just(Token::Minus).to(UnaryOp::Neg), just(Token::Bang).to(UnaryOp::Not)));
 		let and_op = just(Token::AndAnd).to(BinaryOp::And);
 		let or_op = just(Token::OrOr).to(BinaryOp::Or);
 		let cmp_op = choice((
@@ -100,16 +97,7 @@ where
 
 		let pow = postfix.clone().foldl(
 			pow_op
-				.then(
-					unary_op
-						.clone()
-						.repeated()
-						.foldr(postfix, |op, expr| Node::UnaryOp {
-							op,
-							expr: Box::new(expr),
-						})
-						.boxed(),
-				)
+				.then(unary_op.clone().repeated().foldr(postfix, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) }).boxed())
 				.repeated(),
 			|lhs, (op, rhs)| Node::BinOp {
 				lhs: Box::new(lhs),
@@ -149,21 +137,17 @@ where
 			rhs: Box::new(rhs),
 		});
 
-		let and = chained_cmp
-			.clone()
-			.foldl(and_op.then(chained_cmp).repeated(), |lhs, (op, rhs)| Node::BinOp {
-				lhs: Box::new(lhs),
-				op,
-				rhs: Box::new(rhs),
-			});
+		let and = chained_cmp.clone().foldl(and_op.then(chained_cmp).repeated(), |lhs, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
 
-		let or = and
-			.clone()
-			.foldl(or_op.then(and).repeated(), |lhs, (op, rhs)| Node::BinOp {
-				lhs: Box::new(lhs),
-				op,
-				rhs: Box::new(rhs),
-			});
+		let or = and.clone().foldl(or_op.then(and).repeated(), |lhs, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
 
 		or
 	})
