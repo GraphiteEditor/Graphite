@@ -345,6 +345,48 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors(anchors, true)
 	}
 
+	pub fn new_teardrop(center: DVec2, radius: f64, spike_radius: f64) -> Self {
+		let radius = radius.abs();
+		let spike_radius = spike_radius.max(0.0);
+
+		let tip = center + DVec2::new(0.0, -spike_radius);
+		let left = center + DVec2::new(-radius, 0.0);
+		let right = center + DVec2::new(radius, 0.0);
+		let bottom = center + DVec2::new(0.0, radius);
+
+		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
+		let handle_offset = radius * HANDLE_OFFSET_FACTOR;
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(tip, None, None),
+			ManipulatorGroup::new(right, Some(right - handle_offset * DVec2::Y), Some(right + handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(bottom, Some(bottom + handle_offset * DVec2::X), Some(bottom - handle_offset * DVec2::X)),
+			ManipulatorGroup::new(left, Some(left + handle_offset * DVec2::Y), Some(left - handle_offset * DVec2::Y)),
+		];
+
+		Subpath::new(manipulator_groups, true)
+	}
+
+	pub fn new_heart(center: DVec2, radius: f64, spike_radius: f64) -> Self {
+		let radius = radius.abs();
+		let spike_radius = spike_radius.max(0.0);
+
+		let cleft = center + DVec2::new(0.0, -radius * 0.25);
+		let right_side = center + DVec2::new(radius, -radius * 0.25);
+		let bottom = center + DVec2::new(0.0, spike_radius);
+		let left_side = center + DVec2::new(-radius, -radius * 0.25);
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(cleft, Some(cleft + DVec2::new(-radius * 0.2, -radius * 0.5)), Some(cleft + DVec2::new(radius * 0.2, -radius * 0.5))),
+			ManipulatorGroup::new(right_side, Some(right_side + DVec2::new(0.0, -radius * 0.5)), Some(right_side + DVec2::new(0.0, radius * 0.5))),
+			ManipulatorGroup::new(bottom, None, None),
+			ManipulatorGroup::new(left_side, Some(left_side + DVec2::new(0.0, radius * 0.5)), Some(left_side + DVec2::new(0.0, -radius * 0.5))),
+		];
+
+		Subpath::new(manipulator_groups, true)
+	}
+
 	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
