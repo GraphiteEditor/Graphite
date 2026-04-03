@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
@@ -186,6 +186,10 @@ pub enum DocumentMessage {
 	},
 	SetRenderMode {
 		render_mode: RenderMode,
+	},
+	ToggleDocumentMode,
+	SetDocumentMode {
+		document_mode: DocumentMode,
 	},
 	AddTransaction,
 	StartTransaction,

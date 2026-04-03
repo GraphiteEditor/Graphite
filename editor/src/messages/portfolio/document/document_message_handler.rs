@@ -18,7 +18,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
@@ -115,6 +115,9 @@ pub struct DocumentMessageHandler {
 	/// The name of the document, which is displayed in the tab and title bar of the editor.
 	#[serde(skip)]
 	pub name: String,
+	/// The current editor-only mode for the active document.
+	#[serde(skip)]
+	pub document_mode: DocumentMode,
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
@@ -173,6 +176,7 @@ impl Default for DocumentMessageHandler {
 			// Fields omitted from the saved document format
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			document_mode: DocumentMode::default(),
 			path: None,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
@@ -1108,6 +1112,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::ToggleDocumentMode => {
+				self.document_mode = match self.document_mode {
+					DocumentMode::MaskMode => DocumentMode::DesignMode,
+					_ => DocumentMode::MaskMode,
+				};
+			}
+			DocumentMessage::SetDocumentMode { document_mode } => {
+				self.document_mode = document_mode;
+			}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
 				responses.add_front(DocumentMessage::CommitTransaction);
@@ -1463,6 +1476,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			SaveDocument,
 			SelectAllLayers,
 			SetSnapping,
+			ToggleDocumentMode,
+			SetDocumentMode,
 			ToggleGridVisibility,
 			ToggleOverlaysVisibility,
 			ToggleSnapping,

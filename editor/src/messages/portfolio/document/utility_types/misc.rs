@@ -28,13 +28,15 @@ pub enum AlignAggregate {
 	Center,
 }
 
-// #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-// pub enum DocumentMode {
-// 	#[default]
-// 	DesignMode,
-// 	SelectMode,
-// 	GuideMode,
-// }
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub enum DocumentMode {
+	#[default]
+	DesignMode,
+	SelectMode,
+	GuideMode,
+	MaskMode,
+}
 
 // impl fmt::Display for DocumentMode {
 // 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -42,6 +44,7 @@ pub enum AlignAggregate {
 // 			DocumentMode::DesignMode => write!(f, "Design Mode"),
 // 			DocumentMode::SelectMode => write!(f, "Select Mode"),
 // 			DocumentMode::GuideMode => write!(f, "Guide Mode"),
+// 			DocumentMode::MaskMode => write!(f, "Mask Mode"),
 // 		}
 // 	}
 // }
