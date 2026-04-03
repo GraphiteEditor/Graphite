@@ -2,18 +2,16 @@
 
 <script lang="ts">
 	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
-
-	import type { MenuListEntry, MenuDirection } from "@graphite/messages";
-
-	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import MenuList from "/src/components/floating-menus/MenuList.svelte";
+	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { MenuListEntry, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
@@ -45,8 +43,15 @@
 	let openChildValue: string | undefined = undefined;
 	let search = "";
 	let reactiveEntries = entries;
-	let highlighted = activeEntry as MenuListEntry | undefined;
+	let highlighted: MenuListEntry | undefined = activeEntry;
 	let virtualScrollingEntriesStart = 0;
+	let keydownListenerAdded = false;
+	let destroyed = false;
+	let maxMenuWidth = 0;
+	let resizeObserver: ResizeObserver | undefined = undefined;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- `loadedFonts` reactivity is driven by `loadedFontsGeneration`, not the Set itself
+	let loadedFonts = new Set<string>();
+	let loadedFontsGeneration = 0;
 
 	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
@@ -67,11 +72,16 @@
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
 	onMount(async () => {
 		await tick();
-		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+		if (!destroyed && open && !inNestedMenuList() && !keydownListenerAdded) {
+			addEventListener("keydown", keydown);
+			keydownListenerAdded = true;
+		}
 	});
-	onDestroy(async () => {
-		await tick();
-		if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+	onDestroy(() => {
+		removeEventListener("keydown", keydown);
+		resizeObserver?.disconnect();
+		// Set the destroyed status in the closure kept by the awaited `tick()` in `onMount` in case that delayed run occurs after the component is destroyed
+		destroyed = true;
 	});
 
 	function inNestedMenuList(): boolean {
@@ -129,8 +139,22 @@
 	}
 
 	function watchOpen(open: boolean) {
-		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
-		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+		if (open && !inNestedMenuList() && !keydownListenerAdded) {
+			addEventListener("keydown", keydown);
+			keydownListenerAdded = true;
+		} else if (!open && !inNestedMenuList() && keydownListenerAdded) {
+			removeEventListener("keydown", keydown);
+			keydownListenerAdded = false;
+		}
+
+		// For virtual scrolling menus, observe width changes so the menu only grows and never shrinks while open
+		if (open && virtualScrolling) {
+			startMenuWidthObserver();
+		} else if (resizeObserver) {
+			resizeObserver.disconnect();
+			resizeObserver = undefined;
+			maxMenuWidth = 0;
+		}
 
 		highlighted = activeEntry;
 		dispatch("open", open);
@@ -144,17 +168,41 @@
 		});
 	}
 
-	function watchEntriesHash(_entriesHash: bigint) {
+	function watchEntriesHash(_: bigint) {
 		reactiveEntries = entries;
 	}
 
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
+		// Skip re-measurement for virtual scrolling menus since ResizeObserver handles their width
+		if (virtualScrolling) return;
+
 		self?.measureAndEmitNaturalWidth();
+	}
+
+	async function startMenuWidthObserver() {
+		await tick();
+		// Guard against the menu having closed during the tick
+		if (!open) return;
+
+		const floatingMenuContentDiv = self?.div()?.querySelector("[data-floating-menu-content]");
+		if (!(floatingMenuContentDiv instanceof HTMLElement)) return;
+
+		maxMenuWidth = 0;
+
+		resizeObserver?.disconnect();
+		resizeObserver = new ResizeObserver(() => {
+			const width = floatingMenuContentDiv.scrollWidth;
+			if (width > maxMenuWidth) {
+				maxMenuWidth = width;
+				floatingMenuContentDiv.style.minWidth = `${maxMenuWidth}px`;
+			}
+		});
+		resizeObserver.observe(floatingMenuContentDiv);
 	}
 
 	function onScroll(e: Event) {
 		if (!virtualScrollingEntryHeight) return;
-		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
+		virtualScrollingEntriesStart = e.target instanceof HTMLElement ? e.target.scrollTop : 0;
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {
@@ -450,10 +498,28 @@
 					{/if}
 
 					{#if entry.font}
-						<link rel="stylesheet" href={entry.font} />
+						<link
+							rel="stylesheet"
+							href={entry.font}
+							onload={() => {
+								document.fonts.load(`16px "${entry.value}"`).then(() => {
+									loadedFonts.add(entry.value);
+									loadedFontsGeneration += 1; // Modify the dirty trigger
+								});
+							}}
+						/>
 					{/if}
 
-					<TextLabel class="entry-label" styles={entry.font ? { "font-family": entry.value } : {}}>{entry.label}</TextLabel>
+					<TextLabel
+						class="entry-label"
+						classes={{
+							"font-preview": Boolean(entry.font),
+							"font-loaded": loadedFontsGeneration >= 0 && loadedFonts.has(entry.value),
+						}}
+						styles={entry.font ? { "font-family": `"${entry.value}", "Source Sans Pro"` } : {}}
+					>
+						{entry.label}
+					</TextLabel>
 
 					{#if entry.tooltipShortcut?.shortcut.length}
 						<ShortcutLabel shortcut={entry.tooltipShortcut} />
@@ -537,6 +603,10 @@
 				.entry-label {
 					flex: 1 1 100%;
 					margin: 0 4px;
+				}
+
+				.font-preview:not(.font-loaded) {
+					opacity: 0.5;
 				}
 
 				.entry-icon,

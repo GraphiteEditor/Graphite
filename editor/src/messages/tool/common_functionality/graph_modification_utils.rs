@@ -230,7 +230,7 @@ pub fn new_image_layer(image_frame: Table<Raster<CPU>>, id: NodeId, parent: Laye
 }
 
 /// Create a new group layer from an SVG string.
-pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_svg_layer(svg: String, transform: glam::DAffine2, center: bool, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewSvg {
 		id,
@@ -238,6 +238,7 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 		transform,
 		parent,
 		insert_index,
+		center,
 	});
 	LayerNodeIdentifier::new_unchecked(id)
 }
@@ -264,7 +265,7 @@ pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInt
 
 pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
 	let origin = get_origin(layer, network_interface).unwrap_or_default();
-	network_interface.document_metadata().document_to_viewport.transform_point2(origin)
+	network_interface.document_metadata().downstream_transform_to_viewport(layer).transform_point2(origin)
 }
 
 pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {

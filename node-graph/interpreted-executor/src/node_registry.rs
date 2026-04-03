@@ -86,7 +86,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => BlendMode]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::transform::ReferencePoint]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::path_bool::BooleanOperation]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::BooleanOperation]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::style::Fill]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::style::StrokeCap]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::style::StrokeJoin]),
@@ -94,7 +94,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::style::StrokeAlign]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::style::Stroke]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::style::Gradient]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GradientStops]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Vec<graphene_std::uuid::NodeId>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Box<graphene_std::vector::VectorModification>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
@@ -135,6 +134,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::transform::ReferencePoint]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::text::TextAlign]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::transform::ScaleType]),
 		// Context nullification
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => &WasmEditorApi, Context => graphene_std::ContextFeatures]),
@@ -157,7 +157,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Table<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Table<GradientStops>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => GradientStops]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Vec<NodeId>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Vec<f64>]),
@@ -183,7 +182,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Table<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Option<f64>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Color]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Option<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => [f64; 4]]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Graphic]),
@@ -228,8 +226,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::style::GradientType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::ReferencePoint]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => path_bool_nodes::BooleanOperation]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::BooleanOperation]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::text::TextAlign]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::transform::ScaleType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate]),
 	];
 	// =============

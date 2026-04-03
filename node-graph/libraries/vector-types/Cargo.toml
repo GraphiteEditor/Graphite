@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
@@ -22,7 +23,6 @@ glam = { workspace = true }
 kurbo = { workspace = true }
 lyon_geom = { workspace = true }
 dyn-any = { workspace = true }
-specta = { workspace = true }
 log = { workspace = true }
 petgraph = { workspace = true }
 rustc-hash = { workspace = true }
@@ -31,4 +31,6 @@ tinyvec = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
 fixedbitset = "0.5.7"

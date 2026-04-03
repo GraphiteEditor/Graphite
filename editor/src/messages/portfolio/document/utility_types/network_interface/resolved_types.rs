@@ -67,7 +67,7 @@ impl TypeSource {
 				TaggedValue::Raster(_) => FrontendGraphDataType::Raster,
 				TaggedValue::Vector(_) => FrontendGraphDataType::Vector,
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
-				TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
+				TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
 				_ => FrontendGraphDataType::General,
 			},
@@ -242,7 +242,10 @@ impl NodeNetworkInterface {
 			}
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
-					log::error!("Protonode {proto_node_identifier:?} not found in registry in potential_valid_input_types");
+					// The compiler removes the identity node, so it's expected to be absent from the registry
+					if proto_node_identifier != &graphene_std::ops::identity::IDENTIFIER {
+						log::error!("Proto node `{proto_node_identifier:?}` not found in the node registry, in potential_valid_input_types");
+					}
 					return Vec::new();
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);

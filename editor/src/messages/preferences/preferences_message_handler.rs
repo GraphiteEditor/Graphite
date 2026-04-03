@@ -5,30 +5,39 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_std::application_io::GetEditorPreferences;
 
 #[derive(ExtractField)]
 pub struct PreferencesMessageContext<'a> {
 	pub tool_message_handler: &'a ToolMessageHandler,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
-	pub vello_preference: graph_craft::wasm_application_io::VelloPreference,
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
-	pub disable_ui_acceleration: bool,
 	pub max_render_region_size: u32,
+	pub disable_ui_acceleration: bool,
+	#[cfg(target_os = "macos")]
+	pub vsync: bool,
 }
 
 impl PreferencesMessageHandler {
-	pub fn needs_restart(&self, other: &Self) -> bool {
-		self.disable_ui_acceleration != other.disable_ui_acceleration
+	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
+		let mut requiring_restart = Vec::new();
+		if self.disable_ui_acceleration != other.disable_ui_acceleration {
+			requiring_restart.push("Disable UI Acceleration");
+		}
+		#[cfg(target_os = "macos")]
+		if self.vsync != other.vsync {
+			requiring_restart.push("Enable V-Sync");
+		}
+		requiring_restart.into_iter().map(String::from).collect()
 	}
 
 	pub fn get_selection_mode(&self) -> SelectionMode {
@@ -37,17 +46,12 @@ impl PreferencesMessageHandler {
 
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
-			vello_preference: self.vello_preference,
 			max_render_region_size: self.max_render_region_size,
 		}
 	}
 
 	pub fn supports_wgpu(&self) -> bool {
 		graph_craft::wasm_application_io::wgpu_available().unwrap_or_default()
-	}
-
-	pub fn use_vello(&self) -> bool {
-		self.editor_preferences().use_vello()
 	}
 }
 
@@ -56,13 +60,14 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
-			vello_preference: EditorPreferences::default().vello_preference,
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
-			disable_ui_acceleration: false,
 			max_render_region_size: EditorPreferences::default().max_render_region_size,
+			disable_ui_acceleration: false,
+			#[cfg(target_os = "macos")]
+			vsync: false,
 		}
 	}
 }
@@ -78,7 +83,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				*self = preferences;
 
 				responses.add(PortfolioMessage::EditorPreferences);
-				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
@@ -90,12 +94,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 
 			// Per-preference messages
-			PreferencesMessage::VelloPreference { preference } => {
-				self.vello_preference = preference;
-				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::EditorPreferences);
-				responses.add(PreferencesDialogMessage::Update);
-			}
 			PreferencesMessage::BrushTool { enabled } => {
 				self.brush_tool = enabled;
 
@@ -126,13 +124,17 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
+			PreferencesMessage::MaxRenderRegionSize { size } => {
+				self.max_render_region_size = size;
+				responses.add(PortfolioMessage::EditorPreferences);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
 				self.disable_ui_acceleration = disable_ui_acceleration;
 			}
-			PreferencesMessage::MaxRenderRegionSize { size } => {
-				self.max_render_region_size = size;
-				responses.add(PortfolioMessage::UpdateVelloPreference);
-				responses.add(PortfolioMessage::EditorPreferences);
+			#[cfg(target_os = "macos")]
+			PreferencesMessage::VSync { vsync } => {
+				self.vsync = vsync;
 			}
 		}
 

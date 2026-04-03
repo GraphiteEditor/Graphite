@@ -1,3 +1,4 @@
+use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -6,12 +7,14 @@ use derivative::*;
 use graphene_std::vector::style::FillChoice;
 use graphite_proc_macros::WidgetBuilder;
 
-#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
 	// Content
 	#[widget_builder(constructor)]
-	pub icon: String,
+	#[widget_builder(string)]
+	pub icon: IconName,
 	#[serde(rename = "hoverIcon")]
 	pub hover_icon: Option<String>,
 	#[widget_builder(constructor)]
@@ -38,12 +41,14 @@ pub struct IconButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct PopoverButton {
 	// Content
 	pub style: Option<String>,
-	pub icon: Option<String>,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 	pub disabled: bool,
 
 	// Children
@@ -63,7 +68,8 @@ pub struct PopoverButton {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
-#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MenuDirection {
 	Top,
 	#[default]
@@ -77,7 +83,8 @@ pub enum MenuDirection {
 	Center,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct ParameterExposeButton {
 	// Content
@@ -102,13 +109,15 @@ pub struct ParameterExposeButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct TextButton {
 	// Content
 	#[widget_builder(constructor)]
 	pub label: String,
-	pub icon: Option<String>,
+	#[widget_builder(string)]
+	pub icon: Option<IconName>,
 	#[serde(rename = "hoverIcon")]
 	pub hover_icon: Option<String>,
 	pub disabled: bool,
@@ -146,7 +155,8 @@ pub struct TextButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct ImageButton {
 	// Content
@@ -172,7 +182,8 @@ pub struct ImageButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	// Content
@@ -207,7 +218,8 @@ pub struct ColorInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct BreadcrumbTrailButtons {
 	// Content

@@ -235,7 +235,7 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Caching of boolean operations enabled by fixing the Select tool's layer click targets robustly despite the boolean node altering the shape data <small>([commit 6ecb173](https://github.com/GraphiteEditor/Graphite/commit/6ecb173c1c06807f13a859ef90b7d7f43af042be), [#1946](https://github.com/GraphiteEditor/Graphite/pull/1946), [#1986](https://github.com/GraphiteEditor/Graphite/pull/1986))</small>
 
-- Rewritten boolean operations algorithm (our new `path-bool` library) that runs purely in Rust instead of making high-overhead calls into a JavaScript library <small>([#1952](https://github.com/GraphiteEditor/Graphite/pull/1952), [#2000](https://github.com/GraphiteEditor/Graphite/pull/2000))</small>
+- Rewritten boolean operations algorithm that runs purely in Rust instead of making high-overhead calls into a JavaScript library <small>([#1952](https://github.com/GraphiteEditor/Graphite/pull/1952), [#2000](https://github.com/GraphiteEditor/Graphite/pull/2000))</small>
 
 - Internal hash-based data tracking now benefits from caching of hash calculations <small>([#1876](https://github.com/GraphiteEditor/Graphite/pull/1876))</small>
 

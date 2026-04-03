@@ -50,10 +50,10 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DynAny)]
 pub struct ImageTexture {
 	#[cfg(feature = "wgpu")]
-	pub texture: wgpu::Texture,
+	pub texture: Arc<wgpu::Texture>,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
 }
@@ -87,10 +87,6 @@ impl PartialEq for ImageTexture {
 			self.texture == other.texture
 		}
 	}
-}
-
-unsafe impl StaticType for ImageTexture {
-	type Static = ImageTexture;
 }
 
 #[cfg(feature = "wgpu")]
@@ -217,7 +213,6 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 }
 
 pub trait GetEditorPreferences {
-	fn use_vello(&self) -> bool;
 	fn max_render_region_area(&self) -> u32;
 }
 
@@ -238,11 +233,11 @@ pub struct TimingInformation {
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub scale: f64,
-	pub export_format: ExportFormat,
 	pub time: TimingInformation,
 	pub pointer: DVec2,
 	#[serde(alias = "view_mode")]
 	pub render_mode: RenderMode,
+	pub export_format: ExportFormat,
 	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
@@ -259,10 +254,6 @@ impl NodeGraphUpdateSender for Logger {
 struct DummyPreferences;
 
 impl GetEditorPreferences for DummyPreferences {
-	fn use_vello(&self) -> bool {
-		false
-	}
-
 	fn max_render_region_area(&self) -> u32 {
 		1024 * 1024
 	}

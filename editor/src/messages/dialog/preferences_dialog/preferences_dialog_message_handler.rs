@@ -28,9 +28,10 @@ impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_
 			}
 			PreferencesDialogMessage::Confirm => {
 				if let Some(unmodified_preferences) = &self.unmodified_preferences
-					&& unmodified_preferences.needs_restart(preferences)
+					&& let preferences_requiring_restart = unmodified_preferences.preferences_requiring_restart(preferences)
+					&& !preferences_requiring_restart.is_empty()
 				{
-					responses.add(DialogMessage::RequestConfirmRestartDialog);
+					responses.add(DialogMessage::RequestConfirmRestartDialog { preferences_requiring_restart });
 				} else {
 					responses.add(DialogMessage::Close);
 				}
@@ -314,38 +315,6 @@ impl PreferencesDialogMessageHandler {
 			}
 
 			if wgpu_available {
-				let vello_description = "Auto uses Vello renderer when GPU is available.";
-				let vello_renderer_label = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					TextLabel::new("Vello Renderer")
-						.tooltip_label("Vello Renderer")
-						.tooltip_description(vello_description)
-						.widget_instance(),
-				];
-				let vello_preference = RadioInput::new(vec![
-					RadioEntryData::new("Auto").label("Auto").on_update(move |_| {
-						PreferencesMessage::VelloPreference {
-							preference: graph_craft::wasm_application_io::VelloPreference::Auto,
-						}
-						.into()
-					}),
-					RadioEntryData::new("Disabled").label("Disabled").on_update(move |_| {
-						PreferencesMessage::VelloPreference {
-							preference: graph_craft::wasm_application_io::VelloPreference::Disabled,
-						}
-						.into()
-					}),
-				])
-				.selected_index(Some(preferences.vello_preference as u32))
-				.widget_instance();
-				let vello_preference = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					vello_preference,
-				];
-				rows.extend_from_slice(&[vello_renderer_label, vello_preference]);
-
 				let render_tile_resolution_description = "
 					Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
 					\n\
@@ -419,9 +388,44 @@ impl PreferencesDialogMessageHandler {
 
 				rows.push(ui_acceleration);
 			}
+
+			#[cfg(target_os = "macos")]
+			{
+				let vsync_description = "
+					Render frames with vertical synchronization (v-sync) to prevent visual tearing within Graphite and the operating system compositor. This introduces increased input latency which is more noticeable on lower refresh rate displays. Future versions of Graphite will aim to reduce the macOS-specific latency without tearing artifacts.\n\
+					\n\
+					The application will restart for this change to take effect.\n\
+					\n\
+					*Default: Off.*
+					"
+				.trim();
+
+				let checkbox_id = CheckboxId::new();
+				let vsync_checked = preferences.vsync;
+
+				let vsync = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					CheckboxInput::new(vsync_checked)
+						.tooltip_label("Enable V-Sync")
+						.tooltip_description(vsync_description)
+						.on_update(|checkbox_input: &CheckboxInput| Message::Batched {
+							messages: Box::new([PreferencesDialogMessage::MayRequireRestart.into(), PreferencesMessage::VSync { vsync: checkbox_input.checked }.into()]),
+						})
+						.for_label(checkbox_id)
+						.widget_instance(),
+					TextLabel::new("Enable V-Sync")
+						.tooltip_label("Enable V-Sync")
+						.tooltip_description(vsync_description)
+						.for_checkbox(checkbox_id)
+						.widget_instance(),
+				];
+
+				rows.push(vsync);
+			}
 		}
 
-		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())
+		Layout(rows.into_iter().map(LayoutGroup::row).collect())
 	}
 
 	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
@@ -448,7 +452,7 @@ impl PreferencesDialogMessageHandler {
 			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 
 	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {

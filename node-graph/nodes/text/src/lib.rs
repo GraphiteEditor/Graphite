@@ -12,12 +12,10 @@ pub use to_path::*;
 pub use core_types as gcore;
 pub use vector_types;
 
-// Import specta so derive macros can find it
-use core_types::specta;
-
 /// Alignment of lines of type within a text block.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, core_types::specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]

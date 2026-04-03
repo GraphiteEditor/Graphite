@@ -3,13 +3,15 @@ use std::path::PathBuf;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OpenDocument {
 	pub id: DocumentId,
 	pub details: DocumentDetails,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DocumentDetails {
 	pub name: String,
 	pub path: Option<PathBuf>,
@@ -19,7 +21,8 @@ pub struct DocumentDetails {
 	pub is_auto_saved: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MouseCursorIcon {
 	#[default]
 	Default,
@@ -37,7 +40,8 @@ pub enum MouseCursorIcon {
 	Rotate,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FileType {
 	#[default]
 	Png,
@@ -55,7 +59,8 @@ impl FileType {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExportBounds {
 	#[default]
 	AllArtwork,
@@ -63,9 +68,10 @@ pub enum ExportBounds {
 	Artboard(LayerNodeIdentifier),
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EyedropperPreviewImage {
-	pub data: Vec<u8>,
+	pub data: serde_bytes::ByteBuf,
 	pub width: u32,
 	pub height: u32,
 }

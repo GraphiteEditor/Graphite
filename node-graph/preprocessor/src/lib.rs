@@ -19,6 +19,13 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 			DocumentNodeImplementation::Network(node_network) => expand_network(node_network, substitutions),
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				if let Some(new_node) = substitutions.get(proto_node_identifier) {
+					// Reconcile the document node's inputs with what the current node definition expects,
+					// since the saved document may have fewer or more inputs than the current version
+					while node.inputs.len() < new_node.inputs.len() {
+						node.inputs.push(new_node.inputs[node.inputs.len()].clone());
+					}
+					node.inputs.truncate(new_node.inputs.len());
+
 					node.implementation = new_node.implementation.clone();
 				}
 			}
@@ -60,6 +67,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
 			.iter()
+			.take(input_count)
 			.enumerate()
 			.map(|(i, inputs)| {
 				(

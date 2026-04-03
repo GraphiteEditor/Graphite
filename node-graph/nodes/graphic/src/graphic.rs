@@ -7,7 +7,44 @@ use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::{GradientStops, ReferencePoint};
+use vector_types::{GradientStop, GradientStops, ReferencePoint};
+
+/// Returns the value at the specified index in the collection.
+/// If no value exists at that index, the type's default value is returned.
+#[node_macro::node(category("General"))]
+pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
+	_: impl Ctx,
+	/// The collection of data, such as a list or table.
+	#[implementations(
+		Vec<f64>,
+		Vec<u32>,
+		Vec<u64>,
+		Vec<DVec2>,
+		Vec<String>,
+		Table<Artboard>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	collection: T,
+	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	index: SignedInteger,
+) -> T::Output
+where
+	T::Output: Clone + Default,
+{
+	let index = index as i32;
+
+	if index < 0 {
+		collection.at_index_from_end(-index as usize)
+	} else {
+		collection.at_index(index as usize)
+	}
+	.unwrap_or_default()
+}
 
 #[node_macro::node(category("General"))]
 async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
@@ -258,48 +295,70 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 /// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
 pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
-	content.into_flattened_vector_table()
+	content.into_flattened_table()
 }
 
-/// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
-#[node_macro::node(category("Vector"))]
+/// Converts a graphic table into a raster table by deeply flattening any raster content it contains, and discarding any non-raster content.
+#[node_macro::node(category("Raster"))]
 pub async fn flatten_raster<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Raster<CPU>>)] content: T) -> Table<Raster<CPU>> {
-	content.into_flattened_raster_table()
+	content.into_flattened_table()
 }
 
-/// Returns the value at the specified index in the collection.
-/// If no value exists at that index, the type's default value is returned.
+/// Converts a graphic table into a color table by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
-pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
-	_: impl Ctx,
-	/// The collection of data, such as a list or table.
-	#[implementations(
-		Vec<f64>,
-		Vec<u32>,
-		Vec<u64>,
-		Vec<DVec2>,
-		Vec<String>,
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-	)]
-	collection: T,
-	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
-	index: SignedInteger,
-) -> T::Output
-where
-	T::Output: Clone + Default,
-{
-	let index = index as i32;
+pub async fn flatten_color<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] content: T) -> Table<Color> {
+	content.into_flattened_table()
+}
 
-	if index < 0 {
-		collection.at_index_from_end(-index as usize)
-	} else {
-		collection.at_index(index as usize)
+/// Converts a graphic table into a gradient table by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+#[node_macro::node(category("General"))]
+pub async fn flatten_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<GradientStops>)] content: T) -> Table<GradientStops> {
+	content.into_flattened_table()
+}
+
+/// Constructs a gradient from a table of colors, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
+#[node_macro::node(category("Color"))]
+fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> Table<GradientStops> {
+	let colors = colors.into_flattened_table::<Color>();
+	let total_colors = colors.len();
+
+	if total_colors == 0 {
+		return Table::new_from_element(GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+		]));
 	}
-	.unwrap_or_default()
+
+	if let (Some(color), None) = {
+		let mut colors_iter = colors.iter();
+		(colors_iter.next(), colors_iter.next())
+	} {
+		return Table::new_from_element(GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: *color.element,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: *color.element,
+			},
+		]));
+	}
+
+	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
+		position: index as f64 / (total_colors - 1) as f64,
+		midpoint: 0.5,
+		color: row.element,
+	});
+	Table::new_from_element(GradientStops::new(colors))
 }

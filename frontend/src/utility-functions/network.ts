@@ -1,3 +1,5 @@
+import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+
 export type RequestResult = { body: string; status: number };
 
 // Special implementation using the legacy XMLHttpRequest API that provides callbacks to get:
@@ -30,4 +32,24 @@ export function requestWithUploadDownloadProgress(
 	});
 
 	return [promise, xhrValue];
+}
+
+// If the URL hash fragment contains a demo artwork path (e.g. #demo/isometric-light), fetch and open it
+export async function loadDemoArtwork(editor: EditorWrapper) {
+	const demoArtwork = window.location.hash.trim().match(/#demo\/(.*)/)?.[1];
+	if (!demoArtwork) return;
+
+	try {
+		const url = new URL(`/demo-artwork/${demoArtwork}.${editor.fileExtension()}`, document.location.href);
+		const response = await fetch(url);
+		if (!response.ok) throw new Error();
+
+		const filename = url.pathname.split("/").pop() || `Untitled.${editor.fileExtension()}`;
+		const content = await response.bytes();
+		editor.openFile(filename, content);
+
+		history.replaceState("", "", `${window.location.pathname}${window.location.search}`);
+	} catch {
+		// Do nothing
+	}
 }
