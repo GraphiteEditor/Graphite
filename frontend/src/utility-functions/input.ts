@@ -225,7 +225,7 @@ export function onWheelScroll(e: WheelEvent, editor: EditorWrapper) {
 
 	// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 	// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
-	const horizontalScrollableElement = e.target instanceof Element && e.target.closest("[data-scrollable-x]");
+	const horizontalScrollableElement = e.target instanceof Element && !e.target.closest("[data-scrollable-y]") && e.target.closest("[data-scrollable-x]");
 	if (horizontalScrollableElement && e.deltaY !== 0) {
 		horizontalScrollableElement.scrollTo(horizontalScrollableElement.scrollLeft + e.deltaY, 0);
 		return;

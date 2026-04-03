@@ -492,7 +492,7 @@
 		<div class="tail" bind:this={tail}></div>
 	{/if}
 	{#if displayContainer}
-		<div class="floating-menu-container" bind:this={floatingMenuContainer}>
+		<div class="floating-menu-container" bind:this={floatingMenuContainer} on:wheel|stopPropagation>
 			<LayoutCol class="floating-menu-content" styles={{ "min-width": minWidthStyleValue }} {scrollableY} bind:this={floatingMenuContent} data-floating-menu-content>
 				<slot />
 			</LayoutCol>

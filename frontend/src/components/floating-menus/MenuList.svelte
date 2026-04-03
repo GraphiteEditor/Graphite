@@ -47,6 +47,8 @@
 	let virtualScrollingEntriesStart = 0;
 	let keydownListenerAdded = false;
 	let destroyed = false;
+	let maxMenuWidth = 0;
+	let resizeObserver: ResizeObserver | undefined = undefined;
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- `loadedFonts` reactivity is driven by `loadedFontsGeneration`, not the Set itself
 	let loadedFonts = new Set<string>();
 	let loadedFontsGeneration = 0;
@@ -77,6 +79,7 @@
 	});
 	onDestroy(() => {
 		removeEventListener("keydown", keydown);
+		resizeObserver?.disconnect();
 		// Set the destroyed status in the closure kept by the awaited `tick()` in `onMount` in case that delayed run occurs after the component is destroyed
 		destroyed = true;
 	});
@@ -144,6 +147,15 @@
 			keydownListenerAdded = false;
 		}
 
+		// For virtual scrolling menus, observe width changes so the menu only grows and never shrinks while open
+		if (open && virtualScrolling) {
+			startMenuWidthObserver();
+		} else if (resizeObserver) {
+			resizeObserver.disconnect();
+			resizeObserver = undefined;
+			maxMenuWidth = 0;
+		}
+
 		highlighted = activeEntry;
 		dispatch("open", open);
 
@@ -156,12 +168,36 @@
 		});
 	}
 
-	function watchEntriesHash(_entriesHash: bigint) {
+	function watchEntriesHash(_: bigint) {
 		reactiveEntries = entries;
 	}
 
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
+		// Skip re-measurement for virtual scrolling menus since ResizeObserver handles their width
+		if (virtualScrolling) return;
+
 		self?.measureAndEmitNaturalWidth();
+	}
+
+	async function startMenuWidthObserver() {
+		await tick();
+		// Guard against the menu having closed during the tick
+		if (!open) return;
+
+		const floatingMenuContentDiv = self?.div()?.querySelector("[data-floating-menu-content]");
+		if (!(floatingMenuContentDiv instanceof HTMLElement)) return;
+
+		maxMenuWidth = 0;
+
+		resizeObserver?.disconnect();
+		resizeObserver = new ResizeObserver(() => {
+			const width = floatingMenuContentDiv.scrollWidth;
+			if (width > maxMenuWidth) {
+				maxMenuWidth = width;
+				floatingMenuContentDiv.style.minWidth = `${maxMenuWidth}px`;
+			}
+		});
+		resizeObserver.observe(floatingMenuContentDiv);
 	}
 
 	function onScroll(e: Event) {
