@@ -362,20 +362,33 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Subpath::new(manipulator_groups, true)
 	}
 
-	pub fn new_heart(center: DVec2, radius: f64, spike_radius: f64) -> Self {
-		let radius = radius.abs();
-		let spike_radius = spike_radius.max(0.0);
+	pub fn new_heart(center: DVec2, width: f64, height: f64, top_lobe_roundness: f64) -> Self {
+		let w = width.abs() / 2.0;
+		let h = height.abs() / 2.0;
 
-		let cleft = center + DVec2::new(0.0, -radius * 0.25);
-		let right_side = center + DVec2::new(radius, -radius * 0.25);
-		let bottom = center + DVec2::new(0.0, spike_radius);
-		let left_side = center + DVec2::new(-radius, -radius * 0.25);
+		let top_lobe_roundness = top_lobe_roundness.clamp(1.0, 100.0);
+
+		let c = center + DVec2::new(0.0, -h * 0.5);
+		let bottom = center + DVec2::new(0.0, h);
+		let left_lobe = center + DVec2::new(-w, -h * 0.25);
+		let right_lobe = center + DVec2::new(w, -h * 0.25);
+
+		let bulge = h * top_lobe_roundness / 50.0;
+
+		let c_out = center + DVec2::new(w * 0.4, -h * 0.5 - bulge);
+		let c_in = center + DVec2::new(-w * 0.4, -h * 0.5 - bulge);
+
+		let right_in = center + DVec2::new(w, -h * 0.2 - bulge);
+		let right_out = center + DVec2::new(w, h * 0.4);
+
+		let left_in = center + DVec2::new(-w, h * 0.4);
+		let left_out = center + DVec2::new(-w, -h * 0.2 - bulge);
 
 		let manipulator_groups = vec![
-			ManipulatorGroup::new(cleft, Some(cleft + DVec2::new(-radius * 0.2, -radius * 0.5)), Some(cleft + DVec2::new(radius * 0.2, -radius * 0.5))),
-			ManipulatorGroup::new(right_side, Some(right_side + DVec2::new(0.0, -radius * 0.5)), Some(right_side + DVec2::new(0.0, radius * 0.5))),
+			ManipulatorGroup::new(c, Some(c_in), Some(c_out)),
+			ManipulatorGroup::new(right_lobe, Some(right_in), Some(right_out)),
 			ManipulatorGroup::new(bottom, None, None),
-			ManipulatorGroup::new(left_side, Some(left_side + DVec2::new(0.0, radius * 0.5)), Some(left_side + DVec2::new(0.0, -radius * 0.5))),
+			ManipulatorGroup::new(left_lobe, Some(left_in), Some(left_out)),
 		];
 
 		Subpath::new(manipulator_groups, true)

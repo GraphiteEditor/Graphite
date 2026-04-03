@@ -198,11 +198,7 @@ fn teardrop(
 	#[default(100.)]
 	tail_length: f64,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_teardrop(
-		DVec2::ZERO,
-		radius,
-		tail_length,
-	)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_teardrop(DVec2::ZERO, radius, tail_length)))
 }
 
 /// Generates a heart shape with top lobes and a bottom point
@@ -216,12 +212,9 @@ fn heart(
 	#[unit(" px")]
 	#[default(100.)]
 	height: f64,
+	#[default(50.)] top_lobe_roundness: f64,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(
-		DVec2::ZERO,
-		width,
-		height,
-	)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(DVec2::ZERO, width, height, top_lobe_roundness)))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
