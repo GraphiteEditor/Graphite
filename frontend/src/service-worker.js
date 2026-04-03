@@ -59,6 +59,7 @@ self.addEventListener("install", (event) => {
 			await Promise.all(
 				PRECACHE_MANIFEST.map(async (entry) => {
 					const response = await fetch(entry.url);
+					if (!response.ok) throw new Error(`Precache fetch failed for ${entry.url}: ${response.status}`);
 					// Strip the `redirected` flag which causes errors when served via respondWith
 					const cleaned = response.redirected
 						? new Response(response.body, {
