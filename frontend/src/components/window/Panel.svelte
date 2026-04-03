@@ -51,6 +51,7 @@
 	let dragging = false;
 	let insertionIndex: number | undefined = undefined;
 	let insertionMarkerLeft: number | undefined = undefined;
+	let lastPointerX = 0;
 	let tabGroupElement: LayoutRow | undefined = undefined;
 
 	onDestroy(() => {
@@ -96,9 +97,11 @@
 			dragging = true;
 		}
 
+		lastPointerX = e.clientX;
+
 		// Only show insertion line while the cursor is within the tab bar
 		if (pointerIsInsideTabBar(e)) {
-			calculateInsertionIndex(e.clientX);
+			calculateInsertionIndex(lastPointerX);
 		} else {
 			insertionIndex = undefined;
 			insertionMarkerLeft = undefined;
@@ -124,6 +127,12 @@
 	function dragAbort(e: MouseEvent | KeyboardEvent) {
 		if (e instanceof MouseEvent && e.button === BUTTON_RIGHT) endDrag();
 		if (e instanceof KeyboardEvent && e.key === "Escape") endDrag();
+	}
+
+	function dragScroll() {
+		if (dragging && insertionIndex !== undefined) {
+			calculateInsertionIndex(lastPointerX);
+		}
 	}
 
 	function endDrag() {
@@ -160,10 +169,10 @@
 
 			if (pointerX > tabMidpoint) {
 				bestIndex = i + 1;
-				bestMarkerLeft = tabRect.right - groupRect.left + groupDiv.scrollLeft;
+				bestMarkerLeft = tabRect.right - groupRect.left;
 			} else {
 				bestIndex = i;
-				bestMarkerLeft = tabRect.left - groupRect.left + groupDiv.scrollLeft;
+				bestMarkerLeft = tabRect.left - groupRect.left;
 				break;
 			}
 		}
@@ -177,6 +186,7 @@
 		document.addEventListener("pointerup", dragPointerUp);
 		document.addEventListener("mousedown", dragAbort);
 		document.addEventListener("keydown", dragAbort);
+		tabGroupElement?.div?.()?.addEventListener("scroll", dragScroll);
 	}
 
 	function removeDragListeners() {
@@ -184,6 +194,7 @@
 		document.removeEventListener("pointerup", dragPointerUp);
 		document.removeEventListener("mousedown", dragAbort);
 		document.removeEventListener("keydown", dragAbort);
+		tabGroupElement?.div?.()?.removeEventListener("scroll", dragScroll);
 	}
 </script>
 
