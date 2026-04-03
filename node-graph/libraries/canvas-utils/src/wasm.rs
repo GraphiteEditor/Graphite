@@ -157,8 +157,8 @@ impl CanvasImpl {
 		let image_canvases_key = JsValue::from_str(CANVASES_OBJECT_KEY);
 
 		let mut canvases = Reflect::get(&window_obj, &image_canvases_key);
-		if canvases.is_err() {
-			Reflect::set(&JsValue::from(web_sys::window().unwrap()), &image_canvases_key, &Object::new()).unwrap();
+		if canvases.is_err() || canvases.as_ref().map_or(false, |v| v.is_undefined() || v.is_null()) {
+			Reflect::set(&window_obj.clone(), &image_canvases_key, &Object::new()).unwrap();
 			canvases = Reflect::get(&window_obj, &image_canvases_key);
 		}
 
