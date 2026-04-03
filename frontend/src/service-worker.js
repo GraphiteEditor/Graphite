@@ -56,7 +56,20 @@ self.addEventListener("install", (event) => {
 		(async () => {
 			// Precache app shell assets
 			const cache = await caches.open(STATIC_CACHE_NAME);
-			await cache.addAll(PRECACHE_MANIFEST.map((entry) => entry.url));
+			await Promise.all(
+				PRECACHE_MANIFEST.map(async (entry) => {
+					const response = await fetch(entry.url);
+					// Strip the `redirected` flag which causes errors when served via respondWith
+					const cleaned = response.redirected
+						? new Response(response.body, {
+								status: response.status,
+								statusText: response.statusText,
+								headers: response.headers,
+							})
+						: response;
+					await cache.put(entry.url, cleaned);
+				}),
+			);
 
 			// Proactively cache the font catalog API
 			try {
