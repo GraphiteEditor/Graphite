@@ -249,7 +249,7 @@ impl LayoutHolder for GradientTool {
 		];
 		widgets.push(reverse_stops);
 
-		if self.options.gradient_type == GradientType::Radial {
+		if self.options.gradient_type == GradientType::Radial && !self.data.is_gradient_table {
 			let orientation = self
 				.data
 				.selected_gradient

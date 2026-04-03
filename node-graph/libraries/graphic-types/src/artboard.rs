@@ -55,8 +55,9 @@ impl BoundingBox for Artboard {
 		}
 	}
 
-	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
-		self.bounding_box(transform, include_stroke)
+	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
+		RenderBoundingBox::Rectangle(artboard_bounds)
 	}
 }
 
