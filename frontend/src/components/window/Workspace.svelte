@@ -17,7 +17,7 @@
 		/*         └─ */ layers: 55,
 	} as const;
 
-	let panelSizes: Record<string, number> = PANEL_SIZES;
+	let panelSizes: Record<string, number> = { ...PANEL_SIZES };
 	let documentPanel: Panel | undefined;
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
@@ -40,6 +40,25 @@
 
 	const editor = getContext<EditorWrapper>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
+
+	function isPanelName(name: string): name is keyof typeof PANEL_SIZES {
+		return name in PANEL_SIZES;
+	}
+
+	function resetPanelSizes(e: MouseEvent) {
+		const gutter = e.currentTarget;
+		if (!(gutter instanceof HTMLDivElement)) return;
+
+		const nextSibling = gutter.nextElementSibling;
+		const prevSibling = gutter.previousElementSibling;
+		if (!(nextSibling instanceof HTMLDivElement) || !(prevSibling instanceof HTMLDivElement)) return;
+
+		const nextSiblingName = nextSibling.getAttribute("data-subdivision-name") || undefined;
+		const prevSiblingName = prevSibling.getAttribute("data-subdivision-name") || undefined;
+		if (!nextSiblingName || !prevSiblingName || !isPanelName(nextSiblingName) || !isPanelName(prevSiblingName)) return;
+
+		panelSizes = { ...panelSizes, [nextSiblingName]: PANEL_SIZES[nextSiblingName], [prevSiblingName]: PANEL_SIZES[prevSiblingName] };
+	}
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = e.target;
@@ -157,14 +176,14 @@
 				/>
 			</LayoutRow>
 			{#if $portfolio.dataPanelOpen}
-				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["data"] }} data-subdivision-name="data">
 					<Panel panelType="Data" tabLabels={[{ name: "Data" }]} tabActiveIndex={0} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
 		{#if $portfolio.propertiesPanelOpen || $portfolio.layersPanelOpen}
-			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
+			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 			<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
 				{#if $portfolio.propertiesPanelOpen}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
@@ -172,7 +191,7 @@
 					</LayoutRow>
 				{/if}
 				{#if $portfolio.propertiesPanelOpen && $portfolio.layersPanelOpen}
-					<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+					<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				{/if}
 				{#if $portfolio.layersPanelOpen}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
