@@ -186,7 +186,7 @@ fn star<T: AsU64>(
 
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
-/// Generates a teardrop shape with an round body and one spike
+/// Generates a teardrop shape with a round body and a pointed tail
 #[node_macro::node(category("Vector: Shape"))]
 fn teardrop(
 	_: impl Ctx,
@@ -194,22 +194,34 @@ fn teardrop(
 	#[unit(" px")]
 	#[default(50.)]
 	radius: f64,
+	#[unit(" px")]
+	#[default(100.)]
+	tail_length: f64,
 ) -> Table<Vector> {
-	let radius = radius.abs();
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_teardrop(DVec2::ZERO, radius, radius * 2.0)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_teardrop(
+		DVec2::ZERO,
+		radius,
+		tail_length,
+	)))
 }
 
-/// Generates a heart shape with two radii on top and one spike at the bottom
+/// Generates a heart shape with top lobes and a bottom point
 #[node_macro::node(category("Vector: Shape"))]
 fn heart(
 	_: impl Ctx,
 	_primary: (),
 	#[unit(" px")]
-	#[default(50.)]
-	radius: f64,
+	#[default(100.)]
+	width: f64,
+	#[unit(" px")]
+	#[default(100.)]
+	height: f64,
 ) -> Table<Vector> {
-	let radius = radius.abs();
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(DVec2::ZERO, radius, radius * 2.0)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(
+		DVec2::ZERO,
+		width,
+		height,
+	)))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

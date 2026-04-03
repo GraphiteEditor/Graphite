@@ -11,7 +11,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use core::f64;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -112,6 +111,7 @@ impl Teardrop {
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::F64(50.), false)),
+			Some(NodeInput::value(TaggedValue::F64(50.), false)),
 		])
 	}
 
@@ -127,21 +127,11 @@ impl Teardrop {
 		let [center, lock_ratio, _] = modifier;
 
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
-			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			update_radius_sign(end, start, layer, document, responses);
 
 			let dimensions = (start - end).abs();
-
-			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
-			let mut scale = DVec2::ONE;
-			let radius: f64;
-			if dimensions.x > dimensions.y {
-				scale.x = dimensions.x / dimensions.y;
-				radius = dimensions.y / 2.;
-			} else {
-				scale.y = dimensions.y / dimensions.x;
-				radius = dimensions.x / 2.;
-			}
+			let radius = dimensions.x / 2.0;
+			let tail_length = (dimensions.y - radius).max(0.0);
 
 			let Some(node_id) = graph_modification_utils::get_teardrop_id(layer, &document.network_interface) else {
 				return;
@@ -152,9 +142,18 @@ impl Teardrop {
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, 2),
+				input: NodeInput::value(TaggedValue::F64(tail_length), false),
+			});
+
+			let top = start.y.min(end.y);
+			let center_x = (start.x + end.x) / 2.0;
+			let center_y = top + tail_length;
+
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
+				transform: DAffine2::from_translation(DVec2::new(center_x, center_y)),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: false,
 			});
