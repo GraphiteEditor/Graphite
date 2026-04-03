@@ -39,7 +39,7 @@
 	});
 </script>
 
-<LayoutRow class="title-bar" styles={{ height: height + "px" }}>
+<LayoutRow class="title-bar" styles={{ "--title-bar-height": height + "px" }}>
 	<!-- Menu bar -->
 	<LayoutRow class="menu-bar">
 		{#if $appWindow.platform !== "Mac"}
@@ -83,15 +83,38 @@
 <style lang="scss" global>
 	.title-bar {
 		flex: 0 0 auto;
+		height: var(--height);
+		--height: var(--title-bar-height);
+
+		// Frameless PWA drag regions and left/right offsets for window controls, see:
+		// https://web.dev/articles/window-controls-overlay
+		@media not (display-mode: fullscreen) {
+			--height: env(titlebar-area-height, var(--title-bar-height));
+
+			> .layout-row {
+				&.window-frame {
+					-webkit-app-region: drag;
+					// app-region: drag; // TODO: Uncomment this when SCSS doesn't consider it an unknown property, which produces a warning that CI treats as a failure
+				}
+
+				&:first-child {
+					margin-left: env(titlebar-area-x, 0);
+				}
+
+				&:last-child {
+					margin-right: calc(100% - env(titlebar-area-width, 100%) - env(titlebar-area-x, 0px));
+				}
+			}
+		}
 
 		> .layout-row {
 			flex: 0 0 auto;
 
 			> .widget-span {
-				--row-height: 28px;
+				--row-height: var(--height);
 
 				> * {
-					--widget-height: 28px;
+					--widget-height: var(--height);
 				}
 			}
 
