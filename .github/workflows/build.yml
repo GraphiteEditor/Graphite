@@ -162,7 +162,7 @@ jobs:
             REF="master"
             ENVIRONMENT="graphite-dev (Production)"
           else
-            REF="${{ github.event.pull_request.head.sha || github.sha }}"
+            REF="$(git rev-parse HEAD)"
             ENVIRONMENT="graphite-dev (Preview)"
           fi
           DEPLOY_ID=$(gh api \
