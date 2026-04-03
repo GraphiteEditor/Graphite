@@ -1,17 +1,16 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::document::value::{RenderOutput, TaggedValue};
+use graph_craft::application_io::EditorPreferences;
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
-use graphene_std::wasm_application_io::RenderOutputType;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 mod runtime_io;
@@ -380,6 +379,7 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
+				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 			}
 		}
 

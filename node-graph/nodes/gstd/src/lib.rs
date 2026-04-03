@@ -1,10 +1,9 @@
 pub mod any;
 pub mod pixel_preview;
+pub mod platform_application_io;
 pub mod render_cache;
 pub mod render_node;
 pub mod text;
-#[cfg(feature = "wasm")]
-pub mod wasm_application_io;
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;

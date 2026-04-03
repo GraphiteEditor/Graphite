@@ -4,8 +4,8 @@ use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::RenderOutput;
-use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::ApplicationIo;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
@@ -374,7 +374,7 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	editor_api: &'a WasmEditorApi,
+	editor_api: &'a PlatformEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> RenderOutput {

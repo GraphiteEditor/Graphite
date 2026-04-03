@@ -1,7 +1,7 @@
 #[cfg(target_family = "wasm")]
 use base64::Engine;
 #[cfg(target_family = "wasm")]
-use canvas_utils::Canvas;
+use canvas_utils::{Canvas, CanvasHandle};
 #[cfg(target_family = "wasm")]
 use core_types::WasmNotSend;
 #[cfg(target_family = "wasm")]
@@ -10,13 +10,11 @@ use core_types::table::Table;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx};
+pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
-pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
-#[cfg(feature = "wgpu")]
-use graphene_canvas_utils::CanvasHandle;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
@@ -127,7 +125,7 @@ fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a PlatformEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor_resources.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
 	};
@@ -163,6 +161,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
+#[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
 async fn create_canvas(_: impl Ctx) -> CanvasHandle {
 	CanvasHandle::new()

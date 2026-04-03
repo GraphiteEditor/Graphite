@@ -1,6 +1,6 @@
 use super::DocumentNode;
+use crate::application_io::PlatformEditorApi;
 use crate::proto::{Any as DAny, FutureAny};
-use crate::wasm_application_io::WasmEditorApi;
 use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
@@ -40,7 +40,7 @@ macro_rules! tagged_value {
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			#[serde(skip)]
-			EditorApi(Arc<WasmEditorApi>)
+			EditorApi(Arc<PlatformEditorApi>)
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
@@ -81,7 +81,7 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::EditorApi(_) => concrete!(&WasmEditorApi)
+					Self::EditorApi(_) => concrete!(&PlatformEditorApi)
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -139,7 +139,7 @@ macro_rules! tagged_value {
 					Self::None => "()".to_string(),
 					$( Self::$identifier(x) => format!("{:?}", x), )*
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
-					Self::EditorApi(_) => "WasmEditorApi".to_string(),
+					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 				}
 			}
 		}
