@@ -509,8 +509,9 @@ impl Hash for RenderOutputType {
 				image_data.hash(state);
 			}
 			#[cfg(target_family = "wasm")]
-			Self::CanvasFrame { canvas_id, .. } => {
+			Self::CanvasFrame { canvas_id, resolution } => {
 				canvas_id.hash(state);
+				resolution.to_array().iter().for_each(|x| x.to_bits().hash(state));
 			}
 		}
 	}
