@@ -238,11 +238,11 @@ impl GizmoManager {
 			return Some(ShapeGizmoHandlers::Spiral(SpiralGizmoHandler::default()));
 		}
 		// Teardrop
-		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
+		if graph_modification_utils::get_teardrop_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Teardrop(TeardropGizmoHandler::default()));
 		}
 		// Heart
-		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
+		if graph_modification_utils::get_heart_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Heart(HeartGizmoHandler::default()));
 		}
 
