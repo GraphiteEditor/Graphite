@@ -180,8 +180,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 				return vec![ManipulatorGroup::new_anchor(point1), ManipulatorGroup::new_anchor(point2)];
 			}
 
-			// Constant from https://pomax.github.io/bezierinfo/#circles_cubic
-			const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 			let handle_offset = radius * HANDLE_OFFSET_FACTOR;
 			vec![
 				ManipulatorGroup::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize())),
@@ -209,8 +207,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let left = DVec2::new(corner1.x, center.y);
 		let right = DVec2::new(corner2.x, center.y);
 
-		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
-		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 		let handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
 
 		let manipulator_groups = vec![
@@ -354,8 +350,6 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let right = center + DVec2::new(radius, 0.0);
 		let bottom = center + DVec2::new(0.0, radius);
 
-		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
-		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 		let handle_offset = radius * HANDLE_OFFSET_FACTOR;
 
 		let manipulator_groups = vec![
