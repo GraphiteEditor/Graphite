@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, tick } from "svelte";
+	import { getContext, onDestroy, tick } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Data from "/src/components/panels/Data.svelte";
@@ -22,6 +22,8 @@
 	};
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
+	const BUTTON_RIGHT = 2;
+	const DRAG_ACTIVATION_DISTANCE = 5;
 
 	const editor = getContext<EditorWrapper>("editor");
 
@@ -32,6 +34,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 
 	let className = "";
@@ -43,6 +46,18 @@
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
+	// Tab drag-and-drop state
+	let dragStartState: { tabIndex: number; pointerX: number; pointerY: number } | undefined = undefined;
+	let dragging = false;
+	let insertionIndex: number | undefined = undefined;
+	let insertionMarkerLeft: number | undefined = undefined;
+	let lastPointerX = 0;
+	let tabGroupElement: LayoutRow | undefined = undefined;
+
+	onDestroy(() => {
+		removeDragListeners();
+	});
+
 	function onEmptySpaceAction(e: MouseEvent) {
 		if (e.target !== e.currentTarget) return;
 		if (e.button === BUTTON_MIDDLE || (e.button === BUTTON_LEFT && e.detail === 2)) emptySpaceAction?.();
@@ -52,21 +67,149 @@
 		await tick();
 		tabElements[newIndex]?.div?.()?.scrollIntoView();
 	}
+
+	// Tab drag-and-drop handlers
+
+	function tabPointerDown(e: PointerEvent, tabIndex: number) {
+		if (e.button !== BUTTON_LEFT) return;
+		if (e.target instanceof Element && e.target.closest("[data-close-button]")) return;
+
+		// Activate the tab upon pointer down
+		clickAction?.(tabIndex);
+
+		if (!reorderAction || tabLabels.length < 2) return;
+
+		dragStartState = { tabIndex, pointerX: e.clientX, pointerY: e.clientY };
+		dragging = false;
+		insertionIndex = undefined;
+		insertionMarkerLeft = undefined;
+
+		addDragListeners();
+	}
+
+	function dragPointerMove(e: PointerEvent) {
+		if (!dragStartState) return;
+
+		// Activate drag after moving beyond threshold
+		if (!dragging) {
+			const deltaX = Math.abs(e.clientX - dragStartState.pointerX);
+			const deltaY = Math.abs(e.clientY - dragStartState.pointerY);
+			if (deltaX < DRAG_ACTIVATION_DISTANCE && deltaY < DRAG_ACTIVATION_DISTANCE) return;
+			dragging = true;
+		}
+
+		lastPointerX = e.clientX;
+
+		// Only show insertion line while the cursor is within the tab bar
+		if (pointerIsInsideTabBar(e)) {
+			calculateInsertionIndex(lastPointerX);
+		} else {
+			insertionIndex = undefined;
+			insertionMarkerLeft = undefined;
+		}
+	}
+
+	function dragPointerUp() {
+		if (dragging && dragStartState && insertionIndex !== undefined) {
+			const oldIndex = dragStartState.tabIndex;
+
+			// Adjust for the fact that removing the dragged tab shifts indices
+			let newIndex = insertionIndex;
+			if (newIndex > oldIndex) newIndex -= 1;
+
+			if (oldIndex !== newIndex) {
+				reorderAction?.(oldIndex, newIndex);
+			}
+		}
+
+		endDrag();
+	}
+
+	function dragAbort(e: MouseEvent | KeyboardEvent) {
+		if (e instanceof MouseEvent && e.button === BUTTON_RIGHT) endDrag();
+		if (e instanceof KeyboardEvent && e.key === "Escape") endDrag();
+	}
+
+	function dragScroll() {
+		if (dragging && insertionIndex !== undefined) {
+			calculateInsertionIndex(lastPointerX);
+		}
+	}
+
+	function endDrag() {
+		dragStartState = undefined;
+		dragging = false;
+		insertionIndex = undefined;
+		insertionMarkerLeft = undefined;
+		removeDragListeners();
+	}
+
+	function pointerIsInsideTabBar(e: PointerEvent): boolean {
+		const groupDiv = tabGroupElement?.div?.();
+		if (!groupDiv) return false;
+
+		const rect = groupDiv.getBoundingClientRect();
+		return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+	}
+
+	function calculateInsertionIndex(pointerX: number) {
+		const groupDiv = tabGroupElement?.div?.();
+		if (!dragStartState || !groupDiv) return;
+
+		const groupRect = groupDiv.getBoundingClientRect();
+		let bestIndex = 0;
+		let bestMarkerLeft = 0;
+
+		// Walk through each tab to find the insertion point closest to the pointer
+		for (let i = 0; i < tabLabels.length; i++) {
+			const tabDiv = tabElements[i]?.div?.();
+			if (!tabDiv) continue;
+
+			const tabRect = tabDiv.getBoundingClientRect();
+			const tabMidpoint = tabRect.left + tabRect.width / 2;
+
+			if (pointerX > tabMidpoint) {
+				bestIndex = i + 1;
+				bestMarkerLeft = tabRect.right - groupRect.left;
+			} else {
+				bestIndex = i;
+				bestMarkerLeft = tabRect.left - groupRect.left;
+				break;
+			}
+		}
+
+		insertionIndex = bestIndex;
+		insertionMarkerLeft = Math.max(2, bestMarkerLeft);
+	}
+
+	function addDragListeners() {
+		document.addEventListener("pointermove", dragPointerMove);
+		document.addEventListener("pointerup", dragPointerUp);
+		document.addEventListener("mousedown", dragAbort);
+		document.addEventListener("keydown", dragAbort);
+		tabGroupElement?.div?.()?.addEventListener("scroll", dragScroll);
+	}
+
+	function removeDragListeners() {
+		document.removeEventListener("pointermove", dragPointerMove);
+		document.removeEventListener("pointerup", dragPointerUp);
+		document.removeEventListener("mousedown", dragAbort);
+		document.removeEventListener("keydown", dragAbort);
+		tabGroupElement?.div?.()?.removeEventListener("scroll", dragScroll);
+	}
 </script>
 
 <LayoutCol on:pointerdown={() => panelType && editor.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
+		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction} bind:this={tabGroupElement}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
 					tooltipLabel={tabLabel.tooltipLabel}
 					tooltipDescription={tabLabel.tooltipDescription}
-					on:click={(e) => {
-						e.stopPropagation();
-						clickAction?.(tabIndex);
-					}}
+					on:pointerdown={(e) => tabPointerDown(e, tabIndex)}
+					on:click={(e) => e.stopPropagation()}
 					on:auxclick={(e) => {
 						// Middle mouse button click
 						if (e.button === BUTTON_MIDDLE) {
@@ -90,11 +233,15 @@
 							}}
 							icon="CloseX"
 							size={16}
+							data-close-button
 						/>
 					{/if}
 				</LayoutRow>
 			{/each}
 		</LayoutRow>
+		{#if dragging && insertionMarkerLeft !== undefined}
+			<div class="tab-insertion-mark" style:left={`${insertionMarkerLeft}px`}></div>
+		{/if}
 	</LayoutRow>
 	<LayoutCol class="panel-body">
 		{#if panelType}
@@ -110,6 +257,7 @@
 		overflow: hidden;
 
 		.tab-bar {
+			position: relative;
 			height: 28px;
 			min-height: auto;
 			background: var(--color-1-nearblack); // Needed for the viewport hole punch on desktop
@@ -216,6 +364,21 @@
 						}
 					}
 				}
+			}
+
+			&:has(.tab-insertion-mark) .tab .icon-button {
+				pointer-events: none;
+			}
+
+			.tab-insertion-mark {
+				position: absolute;
+				top: 4px;
+				bottom: 4px;
+				width: 3px;
+				margin-left: -2px;
+				z-index: 1;
+				background: var(--color-e-nearwhite);
+				pointer-events: none;
 			}
 		}
 
