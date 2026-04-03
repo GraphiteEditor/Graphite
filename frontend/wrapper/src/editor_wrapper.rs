@@ -427,6 +427,13 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = reorderDocument)]
+	pub fn reorder_document(&self, document_id: u64, new_index: usize) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::ReorderDocument { document_id, new_index };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = closeDocumentWithConfirmation)]
 	pub fn close_document_with_confirmation(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);

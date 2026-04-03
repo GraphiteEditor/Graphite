@@ -1053,6 +1053,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
+			PortfolioMessage::ReorderDocument { document_id, new_index } => {
+				let new_index = new_index.min(self.document_ids.len().saturating_sub(1));
+				let Some(current_index) = self.document_ids.iter().position(|&id| id == document_id) else {
+					return;
+				};
+
+				if new_index != current_index {
+					self.document_ids.remove(current_index);
+					self.document_ids.insert(new_index, document_id);
+
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+
+					// Re-send the active document so the frontend recalculates the active tab index after reordering
+					if let Some(active_document_id) = self.active_document_id {
+						responses.add(FrontendMessage::UpdateActiveDocument { document_id: active_document_id });
+					}
+				}
+			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 

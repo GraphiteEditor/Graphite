@@ -151,6 +151,7 @@
 					emptySpaceAction={() => editor.newDocumentDialog()}
 					clickAction={(tabIndex) => editor.selectDocument($portfolio.documents[tabIndex].id)}
 					closeAction={(tabIndex) => editor.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
+					reorderAction={(oldIndex, newIndex) => editor.reorderDocument($portfolio.documents[oldIndex].id, newIndex)}
 					tabActiveIndex={$portfolio.activeDocumentIndex}
 					bind:this={documentPanel}
 				/>
