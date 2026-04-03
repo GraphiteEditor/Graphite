@@ -13,6 +13,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
+use graphene_std::ATTR_TRANSFORM;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
@@ -1154,20 +1155,33 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
-		TaggedValue::GradientTable(gradient_table) => widgets.push(
-			color_button
-				.value(match gradient_table.element(0) {
-					Some(gradient) => FillChoice::Gradient(gradient.clone()),
-					None => FillChoice::Gradient(GradientStops::default()),
-				})
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
+		TaggedValue::GradientTable(gradient_table) => {
+			let existing_transform: DAffine2 = gradient_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+
+			widgets.push(
+				color_button
+					.value(match gradient_table.element(0) {
+						Some(gradient) => FillChoice::Gradient(gradient.clone()),
+						None => FillChoice::Gradient(GradientStops::default()),
+					})
+					.on_update(update_value(
+						move |input: &ColorInput| {
+							TaggedValue::GradientTable(
+								input
+									.value
+									.as_gradient()
+									.iter()
+									.map(|&gradient| TableRow::new_from_element(gradient.clone()).with_attribute(ATTR_TRANSFORM, existing_transform))
+									.collect(),
+							)
+						},
+						node_id,
+						index,
+					))
+					.on_commit(commit_value)
+					.widget_instance(),
+			)
+		}
 		x => warn!("Color {x:?}"),
 	}
 

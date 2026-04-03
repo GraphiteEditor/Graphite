@@ -471,7 +471,7 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
+		let bounds = match graphic.thumbnail_bounding_box(DAffine2::IDENTITY, true) {
 			RenderBoundingBox::None => None,
 			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
 			RenderBoundingBox::Rectangle(bounds) => Some(bounds),

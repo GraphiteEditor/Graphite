@@ -844,6 +844,26 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 			None => RenderBoundingBox::None,
 		}
 	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		let mut combined_bounds = None;
+
+		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
+			match element.thumbnail_bounding_box(transform * row_transform, include_stroke) {
+				RenderBoundingBox::None => continue,
+				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
+				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
+					Some(existing) => combined_bounds = Some(Quad::combine_bounds(existing, bounds)),
+					None => combined_bounds = Some(bounds),
+				},
+			}
+		}
+
+		match combined_bounds {
+			Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+			None => RenderBoundingBox::None,
+		}
+	}
 }
 
 impl<T> IntoIterator for Table<T> {

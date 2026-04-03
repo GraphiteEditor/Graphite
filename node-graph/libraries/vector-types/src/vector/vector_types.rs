@@ -468,6 +468,10 @@ impl BoundingBox for Vector {
 			None => RenderBoundingBox::None,
 		}
 	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		BoundingBox::bounding_box(self, transform, include_stroke)
+	}
 }
 
 impl RenderComplexity for Vector {
