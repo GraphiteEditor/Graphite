@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
-use graph_craft::wasm_application_io::EditorPreferences;
+use graph_craft::application_io::EditorPreferences;
 
 #[derive(ExtractField)]
 pub struct PreferencesMessageContext<'a> {
@@ -51,7 +51,7 @@ impl PreferencesMessageHandler {
 	}
 
 	pub fn supports_wgpu(&self) -> bool {
-		graph_craft::wasm_application_io::wgpu_available().unwrap_or_default()
+		graph_craft::application_io::wgpu_available().unwrap_or_default()
 	}
 }
 

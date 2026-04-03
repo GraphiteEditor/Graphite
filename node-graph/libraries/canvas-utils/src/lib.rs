@@ -1,10 +1,12 @@
 use dyn_any::DynAny;
+#[cfg(feature = "wgpu")]
 use graphene_application_io::ImageTexture;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use web_sys::js_sys::{Object, Reflect};
 use web_sys::wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, window};
+#[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
 const CANVASES_OBJECT_KEY: &str = "imageCanvases";
@@ -19,6 +21,7 @@ pub trait Canvas {
 	fn set_resolution(&mut self, resolution: glam::UVec2);
 }
 
+#[cfg(feature = "wgpu")]
 pub trait CanvasSurface: Canvas {
 	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor);
 }
@@ -48,7 +51,9 @@ impl Canvas for CanvasHandle {
 	}
 }
 
+#[cfg(feature = "wgpu")]
 pub struct CanvasSurfaceHandle(CanvasHandle, Option<Arc<wgpu::Surface<'static>>>);
+#[cfg(feature = "wgpu")]
 impl CanvasSurfaceHandle {
 	pub fn new() -> Self {
 		Self(CanvasHandle::new(), None)
@@ -66,6 +71,7 @@ impl CanvasSurfaceHandle {
 		self.1.as_ref().unwrap()
 	}
 }
+#[cfg(feature = "wgpu")]
 impl Canvas for CanvasSurfaceHandle {
 	fn id(&mut self) -> CanvasId {
 		self.0.id()
@@ -77,6 +83,7 @@ impl Canvas for CanvasSurfaceHandle {
 		self.0.set_resolution(resolution);
 	}
 }
+#[cfg(feature = "wgpu")]
 impl CanvasSurface for CanvasSurfaceHandle {
 	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) {
 		let source_texture: &wgpu::Texture = image_texture.as_ref();

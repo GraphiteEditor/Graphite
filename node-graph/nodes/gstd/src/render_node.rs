@@ -2,9 +2,9 @@ use core_types::table::Table;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+pub use graph_craft::application_io::*;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
-pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
@@ -124,7 +124,7 @@ async fn create_context<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a WasmEditorApi, data: RenderIntermediate) -> RenderOutput {
+async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderIntermediate) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
