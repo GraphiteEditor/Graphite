@@ -72,6 +72,7 @@
 
 	function tabPointerDown(e: PointerEvent, tabIndex: number) {
 		if (e.button !== BUTTON_LEFT) return;
+		if (e.target instanceof Element && e.target.closest("[data-close-button]")) return;
 
 		// Activate the tab upon pointer down
 		clickAction?.(tabIndex);
@@ -232,6 +233,7 @@
 							}}
 							icon="CloseX"
 							size={16}
+							data-close-button
 						/>
 					{/if}
 				</LayoutRow>
