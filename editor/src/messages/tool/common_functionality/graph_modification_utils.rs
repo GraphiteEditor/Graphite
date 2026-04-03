@@ -16,7 +16,7 @@ use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{Fill, Gradient};
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{GradientStops, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -283,6 +283,17 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 		return None;
 	};
 	Some(gradient.clone())
+}
+
+/// Get the gradient table of a layer.
+pub fn get_gradient_table(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Table<GradientStops>> {
+	let gradient_table_index = 1;
+
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))?;
+	let TaggedValue::GradientTable(gradient_table) = inputs.get(gradient_table_index)?.as_value()? else {
+		return None;
+	};
+	Some(gradient_table.clone())
 }
 
 /// Get the current fill of a layer from the closest "Fill" node.

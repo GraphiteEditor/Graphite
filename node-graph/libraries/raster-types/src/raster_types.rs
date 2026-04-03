@@ -210,6 +210,10 @@ where
 		let unit_rectangle = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 		RenderBoundingBox::Rectangle((transform * unit_rectangle).bounding_box())
 	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		self.bounding_box(transform, include_stroke)
+	}
 }
 
 // RenderComplexity trait implementations

@@ -322,6 +322,17 @@ impl BoundingBox for Graphic {
 			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
 		}
 	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		match self {
+			Graphic::Vector(vector) => vector.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::RasterCPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::RasterGPU(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Graphic(graphic) => graphic.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Color(color) => color.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Gradient(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
+		}
+	}
 }
 
 impl TableConvert<Graphic> for Vector {

@@ -25,3 +25,4 @@ graphic-types = { workspace = true }
 
 # Workspace dependencies
 vello = { workspace = true }
+vello_encoding = { workspace = true }

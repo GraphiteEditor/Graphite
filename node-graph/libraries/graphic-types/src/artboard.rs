@@ -54,6 +54,10 @@ impl BoundingBox for Artboard {
 			other => other,
 		}
 	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		self.bounding_box(transform, include_stroke)
+	}
 }
 
 impl RenderComplexity for Artboard {

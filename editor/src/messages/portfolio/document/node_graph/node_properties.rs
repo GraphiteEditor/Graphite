@@ -1153,20 +1153,37 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
-		TaggedValue::GradientTable(gradient_table) => widgets.push(
-			color_button
-				.value(match gradient_table.iter().next() {
-					Some(row) => FillChoice::Gradient(row.element.clone()),
-					None => FillChoice::Gradient(GradientStops::default()),
-				})
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
+		TaggedValue::GradientTable(gradient_table) => {
+			let existing_transform = gradient_table.iter().next().map(|row| *row.transform).unwrap_or_default();
+
+			widgets.push(
+				color_button
+					.value(match gradient_table.iter().next() {
+						Some(row) => FillChoice::Gradient(row.element.clone()),
+						None => FillChoice::Gradient(GradientStops::default()),
+					})
+					.on_update(update_value(
+						move |input: &ColorInput| {
+							TaggedValue::GradientTable(
+								input
+									.value
+									.as_gradient()
+									.iter()
+									.map(|&gradient| TableRow {
+										element: gradient.clone(),
+										transform: existing_transform,
+										..Default::default()
+									})
+									.collect(),
+							)
+						},
+						node_id,
+						index,
+					))
+					.on_commit(commit_value)
+					.widget_instance(),
+			)
+		}
 		x => warn!("Color {x:?}"),
 	}
 

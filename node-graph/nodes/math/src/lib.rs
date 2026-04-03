@@ -1,7 +1,7 @@
 use core_types::registry::types::{Fraction, Percentage, PixelSize, TextArea};
-use core_types::table::Table;
+use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
-use core_types::{Color, Ctx, num_traits};
+use core_types::{Color, Ctx, ExtractFootprint, num_traits};
 use glam::{DAffine2, DVec2};
 use log::warn;
 use math_parser::ast;
