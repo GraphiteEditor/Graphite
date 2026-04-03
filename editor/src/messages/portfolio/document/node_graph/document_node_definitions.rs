@@ -1196,55 +1196,29 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("Generates customizable procedural noise patterns."),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Split Channels",
-			category: "Raster: Channels",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::split_channels::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
-					call_argument: generic!(T),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Image", "TODO").into()],
-					network_metadata: None,
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Split Vec2",
-			category: "Math: Vector",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(extract_xy::split_vec_2::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
-					call_argument: generic!(T),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Vec2", "TODO").into()],
-					network_metadata: None,
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a vec2.\n\
-				\n\
-				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
-			),
-			properties: None,
-		},
-		//TODO: Remove this and just use the proto node definition directly
+		// TODO: Remove this and just use the proto node definition directly
 		DocumentNodeDefinition {
 			identifier: "Brush",
 			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(0), 0)],
+						nodes: vec![DocumentNode {
+							inputs: vec![
+								NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
+								NodeInput::import(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
+								NodeInput::import(concrete!(BrushCache), 2),
+							],
+							implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
+							..Default::default()
+						}]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Raster(Default::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),

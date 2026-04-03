@@ -405,7 +405,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				{
 					return;
 				};
-				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
+				if let Some(DocumentNodeImplementation::Network(network)) = network_interface.implementation(&node_id, selection_network_path)
+					&& !network.generated
+				{
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}

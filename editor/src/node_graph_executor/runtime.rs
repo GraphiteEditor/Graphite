@@ -140,7 +140,14 @@ impl NodeRuntime {
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
 
-			substitutions: preprocessor::generate_node_substitutions(),
+			substitutions: {
+				// Exclude nodes with destructured outputs since their definition networks already contain the complete structure
+				let mut substitutions = preprocessor::generate_node_substitutions();
+				let node_metadata = graphene_std::registry::NODE_METADATA.lock().unwrap();
+				substitutions.retain(|id, _| node_metadata.get(id).is_none_or(|meta| meta.output_fields.is_empty()));
+				drop(node_metadata);
+				substitutions
+			},
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),

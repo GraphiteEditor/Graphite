@@ -112,7 +112,11 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			})
 			.collect();
 
-		let available_output_fields: Vec<_> = output_fields
+		// A leading `()` field (empty node_path) indicates a hidden primary output placeholder
+		let has_hidden_primary = output_fields.first().is_some_and(|field| field.node_path.is_empty());
+		let real_output_fields = if has_hidden_primary { &output_fields[1..] } else { output_fields };
+
+		let available_output_fields: Vec<_> = real_output_fields
 			.iter()
 			.filter_map(|field| {
 				let identifier = ProtoNodeIdentifier::with_owned_string(field.node_path.to_string());
@@ -174,34 +178,35 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				output_index: 0,
 			}]
 		} else {
-			available_output_fields
-				.iter()
-				.map(|(_, field_identifier)| {
-					let accessor_call_argument = node_registry
-						.get(field_identifier)
-						.and_then(|implementations| implementations.first().map(|(_, node_io)| node_io.call_argument.clone()))
-						.unwrap_or_else(|| input_type.clone());
+			let mut exports = if has_hidden_primary { vec![NodeInput::value(TaggedValue::None, false)] } else { Vec::new() };
 
-					let accessor_node_id = NodeId((input_count + generated_node_count) as u64);
-					generated_node_count += 1;
+			exports.extend(available_output_fields.iter().map(|(_, field_identifier)| {
+				let accessor_call_argument = node_registry
+					.get(field_identifier)
+					.and_then(|implementations| implementations.first().map(|(_, node_io)| node_io.call_argument.clone()))
+					.unwrap_or_else(|| input_type.clone());
 
-					nodes.insert(
-						accessor_node_id,
-						DocumentNode {
-							inputs: vec![NodeInput::node(output_source_node, 0)],
-							call_argument: accessor_call_argument,
-							implementation: DocumentNodeImplementation::ProtoNode(field_identifier.clone()),
-							visible: false,
-							..Default::default()
-						},
-					);
+				let accessor_node_id = NodeId((input_count + generated_node_count) as u64);
+				generated_node_count += 1;
 
-					NodeInput::Node {
-						node_id: accessor_node_id,
-						output_index: 0,
-					}
-				})
-				.collect()
+				nodes.insert(
+					accessor_node_id,
+					DocumentNode {
+						inputs: vec![NodeInput::node(output_source_node, 0)],
+						call_argument: accessor_call_argument,
+						implementation: DocumentNodeImplementation::ProtoNode(field_identifier.clone()),
+						visible: false,
+						..Default::default()
+					},
+				);
+
+				NodeInput::Node {
+					node_id: accessor_node_id,
+					output_index: 0,
+				}
+			}));
+
+			exports
 		};
 
 		let node = DocumentNode {

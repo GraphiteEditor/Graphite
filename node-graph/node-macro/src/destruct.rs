@@ -31,6 +31,19 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 		};
 
 		let ty = field.ty;
+
+		// A `()` field serves as a hidden primary output placeholder (analogous to `_: ()` for inputs)
+		if is_unit_type(&ty) {
+			output_fields.push(quote! {
+				#core_types::registry::StructField {
+					name: "",
+					node_path: "",
+					ty: #core_types::concrete!(()),
+				}
+			});
+			continue;
+		}
+
 		let output_name = parse_output_name(&field.attrs)?.unwrap_or_else(|| field_name.to_string().to_case(Case::Title));
 		let output_name_lit = LitStr::new(&output_name, field_name.span());
 
@@ -68,6 +81,10 @@ fn generate_extractor_node(core_types: &TokenStream2, fn_name: &syn::Ident, stru
 			data.#field_name
 		}
 	}
+}
+
+fn is_unit_type(ty: &Type) -> bool {
+	matches!(ty, Type::Tuple(tuple) if tuple.elems.is_empty())
 }
 
 fn parse_output_name(attrs: &[syn::Attribute]) -> syn::Result<Option<String>> {
