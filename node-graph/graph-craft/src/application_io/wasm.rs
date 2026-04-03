@@ -1,9 +1,7 @@
 use dyn_any::StaticType;
 use graphene_application_io::{ApplicationError, ApplicationIo, EditorApi, ResourceFuture};
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_family = "wasm")]
