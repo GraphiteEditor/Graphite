@@ -369,6 +369,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				// Exists at starting commit, so it was introduced earlier. Search backward (doubling).
 				badIndex = currentIndex;
 				boundarySearching = true;
+				boundaryOffset = Math.max(1, commits.length - 1 - startIndex);
 			} else {
 				// Absent at starting commit, so the issue was introduced more recently. Extend the commit list forward (towards HEAD) before narrowing.
 				goodIndex = currentIndex;
@@ -558,7 +559,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			stepCount = 0;
 			history = [];
 			bisectPhase = "boundary";
-			boundaryOffset = 1;
+			boundaryOffset = 0;
 			boundarySearching = false;
 			elements.goBackButton?.classList.remove("hidden");
 			if (elements.testBuildButton instanceof HTMLElement) elements.testBuildButton.style.display = "";

@@ -3994,10 +3994,12 @@ impl NodeNetworkInterface {
 						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 						self.unload_all_nodes_bounding_box(network_path);
 
-						// Unload the interior imports ports
-						let nested_path = [network_path, &[*node_id]].concat();
-						self.unload_import_export_ports(&nested_path);
-						self.unload_modify_import_export(&nested_path);
+						// Unload the interior import/export ports if this node has a nested network
+						if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
+							let nested_path = [network_path, &[*node_id]].concat();
+							self.unload_import_export_ports(&nested_path);
+							self.unload_modify_import_export(&nested_path);
+						}
 					}
 				} else {
 					self.unload_import_export_ports(network_path);
