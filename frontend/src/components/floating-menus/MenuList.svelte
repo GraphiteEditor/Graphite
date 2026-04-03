@@ -47,6 +47,9 @@
 	let virtualScrollingEntriesStart = 0;
 	let keydownListenerAdded = false;
 	let destroyed = false;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- `loadedFonts` reactivity is driven by `loadedFontsGeneration`, not the Set itself
+	let loadedFonts = new Set<string>();
+	let loadedFontsGeneration = 0;
 
 	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
@@ -459,10 +462,28 @@
 					{/if}
 
 					{#if entry.font}
-						<link rel="stylesheet" href={entry.font} />
+						<link
+							rel="stylesheet"
+							href={entry.font}
+							onload={() => {
+								document.fonts.load(`16px "${entry.value}"`).then(() => {
+									loadedFonts.add(entry.value);
+									loadedFontsGeneration += 1; // Modify the dirty trigger
+								});
+							}}
+						/>
 					{/if}
 
-					<TextLabel class="entry-label" styles={entry.font ? { "font-family": entry.value } : {}}>{entry.label}</TextLabel>
+					<TextLabel
+						class="entry-label"
+						classes={{
+							"font-preview": Boolean(entry.font),
+							"font-loaded": loadedFontsGeneration >= 0 && loadedFonts.has(entry.value),
+						}}
+						styles={entry.font ? { "font-family": `"${entry.value}", "Source Sans Pro"` } : {}}
+					>
+						{entry.label}
+					</TextLabel>
 
 					{#if entry.tooltipShortcut?.shortcut.length}
 						<ShortcutLabel shortcut={entry.tooltipShortcut} />
@@ -546,6 +567,10 @@
 				.entry-label {
 					flex: 1 1 100%;
 					margin: 0 4px;
+				}
+
+				.font-preview:not(.font-loaded) {
+					opacity: 0.5;
 				}
 
 				.entry-icon,

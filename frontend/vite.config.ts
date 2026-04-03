@@ -1,5 +1,6 @@
 import { execSync } from "child_process";
-import { copyFileSync, cpSync, existsSync, readFileSync, statSync } from "fs";
+import { createHash } from "crypto";
+import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import path from "path";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
@@ -10,7 +11,7 @@ const projectRootDir = path.resolve(__dirname);
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
 	return {
-		plugins: [svelte(), staticAssets(), mode !== "native" && thirdPartyLicenses()],
+		plugins: [svelte(), staticAssets(), mode !== "native" && thirdPartyLicenses(), mode !== "native" && serviceWorker()],
 		resolve: {
 			alias: [{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") }],
 		},
@@ -93,6 +94,84 @@ function thirdPartyLicenses(): PluginOption {
 		},
 		writeBundle(options) {
 			copyFileSync(path.resolve(projectRootDir, "third-party-licenses.txt"), path.join(options.dir || "dist", "third-party-licenses.txt"));
+		},
+	};
+}
+
+function serviceWorker(): PluginOption {
+	// Files that should never be precached
+	const EXCLUDED_FILES = new Set(["service-worker.js"]);
+	const DEFERRED_PREFIXES = ["demo-artwork/", "third-party-licenses.txt"];
+
+	function collectFiles(directory: string, prefix: string): string[] {
+		const results: string[] = [];
+		if (!existsSync(directory)) return results;
+
+		readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+			const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				results.push(...collectFiles(path.join(directory, entry.name), relativePath));
+			} else {
+				results.push(relativePath);
+			}
+		});
+		return results;
+	}
+
+	function contentHash(filePath: string): string {
+		const contents = readFileSync(filePath);
+		return createHash("sha256").update(contents).digest("hex").slice(0, 12);
+	}
+
+	// Vite appends content hashes to filenames in its build output, like "index-BV2NauF8.js"
+	function hasContentHash(fileName: string): boolean {
+		return /\w+-[A-Za-z0-9_-]{6,}\.\w+$/.test(fileName);
+	}
+
+	return {
+		name: "service-worker",
+		async writeBundle(options) {
+			const outputDir = options.dir || "dist";
+			const allFiles = collectFiles(outputDir, "");
+
+			const precacheManifest: { url: string; revision: string | undefined }[] = [];
+			const deferredManifest: { url: string; revision: string | undefined }[] = [];
+
+			allFiles.forEach((relativePath) => {
+				const fileName = path.basename(relativePath);
+				const filePath = path.join(outputDir, relativePath);
+				const url = `/${relativePath.replace(/\\/g, "/")}`;
+
+				// Skip excluded files
+				if (EXCLUDED_FILES.has(fileName)) return;
+
+				// Deferred files are cached in the background after initial load
+				if (DEFERRED_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) {
+					deferredManifest.push({ url, revision: contentHash(filePath) });
+					return;
+				}
+
+				// Hashed filenames don't need a revision (the hash is in the URL)
+				if (hasContentHash(fileName)) {
+					precacheManifest.push({ url, revision: undefined });
+				} else {
+					precacheManifest.push({ url, revision: contentHash(filePath) });
+				}
+			});
+
+			// Compute a content hash from both manifests combined
+			const allManifestJson = JSON.stringify({ precache: precacheManifest, deferred: deferredManifest });
+			const serviceWorkerContentHash = createHash("sha256").update(allManifestJson).digest("hex").slice(0, 12);
+
+			// Read the service worker source and replace placeholder tokens with actual values
+			const serviceWorkerSourcePath = path.resolve(projectRootDir, "src/service-worker.js");
+			const serviceWorkerSource = readFileSync(serviceWorkerSourcePath, "utf-8");
+			const serviceWorkerFinal = serviceWorkerSource
+				.replace("self.__PRECACHE_MANIFEST", JSON.stringify(precacheManifest))
+				.replace("self.__DEFERRED_CACHE_MANIFEST", JSON.stringify(deferredManifest))
+				.replace("self.__SERVICE_WORKER_CONTENT_HASH", JSON.stringify(serviceWorkerContentHash));
+
+			writeFileSync(path.join(outputDir, "service-worker.js"), serviceWorkerFinal);
 		},
 	};
 }
