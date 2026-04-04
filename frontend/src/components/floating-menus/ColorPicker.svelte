@@ -28,7 +28,6 @@
 		colorEquals,
 		gradientFirstColor,
 	} from "/src/utility-functions/colors";
-	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import type { FillChoice, MenuDirection, Color } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type PresetColors = "None" | "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
@@ -404,7 +403,7 @@
 	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool
 	function eyedropperSupported(): boolean {
 		// TODO: Implement support in the desktop app for OS-level color picking
-		if (isPlatformNative()) return false;
+		if (import.meta.env.MODE === "native") return false;
 
 		return window.EyeDropper !== undefined;
 	}

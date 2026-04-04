@@ -909,18 +909,6 @@ impl EditorWrapper {
 // Static functions callable from JavaScript without an Editor instance
 // ====================================================================
 
-#[wasm_bindgen(js_name = isPlatformNative)]
-pub fn is_platform_native() -> bool {
-	#[cfg(feature = "native")]
-	{
-		true
-	}
-	#[cfg(not(feature = "native"))]
-	{
-		false
-	}
-}
-
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	let value = math_parser::evaluate(expression)

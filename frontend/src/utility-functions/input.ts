@@ -7,7 +7,6 @@ import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
-import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;
@@ -36,9 +35,9 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 
 	// Cut, copy, and paste is handled in the backend on desktop
-	if (isPlatformNative() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+	if (import.meta.env.MODE === "native" && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
 	// But on web, we want to not redirect paste
-	if (!isPlatformNative() && key === "KeyV" && accelKey) return false;
+	if (import.meta.env.MODE !== "native" && key === "KeyV" && accelKey) return false;
 
 	// Don't redirect user input from text entry into HTML elements
 	if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
@@ -57,7 +56,7 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	if (window.document.querySelector("[data-floating-menu-content]")) return false;
 
 	// Web-only keyboard shortcuts
-	if (!isPlatformNative()) {
+	if (import.meta.env.MODE !== "native") {
 		// Don't redirect a fullscreen request, but process it immediately instead
 		if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
 			e.preventDefault();

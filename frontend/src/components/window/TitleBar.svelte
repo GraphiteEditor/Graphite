@@ -10,7 +10,6 @@
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "/src/utility-functions/widgets";
 	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
-	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
@@ -22,8 +21,8 @@
 
 	let menuBarLayout: Layout = [];
 
-	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (isPlatformNative() && $appWindow.fullscreen);
-	$: isFullscreen = isPlatformNative() ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
+	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (import.meta.env.MODE === "native" && $appWindow.fullscreen);
+	$: isFullscreen = import.meta.env.MODE === "native" ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
 	// On Mac, the menu bar height needs to be scaled by the inverse of the UI scale to fit its native window buttons
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
@@ -59,7 +58,7 @@
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
-						if (isPlatformNative()) editor.appWindowFullscreen();
+						if (import.meta.env.MODE === "native") editor.appWindowFullscreen();
 						else ($fullscreen.windowFullscreen ? exitFullscreen : enterFullscreen)();
 					}}
 				>

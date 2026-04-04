@@ -4,7 +4,7 @@
 	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import { evaluateMathExpression, isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { evaluateMathExpression } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
@@ -391,7 +391,7 @@
 		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
 		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
 		const isSafari = browserVersion().toLowerCase().includes("safari");
-		const usePointerLock = !isSafari && !isPlatformNative();
+		const usePointerLock = !isSafari && import.meta.env.MODE !== "native";
 
 		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
 		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
@@ -404,7 +404,7 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
-		if (isPlatformNative()) {
+		if (import.meta.env.MODE === "native") {
 			editor.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
