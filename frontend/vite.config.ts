@@ -11,7 +11,7 @@ const projectRootDir = path.resolve(__dirname);
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
 	return {
-		plugins: [svelte(), staticAssets(), mode !== "native" && thirdPartyLicenses(), mode !== "native" && serviceWorker()],
+		plugins: [svelteGlobalStyles(), svelte(), staticAssets(), mode !== "native" && thirdPartyLicenses(), mode !== "native" && serviceWorker()],
 		resolve: {
 			alias: [{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") }],
 		},
@@ -21,6 +21,19 @@ export default defineConfig(({ mode }) => {
 		},
 	};
 });
+
+// Wraps the content of every `<style lang="scss">...</style>` block in Svelte components with `:global { ... }` to work around Svelte's unwanted scoped styles
+function svelteGlobalStyles(): PluginOption {
+	return {
+		name: "svelte-global-styles",
+		enforce: "pre",
+		transform(code, id) {
+			if (!id.endsWith(".svelte")) return;
+
+			return code.replace(/<style(?=\s|>)([^>]*)>(.*?)<\/style>/gs, (_, attrs, content) => `<style${attrs}>\n:global {\n${content}\n}\n</style>`);
+		},
+	};
+}
 
 function staticAssets(): PluginOption {
 	const STATIC_ASSET_DIRS: { source: string; urlPrefix: string }[] = [

@@ -250,7 +250,7 @@
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.panel {
 		background: var(--color-1-nearblack);
 		border-radius: 6px;

@@ -813,7 +813,7 @@
 	></div>
 {/if}
 
-<style lang="scss" global>
+<style lang="scss">
 	.graph {
 		position: relative;
 		overflow: hidden;
@@ -996,7 +996,7 @@
 			z-index: 1;
 
 			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
-			:where(.graph-view.open & > *) {
+			:where(.graph-view.open .graph .imports-and-exports > *) {
 				pointer-events: auto;
 			}
 
@@ -1098,7 +1098,7 @@
 			height: 100%;
 
 			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
-			:where(.graph-view.open & > *) {
+			:where(.graph-view.open .graph .layers-and-nodes > *) {
 				pointer-events: auto;
 			}
 		}

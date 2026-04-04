@@ -689,7 +689,7 @@
 	</LayoutRow>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.layers {
 		// Control bar
 		.control-bar {

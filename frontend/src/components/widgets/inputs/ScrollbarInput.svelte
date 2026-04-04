@@ -214,7 +214,7 @@
 	<button class="arrow increase" on:pointerdown={() => pressArrow(1)} tabindex="-1" data-scrollbar-arrow></button>
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.scrollbar-input {
 		display: flex;
 		flex: 1 1 100%;

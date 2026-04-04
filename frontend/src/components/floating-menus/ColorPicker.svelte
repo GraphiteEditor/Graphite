@@ -732,7 +732,7 @@
 	</LayoutRow>
 </FloatingMenu>
 
-<style lang="scss" global>
+<style lang="scss">
 	.color-picker {
 		--widget-height: 24px;
 		--picker-size: 256px;

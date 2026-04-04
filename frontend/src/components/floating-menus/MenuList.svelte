@@ -560,7 +560,7 @@
 	</LayoutCol>
 </FloatingMenu>
 
-<style lang="scss" global>
+<style lang="scss">
 	.menu-list {
 		.search {
 			margin: 4px;

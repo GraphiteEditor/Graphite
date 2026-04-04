@@ -500,7 +500,7 @@
 	{/if}
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.floating-menu {
 		position: absolute;
 		width: 0;

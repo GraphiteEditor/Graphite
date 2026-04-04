@@ -56,7 +56,7 @@
 	/>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.color-button {
 		position: relative;
 		min-width: 80px;

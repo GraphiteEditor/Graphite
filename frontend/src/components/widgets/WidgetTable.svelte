@@ -22,7 +22,7 @@
 	</tbody>
 </table>
 
-<style lang="scss" global>
+<style lang="scss">
 	table:not(.unstyled) {
 		background: var(--color-3-darkgray);
 		border: none;

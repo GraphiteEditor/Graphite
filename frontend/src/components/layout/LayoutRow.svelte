@@ -90,7 +90,7 @@ on:touchcancel
 on:touchend
 -->
 
-<style lang="scss" global>
+<style lang="scss">
 	.layout-row {
 		display: flex;
 		flex-direction: row;

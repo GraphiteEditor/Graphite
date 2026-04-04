@@ -63,7 +63,7 @@
 	</label>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.checkbox-input {
 		flex: 0 0 auto;
 		align-items: center;

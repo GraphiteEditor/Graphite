@@ -30,7 +30,7 @@
 	alt=""
 />
 
-<style lang="scss" global>
+<style lang="scss">
 	.image-label {
 		width: auto;
 		height: auto;
