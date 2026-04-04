@@ -17,9 +17,10 @@ jobs:
 
       - name: ❄ Install Nix
         uses: DeterminateSystems/nix-installer-action@main
-
-      - name: 💾 Set up Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://graphite.cachix.org https://graphite-dev.cachix.org
+            extra-trusted-public-keys = graphite.cachix.org-1:B7Il1yMpkquN/dXM+5GRmz+4Xmu2aaCS1GcWNfFhsOo= graphite-dev.cachix.org-1:RppXYpiV1qO2TYKTkXXGHsAEQDOB5G51b3VlrN9QmbI=
 
       - name: 🏗 Build graphene raster nodes shaders
         run: nix build .#graphite-raster-nodes-shaders && cp result raster_nodes_shaders_entrypoint.wgsl
