@@ -69,8 +69,16 @@ impl ShapeType {
 
 	pub fn tooltip_description(&self) -> String {
 		(match self {
-			// TODO: Add descriptions to all the shape tools
-			_ => "",
+			Self::Polygon => "Draw a regular polygon.",
+			Self::Star => "Draw a star-shaped polygon.",
+			Self::Circle => "Draw a circle.",
+			Self::Arc => "Draw an arc or curved segment.",
+			Self::Spiral => "Draw a spiral shape.",
+			Self::Grid => "Draw a grid of equally sized rectangles.",
+			Self::Arrow => "Draw an arrow pointing in a specified direction.",
+			Self::Line => "Draw a straight line.",
+			Self::Rectangle => "Draw a rectangle or square.",
+			Self::Ellipse => "Draw an ellipse or circle.",
 		})
 		.into()
 	}
