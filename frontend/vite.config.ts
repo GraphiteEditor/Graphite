@@ -30,7 +30,7 @@ function svelteGlobalStyles(): PluginOption {
 		transform(code, id) {
 			if (!id.endsWith(".svelte")) return;
 
-			return code.replace(/<style lang="scss">(.*?)<\/style>/gs, (_, content) => `<style lang="scss">\n:global {\n${content}\n}\n</style>`);
+			return code.replace(/<style(?=\s|>)([^>]*)>(.*?)<\/style>/gs, (_, attrs, content) => `<style${attrs}>\n:global {\n${content}\n}\n</style>`);
 		},
 	};
 }
