@@ -130,7 +130,7 @@
 	{/each}
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.shortcut-label {
 		align-items: center;
 
@@ -157,7 +157,7 @@
 			}
 		}
 
-		.floating-menu-content .row > & {
+		.floating-menu-content .row > .shortcut-label {
 			.key-label,
 			.mouse-icon {
 				color: var(--color-8-uppergray);

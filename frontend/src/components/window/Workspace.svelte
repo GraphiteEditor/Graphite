@@ -203,7 +203,7 @@
 	</LayoutRow>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.workspace {
 		position: relative;
 		flex: 1 1 100%;

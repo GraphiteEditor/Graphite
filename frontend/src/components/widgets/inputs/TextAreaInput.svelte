@@ -63,5 +63,5 @@
 	bind:this={self}
 />
 
-<style lang="scss" global>
+<style lang="scss">
 </style>

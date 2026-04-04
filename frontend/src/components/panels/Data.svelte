@@ -28,7 +28,7 @@
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.data-panel {
 		flex-grow: 1;
 		padding: 4px;

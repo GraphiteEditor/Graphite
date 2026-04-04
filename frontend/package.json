@@ -48,7 +48,6 @@
 		"sass": "^1.98.0",
 		"svelte": "^5.54.1",
 		"svelte-check": "^4.4.5",
-		"svelte-preprocess": "^6.0.3",
 		"tar": "^7.5.12",
 		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.57.1",

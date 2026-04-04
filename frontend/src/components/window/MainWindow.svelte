@@ -41,7 +41,7 @@
 	{/if}
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.main-window {
 		height: 100%;
 		overflow: auto;

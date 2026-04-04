@@ -79,7 +79,7 @@
 	</LayoutRow>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.title-bar {
 		flex: 0 0 auto;
 		height: var(--height);

@@ -56,7 +56,7 @@
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.welcome-panel {
 		background: var(--color-2-mildblack);
 		margin: 4px;

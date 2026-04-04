@@ -794,7 +794,7 @@
 	{/if}
 </FieldInput>
 
-<style lang="scss" global>
+<style lang="scss">
 	.number-input {
 		&.narrow {
 			--widget-height: 20px;

@@ -414,7 +414,7 @@
 	</LayoutRow>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.spectrum-input {
 		position: relative;
 		--marker-half-width: 6px;

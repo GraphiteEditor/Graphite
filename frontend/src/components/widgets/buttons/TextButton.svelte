@@ -105,7 +105,7 @@
 	{/if}
 </ConditionalWrapper>
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-button-container {
 		display: flex;
 		position: relative;
@@ -196,12 +196,12 @@
 		}
 
 		// Custom styling for when multiple TextButton widgets are used next to one another in a row or column
-		.widget-span.row > & + .text-button,
-		.layout-row > & + .text-button {
+		.widget-span.row > .text-button + .text-button,
+		.layout-row > .text-button + .text-button {
 			margin-left: 8px;
 		}
-		.widget-span.column > & + .text-button,
-		.layout-column > & + .text-button {
+		.widget-span.column > .text-button + .text-button,
+		.layout-column > .text-button + .text-button {
 			margin-top: 8px;
 		}
 	}

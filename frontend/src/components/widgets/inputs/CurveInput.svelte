@@ -209,7 +209,7 @@
 	<slot />
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.curve-input {
 		background: var(--color-1-nearblack);
 		display: flex;
