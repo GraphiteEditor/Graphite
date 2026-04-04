@@ -5,7 +5,8 @@ use super::utility_types::network_interface::{self, NodeNetworkInterface, Transa
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
-	ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL,
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -624,6 +625,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::BlendSelectedLayers => {
+				self.handle_group_selected_layers(GroupFolderType::Blend, responses);
+			}
+			DocumentMessage::MorphSelectedLayers => {
+				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.handle_group_selected_layers(group_folder_type, responses);
@@ -1485,6 +1492,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
+				BlendSelectedLayers,
+				MorphSelectedLayers,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
@@ -2159,6 +2168,57 @@ impl DocumentMessageHandler {
 						insert_index,
 					});
 				}
+			}
+			GroupFolderType::Blend | GroupFolderType::Morph => {
+				let control_path_id = NodeId(generate_uuid());
+				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
+				let blend_count = matches!(group_folder_type, GroupFolderType::Blend).then(|| all_layers_to_group.len() * BLEND_COUNT_PER_LAYER);
+
+				responses.add(GraphOperationMessage::NewInterpolationLayer {
+					id: folder_id,
+					control_path_id,
+					parent,
+					insert_index,
+					blend_count,
+				});
+
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
+
+				// Move selected layers into the group as children
+				for layer_to_group in all_layers_to_group.into_iter().rev() {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_to_group,
+						parent: new_group_folder,
+						insert_index: 0,
+					});
+				}
+
+				// Connect the child stack to the control path layer as a co-parent
+				responses.add(GraphOperationMessage::ConnectInterpolationControlPathToChildren {
+					interpolation_layer_id: folder_id,
+					control_path_id,
+				});
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				// The control path layer (Blend Path / Morph Path) should start collapsed.
+				let instance_path = {
+					// Build instance path from root down to the control path layer, which is a sibling of the main layer under `parent`.
+					let mut instance_path: Vec<NodeId> = parent
+						.ancestors(network_interface.document_metadata())
+						.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+						.map(LayerNodeIdentifier::to_node)
+						.collect();
+					instance_path.reverse();
+					instance_path.push(control_path_id);
+					instance_path
+				};
+				responses.add(DocumentMessage::ToggleLayerExpansion { instance_path, recursive: false });
+
+				return folder_id;
 			}
 		}
 
