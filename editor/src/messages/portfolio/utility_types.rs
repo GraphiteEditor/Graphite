@@ -94,7 +94,7 @@ pub enum PanelType {
 }
 
 impl PanelType {
-	/// Returns the default panel group for this panel type. Only meaningful for dockable panels (not Document or Welcome).
+	/// Returns the default panel group for this panel type.
 	pub fn default_panel_group(self) -> PanelGroupId {
 		match self {
 			PanelType::Document => PanelGroupId::DocumentGroup,
@@ -218,12 +218,7 @@ impl WorkspacePanelLayout {
 
 	/// Check if a panel type is the active (visible) tab in any panel group.
 	pub fn is_panel_visible(&self, panel_type: PanelType) -> bool {
-		for group_id in [PanelGroupId::PropertiesGroup, PanelGroupId::LayersGroup, PanelGroupId::DataGroup] {
-			if self.panel_group(group_id).is_visible(panel_type) {
-				return true;
-			}
-		}
-		false
+		self.find_panel(panel_type).is_some_and(|group_id| self.panel_group(group_id).is_visible(panel_type))
 	}
 
 	/// Check if a panel type is present (as any tab) in any panel group, whether or not it's the active tab.

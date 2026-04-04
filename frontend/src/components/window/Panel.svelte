@@ -56,7 +56,7 @@
 	let tabGroupElement: LayoutRow | undefined = undefined;
 
 	onDestroy(() => {
-		removeDragListeners();
+		endDrag();
 	});
 
 	function onEmptySpaceAction(e: MouseEvent) {

@@ -492,7 +492,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+				// Refresh the moved panel's content in its new location
 				self.refresh_panel_content(panel_type, responses);
+
+				// Refresh the source panel group's newly active tab (if any remain) so it's not left stale
+				if let Some(new_source_active) = self.workspace_panel_layout.panel_group(source_group).active_panel_type() {
+					Self::destroy_panel_layouts(new_source_active, responses);
+					self.refresh_panel_content(new_source_active, responses);
+				}
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -1651,6 +1659,7 @@ impl PortfolioMessageHandler {
 			if let Some(index) = group.tabs.iter().position(|&t| t == panel_type) {
 				group.tabs.remove(index);
 				group.active_tab_index = group.active_tab_index.min(group.tabs.len().saturating_sub(1));
+				break;
 			}
 		}
 	}
