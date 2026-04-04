@@ -9,6 +9,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
@@ -194,14 +195,9 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
-	UpdateDataPanelState {
-		open: bool,
-	},
-	UpdatePropertiesPanelState {
-		open: bool,
-	},
-	UpdateLayersPanelState {
-		open: bool,
+	UpdateWorkspacePanelLayout {
+		#[serde(rename = "panelLayout")]
+		panel_layout: WorkspacePanelLayout,
 	},
 	UpdateLayout {
 		#[serde(rename = "layoutTarget")]

@@ -1021,8 +1021,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 			}
-			DocumentMessage::SetActivePanel { active_panel: panel } => {
-				match panel {
+			DocumentMessage::SetActivePanel { active_panel } => {
+				match active_panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
 							self.selection_network_path.clone_from(&self.breadcrumb_network_path);

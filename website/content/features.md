@@ -143,6 +143,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Blend tool to morph between shapes</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Dockable and multi-window panels</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Stable document format</span>
 		</div>
@@ -249,10 +253,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<!-- Beta 2 -->
 		<div class="feature-icon heading" data-year="2027">
 			<h3>— Beta 2 —</h3>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Dockable and multi-window panels</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 52" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />

@@ -72,7 +72,10 @@
 	.widget-section {
 		flex: 0 0 auto;
 		margin: 0 4px;
-		margin-top: 4px;
+
+		+ .widget-section {
+			margin-top: 4px;
+		}
 
 		.header {
 			text-align: left;
