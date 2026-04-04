@@ -74,7 +74,7 @@ impl ShapeType {
 			Self::Circle => "Draw a circle.",
 			Self::Arc => "Draw an arc or curved segment.",
 			Self::Spiral => "Draw a spiral shape.",
-			Self::Grid => "Draw a grid of equally sized rectangles.",
+			Self::Grid => "Draw a grid of equally sized cells.",
 			Self::Arrow => "Draw an arrow pointing in a specified direction.",
 			Self::Line => "Draw a straight line.",
 			Self::Rectangle => "Draw a rectangle or square.",
