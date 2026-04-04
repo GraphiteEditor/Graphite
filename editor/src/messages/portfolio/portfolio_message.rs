@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::PanelAreaId;
+use super::utility_types::PanelGroupId;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
@@ -62,8 +62,8 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	MovePanelTab {
-		source_area: PanelAreaId,
-		target_area: PanelAreaId,
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
 		insert_index: usize,
 	},
 	NewDocumentWithName {
@@ -135,15 +135,15 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		new_index: usize,
 	},
-	ReorderPanelAreaTab {
-		area: PanelAreaId,
+	ReorderPanelGroupTab {
+		group: PanelGroupId,
 		old_index: usize,
 		new_index: usize,
 	},
 	RequestWelcomeScreenButtonsLayout,
 	RequestStatusBarInfoLayout,
-	SetPanelAreaActiveTab {
-		area: PanelAreaId,
+	SetPanelGroupActiveTab {
+		group: PanelGroupId,
 		tab_index: usize,
 	},
 	SelectDocument {

@@ -94,13 +94,13 @@ pub enum PanelType {
 }
 
 impl PanelType {
-	/// Returns the default panel area for this panel type. Only meaningful for dockable panels (not Document or Welcome).
-	pub fn default_area(self) -> PanelAreaId {
+	/// Returns the default panel group for this panel type. Only meaningful for dockable panels (not Document or Welcome).
+	pub fn default_panel_group(self) -> PanelGroupId {
 		match self {
-			PanelType::Properties => PanelAreaId::Properties,
-			PanelType::Layers => PanelAreaId::Layers,
-			PanelType::Data => PanelAreaId::Data,
-			PanelType::Document | PanelType::Welcome => panic!("PanelType::{self:?} has no default area (not a dockable panel)"),
+			PanelType::Properties => PanelGroupId::Properties,
+			PanelType::Layers => PanelGroupId::Layers,
+			PanelType::Data => PanelGroupId::Data,
+			PanelType::Document | PanelType::Welcome => panic!("PanelType::{self:?} has no default panel group (not a dockable panel)"),
 		}
 	}
 }
@@ -118,34 +118,34 @@ impl From<String> for PanelType {
 	}
 }
 
-/// Identifies a panel area in the workspace that can hold tabbed panels.
+/// Identifies a panel group in the workspace that can hold tabbed panels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PanelAreaId {
+pub enum PanelGroupId {
 	Properties,
 	Layers,
 	Data,
 }
 
-impl From<String> for PanelAreaId {
+impl From<String> for PanelGroupId {
 	fn from(value: String) -> Self {
 		match value.as_str() {
-			"Properties" => PanelAreaId::Properties,
-			"Layers" => PanelAreaId::Layers,
-			"Data" => PanelAreaId::Data,
-			_ => panic!("Unknown panel area: {value}"),
+			"Properties" => PanelGroupId::Properties,
+			"Layers" => PanelGroupId::Layers,
+			"Data" => PanelGroupId::Data,
+			_ => panic!("Unknown panel group: {value}"),
 		}
 	}
 }
 
-/// State of a single panel area in the workspace.
+/// State of a single panel group in the workspace.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PanelAreaState {
+pub struct PanelGroupState {
 	pub tabs: Vec<PanelType>,
 	#[serde(rename = "activeTabIndex")]
 	pub active_tab_index: usize,
 }
 
-impl PanelAreaState {
+impl PanelGroupState {
 	pub fn active_panel_type(&self) -> Option<PanelType> {
 		self.tabs.get(self.active_tab_index).copied()
 	}
@@ -159,68 +159,68 @@ impl PanelAreaState {
 	}
 }
 
-/// The complete workspace panel layout describing which dockable panels are in which areas.
+/// The complete workspace panel layout describing which dockable panels are in which panel groups.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkspacePanelLayout {
-	#[serde(rename = "propertiesArea")]
-	pub properties_area: PanelAreaState,
-	#[serde(rename = "layersArea")]
-	pub layers_area: PanelAreaState,
-	#[serde(rename = "dataArea")]
-	pub data_area: PanelAreaState,
+	#[serde(rename = "propertiesGroup")]
+	pub properties_group: PanelGroupState,
+	#[serde(rename = "layersGroup")]
+	pub layers_group: PanelGroupState,
+	#[serde(rename = "dataGroup")]
+	pub data_group: PanelGroupState,
 }
 
 impl Default for WorkspacePanelLayout {
 	fn default() -> Self {
 		Self {
-			properties_area: PanelAreaState {
+			properties_group: PanelGroupState {
 				tabs: vec![PanelType::Properties],
 				active_tab_index: 0,
 			},
-			layers_area: PanelAreaState {
+			layers_group: PanelGroupState {
 				tabs: vec![PanelType::Layers],
 				active_tab_index: 0,
 			},
-			data_area: PanelAreaState { tabs: vec![], active_tab_index: 0 },
+			data_group: PanelGroupState { tabs: vec![], active_tab_index: 0 },
 		}
 	}
 }
 
 impl WorkspacePanelLayout {
-	pub fn panel_area(&self, panel_area_id: PanelAreaId) -> &PanelAreaState {
-		match panel_area_id {
-			PanelAreaId::Properties => &self.properties_area,
-			PanelAreaId::Layers => &self.layers_area,
-			PanelAreaId::Data => &self.data_area,
+	pub fn panel_group(&self, panel_group_id: PanelGroupId) -> &PanelGroupState {
+		match panel_group_id {
+			PanelGroupId::Properties => &self.properties_group,
+			PanelGroupId::Layers => &self.layers_group,
+			PanelGroupId::Data => &self.data_group,
 		}
 	}
 
-	pub fn panel_area_mut(&mut self, panel_area_id: PanelAreaId) -> &mut PanelAreaState {
-		match panel_area_id {
-			PanelAreaId::Properties => &mut self.properties_area,
-			PanelAreaId::Layers => &mut self.layers_area,
-			PanelAreaId::Data => &mut self.data_area,
+	pub fn panel_group_mut(&mut self, panel_group_id: PanelGroupId) -> &mut PanelGroupState {
+		match panel_group_id {
+			PanelGroupId::Properties => &mut self.properties_group,
+			PanelGroupId::Layers => &mut self.layers_group,
+			PanelGroupId::Data => &mut self.data_group,
 		}
 	}
 
-	/// Find which panel area contains a given panel type.
-	pub fn find_panel(&self, panel_type: PanelType) -> Option<PanelAreaId> {
-		[PanelAreaId::Properties, PanelAreaId::Layers, PanelAreaId::Data]
+	/// Find which panel group contains a given panel type.
+	pub fn find_panel(&self, panel_type: PanelType) -> Option<PanelGroupId> {
+		[PanelGroupId::Properties, PanelGroupId::Layers, PanelGroupId::Data]
 			.into_iter()
-			.find(|&area_id| self.panel_area(area_id).contains(panel_type))
+			.find(|&group_id| self.panel_group(group_id).contains(panel_type))
 	}
 
-	/// Check if a panel type is the active (visible) tab in any panel area.
+	/// Check if a panel type is the active (visible) tab in any panel group.
 	pub fn is_panel_visible(&self, panel_type: PanelType) -> bool {
-		for area_id in [PanelAreaId::Properties, PanelAreaId::Layers, PanelAreaId::Data] {
-			if self.panel_area(area_id).is_visible(panel_type) {
+		for group_id in [PanelGroupId::Properties, PanelGroupId::Layers, PanelGroupId::Data] {
+			if self.panel_group(group_id).is_visible(panel_type) {
 				return true;
 			}
 		}
 		false
 	}
 
-	/// Check if a panel type is present (as any tab) in any panel area, whether or not it's the active tab.
+	/// Check if a panel type is present (as any tab) in any panel group, whether or not it's the active tab.
 	pub fn is_panel_present(&self, panel_type: PanelType) -> bool {
 		self.find_panel(panel_type).is_some()
 	}

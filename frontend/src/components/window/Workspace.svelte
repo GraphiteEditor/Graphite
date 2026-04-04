@@ -25,9 +25,9 @@
 
 	// Reactive panel layout derived from backend state
 	$: panelLayout = $portfolio.panelLayout;
-	$: propertiesArea = panelLayout.propertiesArea;
-	$: layersArea = panelLayout.layersArea;
-	$: dataArea = panelLayout.dataArea;
+	$: propertiesGroup = panelLayout.propertiesGroup;
+	$: layersGroup = panelLayout.layersGroup;
+	$: dataGroup = panelLayout.dataGroup;
 
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
@@ -186,49 +186,49 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if dataArea.tabs.length > 0}
+			{#if dataGroup.tabs.length > 0}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["data"] }} data-subdivision-name="data">
 					<Panel
 						panelId="Data"
-						panelTypes={dataArea.tabs}
-						tabLabels={dataArea.tabs.map((name) => ({ name }))}
-						tabActiveIndex={dataArea.activeTabIndex}
-						clickAction={(tabIndex) => editor.setPanelAreaActiveTab("Data", tabIndex)}
-						reorderAction={(oldIndex, newIndex) => editor.reorderPanelAreaTab("Data", oldIndex, newIndex)}
+						panelTypes={dataGroup.tabs}
+						tabLabels={dataGroup.tabs.map((name) => ({ name }))}
+						tabActiveIndex={dataGroup.activeTabIndex}
+						clickAction={(tabIndex) => editor.setPanelGroupActiveTab("Data", tabIndex)}
+						reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("Data", oldIndex, newIndex)}
 						crossPanelDropAction={crossPanelDrop}
 					/>
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
-		{#if propertiesArea.tabs.length > 0 || layersArea.tabs.length > 0}
+		{#if propertiesGroup.tabs.length > 0 || layersGroup.tabs.length > 0}
 			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 			<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
-				{#if propertiesArea.tabs.length > 0}
+				{#if propertiesGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
 						<Panel
 							panelId="Properties"
-							panelTypes={propertiesArea.tabs}
-							tabLabels={propertiesArea.tabs.map((name) => ({ name }))}
-							tabActiveIndex={propertiesArea.activeTabIndex}
-							clickAction={(tabIndex) => editor.setPanelAreaActiveTab("Properties", tabIndex)}
-							reorderAction={(oldIndex, newIndex) => editor.reorderPanelAreaTab("Properties", oldIndex, newIndex)}
+							panelTypes={propertiesGroup.tabs}
+							tabLabels={propertiesGroup.tabs.map((name) => ({ name }))}
+							tabActiveIndex={propertiesGroup.activeTabIndex}
+							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("Properties", tabIndex)}
+							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("Properties", oldIndex, newIndex)}
 							crossPanelDropAction={crossPanelDrop}
 						/>
 					</LayoutRow>
 				{/if}
-				{#if propertiesArea.tabs.length > 0 && layersArea.tabs.length > 0}
+				{#if propertiesGroup.tabs.length > 0 && layersGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				{/if}
-				{#if layersArea.tabs.length > 0}
+				{#if layersGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
 						<Panel
 							panelId="Layers"
-							panelTypes={layersArea.tabs}
-							tabLabels={layersArea.tabs.map((name) => ({ name }))}
-							tabActiveIndex={layersArea.activeTabIndex}
-							clickAction={(tabIndex) => editor.setPanelAreaActiveTab("Layers", tabIndex)}
-							reorderAction={(oldIndex, newIndex) => editor.reorderPanelAreaTab("Layers", oldIndex, newIndex)}
+							panelTypes={layersGroup.tabs}
+							tabLabels={layersGroup.tabs.map((name) => ({ name }))}
+							tabActiveIndex={layersGroup.activeTabIndex}
+							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("Layers", tabIndex)}
+							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("Layers", oldIndex, newIndex)}
 							crossPanelDropAction={crossPanelDrop}
 						/>
 					</LayoutRow>

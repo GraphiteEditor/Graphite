@@ -434,26 +434,26 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = reorderPanelAreaTab)]
-	pub fn reorder_panel_area_tab(&self, area: String, old_index: usize, new_index: usize) {
-		let area = area.into();
-		let message = PortfolioMessage::ReorderPanelAreaTab { area, old_index, new_index };
+	#[wasm_bindgen(js_name = reorderPanelGroupTab)]
+	pub fn reorder_panel_group_tab(&self, group: String, old_index: usize, new_index: usize) {
+		let group = group.into();
+		let message = PortfolioMessage::ReorderPanelGroupTab { group, old_index, new_index };
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = movePanelTab)]
-	pub fn move_panel_tab(&self, source_area: String, target_area: String, insert_index: usize) {
+	pub fn move_panel_tab(&self, source_group: String, target_group: String, insert_index: usize) {
 		let message = PortfolioMessage::MovePanelTab {
-			source_area: source_area.into(),
-			target_area: target_area.into(),
+			source_group: source_group.into(),
+			target_group: target_group.into(),
 			insert_index,
 		};
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = setPanelAreaActiveTab)]
-	pub fn set_panel_area_active_tab(&self, area: String, tab_index: usize) {
-		let message = PortfolioMessage::SetPanelAreaActiveTab { area: area.into(), tab_index };
+	#[wasm_bindgen(js_name = setPanelGroupActiveTab)]
+	pub fn set_panel_group_active_tab(&self, group: String, tab_index: usize) {
+		let message = PortfolioMessage::SetPanelGroupActiveTab { group: group.into(), tab_index };
 		self.dispatch(message);
 	}
 

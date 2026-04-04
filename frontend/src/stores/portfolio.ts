@@ -8,15 +8,15 @@ import type { EditorWrapper, OpenDocument, PanelType } from "/wrapper/pkg/graphi
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
-export type PanelAreaState = {
+export type PanelGroupState = {
 	tabs: PanelType[];
 	activeTabIndex: number;
 };
 
 export type WorkspacePanelLayout = {
-	propertiesArea: PanelAreaState;
-	layersArea: PanelAreaState;
-	dataArea: PanelAreaState;
+	propertiesGroup: PanelGroupState;
+	layersGroup: PanelGroupState;
+	dataGroup: PanelGroupState;
 };
 
 type PortfolioStoreState = {
@@ -30,9 +30,9 @@ const initialState: PortfolioStoreState = {
 	documents: [],
 	activeDocumentIndex: 0,
 	panelLayout: {
-		propertiesArea: { tabs: ["Properties"], activeTabIndex: 0 },
-		layersArea: { tabs: ["Layers"], activeTabIndex: 0 },
-		dataArea: { tabs: [], activeTabIndex: 0 },
+		propertiesGroup: { tabs: ["Properties"], activeTabIndex: 0 },
+		layersGroup: { tabs: ["Layers"], activeTabIndex: 0 },
+		dataGroup: { tabs: [], activeTabIndex: 0 },
 	},
 };
 
@@ -117,9 +117,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
 		// Coerce activeTabIndex from BigInt (produced by serde_wasm_bindgen for usize) to number
 		const layout = data.panelLayout;
-		layout.propertiesArea.activeTabIndex = Number(layout.propertiesArea.activeTabIndex);
-		layout.layersArea.activeTabIndex = Number(layout.layersArea.activeTabIndex);
-		layout.dataArea.activeTabIndex = Number(layout.dataArea.activeTabIndex);
+		layout.propertiesGroup.activeTabIndex = Number(layout.propertiesGroup.activeTabIndex);
+		layout.layersGroup.activeTabIndex = Number(layout.layersGroup.activeTabIndex);
+		layout.dataGroup.activeTabIndex = Number(layout.dataGroup.activeTabIndex);
 
 		update((state) => {
 			state.panelLayout = layout;
