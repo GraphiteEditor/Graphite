@@ -1116,9 +1116,61 @@ impl Render for Table<Vector> {
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
 				if let Some(stroke) = row.element.style.stroke() {
-					let color = match stroke.color {
-						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-						None => peniko::Color::TRANSPARENT,
+					let (brush, brush_transform) = match &stroke.paint {
+						Fill::Solid(color) => (peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])), None),
+						Fill::Gradient(gradient) => {
+							let mut stops = peniko::ColorStops::new();
+							for (position, color, _) in gradient.stops.interpolated_samples() {
+								stops.push(peniko::ColorStop {
+									offset: position as f32,
+									color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+								});
+							}
+
+							let bounds = row.element.nonzero_bounding_box();
+							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+							let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+								parent_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
+
+							let start = mod_points.transform_point2(gradient.start);
+							let end = mod_points.transform_point2(gradient.end);
+
+							let fill = peniko::Brush::Gradient(peniko::Gradient {
+								kind: match gradient.gradient_type {
+									GradientType::Linear => peniko::LinearGradientPosition {
+										start: to_point(start),
+										end: to_point(end),
+									}
+									.into(),
+									GradientType::Radial => {
+										let radius = start.distance(end);
+										peniko::RadialGradientPosition {
+											start_center: to_point(start),
+											start_radius: 0.,
+											end_center: to_point(start),
+											end_radius: radius as f32,
+										}
+										.into()
+									}
+								},
+								stops,
+								interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+								..Default::default()
+							});
+							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+								element_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							(fill, Some(brush_transform))
+						}
+						Fill::None => (peniko::Brush::Solid(peniko::Color::TRANSPARENT), None),
 					};
 					let cap = match stroke.cap {
 						StrokeCap::Butt => Cap::Butt,
@@ -1131,7 +1183,7 @@ impl Render for Table<Vector> {
 						StrokeJoin::Round => Join::Round,
 					};
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
-					let stroke = kurbo::Stroke {
+					let kurbo_stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
 						join,
@@ -1141,8 +1193,8 @@ impl Render for Table<Vector> {
 						dash_offset: stroke.dash_offset,
 					};
 
-					if stroke.width > 0. {
-						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+					if stroke.weight > 0. {
+						scene.stroke(&kurbo_stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, brush_transform, &path);
 					}
 				}
 			};
@@ -1617,11 +1669,153 @@ impl Render for Table<Color> {
 	}
 }
 
+impl Render for Table<vector_types::vector::style::Fill> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for row in self.iter() {
+			match &row.element {
+				vector_types::vector::style::Fill::None => {}
+				vector_types::vector::style::Fill::Solid(color) => {
+					render.leaf_tag("polyline", |attributes| {
+						// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
+						let max = u64::MAX;
+						attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+
+						attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+						if color.a() < 1. {
+							attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
+						}
+
+						let opacity = row.alpha_blending.opacity(render_params.for_mask);
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+
+						if row.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", row.alpha_blending.blend_mode.render());
+						}
+					});
+				}
+				vector_types::vector::style::Fill::Gradient(gradient) => {
+					render.leaf_tag("polyline", |attributes| {
+						// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
+						let max = u64::MAX;
+						attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+
+						let mut stop_string = String::new();
+						for (position, color, original_midpoint) in gradient.stops.interpolated_samples() {
+							let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
+							if color.a() < 1. {
+								let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
+							}
+							if let Some(midpoint) = original_midpoint {
+								let _ = write!(stop_string, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
+							}
+							stop_string.push_str(" />");
+						}
+
+						let gradient_transform = render_params.footprint.transform * *row.transform;
+						let gradient_transform_matrix = format_transform_matrix(gradient_transform);
+						let gradient_transform_attribute = if gradient_transform_matrix.is_empty() {
+							String::new()
+						} else {
+							format!(r#" gradientTransform="{gradient_transform_matrix}""#)
+						};
+
+						let gradient_id = generate_uuid();
+						let start = gradient.start;
+						let end = gradient.end;
+
+						match gradient.gradient_type {
+							vector_types::vector::style::GradientType::Linear => {
+								let (x1, y1) = (start.x, start.y);
+								let (x2, y2) = (end.x, end.y);
+								let _ = write!(
+									&mut attributes.0.svg_defs,
+									r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+								);
+							}
+							vector_types::vector::style::GradientType::Radial => {
+								let (cx, cy) = (start.x, start.y);
+								let r = start.distance(end);
+								let _ = write!(
+									&mut attributes.0.svg_defs,
+									r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="{cx}" cy="{cy}" r="{r}"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+								);
+							}
+						}
+
+						attributes.push("fill", format!("url('#{gradient_id}')"));
+
+						let opacity = row.alpha_blending.opacity(render_params.for_mask);
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+
+						if row.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", row.alpha_blending.blend_mode.render());
+						}
+					});
+				}
+			}
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		use vello::peniko;
+
+		for row in self.iter() {
+			let alpha_blending = *row.alpha_blending;
+			let blend_mode = alpha_blending.blend_mode.to_peniko();
+			let opacity = alpha_blending.opacity(render_params.for_mask);
+
+			let color = match &row.element {
+				vector_types::vector::style::Fill::None => continue,
+				vector_types::vector::style::Fill::Solid(color) => *color,
+				vector_types::vector::style::Fill::Gradient(gradient) => gradient.stops.color.first().copied().unwrap_or(Color::MAGENTA),
+			};
+
+			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+
+			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
+
+			let mut layer = false;
+			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+				layer = true;
+			}
+
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
+
+			if layer {
+				scene.pop_layer();
+			}
+		}
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		if let Some(element_id) = element_id {
+			metadata.upstream_footprints.insert(element_id, footprint);
+
+			// TODO: Find a way to handle more than the first row
+			if let Some(row) = self.iter().next() {
+				metadata.local_transforms.insert(element_id, *row.transform);
+			}
+		}
+	}
+
+	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn contains_artboard(&self) -> bool {
+		false
+	}
+}
+
 impl Render for Table<GradientStops> {
 	// TODO: Fix infinite gradient rendering
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
-			render.leaf_tag("rect", |attributes| {
+			render.leaf_tag("polyline", |attributes| {
 				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
 				let max = u64::MAX;
 				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));

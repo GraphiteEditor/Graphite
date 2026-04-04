@@ -664,7 +664,7 @@ fn set_import_child_positions(
 fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsContext, transform: DAffine2) {
 	if let usvg::Paint::Color(color) = &stroke.paint() {
 		modify_inputs.stroke_set(Stroke {
-			color: Some(usvg_color(*color, stroke.opacity().get())),
+			paint: Fill::Solid(usvg_color(*color, stroke.opacity().get())),
 			weight: stroke.width().get() as f64,
 			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
 			dash_offset: stroke.dashoffset() as f64,
@@ -683,6 +683,7 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 			align: StrokeAlign::Center,
 			paint_order: PaintOrder::StrokeAbove,
 			transform,
+			non_scaling: false,
 		})
 	}
 }

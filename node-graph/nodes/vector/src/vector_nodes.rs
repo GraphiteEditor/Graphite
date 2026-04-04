@@ -135,11 +135,11 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<GradientStops>,
 		Gradient,
 	)]
-	fill: F,
-	_backup_color: Table<Color>,
-	_backup_gradient: Gradient,
+	color: F,
+	#[default(Table::new())] _backup_color: Table<Color>,
+	#[default(Gradient::default())] _backup_gradient: Gradient,
 ) -> V {
-	let fill: Fill = fill.into();
+	let fill: Fill = color.into();
 	for vector in content.vector_iter_mut() {
 		vector.element.style.set_fill(fill.clone());
 	}
@@ -168,14 +168,65 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec>(
+async fn stroke<V, L: IntoF64Vec, F: Into<Fill> + 'n + Send>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Table<Vector>, Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>, Table<Graphic>)]
+	#[implementations(
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+	)]
 	mut content: Table<V>,
 	/// The stroke color.
 	#[default(Color::BLACK)]
-	color: Table<Color>,
+	#[implementations(
+		Fill,
+		Fill,
+		Fill,
+		Table<Color>,
+		Table<Color>,
+		Table<Color>,
+		Table<GradientStops>,
+		Table<GradientStops>,
+		Table<GradientStops>,
+		Gradient,
+		Gradient,
+		Gradient,
+		Fill,
+		Fill,
+		Fill,
+		Table<Color>,
+		Table<Color>,
+		Table<Color>,
+		Table<GradientStops>,
+		Table<GradientStops>,
+		Table<GradientStops>,
+		Gradient,
+		Gradient,
+		Gradient,
+	)]
+	color: F,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -191,19 +242,47 @@ async fn stroke<V, L: IntoF64Vec>(
 	miter_limit: f64,
 	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
+	#[default(PaintOrder::StrokeAbove)]
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(Vec<f64>, f64, String, Vec<f64>, f64, String)]
+	#[implementations(
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+	)]
 	dash_lengths: L,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
+	#[default(Table::new())] _backup_color: Table<Color>,
+	#[default(Gradient::default())] _backup_gradient: Gradient,
 ) -> Table<V>
 where
 	Table<V>: VectorTableIterMut + 'n + Send,
 {
 	let stroke = Stroke {
-		color: color.into(),
+		paint: color.into(),
 		weight,
 		dash_lengths: dash_lengths.into_vec(),
 		dash_offset,
@@ -212,6 +291,7 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
+		non_scaling: false,
 		paint_order,
 	};
 
@@ -1202,7 +1282,28 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			// We set the solidified stroke's fill to the stroke's color and without a stroke.
 			if let Some(stroke) = vector.style.stroke() {
-				solidified_stroke.style.set_fill(Fill::solid_or_none(stroke.color));
+				let mut paint = stroke.paint.clone();
+
+				// Remap gradient start/end from the original bounding box space to the new solidified bounding box space
+				if let Fill::Gradient(ref mut gradient) = paint {
+					let old_bounds = vector.nonzero_bounding_box();
+					let new_bounds = solidified_stroke.nonzero_bounding_box();
+
+					let old_size = old_bounds[1] - old_bounds[0];
+					let new_size = new_bounds[1] - new_bounds[0];
+
+					// Only remap if new_size is non-zero to avoid division by zero
+					if new_size != DVec2::ZERO {
+						// Transform: old_bounds normalized → world → new_bounds normalized
+						// point_world = old_bounds[0] + point_normalized * old_size
+						// point_new_normalized = (point_world - new_bounds[0]) / new_size
+						gradient.start = (old_bounds[0] + gradient.start * old_size - new_bounds[0]) / new_size;
+						gradient.end = (old_bounds[0] + gradient.end * old_size - new_bounds[0]) / new_size;
+					}
+				}
+
+				solidified_stroke.style.set_fill(paint);
+				solidified_stroke.style.clear_stroke();
 			}
 
 			let stroke_row = TableRow {

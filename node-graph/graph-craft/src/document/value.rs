@@ -407,9 +407,34 @@ impl TaggedValue {
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					// `Color` (not in a table) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
 					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
-					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
+					() if ty == TypeId::of::<Table<Color>>() => {
+						if string.trim().replace(' ', "") == "Table::new()" {
+							Some(TaggedValue::Color(Table::new()))
+						} else {
+							to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))
+						}
+					}?,
+					() if ty == TypeId::of::<Table<GradientStops>>() => {
+						if string.trim().replace(' ', "") == "Table::new()" {
+							Some(TaggedValue::GradientTable(Table::new()))
+						} else {
+							to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))
+						}
+					}?,
+					() if ty == TypeId::of::<Fill>() => {
+						if string.trim().replace(' ', "") == "Fill::default()" {
+							Some(TaggedValue::Fill(Fill::default()))
+						} else {
+							to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))
+						}
+					}?,
+					() if ty == TypeId::of::<graphic_types::vector_types::vector::style::Gradient>() => {
+						if string.trim().replace(' ', "") == "Gradient::default()" {
+							Some(TaggedValue::Gradient(graphic_types::vector_types::vector::style::Gradient::default()))
+						} else {
+							None
+						}
+					}?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
 				};

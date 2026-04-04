@@ -180,7 +180,7 @@ mod test_fill {
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
-		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
+		instrumented.grab_all_input::<fill::ColorInput<Fill>>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
