@@ -97,10 +97,11 @@ impl PanelType {
 	/// Returns the default panel group for this panel type. Only meaningful for dockable panels (not Document or Welcome).
 	pub fn default_panel_group(self) -> PanelGroupId {
 		match self {
-			PanelType::Properties => PanelGroupId::Properties,
-			PanelType::Layers => PanelGroupId::Layers,
-			PanelType::Data => PanelGroupId::Data,
-			PanelType::Document | PanelType::Welcome => panic!("PanelType::{self:?} has no default panel group (not a dockable panel)"),
+			PanelType::Document => PanelGroupId::DocumentGroup,
+			PanelType::Properties => PanelGroupId::PropertiesGroup,
+			PanelType::Layers => PanelGroupId::LayersGroup,
+			PanelType::Data => PanelGroupId::DataGroup,
+			PanelType::Welcome => panic!("PanelType::{self:?} has no default panel group (not a dockable panel)"),
 		}
 	}
 }
@@ -119,19 +120,22 @@ impl From<String> for PanelType {
 }
 
 /// Identifies a panel group in the workspace that can hold tabbed panels.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PanelGroupId {
-	Properties,
-	Layers,
-	Data,
+	DocumentGroup,
+	PropertiesGroup,
+	LayersGroup,
+	DataGroup,
 }
 
 impl From<String> for PanelGroupId {
 	fn from(value: String) -> Self {
 		match value.as_str() {
-			"Properties" => PanelGroupId::Properties,
-			"Layers" => PanelGroupId::Layers,
-			"Data" => PanelGroupId::Data,
+			"DocumentGroup" => PanelGroupId::DocumentGroup,
+			"PropertiesGroup" => PanelGroupId::PropertiesGroup,
+			"LayersGroup" => PanelGroupId::LayersGroup,
+			"DataGroup" => PanelGroupId::DataGroup,
 			_ => panic!("Unknown panel group: {value}"),
 		}
 	}
@@ -189,30 +193,32 @@ impl Default for WorkspacePanelLayout {
 impl WorkspacePanelLayout {
 	pub fn panel_group(&self, panel_group_id: PanelGroupId) -> &PanelGroupState {
 		match panel_group_id {
-			PanelGroupId::Properties => &self.properties_group,
-			PanelGroupId::Layers => &self.layers_group,
-			PanelGroupId::Data => &self.data_group,
+			PanelGroupId::DocumentGroup => panic!("PanelGroupId::{panel_group_id:?} is not a dockable panel group"),
+			PanelGroupId::PropertiesGroup => &self.properties_group,
+			PanelGroupId::LayersGroup => &self.layers_group,
+			PanelGroupId::DataGroup => &self.data_group,
 		}
 	}
 
 	pub fn panel_group_mut(&mut self, panel_group_id: PanelGroupId) -> &mut PanelGroupState {
 		match panel_group_id {
-			PanelGroupId::Properties => &mut self.properties_group,
-			PanelGroupId::Layers => &mut self.layers_group,
-			PanelGroupId::Data => &mut self.data_group,
+			PanelGroupId::DocumentGroup => panic!("PanelGroupId::{panel_group_id:?} is not a dockable panel group"),
+			PanelGroupId::PropertiesGroup => &mut self.properties_group,
+			PanelGroupId::LayersGroup => &mut self.layers_group,
+			PanelGroupId::DataGroup => &mut self.data_group,
 		}
 	}
 
 	/// Find which panel group contains a given panel type.
 	pub fn find_panel(&self, panel_type: PanelType) -> Option<PanelGroupId> {
-		[PanelGroupId::Properties, PanelGroupId::Layers, PanelGroupId::Data]
+		[PanelGroupId::PropertiesGroup, PanelGroupId::LayersGroup, PanelGroupId::DataGroup]
 			.into_iter()
 			.find(|&group_id| self.panel_group(group_id).contains(panel_type))
 	}
 
 	/// Check if a panel type is the active (visible) tab in any panel group.
 	pub fn is_panel_visible(&self, panel_type: PanelType) -> bool {
-		for group_id in [PanelGroupId::Properties, PanelGroupId::Layers, PanelGroupId::Data] {
+		for group_id in [PanelGroupId::PropertiesGroup, PanelGroupId::LayersGroup, PanelGroupId::DataGroup] {
 			if self.panel_group(group_id).is_visible(panel_type) {
 				return true;
 			}

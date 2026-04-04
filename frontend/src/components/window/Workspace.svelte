@@ -173,7 +173,7 @@
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
 				<Panel
 					class="document-panel"
-					panelId="Document"
+					panelId="DocumentGroup"
 					panelTypes={$portfolio.documents.length > 0 ? $portfolio.documents.map(() => "Document") : ["Welcome"]}
 					tabCloseButtons={true}
 					tabMinWidths={true}
@@ -190,12 +190,12 @@
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["data"] }} data-subdivision-name="data">
 					<Panel
-						panelId="Data"
+						panelId="DataGroup"
 						panelTypes={dataGroup.tabs}
 						tabLabels={dataGroup.tabs.map((name) => ({ name }))}
 						tabActiveIndex={dataGroup.activeTabIndex}
-						clickAction={(tabIndex) => editor.setPanelGroupActiveTab("Data", tabIndex)}
-						reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("Data", oldIndex, newIndex)}
+						clickAction={(tabIndex) => editor.setPanelGroupActiveTab("DataGroup", tabIndex)}
+						reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("DataGroup", oldIndex, newIndex)}
 						crossPanelDropAction={crossPanelDrop}
 					/>
 				</LayoutRow>
@@ -207,12 +207,12 @@
 				{#if propertiesGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
 						<Panel
-							panelId="Properties"
+							panelId="PropertiesGroup"
 							panelTypes={propertiesGroup.tabs}
 							tabLabels={propertiesGroup.tabs.map((name) => ({ name }))}
 							tabActiveIndex={propertiesGroup.activeTabIndex}
-							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("Properties", tabIndex)}
-							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("Properties", oldIndex, newIndex)}
+							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("PropertiesGroup", tabIndex)}
+							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("PropertiesGroup", oldIndex, newIndex)}
 							crossPanelDropAction={crossPanelDrop}
 						/>
 					</LayoutRow>
@@ -223,12 +223,12 @@
 				{#if layersGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
 						<Panel
-							panelId="Layers"
+							panelId="LayersGroup"
 							panelTypes={layersGroup.tabs}
 							tabLabels={layersGroup.tabs.map((name) => ({ name }))}
 							tabActiveIndex={layersGroup.activeTabIndex}
-							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("Layers", tabIndex)}
-							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("Layers", oldIndex, newIndex)}
+							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("LayersGroup", tabIndex)}
+							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("LayersGroup", oldIndex, newIndex)}
 							crossPanelDropAction={crossPanelDrop}
 						/>
 					</LayoutRow>

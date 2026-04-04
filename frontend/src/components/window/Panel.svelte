@@ -10,7 +10,7 @@
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { panelDrag, startCrossPanelDrag, endCrossPanelDrag, updateCrossPanelHover } from "/src/stores/panel-drag";
-	import type { EditorWrapper, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, PanelType, PanelGroupId } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const PANEL_COMPONENTS = {
 		Welcome,
@@ -31,7 +31,7 @@
 	export let tabLabels: { name: string; unsaved?: boolean; tooltipLabel?: string; tooltipDescription?: string; tooltipShortcut?: string }[];
 	export let tabActiveIndex: number;
 	export let panelTypes: PanelType[];
-	export let panelId: string;
+	export let panelId: PanelGroupId;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;

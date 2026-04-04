@@ -1646,7 +1646,7 @@ impl PortfolioMessageHandler {
 
 	/// Remove a dockable panel type from whichever panel group currently contains it.
 	fn remove_panel_from_layout(&mut self, panel_type: PanelType) {
-		for group_id in [PanelGroupId::Properties, PanelGroupId::Layers, PanelGroupId::Data] {
+		for group_id in [PanelGroupId::PropertiesGroup, PanelGroupId::LayersGroup, PanelGroupId::DataGroup] {
 			let group = self.workspace_panel_layout.panel_group_mut(group_id);
 			if let Some(index) = group.tabs.iter().position(|&t| t == panel_type) {
 				group.tabs.remove(index);
