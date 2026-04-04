@@ -156,34 +156,34 @@
 				fill: var(--color-8-uppergray);
 			}
 		}
+	}
 
-		.floating-menu-content .row > .shortcut-label {
-			.key-label,
-			.mouse-icon {
-				color: var(--color-8-uppergray);
-				background: none;
+	.floating-menu-content .row > .shortcut-label {
+		.key-label,
+		.mouse-icon {
+			color: var(--color-8-uppergray);
+			background: none;
 
-				&:first-child {
-					padding-left: 0;
-				}
-
-				&:last-child {
-					padding-right: 0;
-				}
+			&:first-child {
+				padding-left: 0;
 			}
 
-			.key-label svg {
-				fill: var(--color-8-uppergray);
+			&:last-child {
+				padding-right: 0;
 			}
+		}
 
-			.mouse-icon svg {
-				// 3 shades brighter than the 8-uppergray of key labels/icons
-				fill: var(--color-b-lightgray);
+		.key-label svg {
+			fill: var(--color-8-uppergray);
+		}
 
-				.dim {
-					// 3 shades darker than the 8-uppergray of key labels/icons
-					fill: var(--color-5-dullgray);
-				}
+		.mouse-icon svg {
+			// 3 shades brighter than the 8-uppergray of key labels/icons
+			fill: var(--color-b-lightgray);
+
+			.dim {
+				// 3 shades darker than the 8-uppergray of key labels/icons
+				fill: var(--color-5-dullgray);
 			}
 		}
 	}
