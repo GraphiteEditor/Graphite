@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
@@ -234,9 +235,10 @@ impl Dispatcher {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
 					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.focus_document;
-					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
-					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
-					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
+					let layout = &self.message_handlers.portfolio_message_handler.workspace_panel_layout;
+					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
+					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
+					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 

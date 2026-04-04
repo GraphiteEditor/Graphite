@@ -4,25 +4,36 @@ import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { storeDocumentTabOrder } from "/src/utility-functions/persistence";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, OpenDocument } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, OpenDocument, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
+
+export type PanelGroupState = {
+	tabs: PanelType[];
+	activeTabIndex: number;
+};
+
+export type WorkspacePanelLayout = {
+	propertiesGroup: PanelGroupState;
+	layersGroup: PanelGroupState;
+	dataGroup: PanelGroupState;
+};
 
 type PortfolioStoreState = {
 	unsaved: boolean;
 	documents: OpenDocument[];
 	activeDocumentIndex: number;
-	dataPanelOpen: boolean;
-	propertiesPanelOpen: boolean;
-	layersPanelOpen: boolean;
+	panelLayout: WorkspacePanelLayout;
 };
 const initialState: PortfolioStoreState = {
 	unsaved: false,
 	documents: [],
 	activeDocumentIndex: 0,
-	dataPanelOpen: false,
-	propertiesPanelOpen: true,
-	layersPanelOpen: true,
+	panelLayout: {
+		propertiesGroup: { tabs: ["Properties"], activeTabIndex: 0 },
+		layersGroup: { tabs: ["Layers"], activeTabIndex: 0 },
+		dataGroup: { tabs: [], activeTabIndex: 0 },
+	},
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -103,23 +114,15 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateDataPanelState", async (data) => {
-		update((state) => {
-			state.dataPanelOpen = data.open;
-			return state;
-		});
-	});
+	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
+		// Coerce activeTabIndex from BigInt (produced by serde_wasm_bindgen for usize) to number
+		const layout = data.panelLayout;
+		layout.propertiesGroup.activeTabIndex = Number(layout.propertiesGroup.activeTabIndex);
+		layout.layersGroup.activeTabIndex = Number(layout.layersGroup.activeTabIndex);
+		layout.dataGroup.activeTabIndex = Number(layout.dataGroup.activeTabIndex);
 
-	subscriptions.subscribeFrontendMessage("UpdatePropertiesPanelState", async (data) => {
 		update((state) => {
-			state.propertiesPanelOpen = data.open;
-			return state;
-		});
-	});
-
-	subscriptions.subscribeFrontendMessage("UpdateLayersPanelState", async (data) => {
-		update((state) => {
-			state.layersPanelOpen = data.open;
+			state.panelLayout = layout;
 			return state;
 		});
 	});
@@ -139,7 +142,5 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
-	subscriptions.unsubscribeFrontendMessage("UpdateDataPanelState");
-	subscriptions.unsubscribeFrontendMessage("UpdatePropertiesPanelState");
-	subscriptions.unsubscribeFrontendMessage("UpdateLayersPanelState");
+	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 }

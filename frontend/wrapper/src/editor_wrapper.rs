@@ -434,6 +434,29 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = reorderPanelGroupTab)]
+	pub fn reorder_panel_group_tab(&self, group: String, old_index: usize, new_index: usize) {
+		let group = group.into();
+		let message = PortfolioMessage::ReorderPanelGroupTab { group, old_index, new_index };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = movePanelTab)]
+	pub fn move_panel_tab(&self, source_group: String, target_group: String, insert_index: usize) {
+		let message = PortfolioMessage::MovePanelTab {
+			source_group: source_group.into(),
+			target_group: target_group.into(),
+			insert_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = setPanelGroupActiveTab)]
+	pub fn set_panel_group_active_tab(&self, group: String, tab_index: usize) {
+		let message = PortfolioMessage::SetPanelGroupActiveTab { group: group.into(), tab_index };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = closeDocumentWithConfirmation)]
 	pub fn close_document_with_confirmation(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
@@ -874,7 +897,7 @@ impl EditorWrapper {
 	/// Set the active panel to the most recently clicked panel
 	#[wasm_bindgen(js_name = setActivePanel)]
 	pub fn set_active_panel(&self, panel: String) {
-		let message = PortfolioMessage::SetActivePanel { panel: panel.into() };
+		let message = DocumentMessage::SetActivePanel { active_panel: panel.into() };
 		self.dispatch(message);
 	}
 

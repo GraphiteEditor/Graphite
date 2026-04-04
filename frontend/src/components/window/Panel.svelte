@@ -9,9 +9,8 @@
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
-
-	type PanelType = keyof typeof PANEL_COMPONENTS;
+	import { panelDrag, startCrossPanelDrag, endCrossPanelDrag, updateCrossPanelHover } from "/src/stores/panel-drag";
+	import type { EditorWrapper, PanelType, PanelGroupId } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const PANEL_COMPONENTS = {
 		Welcome,
@@ -31,11 +30,13 @@
 	export let tabCloseButtons = false;
 	export let tabLabels: { name: string; unsaved?: boolean; tooltipLabel?: string; tooltipDescription?: string; tooltipShortcut?: string }[];
 	export let tabActiveIndex: number;
-	export let panelType: PanelType | undefined = undefined;
+	export let panelTypes: PanelType[];
+	export let panelId: PanelGroupId;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
+	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -55,7 +56,7 @@
 	let tabGroupElement: LayoutRow | undefined = undefined;
 
 	onDestroy(() => {
-		removeDragListeners();
+		endDrag();
 	});
 
 	function onEmptySpaceAction(e: MouseEvent) {
@@ -77,7 +78,10 @@
 		// Activate the tab upon pointer down
 		clickAction?.(tabIndex);
 
-		if (!reorderAction || tabLabels.length < 2) return;
+		// Allow within-panel reorder if there are multiple tabs, or cross-panel drag if this panel supports docking
+		const canReorder = reorderAction && tabLabels.length > 1;
+		const canCrossPanelDrag = crossPanelDropAction !== undefined;
+		if (!canReorder && !canCrossPanelDrag) return;
 
 		dragStartState = { tabIndex, pointerX: e.clientX, pointerY: e.clientY };
 		dragging = false;
@@ -95,30 +99,72 @@
 			const deltaX = Math.abs(e.clientX - dragStartState.pointerX);
 			const deltaY = Math.abs(e.clientY - dragStartState.pointerY);
 			if (deltaX < DRAG_ACTIVATION_DISTANCE && deltaY < DRAG_ACTIVATION_DISTANCE) return;
+
 			dragging = true;
+
+			if (crossPanelDropAction) {
+				// Notify the shared store that a cross-panel drag has started
+				startCrossPanelDrag(panelId, tabLabels[dragStartState.tabIndex].name, dragStartState.tabIndex);
+			}
 		}
 
 		lastPointerX = e.clientX;
 
-		// Only show insertion line while the cursor is within the tab bar
+		// Exit early in here after we show the insertion marker, if we're within our own tab bar
 		if (pointerIsInsideTabBar(e)) {
 			calculateInsertionIndex(lastPointerX);
-		} else {
-			insertionIndex = undefined;
-			insertionMarkerLeft = undefined;
+			updateCrossPanelHover(undefined, undefined, undefined);
+			return;
+		}
+
+		// Clear local insertion marker since we're outside our own tab bar
+		insertionIndex = undefined;
+		insertionMarkerLeft = undefined;
+
+		// Check if the pointer is over any other dockable panel's tab bar
+		if (crossPanelDropAction) {
+			const target = Array.from(document.querySelectorAll("[data-panel-tab-bar]")).find((element) => {
+				const targetPanelId = element.getAttribute("data-panel-tab-bar");
+				if (!targetPanelId || targetPanelId === panelId) return false;
+
+				const rect = element.getBoundingClientRect();
+				return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+			});
+
+			const targetPanelId = target?.getAttribute("data-panel-tab-bar");
+			if (target instanceof HTMLDivElement && targetPanelId) {
+				calculateForeignInsertionIndex(e.clientX, targetPanelId, target);
+			} else {
+				updateCrossPanelHover(undefined, undefined, undefined);
+			}
 		}
 	}
 
 	function dragPointerUp() {
-		if (dragging && dragStartState && insertionIndex !== undefined) {
-			const oldIndex = dragStartState.tabIndex;
+		if (dragging && dragStartState) {
+			const crossPanelState = $panelDrag;
 
-			// Adjust for the fact that removing the dragged tab shifts indices
-			let newIndex = insertionIndex;
-			if (newIndex > oldIndex) newIndex -= 1;
+			// Cross-panel drop: the pointer is over a different panel's tab bar
+			if (
+				crossPanelDropAction &&
+				crossPanelState.active &&
+				crossPanelState.hoverTargetPanelId &&
+				crossPanelState.hoverTargetPanelId !== panelId &&
+				crossPanelState.hoverInsertionIndex !== undefined
+			) {
+				crossPanelDropAction?.(panelId, crossPanelState.hoverTargetPanelId, crossPanelState.hoverInsertionIndex);
+			}
+			// Within-panel reorder
+			else if (insertionIndex !== undefined) {
+				const oldIndex = dragStartState.tabIndex;
 
-			if (oldIndex !== newIndex) {
-				reorderAction?.(oldIndex, newIndex);
+				// Adjust for the fact that removing the dragged tab shifts indices
+				let newIndex = insertionIndex;
+				if (newIndex > oldIndex) newIndex -= 1;
+
+				if (oldIndex !== newIndex) {
+					reorderAction?.(oldIndex, newIndex);
+				}
 			}
 		}
 
@@ -141,6 +187,7 @@
 		dragging = false;
 		insertionIndex = undefined;
 		insertionMarkerLeft = undefined;
+		if (crossPanelDropAction) endCrossPanelDrag();
 		removeDragListeners();
 	}
 
@@ -150,6 +197,30 @@
 
 		const rect = groupDiv.getBoundingClientRect();
 		return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+	}
+
+	// Calculate the insertion position for a foreign panel's tab bar
+	function calculateForeignInsertionIndex(pointerX: number, targetPanelId: string, tabBarDiv: HTMLDivElement) {
+		const tabBarRect = tabBarDiv.getBoundingClientRect();
+		const tabs = tabBarDiv.querySelectorAll(":scope > [data-tab]");
+		let bestIndex = 0;
+		let bestMarkerLeft = 0;
+
+		for (let i = 0; i < tabs.length; i++) {
+			const tabRect = tabs[i].getBoundingClientRect();
+			const tabCenter = tabRect.left + tabRect.width / 2;
+
+			if (pointerX > tabCenter) {
+				bestIndex = i + 1;
+				bestMarkerLeft = tabRect.right - tabBarRect.left;
+			} else {
+				bestMarkerLeft = tabRect.left - tabBarRect.left;
+				break;
+			}
+		}
+
+		// Must be at least 2px from the left so its left half doesn't get cut off along the left of the tab bar
+		updateCrossPanelHover(targetPanelId, bestIndex, Math.max(2, bestMarkerLeft));
 	}
 
 	function calculateInsertionIndex(pointerX: number) {
@@ -199,13 +270,21 @@
 	}
 </script>
 
-<LayoutCol on:pointerdown={() => panelType && editor.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
+<LayoutCol on:pointerdown={() => panelTypes[tabActiveIndex] && editor.setActivePanel(panelTypes[tabActiveIndex])} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction} bind:this={tabGroupElement}>
+		<LayoutRow
+			class="tab-group"
+			scrollableX={true}
+			data-panel-tab-bar={crossPanelDropAction ? panelId : undefined}
+			on:click={onEmptySpaceAction}
+			on:auxclick={onEmptySpaceAction}
+			bind:this={tabGroupElement}
+		>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
+					data-tab
 					tooltipLabel={tabLabel.tooltipLabel}
 					tooltipDescription={tabLabel.tooltipDescription}
 					on:pointerdown={(e) => tabPointerDown(e, tabIndex)}
@@ -242,10 +321,13 @@
 		{#if dragging && insertionMarkerLeft !== undefined}
 			<div class="tab-insertion-mark" style:left={`${insertionMarkerLeft}px`}></div>
 		{/if}
+		{#if !dragging && crossPanelDropAction && $panelDrag.active && $panelDrag.hoverTargetPanelId === panelId && $panelDrag.hoverInsertionMarkerLeft !== undefined}
+			<div class="tab-insertion-mark" style:left={`${$panelDrag.hoverInsertionMarkerLeft}px`}></div>
+		{/if}
 	</LayoutRow>
 	<LayoutCol class="panel-body">
-		{#if panelType}
-			<svelte:component this={PANEL_COMPONENTS[panelType]} />
+		{#if panelTypes[tabActiveIndex]}
+			<svelte:component this={PANEL_COMPONENTS[panelTypes[tabActiveIndex]]} />
 		{/if}
 	</LayoutCol>
 </LayoutCol>

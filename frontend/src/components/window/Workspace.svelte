@@ -23,9 +23,11 @@
 	let pointerCaptureId: number | undefined = undefined;
 	let activeResizeCleanup: (() => void) | undefined = undefined;
 
-	onDestroy(() => {
-		activeResizeCleanup?.();
-	});
+	// Reactive panel layout derived from backend state
+	$: panelLayout = $portfolio.panelLayout;
+	$: propertiesGroup = panelLayout.propertiesGroup;
+	$: layersGroup = panelLayout.layersGroup;
+	$: dataGroup = panelLayout.dataGroup;
 
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
@@ -40,6 +42,10 @@
 
 	const editor = getContext<EditorWrapper>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
+
+	function crossPanelDrop(sourcePanelId: string, targetPanelId: string, insertIndex: number) {
+		editor.movePanelTab(sourcePanelId, targetPanelId, insertIndex);
+	}
 
 	function isPanelName(name: string): name is keyof typeof PANEL_SIZES {
 		return name in PANEL_SIZES;
@@ -155,6 +161,10 @@
 		addListeners();
 		activeResizeCleanup = removeListeners;
 	}
+
+	onDestroy(() => {
+		activeResizeCleanup?.();
+	});
 </script>
 
 <LayoutRow class="workspace" data-workspace>
@@ -163,7 +173,8 @@
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
 				<Panel
 					class="document-panel"
-					panelType={$portfolio.documents.length > 0 ? "Document" : "Welcome"}
+					panelId="DocumentGroup"
+					panelTypes={$portfolio.documents.length > 0 ? $portfolio.documents.map(() => "Document") : ["Welcome"]}
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
@@ -175,27 +186,51 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if $portfolio.dataPanelOpen}
+			{#if dataGroup.tabs.length > 0}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["data"] }} data-subdivision-name="data">
-					<Panel panelType="Data" tabLabels={[{ name: "Data" }]} tabActiveIndex={0} />
+					<Panel
+						panelId="DataGroup"
+						panelTypes={dataGroup.tabs}
+						tabLabels={dataGroup.tabs.map((name) => ({ name }))}
+						tabActiveIndex={dataGroup.activeTabIndex}
+						clickAction={(tabIndex) => editor.setPanelGroupActiveTab("DataGroup", tabIndex)}
+						reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("DataGroup", oldIndex, newIndex)}
+						crossPanelDropAction={crossPanelDrop}
+					/>
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
-		{#if $portfolio.propertiesPanelOpen || $portfolio.layersPanelOpen}
+		{#if propertiesGroup.tabs.length > 0 || layersGroup.tabs.length > 0}
 			<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 			<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">
-				{#if $portfolio.propertiesPanelOpen}
+				{#if propertiesGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["properties"] }} data-subdivision-name="properties">
-						<Panel panelType="Properties" tabLabels={[{ name: "Properties" }]} tabActiveIndex={0} />
+						<Panel
+							panelId="PropertiesGroup"
+							panelTypes={propertiesGroup.tabs}
+							tabLabels={propertiesGroup.tabs.map((name) => ({ name }))}
+							tabActiveIndex={propertiesGroup.activeTabIndex}
+							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("PropertiesGroup", tabIndex)}
+							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("PropertiesGroup", oldIndex, newIndex)}
+							crossPanelDropAction={crossPanelDrop}
+						/>
 					</LayoutRow>
 				{/if}
-				{#if $portfolio.propertiesPanelOpen && $portfolio.layersPanelOpen}
+				{#if propertiesGroup.tabs.length > 0 && layersGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} on:dblclick={(e) => resetPanelSizes(e)} />
 				{/if}
-				{#if $portfolio.layersPanelOpen}
+				{#if layersGroup.tabs.length > 0}
 					<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["layers"] }} data-subdivision-name="layers">
-						<Panel panelType="Layers" tabLabels={[{ name: "Layers" }]} tabActiveIndex={0} />
+						<Panel
+							panelId="LayersGroup"
+							panelTypes={layersGroup.tabs}
+							tabLabels={layersGroup.tabs.map((name) => ({ name }))}
+							tabActiveIndex={layersGroup.activeTabIndex}
+							clickAction={(tabIndex) => editor.setPanelGroupActiveTab("LayersGroup", tabIndex)}
+							reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab("LayersGroup", oldIndex, newIndex)}
+							crossPanelDropAction={crossPanelDrop}
+						/>
 					</LayoutRow>
 				{/if}
 			</LayoutCol>
