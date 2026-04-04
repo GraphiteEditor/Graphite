@@ -473,11 +473,11 @@
 				padding-bottom: 4px;
 			}
 		}
+	}
 
-		// Needed for the viewport hole punch on desktop
-		.viewport-hole-punch &.document-panel,
-		.viewport-hole-punch &.document-panel .panel-body:not(:has(.welcome-panel)) {
-			background: none;
-		}
+	// Needed for the viewport hole punch on desktop
+	.viewport-hole-punch .panel.document-panel,
+	.viewport-hole-punch .panel.document-panel .panel-body:not(:has(.welcome-panel)) {
+		background: none;
 	}
 </style>

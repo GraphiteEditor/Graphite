@@ -265,15 +265,15 @@
 				cursor: ew-resize;
 			}
 		}
+	}
 
-		// Needed for the viewport hole punch on desktop
-		.viewport-hole-punch & .workspace-grid-subdivision:has(.panel.document-panel)::after {
-			content: "";
-			position: absolute;
-			inset: 6px;
-			border-radius: 6px;
-			box-shadow: 0 0 0 calc(100vw + 100vh) var(--color-2-mildblack);
-			z-index: -1;
-		}
+	// Needed for the viewport hole punch on desktop
+	.viewport-hole-punch .workspace .workspace-grid-subdivision:has(.panel.document-panel)::after {
+		content: "";
+		position: absolute;
+		inset: 6px;
+		border-radius: 6px;
+		box-shadow: 0 0 0 calc(100vw + 100vh) var(--color-2-mildblack);
+		z-index: -1;
 	}
 </style>
