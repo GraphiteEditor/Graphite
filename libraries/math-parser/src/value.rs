@@ -52,28 +52,74 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
-	pub fn binary_op(self, op: BinaryOp, other: Number) -> Number {
+	pub fn binary_op(self, op: BinaryOp, other: Number) -> Option<Number> {
 		match (self, other) {
 			(Number::Real(lhs), Number::Real(rhs)) => {
 				let result = match op {
+					BinaryOp::And => {
+						let l = lhs != 0.0;
+						let r = rhs != 0.0;
+						if l && r { 1.0 } else { 0.0 }
+					}
+					BinaryOp::Or => {
+						let l = lhs != 0.0;
+						let r = rhs != 0.0;
+						if l || r { 1.0 } else { 0.0 }
+					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
+					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => lhs.powf(rhs),
+					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
+					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
+					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
+					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
+					BinaryOp::Neq => (lhs != rhs) as u8 as f64,
+					BinaryOp::Eq => (lhs == rhs) as u8 as f64,
 				};
-				Number::Real(result)
+
+				Some(Number::Real(result))
 			}
 
 			(Number::Complex(lhs), Number::Complex(rhs)) => {
 				let result = match op {
+					BinaryOp::And => {
+						let l = lhs != Complex::new(0.0, 0.0);
+						let r = rhs != Complex::new(0.0, 0.0);
+						return Some(Number::Real(if l && r { 1.0 } else { 0.0 }));
+					}
+					BinaryOp::Or => {
+						let l = lhs != Complex::new(0.0, 0.0);
+						let r = rhs != Complex::new(0.0, 0.0);
+						return Some(Number::Real(if l || r { 1.0 } else { 0.0 }));
+					}
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
+					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
+					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
+						return None;
+					}
+					BinaryOp::Neq => {
+						if lhs != rhs {
+							return Some(Number::Real(1.0));
+						} else {
+							return Some(Number::Real(0.0));
+						}
+					}
+					BinaryOp::Eq => {
+						if lhs == rhs {
+							return Some(Number::Real(1.0));
+						} else {
+							return Some(Number::Real(0.0));
+						}
+					}
 				};
-				Number::Complex(result)
+				Some(Number::Complex(result))
 			}
 
 			(Number::Real(lhs), Number::Complex(rhs)) => {
@@ -84,8 +130,9 @@ impl Number {
 					BinaryOp::Mul => lhs_complex * rhs,
 					BinaryOp::Div => lhs_complex / rhs,
 					BinaryOp::Pow => lhs_complex.powc(rhs),
+					_ => return None,
 				};
-				Number::Complex(result)
+				Some(Number::Complex(result))
 			}
 
 			(Number::Complex(lhs), Number::Real(rhs)) => {
@@ -96,8 +143,9 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs_complex,
 					BinaryOp::Div => lhs / rhs_complex,
 					BinaryOp::Pow => lhs.powf(rhs),
+					_ => return None,
 				};
-				Number::Complex(result)
+				Some(Number::Complex(result))
 			}
 		}
 	}
@@ -107,15 +155,37 @@ impl Number {
 			Number::Real(real) => match op {
 				UnaryOp::Neg => Number::Real(-real),
 				UnaryOp::Sqrt => Number::Real(real.sqrt()),
-
-				UnaryOp::Fac => todo!("Implement factorial"),
+				UnaryOp::Fac => {
+					// n! for real n: use integer semantics when n is a
+					// non-negative integer, otherwise return NaN.
+					if !real.is_finite() {
+						return Number::Real(f64::NAN);
+					}
+					let truncated = real.trunc();
+					if truncated < 0.0 || (real - truncated).abs() > f64::EPSILON {
+						return Number::Real(f64::NAN);
+					}
+					let n = truncated as u64;
+					let mut acc = 1.0_f64;
+					for k in 1..=n {
+						acc *= k as f64;
+					}
+					Number::Real(acc)
+				}
+				UnaryOp::Not => {
+					let is_zero = real == 0.0;
+					Number::Real(if is_zero { 1.0 } else { 0.0 })
+				}
 			},
 
 			Number::Complex(complex) => match op {
 				UnaryOp::Neg => Number::Complex(-complex),
 				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
-
-				UnaryOp::Fac => todo!("Implement factorial"),
+				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
+				UnaryOp::Not => {
+					let is_zero = complex == Complex::new(0.0, 0.0);
+					Number::Real(if is_zero { 1.0 } else { 0.0 })
+				}
 			},
 		}
 	}
