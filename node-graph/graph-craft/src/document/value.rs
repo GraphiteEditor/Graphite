@@ -260,6 +260,7 @@ tagged_value! {
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),
+	InterpolationDistribution(vector::misc::InterpolationDistribution),
 	#[serde(alias = "LineCap")]
 	StrokeCap(vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]

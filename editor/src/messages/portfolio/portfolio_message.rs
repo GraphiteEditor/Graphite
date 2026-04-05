@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::PanelType;
+use super::utility_types::PanelGroupId;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
@@ -60,6 +60,11 @@ pub enum PortfolioMessage {
 	},
 	LoadDocumentResources {
 		document_id: DocumentId,
+	},
+	MovePanelTab {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
 	},
 	NewDocumentWithName {
 		name: String,
@@ -126,10 +131,20 @@ pub enum PortfolioMessage {
 		layers: Vec<LayerNodeIdentifier>,
 	},
 	PrevDocument,
+	ReorderDocument {
+		document_id: DocumentId,
+		new_index: usize,
+	},
+	ReorderPanelGroupTab {
+		group: PanelGroupId,
+		old_index: usize,
+		new_index: usize,
+	},
 	RequestWelcomeScreenButtonsLayout,
 	RequestStatusBarInfoLayout,
-	SetActivePanel {
-		panel: PanelType,
+	SetPanelGroupActiveTab {
+		group: PanelGroupId,
+		tab_index: usize,
 	},
 	SelectDocument {
 		document_id: DocumentId,
@@ -157,4 +172,5 @@ pub enum PortfolioMessage {
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
+	UpdateWorkspacePanelLayout,
 }

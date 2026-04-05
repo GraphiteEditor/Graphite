@@ -45,7 +45,7 @@
 	{/if}
 </button>
 
-<style lang="scss" global>
+<style lang="scss">
 	.icon-button {
 		display: flex;
 		justify-content: center;

@@ -6,6 +6,11 @@ import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 const PERSISTENCE_DB = "graphite";
 const PERSISTENCE_STORE = "store";
 
+export async function storeDocumentTabOrder(portfolio: PortfolioStore) {
+	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
+	await databaseSet("documents_tab_order", documentOrder);
+}
+
 export async function storeCurrentDocumentId(documentId: string) {
 	await databaseSet("current_document_id", String(documentId));
 }
@@ -17,8 +22,7 @@ export async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersis
 		return documents;
 	});
 
-	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
-	await databaseSet("documents_tab_order", documentOrder);
+	await storeDocumentTabOrder(portfolio);
 	await storeCurrentDocumentId(String(autoSaveDocument.documentId));
 }
 

@@ -138,9 +138,13 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 66" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>All-around performance optimizations</span>
 		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
+		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Blend tool to morph between shapes</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Dockable and multi-window panels</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -249,10 +253,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<!-- Beta 2 -->
 		<div class="feature-icon heading" data-year="2027">
 			<h3>— Beta 2 —</h3>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Dockable and multi-window panels</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 52" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />

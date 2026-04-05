@@ -83,26 +83,147 @@ impl FontCatalogStyle {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PanelType {
-	#[default]
-	Document,
 	Welcome,
+	Document,
 	Layers,
 	Properties,
-	DataPanel,
+	Data,
+}
+
+impl PanelType {
+	/// Returns the default panel group for this panel type.
+	pub fn default_panel_group(self) -> PanelGroupId {
+		match self {
+			PanelType::Document => PanelGroupId::DocumentGroup,
+			PanelType::Properties => PanelGroupId::PropertiesGroup,
+			PanelType::Layers => PanelGroupId::LayersGroup,
+			PanelType::Data => PanelGroupId::DataGroup,
+			PanelType::Welcome => panic!("PanelType::{self:?} has no default panel group (not a dockable panel)"),
+		}
+	}
 }
 
 impl From<String> for PanelType {
 	fn from(value: String) -> Self {
 		match value.as_str() {
-			"Document" => PanelType::Document,
 			"Welcome" => PanelType::Welcome,
+			"Document" => PanelType::Document,
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
-			"Data" => PanelType::DataPanel,
+			"Data" => PanelType::Data,
 			_ => panic!("Unknown panel type: {value}"),
 		}
+	}
+}
+
+/// Identifies a panel group in the workspace that can hold tabbed panels.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum PanelGroupId {
+	DocumentGroup,
+	PropertiesGroup,
+	LayersGroup,
+	DataGroup,
+}
+
+impl From<String> for PanelGroupId {
+	fn from(value: String) -> Self {
+		match value.as_str() {
+			"DocumentGroup" => PanelGroupId::DocumentGroup,
+			"PropertiesGroup" => PanelGroupId::PropertiesGroup,
+			"LayersGroup" => PanelGroupId::LayersGroup,
+			"DataGroup" => PanelGroupId::DataGroup,
+			_ => panic!("Unknown panel group: {value}"),
+		}
+	}
+}
+
+/// State of a single panel group in the workspace.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PanelGroupState {
+	pub tabs: Vec<PanelType>,
+	#[serde(rename = "activeTabIndex")]
+	pub active_tab_index: usize,
+}
+
+impl PanelGroupState {
+	pub fn active_panel_type(&self) -> Option<PanelType> {
+		self.tabs.get(self.active_tab_index).copied()
+	}
+
+	pub fn contains(&self, panel_type: PanelType) -> bool {
+		self.tabs.contains(&panel_type)
+	}
+
+	pub fn is_visible(&self, panel_type: PanelType) -> bool {
+		self.active_panel_type() == Some(panel_type)
+	}
+}
+
+/// The complete workspace panel layout describing which dockable panels are in which panel groups.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspacePanelLayout {
+	#[serde(rename = "propertiesGroup")]
+	pub properties_group: PanelGroupState,
+	#[serde(rename = "layersGroup")]
+	pub layers_group: PanelGroupState,
+	#[serde(rename = "dataGroup")]
+	pub data_group: PanelGroupState,
+}
+
+impl Default for WorkspacePanelLayout {
+	fn default() -> Self {
+		Self {
+			properties_group: PanelGroupState {
+				tabs: vec![PanelType::Properties],
+				active_tab_index: 0,
+			},
+			layers_group: PanelGroupState {
+				tabs: vec![PanelType::Layers],
+				active_tab_index: 0,
+			},
+			data_group: PanelGroupState { tabs: vec![], active_tab_index: 0 },
+		}
+	}
+}
+
+impl WorkspacePanelLayout {
+	pub fn panel_group(&self, panel_group_id: PanelGroupId) -> &PanelGroupState {
+		match panel_group_id {
+			PanelGroupId::DocumentGroup => panic!("PanelGroupId::{panel_group_id:?} is not a dockable panel group"),
+			PanelGroupId::PropertiesGroup => &self.properties_group,
+			PanelGroupId::LayersGroup => &self.layers_group,
+			PanelGroupId::DataGroup => &self.data_group,
+		}
+	}
+
+	pub fn panel_group_mut(&mut self, panel_group_id: PanelGroupId) -> &mut PanelGroupState {
+		match panel_group_id {
+			PanelGroupId::DocumentGroup => panic!("PanelGroupId::{panel_group_id:?} is not a dockable panel group"),
+			PanelGroupId::PropertiesGroup => &mut self.properties_group,
+			PanelGroupId::LayersGroup => &mut self.layers_group,
+			PanelGroupId::DataGroup => &mut self.data_group,
+		}
+	}
+
+	/// Find which panel group contains a given panel type.
+	pub fn find_panel(&self, panel_type: PanelType) -> Option<PanelGroupId> {
+		[PanelGroupId::PropertiesGroup, PanelGroupId::LayersGroup, PanelGroupId::DataGroup]
+			.into_iter()
+			.find(|&group_id| self.panel_group(group_id).contains(panel_type))
+	}
+
+	/// Check if a panel type is the active (visible) tab in any panel group.
+	pub fn is_panel_visible(&self, panel_type: PanelType) -> bool {
+		self.find_panel(panel_type).is_some_and(|group_id| self.panel_group(group_id).is_visible(panel_type))
+	}
+
+	/// Check if a panel type is present (as any tab) in any panel group, whether or not it's the active tab.
+	pub fn is_panel_present(&self, panel_type: PanelType) -> bool {
+		self.find_panel(panel_type).is_some()
 	}
 }
 

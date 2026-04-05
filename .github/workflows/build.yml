@@ -20,9 +20,6 @@ on:
       linux:
         description: "Linux"
         type: boolean
-      push_to_nix_cache:
-        description: "Linux: push to Nix cache"
-        type: boolean
       debug:
         description: "Debug build"
         type: boolean
@@ -35,8 +32,6 @@ on:
       mac:
         type: boolean
       linux:
-        type: boolean
-      push_to_nix_cache:
         type: boolean
       debug:
         type: boolean
@@ -162,7 +157,7 @@ jobs:
             REF="master"
             ENVIRONMENT="graphite-dev (Production)"
           else
-            REF="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
+            REF="$(git rev-parse HEAD)"
             ENVIRONMENT="graphite-dev (Preview)"
           fi
           DEPLOY_ID=$(gh api \
@@ -639,6 +634,10 @@ jobs:
 
       - name: ❄ Install Nix
         uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://graphite.cachix.org https://graphite-dev.cachix.org
+            extra-trusted-public-keys = graphite.cachix.org-1:B7Il1yMpkquN/dXM+5GRmz+4Xmu2aaCS1GcWNfFhsOo= graphite-dev.cachix.org-1:RppXYpiV1qO2TYKTkXXGHsAEQDOB5G51b3VlrN9QmbI=
 
       - name: 🗑 Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
@@ -647,12 +646,12 @@ jobs:
         run: nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths
 
       - name: 📤 Push to Nix cache
-        if: (github.event_name == 'push' || inputs.push_to_nix_cache) && !inputs.debug
         env:
-          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN }}
+          NIX_CACHE_AUTH_TOKEN: ${{ (!inputs.debug && github.ref == 'refs/heads/master') && secrets.NIX_CACHE_AUTH_TOKEN || secrets.NIX_CACHE_AUTH_TOKEN_DEV }}
+          NIX_CACHE_NAME: ${{ (!inputs.debug && github.ref == 'refs/heads/master') && 'graphite' || 'graphite-dev' }}
         run: |
           nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
-          nix build --no-link --print-out-paths | nix run nixpkgs#cachix -- push graphite
+          nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths | nix run nixpkgs#cachix -- push $NIX_CACHE_NAME
 
       - name: 🏗 Build Linux bundle
         run: nix build .#graphite${{ inputs.debug && '-dev' || '' }}-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz

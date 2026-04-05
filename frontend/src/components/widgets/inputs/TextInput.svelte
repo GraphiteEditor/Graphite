@@ -87,7 +87,7 @@
 	bind:this={self}
 />
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-input {
 		flex-shrink: 0;
 

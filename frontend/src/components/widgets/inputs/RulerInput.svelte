@@ -152,7 +152,7 @@
 	</svg>
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.ruler-input {
 		flex: 1 1 100%;
 		background: var(--color-2-mildblack);

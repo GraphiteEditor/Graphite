@@ -10,7 +10,6 @@
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DialogStore } from "/src/stores/dialog";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dialog = getContext<DialogStore>("dialog");
 	const tooltip = getContext<TooltipStore>("tooltip");
@@ -29,7 +28,7 @@
 	{#if $tooltip.visible}
 		<Tooltip />
 	{/if}
-	{#if isPlatformNative() && new Date() > new Date("2026-04-30")}
+	{#if import.meta.env.MODE === "native" && new Date() > new Date("2026-04-30")}
 		<LayoutCol class="release-candidate-expiry">
 			<TextLabel>
 				<p>
@@ -42,7 +41,7 @@
 	{/if}
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.main-window {
 		height: 100%;
 		overflow: auto;
