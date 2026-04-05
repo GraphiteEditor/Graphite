@@ -158,7 +158,7 @@ impl NodeRuntime {
 				#[cfg(all(not(test), target_family = "wasm"))]
 				application_io: Some(PlatformApplicationIo::new().await.into()),
 				#[cfg(any(test, not(target_family = "wasm")))]
-				application_io: Some(PlatformApplicationIo::new_offscreen().await.into()),
+				application_io: Some(PlatformApplicationIo::new().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
 				editor_preferences: Box::new(self.editor_preferences.clone()),

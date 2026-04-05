@@ -37,26 +37,6 @@ impl NativeApplicationIo {
 		io
 	}
 
-	pub async fn new_offscreen() -> Self {
-		#[cfg(feature = "wgpu")]
-		let executor = WgpuExecutor::new().await;
-
-		#[cfg(not(feature = "wgpu"))]
-		let wgpu_available = false;
-		#[cfg(feature = "wgpu")]
-		let wgpu_available = executor.is_some();
-		super::set_wgpu_available(wgpu_available);
-
-		let mut io = Self {
-			#[cfg(feature = "wgpu")]
-			gpu_executor: executor,
-			resources: HashMap::new(),
-		};
-
-		io.resources.insert("null".to_string(), Arc::from(include_bytes!("../null.png").to_vec()));
-
-		io
-	}
 	#[cfg(feature = "wgpu")]
 	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
 		#[cfg(feature = "wgpu")]
