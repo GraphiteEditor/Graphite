@@ -23,7 +23,7 @@ impl WasmApplicationIo {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
 				let function = request_adapter.dyn_ref::<js_sys::Function>()?;
-				Some(function.call0(&gpu).ok())
+				function.call0(&gpu).ok()
 			};
 			let result = request_adapter();
 			match result {

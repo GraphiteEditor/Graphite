@@ -134,12 +134,12 @@ impl GetEditorPreferences for DummyPreferences {
 }
 
 pub struct EditorApi<Io> {
-	/// Font data (for rendering text) made available to the graph through the [`PlatformEditorApi`].
+	/// Font data (for rendering text) made available to the graph through the `PlatformEditorApi`.
 	pub font_cache: FontCache,
 	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
 	pub application_io: Option<Arc<Io>>,
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
-	/// Editor preferences made available to the graph through the [`PlatformEditorApi`].
+	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
 	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
 }
 
