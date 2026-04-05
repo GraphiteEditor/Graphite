@@ -108,12 +108,13 @@
 		if (e.button !== 0) return; // Only handle left-click
 
 		isDragging = true;
-		const element = e.currentTarget as HTMLElement;
+		if (!(e.currentTarget instanceof HTMLElement)) return;
+		const element = e.currentTarget;
 		element.setPointerCapture(e.pointerId);
 
 		// Get the viewport element to compute positions relative to it
-		const viewportEl = window.document.querySelector("[data-viewport]") as HTMLElement;
-		if (!viewportEl) {
+		const viewportEl = window.document.querySelector("[data-viewport]");
+		if (!(viewportEl instanceof HTMLElement)) {
 			isDragging = false;
 			return;
 		}
@@ -130,7 +131,8 @@
 		if (!isDragging) return;
 		isDragging = false;
 
-		const element = e.currentTarget as HTMLElement;
+		if (!(e.currentTarget instanceof HTMLElement)) return;
+		const element = e.currentTarget;
 		element.releasePointerCapture(e.pointerId);
 	}
 
