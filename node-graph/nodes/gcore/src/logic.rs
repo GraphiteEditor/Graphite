@@ -1,11 +1,37 @@
+use convert_case::{Boundary, Converter, pattern};
 use core_types::Color;
-use core_types::registry::types::TextArea;
+use core_types::registry::types::{IntegerCount, SignedInteger, TextArea};
 use core_types::table::Table;
 use core_types::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
+use unicode_segmentation::UnicodeSegmentation;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[widget(Dropdown)]
+pub enum StringCapitalization {
+	/// "a tale of two cities" — Converts all letters to lower case.
+	#[default]
+	#[label("lower case")]
+	LowerCase,
+	/// "A TALE OF TWO CITIES" — Converts all letters to upper case.
+	#[label("UPPER CASE")]
+	UpperCase,
+	/// "A Tale Of Two Cities" — Converts the first letter of every word to upper case.
+	#[label("Capital Case")]
+	CapitalCase,
+	/// "A Tale of Two Cities" — Converts the first letter of significant words to upper case.
+	#[label("Headline Case")]
+	HeadlineCase,
+	/// "A tale of two cities" — Converts the first letter of every word to lower case, except the first which is made upper case.
+	#[label("Sentence case")]
+	SentenceCase,
+	/// "a Tale Of Two Cities" — Converts the first letter of every word to upper case, except the first which is made lower case.
+	#[label("camel Case")]
+	CamelCase,
+}
 
 /// Type-asserts a value to be a string.
 #[node_macro::node(category("Debug"))]
@@ -36,9 +62,9 @@ fn string_replace(_: impl Ctx, string: String, from: TextArea, to: TextArea) -> 
 
 /// Extracts a substring from the input string, starting at "Start" and ending before "End".
 /// Negative indices count from the end of the string.
-/// If "Start" equals or exceeds "End", the result is an empty string.
+/// If the index of "Start" equals or exceeds "End", the result is an empty string.
 #[node_macro::node(category("Text"))]
-fn string_slice(_: impl Ctx, string: String, start: f64, end: f64) -> String {
+fn string_slice(_: impl Ctx, string: String, start: SignedInteger, end: SignedInteger) -> String {
 	let total_chars = string.chars().count();
 
 	let start = if start < 0. {
@@ -57,6 +83,208 @@ fn string_slice(_: impl Ctx, string: String, start: f64, end: f64) -> String {
 	}
 
 	string.chars().skip(start).take(end - start).collect()
+}
+
+/// Parses a string into a number. Returns the fallback value if the string is not a valid number.
+#[node_macro::node(category("Text"))]
+fn string_to_number(_: impl Ctx, string: String, fallback: f64) -> f64 {
+	string.trim().parse::<f64>().unwrap_or(fallback)
+}
+
+/// Removes leading and/or trailing whitespace from a string.
+#[node_macro::node(category("Text"))]
+fn string_trim(_: impl Ctx, string: String, #[default(true)] start: bool, #[default(true)] end: bool) -> String {
+	match (start, end) {
+		(true, true) => string.trim().to_string(),
+		(true, false) => string.trim_start().to_string(),
+		(false, true) => string.trim_end().to_string(),
+		(false, false) => string,
+	}
+}
+
+/// Reverses the order of grapheme clusters (visual characters) in the string.
+#[node_macro::node(category("Text"))]
+fn string_reverse(_: impl Ctx, string: String) -> String {
+	string.graphemes(true).rev().collect()
+}
+
+/// Repeats the string a given number of times, optionally with a separator between each repetition.
+#[node_macro::node(category("Text"))]
+fn string_repeat(
+	_: impl Ctx,
+	string: String,
+	/// The number of times the string should appear in the output.
+	#[default(2.)]
+	count: f64,
+	/// The string placed between each repetition.
+	separator: String,
+) -> String {
+	let count = count.max(0.) as usize;
+
+	if count == 0 {
+		return String::new();
+	}
+
+	let mut result = String::with_capacity((string.len() + separator.len()) * count);
+	for i in 0..count {
+		if i > 0 {
+			result.push_str(&separator);
+		}
+		result.push_str(&string);
+	}
+	result
+}
+
+/// Pads the string to a target length by filling with the given string. If the string is already at or exceeds the target length, it is returned unchanged.
+#[node_macro::node(category("Text"))]
+fn string_pad(
+	_: impl Ctx,
+	string: String,
+	/// The desired total character length after padding.
+	#[default(10.)]
+	length: f64,
+	/// The string used to fill the remaining space. Repeats and trims to fit if multi-character.
+	#[default("0")]
+	padding: String,
+	/// Pad at the end of the string instead of the start.
+	from_end: bool,
+) -> String {
+	let target_length = length.max(0.) as usize;
+	let current_length = string.chars().count();
+
+	if current_length >= target_length || padding.is_empty() {
+		return string;
+	}
+
+	let pad_length = target_length - current_length;
+	let padding: String = padding.chars().cycle().take(pad_length).collect();
+
+	if from_end { string + &padding } else { padding + &string }
+}
+
+/// Checks whether the string contains the given substring. Optionally restricts the match to only the start and/or end of the string.
+#[node_macro::node(category("Text"))]
+fn string_contains(
+	_: impl Ctx,
+	string: String,
+	substring: String,
+	/// Only match if the substring appears at the start of the string.
+	at_start: bool,
+	/// Only match if the substring appears at the end of the string.
+	at_end: bool,
+) -> bool {
+	match (at_start, at_end) {
+		(true, true) => string.starts_with(&*substring) && string.ends_with(&*substring),
+		(true, false) => string.starts_with(&*substring),
+		(false, true) => string.ends_with(&*substring),
+		(false, false) => string.contains(&*substring),
+	}
+}
+
+/// Similar to the **String Contains** node, this finds the first (or last) occurrence of a substring within the string and returns its start index, or -1 if not found.
+#[node_macro::node(category("Text"))]
+fn string_find_index(
+	_: impl Ctx,
+	/// The string to search within.
+	string: String,
+	/// The substring to search for.
+	substring: String,
+	/// Find the start index of the last occurrence instead of the first.
+	from_end: bool,
+) -> f64 {
+	if substring.is_empty() {
+		return if from_end { string.chars().count() as f64 } else { 0. };
+	}
+
+	if from_end {
+		// Search backwards by finding all byte-level matches and taking the last one
+		string.rmatch_indices(&*substring).next().map_or(-1., |(byte_index, _)| string[..byte_index].chars().count() as f64)
+	} else {
+		string.match_indices(&*substring).next().map_or(-1., |(byte_index, _)| string[..byte_index].chars().count() as f64)
+	}
+}
+
+/// Converts a string's capitalization style, optionally joining words with a specified separator.
+#[node_macro::node(category("Text"), properties("string_capitalization_properties"))]
+fn string_capitalization(
+	_: impl Ctx,
+	string: String,
+	capitalization: StringCapitalization,
+	/// Whether to split the string into words and rejoin with the specified joiner.
+	/// When disabled, the existing separators and word structure are preserved.
+	use_joiner: bool,
+	/// The string placed between each word. Common choices: " " (space), "_" (underscore), "-" (hyphen), or "" (none).
+	joiner: String,
+) -> String {
+	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
+	if !use_joiner {
+		return match capitalization {
+			StringCapitalization::LowerCase => string.to_lowercase(),
+			StringCapitalization::UpperCase => string.to_uppercase(),
+			StringCapitalization::CapitalCase | StringCapitalization::HeadlineCase => {
+				let mut capitalize_next = true;
+				string
+					.chars()
+					.map(|c| {
+						if c.is_whitespace() || c == '_' || c == '-' {
+							capitalize_next = true;
+							c
+						} else if capitalize_next {
+							capitalize_next = false;
+							c.to_uppercase().next().unwrap_or(c)
+						} else {
+							c
+						}
+					})
+					.collect()
+			}
+			StringCapitalization::SentenceCase => {
+				let mut chars = string.chars();
+				match chars.next() {
+					Some(first) => first.to_uppercase().to_string() + &chars.as_str().to_lowercase(),
+					None => String::new(),
+				}
+			}
+			StringCapitalization::CamelCase => {
+				let mut capitalize_next = false;
+				string
+					.chars()
+					.map(|c| {
+						if c.is_whitespace() || c == '_' || c == '-' {
+							capitalize_next = true;
+							c
+						} else if capitalize_next {
+							capitalize_next = false;
+							c.to_uppercase().next().unwrap_or(c)
+						} else {
+							c.to_lowercase().next().unwrap_or(c)
+						}
+					})
+					.collect()
+			}
+		};
+	}
+
+	match capitalization {
+		// Simple case mappings that preserve the string's existing structure
+		StringCapitalization::LowerCase => string.to_lowercase(),
+		StringCapitalization::UpperCase => string.to_uppercase(),
+
+		// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
+		StringCapitalization::CapitalCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(&joiner).convert(&string),
+		StringCapitalization::HeadlineCase => {
+			// Headline case uses the `titlecase` crate for smart capitalization (lowercasing short words like "of", "the", etc.),
+			// then a second pass rejoins with the custom joiner without mangling the capitalization
+			let headline = titlecase::titlecase(&string);
+			Converter::new().set_boundaries(&[Boundary::SPACE]).set_pattern(pattern::noop).set_delim(&joiner).convert(&headline)
+		}
+		StringCapitalization::SentenceCase => Converter::new()
+			.set_boundaries(&Boundary::defaults())
+			.set_pattern(pattern::sentence)
+			.set_delim(&joiner)
+			.convert(&string),
+		StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&string),
+	}
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
@@ -89,6 +317,30 @@ fn string_split(
 	};
 
 	string.split(&delimeter).map(str::to_string).collect()
+}
+
+/// Joins a list of strings together with a separator between each pair.
+/// For example, joining ["a", "b", "c"] with separator ", " produces "a, b, c".
+#[node_macro::node(category("Text"))]
+fn string_join(
+	_: impl Ctx,
+	/// The list of strings to join together.
+	strings: Vec<String>,
+	/// The character(s) placed between each pair of strings.
+	#[default(", ")]
+	separator: String,
+	/// Whether to convert escape sequences found in the separator into their corresponding characters:
+	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	#[default(true)]
+	separator_escaping: bool,
+) -> String {
+	let separator = if separator_escaping {
+		separator.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\0", "\0").replace("\\\\", "\\")
+	} else {
+		separator
+	};
+
+	strings.join(&separator)
 }
 
 /// Gets a value from either a json object or array given as a string input.
