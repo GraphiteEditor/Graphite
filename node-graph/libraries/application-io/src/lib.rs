@@ -42,17 +42,14 @@ impl From<ImageTexture> for Arc<wgpu::Texture> {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
 pub struct ImageTexture;
 
-#[cfg(target_family = "wasm")]
-pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
-#[cfg(not(target_family = "wasm"))]
-pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>> + Send>>;
+pub type ResourceHash = [u8; 32];
 
 pub trait ApplicationIo {
 	type Executor;
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
-	fn load_resource(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError>;
+	fn load_resource(&self, hash: &ResourceHash) -> Option<&[u8]>;
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
@@ -62,8 +59,8 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 		(**self).gpu_executor()
 	}
 
-	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError> {
-		(**self).load_resource(url)
+	fn load_resource<'a>(&self, hash: &ResourceHash) -> Option<&[u8]> {
+		(**self).load_resource(hash)
 	}
 }
 

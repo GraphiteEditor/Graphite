@@ -1,5 +1,5 @@
 use dyn_any::StaticType;
-use graphene_application_io::{ApplicationError, ApplicationIo, EditorApi, ResourceFuture};
+use graphene_application_io::{ApplicationError, ApplicationIo, EditorApi, ResourceHash};
 use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
@@ -13,7 +13,7 @@ use wgpu_executor::WgpuExecutor;
 pub struct NativeApplicationIo {
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
-	pub resources: HashMap<String, Arc<[u8]>>,
+	pub resources: HashMap<ResourceHash, Arc<[u8]>>,
 }
 
 impl NativeApplicationIo {
@@ -27,14 +27,11 @@ impl NativeApplicationIo {
 		let wgpu_available = executor.is_some();
 		super::set_wgpu_available(wgpu_available);
 
-		let mut io = Self {
+		Self {
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
 			resources: HashMap::new(),
-		};
-		io.resources.insert("null".to_string(), Arc::from(include_bytes!("../null.png").to_vec()));
-
-		io
+		}
 	}
 
 	#[cfg(feature = "wgpu")]
@@ -48,14 +45,10 @@ impl NativeApplicationIo {
 		let wgpu_available = executor.is_some();
 		super::set_wgpu_available(wgpu_available);
 
-		let mut io = Self {
+		Self {
 			gpu_executor: executor,
 			resources: HashMap::new(),
-		};
-
-		io.resources.insert("null".to_string(), Arc::from(include_bytes!("../null.png").to_vec()));
-
-		io
+		}
 	}
 }
 
@@ -70,41 +63,8 @@ impl ApplicationIo for NativeApplicationIo {
 		self.gpu_executor.as_ref()
 	}
 
-	fn load_resource(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError> {
-		let url = url::Url::parse(url.as_ref()).map_err(|_| ApplicationError::InvalidUrl)?;
-		log::trace!("Loading resource: {url:?}");
-		match url.scheme() {
-			#[cfg(feature = "tokio")]
-			"file" => {
-				let path = url.to_file_path().map_err(|_| ApplicationError::NotFound)?;
-				let path = path.to_str().ok_or(ApplicationError::NotFound)?;
-				let path = path.to_owned();
-				Ok(Box::pin(async move {
-					let file = tokio::fs::File::open(path).await.map_err(|_| ApplicationError::NotFound)?;
-					let mut reader = tokio::io::BufReader::new(file);
-					let mut data = Vec::new();
-					reader.read_to_end(&mut data).await.map_err(|_| ApplicationError::NotFound)?;
-					Ok(Arc::from(data))
-				}) as ResourceFuture)
-			}
-			"http" | "https" => {
-				let url = url.to_string();
-				Ok(Box::pin(async move {
-					let client = reqwest::Client::new();
-					let response = client.get(url).send().await.map_err(|_| ApplicationError::NotFound)?;
-					let data = response.bytes().await.map_err(|_| ApplicationError::NotFound)?;
-					Ok(Arc::from(data.to_vec()))
-				}) as ResourceFuture)
-			}
-			"graphite" => {
-				let path = url.path();
-				let path = path.to_owned();
-				log::trace!("Loading local resource: {path}");
-				let data = self.resources.get(&path).ok_or(ApplicationError::NotFound)?.clone();
-				Ok(Box::pin(async move { Ok(data.clone()) }) as ResourceFuture)
-			}
-			_ => Err(ApplicationError::NotFound),
-		}
+	fn load_resource(&self, hash: &ResourceHash) -> Option<&[u8]> {
+		self.resources.get(hash).map(|v| v.as_ref())
 	}
 }
 
