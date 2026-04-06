@@ -100,6 +100,100 @@ fn string_slice(_: impl Ctx, string: String, start: SignedInteger, end: SignedIn
 	string.chars().skip(start).take(end - start).collect()
 }
 
+/// Formats a number as a string with control over decimal places, decimal separator, and thousands grouping.
+#[node_macro::node(category("Text"), properties("format_number_properties"))]
+fn format_number(
+	_: impl Ctx,
+	number: f64,
+	/// The number of digits after the decimal point. The value is rounded to fit. Set to 0 to show only whole numbers.
+	#[default(2)]
+	#[min(0)]
+	decimal_places: u32,
+	/// The character(s) used as the decimal point.
+	#[default(".")]
+	decimal_separator: String,
+	/// Always show the exact number of decimal places, even if they are trailing zeros.
+	#[default(true)]
+	fixed_decimals: bool,
+	/// Whether to group digits with a thousands separator.
+	use_thousands_separator: bool,
+	/// The character(s) inserted between digit groups.
+	#[default(",")]
+	thousands_separator: String,
+	/// Don't group 4-digit numbers (only start grouping at 10,000 and above).
+	#[name("Start at 10,000")]
+	start_at_10000: bool,
+) -> String {
+	// Find the maximum meaningful decimal precision by detecting where float noise begins.
+	// This works correctly whether the value originated as f32 or f64, since we find the
+	// shortest decimal representation that round-trips back to the same f64 value.
+	let requested_places = decimal_places as usize;
+	let max_places = {
+		let whole_digits = if number == 0. { 1 } else { (number.abs().log10().floor() as usize).saturating_add(1) };
+		let upper_bound = 17_usize.saturating_sub(whole_digits);
+		let mut meaningful = upper_bound;
+		for p in 0..=upper_bound {
+			let s = format!("{number:.p$}");
+			if s.parse::<f64>() == Ok(number) {
+				meaningful = p;
+				break;
+			}
+		}
+		meaningful
+	};
+	let places = requested_places.min(max_places);
+	let formatted = format!("{number:.places$}");
+
+	// If the user requested more decimal places than the float can represent, pad with zeros
+	let extra_zeros = requested_places.saturating_sub(places);
+
+	// Split into sign, whole, and decimal parts
+	let (sign, unsigned) = if formatted.starts_with('-') { ("-", &formatted[1..]) } else { ("", formatted.as_str()) };
+
+	let (whole_string, decimal_string) = match unsigned.split_once('.') {
+		Some((w, d)) => {
+			let padded = if extra_zeros > 0 { format!("{d}{:0>width$}", "", width = extra_zeros) } else { d.to_string() };
+			(w.to_string(), Some(padded))
+		}
+		None => (unsigned.to_string(), None),
+	};
+
+	// Apply thousands grouping to the whole number part
+	let grouped_whole = if use_thousands_separator && !thousands_separator.is_empty() {
+		let skip = start_at_10000 && whole_string.len() <= 4;
+		if skip {
+			whole_string.clone()
+		} else {
+			let mut result = String::new();
+			for (i, ch) in whole_string.chars().rev().enumerate() {
+				if i > 0 && i % 3 == 0 {
+					result.push_str(&thousands_separator.chars().rev().collect::<String>());
+				}
+				result.push(ch);
+			}
+			result.chars().rev().collect()
+		}
+	} else {
+		whole_string
+	};
+
+	// Build the final string
+	let Some(decimal_string) = decimal_string else {
+		return format!("{sign}{grouped_whole}");
+	};
+
+	if fixed_decimals {
+		format!("{sign}{grouped_whole}{decimal_separator}{decimal_string}")
+	} else {
+		let trimmed = decimal_string.trim_end_matches('0');
+		if trimmed.is_empty() {
+			format!("{sign}{grouped_whole}")
+		} else {
+			format!("{sign}{grouped_whole}{decimal_separator}{trimmed}")
+		}
+	}
+}
+
 /// Parses a string into a number. Returns the fallback value if the string is not a valid number.
 #[node_macro::node(category("Text"))]
 fn string_to_number(_: impl Ctx, string: String, fallback: f64) -> f64 {
