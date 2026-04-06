@@ -368,6 +368,52 @@ pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, axis: Axis, s
 	document.metadata().document_to_viewport.transform_vector2(offset)
 }
 
+/// Snaps a dragging event using document-space drag state so PTZ changes do not invalidate the drag anchor.
+pub fn snap_drag_from_document(start: DVec2, current: DVec2, snap_to_axis: bool, axis: Axis, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
+	let document = snap_data.document;
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let start_viewport = document_to_viewport.transform_point2(start);
+	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.mouse.position, start_viewport);
+	let aligned_document = document_to_viewport.inverse().transform_point2(mouse_position);
+	let total_mouse_delta_document = aligned_document - start;
+	let mut offset = aligned_document - current;
+	let mut best_snap = SnappedPoint::infinite_snap(aligned_document);
+
+	let bbox = Rect::point_iter(candidates.iter().map(|candidate| candidate.document_point + total_mouse_delta_document));
+
+	for (index, point) in candidates.iter().enumerate() {
+		let config = SnapTypeConfiguration {
+			bbox,
+			accept_distribution: true,
+			use_existing_candidates: index != 0,
+			..Default::default()
+		};
+
+		let mut point = point.clone();
+		point.document_point += total_mouse_delta_document;
+
+		let constrained_along_axis = snap_to_axis || axis.is_constraint();
+		let snapped = if constrained_along_axis {
+			let constraint = SnapConstraint::Line {
+				origin: point.document_point,
+				direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
+			};
+			snap_manager.constrained_snap(&snap_data, &point, constraint, config)
+		} else {
+			snap_manager.free_snap(&snap_data, &point, config)
+		};
+
+		if best_snap.other_snap_better(&snapped) {
+			offset = snapped.snapped_point_document - point.document_point + (aligned_document - current);
+			best_snap = snapped;
+		}
+	}
+
+	snap_manager.update_indicator(best_snap);
+
+	offset
+}
+
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxManager {
@@ -379,10 +425,12 @@ pub struct BoundingBoxManager {
 	pub transform_tampered: bool,
 	/// The transform to viewport space for the bounds co-ordinates when the transformation was started.
 	pub original_bound_transform: DAffine2,
+	pub original_bounds_to_document: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
 	pub opposite_pivot: DVec2,
 	pub center_of_transformation: DVec2,
+	pub center_of_transformation_doc: DVec2,
 }
 
 impl BoundingBoxManager {

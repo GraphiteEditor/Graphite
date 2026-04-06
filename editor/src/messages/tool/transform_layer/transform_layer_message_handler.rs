@@ -3,7 +3,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
@@ -74,15 +73,14 @@ pub struct TransformLayerMessageHandler {
 	slow: bool,
 	layer_bounding_box: Quad,
 	typing: Typing,
-	mouse_position: ViewportPosition,
-	start_mouse: ViewportPosition,
+	mouse_position: DocumentPosition,
+	start_mouse: DocumentPosition,
 	original_transforms: OriginalTransforms,
 	pivot_gizmo: PivotGizmo,
 	pivot: ViewportPosition,
 	path_bounds: Option<[DVec2; 2]>,
 	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
-	ptz: PTZ,
 	initial_transform: DAffine2,
 	operation_count: usize,
 	was_grabbing: bool,
@@ -93,6 +91,7 @@ pub struct TransformLayerMessageHandler {
 	grs_pen_handle: bool,
 
 	// Path tool (ghost outlines showing pre-transform geometry)
+	// The DAffine2 is the layer-to-document transform captured at drag start.
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
@@ -189,10 +188,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 			}
 
-			*mouse_position = input.mouse.position;
-			*start_mouse = input.mouse.position;
+			let mouse_doc = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			*mouse_position = mouse_doc;
+			*start_mouse = mouse_doc;
 			*transform = document_to_viewport;
-			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.local_mouse_start = mouse_doc;
 
 			selected.original_transforms.clear();
 
@@ -207,8 +207,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 
 				if using_path_tool {
-					for (outline, transform) in &self.ghost_outline {
-						overlay_context.outline(outline.iter(), *transform, Some(COLOR_OVERLAY_GRAY));
+					for (outline, layer_to_doc) in &self.ghost_outline {
+						let to_viewport = document.metadata().document_to_viewport * *layer_to_doc;
+						overlay_context.outline(outline.iter(), to_viewport, Some(COLOR_OVERLAY_GRAY));
 					}
 				}
 
@@ -357,8 +358,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.last_point = last_point;
 				self.handle = handle;
 				self.grs_pen_handle = true;
-				self.mouse_position = input.mouse.position;
-				self.start_mouse = input.mouse.position;
+				let mouse_doc = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				self.mouse_position = mouse_doc;
+				self.start_mouse = mouse_doc;
 
 				let top_left = DVec2::new(last_point.x, handle.y);
 				let bottom_right = DVec2::new(handle.x, last_point.y);
@@ -369,7 +371,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(handle);
 				let pivot = last_point;
 				self.state.document_space_pivot = document.metadata().document_to_viewport.inverse().transform_point2(pivot);
-				self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(self.start_mouse);
+				self.local_mouse_start = mouse_doc;
 				self.handle = handle;
 
 				// Operation-specific logic
@@ -520,12 +522,6 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
 				self.slow = input.keyboard.get(slow_key as usize);
-				let old_ptz = self.ptz;
-				self.ptz = document.document_ptz;
-				if old_ptz != self.ptz {
-					self.mouse_position = input.mouse.position;
-					return;
-				}
 
 				let new_increments = input.keyboard.get(increments_key as usize);
 				if new_increments != self.state.is_rounded_to_intervals {
@@ -533,19 +529,22 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 				}
 
+				let current_mouse_doc = document_to_viewport.inverse().transform_point2(input.mouse.position);
+
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
-							let delta_pos = input.mouse.position - self.mouse_position;
-							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
-							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
-							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
+							let delta_doc = current_mouse_doc - self.mouse_position;
+							let delta_pos = self.initial_transform.transform_vector2(delta_doc);
+							let delta_pos = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
+							let delta_scaled = delta_pos / document_to_viewport.y_axis.length();
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(delta_scaled));
 							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
+							let prev_mouse_viewport = document_to_viewport.transform_point2(self.mouse_position);
+							let start_offset = self.state.pivot_viewport(document) - prev_mouse_viewport;
 							let end_offset = self.state.pivot_viewport(document) - input.mouse.position;
 							let angle = start_offset.angle_to(end_offset);
 
@@ -556,9 +555,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
-							let to_mouse_final = self.mouse_position - self.state.pivot_viewport(document);
+							let prev_mouse_viewport = document_to_viewport.transform_point2(self.mouse_position);
+							let to_mouse_final = prev_mouse_viewport - self.state.pivot_viewport(document);
 							let to_mouse_final_old = input.mouse.position - self.state.pivot_viewport(document);
-							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
+							let to_mouse_start = document_to_viewport.transform_point2(self.local_mouse_start) - self.state.pivot_viewport(document);
 
 							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
 							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
@@ -580,7 +580,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					};
 				}
 
-				self.mouse_position = input.mouse.position;
+				self.mouse_position = current_mouse_doc;
 			}
 			TransformLayerMessage::SelectionChanged => {
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
@@ -653,10 +653,10 @@ impl TransformLayerMessageHandler {
 	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
 		ghost_outline.clear();
 		for &layer in shape_editor.selected_shape_state.keys() {
-			// We probably need to collect here
 			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-			let transform = document.metadata().transform_to_viewport(layer);
-			ghost_outline.push((outline, transform));
+			// Capture the layer-to-document transform now, before the transform operation modifies the layer.
+			let layer_to_doc = document.metadata().transform_to_document(layer);
+			ghost_outline.push((outline, layer_to_doc));
 		}
 	}
 }
