@@ -1,6 +1,6 @@
 use convert_case::{Boundary, Converter, pattern};
 use core_types::Color;
-use core_types::registry::types::{IntegerCount, SignedInteger, TextArea};
+use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::table::Table;
 use core_types::{Context, Ctx};
 use glam::{DAffine2, DVec2};
@@ -43,7 +43,22 @@ fn to_string(_: impl Ctx, value: String) -> String {
 #[node_macro::node(category("Text"))]
 fn serialize<T: serde::Serialize>(
 	_: impl Ctx,
-	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, /* Table<Artboard>, Table<Graphic>, Table<Vector>, */ Table<Raster<CPU>>, Table<Color> /* , Table<GradientStops> */)] value: T,
+	#[implementations(
+		String,
+		bool,
+		f64,
+		u32,
+		u64,
+		DVec2,
+		DAffine2,
+		// Table<Artboard>,
+		// Table<Graphic>,
+		// Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		// Table<GradientStops>,
+	)]
+	value: T,
 ) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }
@@ -115,15 +130,12 @@ fn string_repeat(
 	string: String,
 	/// The number of times the string should appear in the output.
 	#[default(2.)]
-	count: f64,
+	#[min(1.)]
+	count: u32,
 	/// The string placed between each repetition.
 	separator: String,
 ) -> String {
-	let count = count.max(0.) as usize;
-
-	if count == 0 {
-		return String::new();
-	}
+	let count = count.max(1) as usize;
 
 	let mut result = String::with_capacity((string.len() + separator.len()) * count);
 	for i in 0..count {
