@@ -587,6 +587,43 @@ async fn switch<T, C: Send + 'n + Clone>(
 	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }
 
+/// Replaces matches of a regular expression pattern in the string. The replacement string supports backreferences: `$0` for the whole match, `$1`, `$2`, etc. for capture groups.
+#[node_macro::node(category("Text"))]
+fn regex_replace(
+	_: impl Ctx,
+	string: String,
+	/// The regular expression pattern to search for.
+	pattern: String,
+	/// The replacement string. Use `$0` for the whole match, `$1`, `$2`, etc. for capture groups.
+	replacement: String,
+	/// Replace all matches. When disabled, only the first match is replaced.
+	#[default(true)]
+	replace_all: bool,
+	/// Match letters regardless of case.
+	case_insensitive: bool,
+	/// Make `^` and `$` match the start and end of each line, not just the whole string.
+	multiline: bool,
+) -> String {
+	let flags = match (case_insensitive, multiline) {
+		(false, false) => "",
+		(true, false) => "(?i)",
+		(false, true) => "(?m)",
+		(true, true) => "(?im)",
+	};
+	let full_pattern = format!("{flags}{pattern}");
+
+	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
+		log::warn!("Invalid regex pattern: {pattern}");
+		return string;
+	};
+
+	if replace_all {
+		regex.replace_all(&string, replacement.as_str()).into_owned()
+	} else {
+		regex.replace(&string, replacement.as_str()).into_owned()
+	}
+}
+
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the *Read String* node to access the current string inside the loop.
 #[node_macro::node(category("Text"))]
 async fn map_string(
