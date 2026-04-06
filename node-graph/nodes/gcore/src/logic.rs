@@ -12,23 +12,23 @@ use unicode_segmentation::UnicodeSegmentation;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum StringCapitalization {
-	/// "a tale of two cities" — Converts all letters to lower case.
+	/// "on the origin of species" — Converts all letters to lower case.
 	#[default]
 	#[label("lower case")]
 	LowerCase,
-	/// "A TALE OF TWO CITIES" — Converts all letters to upper case.
+	/// "ON THE ORIGIN OF SPECIES" — Converts all letters to upper case.
 	#[label("UPPER CASE")]
 	UpperCase,
-	/// "A Tale Of Two Cities" — Converts the first letter of every word to upper case.
+	/// "On The Origin Of Species" — Converts the first letter of every word to upper case.
 	#[label("Capital Case")]
 	CapitalCase,
-	/// "A Tale of Two Cities" — Converts the first letter of significant words to upper case.
+	/// "On the Origin of Species" — Converts the first letter of significant words to upper case.
 	#[label("Headline Case")]
 	HeadlineCase,
-	/// "A tale of two cities" — Converts the first letter of every word to lower case, except the first which is made upper case.
+	/// "On the origin of species" — Converts the first letter of every word to lower case, except the initial word which is made upper case.
 	#[label("Sentence case")]
 	SentenceCase,
-	/// "a Tale Of Two Cities" — Converts the first letter of every word to upper case, except the first which is made lower case.
+	/// "on The Origin Of Species" — Converts the first letter of every word to upper case, except the initial word which is made lower case.
 	#[label("camel Case")]
 	CamelCase,
 }
@@ -359,11 +359,34 @@ fn string_capitalization(
 	joiner: String,
 ) -> String {
 	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
-	if !use_joiner {
-		return match capitalization {
+	if use_joiner {
+		match capitalization {
+			// Simple case mappings that preserve the string's existing structure
 			StringCapitalization::LowerCase => string.to_lowercase(),
 			StringCapitalization::UpperCase => string.to_uppercase(),
-			StringCapitalization::CapitalCase | StringCapitalization::HeadlineCase => {
+
+			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
+			StringCapitalization::CapitalCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(&joiner).convert(&string),
+			StringCapitalization::HeadlineCase => {
+				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
+				// then apply the titlecase crate for smart capitalization (lowercasing short words like "of", "the", etc.),
+				// then rejoin with the custom joiner without mangling the capitalization
+				let spaced = Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(" ").convert(&string);
+				let headline = titlecase::titlecase(&spaced);
+				Converter::new().set_boundaries(&[Boundary::SPACE]).set_pattern(pattern::noop).set_delim(&joiner).convert(&headline)
+			}
+			StringCapitalization::SentenceCase => Converter::new()
+				.set_boundaries(&Boundary::defaults())
+				.set_pattern(pattern::sentence)
+				.set_delim(&joiner)
+				.convert(&string),
+			StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&string),
+		}
+	} else {
+		match capitalization {
+			StringCapitalization::LowerCase => string.to_lowercase(),
+			StringCapitalization::UpperCase => string.to_uppercase(),
+			StringCapitalization::CapitalCase => {
 				let mut capitalize_next = true;
 				string
 					.chars()
@@ -380,6 +403,7 @@ fn string_capitalization(
 					})
 					.collect()
 			}
+			StringCapitalization::HeadlineCase => titlecase::titlecase(&string),
 			StringCapitalization::SentenceCase => {
 				let mut chars = string.chars();
 				match chars.next() {
@@ -404,28 +428,7 @@ fn string_capitalization(
 					})
 					.collect()
 			}
-		};
-	}
-
-	match capitalization {
-		// Simple case mappings that preserve the string's existing structure
-		StringCapitalization::LowerCase => string.to_lowercase(),
-		StringCapitalization::UpperCase => string.to_uppercase(),
-
-		// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
-		StringCapitalization::CapitalCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(&joiner).convert(&string),
-		StringCapitalization::HeadlineCase => {
-			// Headline case uses the `titlecase` crate for smart capitalization (lowercasing short words like "of", "the", etc.),
-			// then a second pass rejoins with the custom joiner without mangling the capitalization
-			let headline = titlecase::titlecase(&string);
-			Converter::new().set_boundaries(&[Boundary::SPACE]).set_pattern(pattern::noop).set_delim(&joiner).convert(&headline)
 		}
-		StringCapitalization::SentenceCase => Converter::new()
-			.set_boundaries(&Boundary::defaults())
-			.set_pattern(pattern::sentence)
-			.set_delim(&joiner)
-			.convert(&string),
-		StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&string),
 	}
 }
 
