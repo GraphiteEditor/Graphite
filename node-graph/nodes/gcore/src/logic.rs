@@ -227,8 +227,19 @@ fn string_repeat(
 	#[min(1)]
 	count: u32,
 	/// The string placed between each repetition.
+	#[default("\\n")]
 	separator: String,
+	/// Whether to convert escape sequences found in the separator into their corresponding characters:
+	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	#[default(true)]
+	separator_escaping: bool,
 ) -> String {
+	let separator = if separator_escaping {
+		separator.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\0", "\0").replace("\\\\", "\\")
+	} else {
+		separator
+	};
+
 	let count = count.max(1) as usize;
 
 	let mut result = String::with_capacity((string.len() + separator.len()) * count);
@@ -355,7 +366,7 @@ fn string_capitalization(
 	/// Whether to split the string into words and rejoin with the specified joiner.
 	/// When disabled, the existing separators and word structure are preserved.
 	use_joiner: bool,
-	/// The string placed between each word. Common choices: " " (space), "_" (underscore), "-" (hyphen), or "" (none).
+	/// The string placed between each word.
 	joiner: String,
 ) -> String {
 	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
