@@ -643,7 +643,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
 
       - name: 📦 Build Nix package
-        run: nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths
+        run: nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths --print-build-logs
 
       - name: 📤 Push to Nix cache
         env:
@@ -653,8 +653,16 @@ jobs:
           nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
           nix build .#graphite${{ inputs.debug && '-dev' || '' }} --no-link --print-out-paths | nix run nixpkgs#cachix -- push $NIX_CACHE_NAME
 
+      - name: 📤 Push Dependencies to dev Nix cache
+        env:
+          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN_DEV }}
+          NIX_CACHE_NAME: graphite-dev
+        run: |
+          nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
+          nix build .#graphite${{ inputs.debug && '-dev' || '' }}.deps --no-link --print-out-paths | nix run nixpkgs#cachix -- push $NIX_CACHE_NAME
+
       - name: 🏗 Build Linux bundle
-        run: nix build .#graphite${{ inputs.debug && '-dev' || '' }}-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
+        run: nix build .#graphite-bundle${{ inputs.debug && '-dev' || '' }}.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
 
       - name: 📦 Upload Linux bundle
         uses: actions/upload-artifact@v6
@@ -692,7 +700,7 @@ jobs:
 
       - name: 🏗 Build Flatpak
         run: |
-          nix build .#graphite${{ inputs.debug && '-dev' || '' }}-flatpak-manifest
+          nix build .#graphite-flatpak-manifest${{ inputs.debug && '-dev' || '' }}
 
           rm -rf .flatpak
           mkdir -p .flatpak

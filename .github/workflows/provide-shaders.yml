@@ -35,3 +35,11 @@ jobs:
             raster_nodes_shaders_entrypoint.wgsl \
             "${{ github.sha }} raster_nodes_shaders_entrypoint.wgsl" \
             ${{ secrets.ARTIFACTS_REPO_TOKEN }}
+
+      - name: 📤 Push shaders to dev Nix cache
+        env:
+          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN_DEV }}
+          NIX_CACHE_NAME: graphite-dev
+        run: |
+          nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
+          nix build .#graphite-raster-nodes-shaders --no-link --print-out-paths | nix run nixpkgs#cachix -- push $NIX_CACHE_NAME
