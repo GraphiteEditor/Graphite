@@ -54,11 +54,16 @@
 		.widget-span:has(.text-area-input) {
 			flex: 1 1 100%;
 
-			.text-area-input textarea {
-				height: 100%;
-				margin-top: 0;
-				margin-bottom: 0;
-				resize: none;
+			.text-area-input {
+				margin: 0;
+				padding: 4px 0;
+
+				textarea {
+					height: 100%;
+					margin-top: 0;
+					margin-bottom: 0;
+					resize: none;
+				}
 			}
 		}
 	}

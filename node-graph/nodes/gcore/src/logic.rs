@@ -223,8 +223,8 @@ fn string_repeat(
 	_: impl Ctx,
 	string: String,
 	/// The number of times the string should appear in the output.
-	#[default(2.)]
-	#[min(1.)]
+	#[default(2)]
+	#[min(1)]
 	count: u32,
 	/// The string placed between each repetition.
 	separator: String,
@@ -246,19 +246,55 @@ fn string_repeat(
 fn string_pad(
 	_: impl Ctx,
 	string: String,
-	/// The desired total character length after padding.
-	#[default(10.)]
-	length: f64,
-	/// The string used to fill the remaining space. Repeats and trims to fit if multi-character.
-	#[default("0")]
+	/// The target character length after padding. When "Up To" is set, this applies to the portion before (or after) that substring.
+	#[default(10)]
+	length: u32,
+	/// The string used to fill the remaining space. Repeats and trims to fit, if multi-character.
+	#[default("#")]
 	padding: String,
+	/// Pad only the length of the string encountered before (or after) this substring, if given and present (otherwise the full string is considered).
+	///
+	/// For example, this can pad numbers with leading zeros to align them before the decimal point.
+	up_to: String,
 	/// Pad at the end of the string instead of the start.
 	from_end: bool,
 ) -> String {
-	let target_length = length.max(0.) as usize;
-	let current_length = string.chars().count();
+	let target_length = length as usize;
 
-	if current_length >= target_length || padding.is_empty() {
+	if padding.is_empty() {
+		return string;
+	}
+
+	// Split the string at the "up to" substring if provided, and only pad that portion
+	if !up_to.is_empty()
+		&& let Some(position) = if from_end { string.rfind(&*up_to) } else { string.find(&*up_to) }
+	{
+		let (before, after) = string.split_at(position);
+
+		if from_end {
+			// Pad the portion after the substring
+			let after_substring = &after[up_to.len()..];
+			let current_length = after_substring.chars().count();
+			if current_length >= target_length {
+				return string;
+			}
+			let pad_length = target_length - current_length;
+			let padding: String = padding.chars().cycle().take(pad_length).collect();
+			return format!("{before}{up_to}{after_substring}{padding}");
+		} else {
+			// Pad the portion before the substring
+			let current_length = before.chars().count();
+			if current_length >= target_length {
+				return string;
+			}
+			let pad_length = target_length - current_length;
+			let padding: String = padding.chars().cycle().take(pad_length).collect();
+			return format!("{padding}{before}{after}");
+		}
+	}
+
+	let current_length = string.chars().count();
+	if current_length >= target_length {
 		return string;
 	}
 
