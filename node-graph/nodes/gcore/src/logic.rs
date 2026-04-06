@@ -2,7 +2,7 @@ use convert_case::{Boundary, Converter, pattern};
 use core_types::Color;
 use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::table::Table;
-use core_types::{Context, Ctx};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -574,4 +574,35 @@ async fn switch<T, C: Send + 'n + Clone>(
 	if_false: impl Node<C, Output = T>,
 ) -> T {
 	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+}
+
+/// Iterates over a list of strings, evaluating the mapped operation for each one. Use the *Read String* node to access the current string inside the loop.
+#[node_macro::node(category("Text"))]
+async fn map_string(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	strings: Vec<String>,
+	#[expose]
+	#[implementations(Context -> String)]
+	mapped: impl Node<Context<'static>, Output = String>,
+) -> Vec<String> {
+	let mut result = Vec::new();
+
+	for (i, string) in strings.into_iter().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone());
+		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
+		let mapped_strings = mapped.eval(owned_ctx.into_context()).await;
+
+		result.push(mapped_strings);
+	}
+
+	result
+}
+
+/// Reads the current string from within a **Map String** node's loop.
+#[node_macro::node(category("Context"))]
+fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
+	let Ok(var_arg) = ctx.vararg(0) else { return String::new() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	var_arg.downcast_ref::<String>().cloned().unwrap_or_default()
 }
