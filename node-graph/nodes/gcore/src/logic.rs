@@ -587,6 +587,37 @@ async fn switch<T, C: Send + 'n + Clone>(
 	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }
 
+/// Tests whether a regular expression pattern matches within the string, returning true or false.
+#[node_macro::node(category("Text"))]
+fn regex_match(
+	_: impl Ctx,
+	/// The string to test against.
+	string: String,
+	/// The regular expression pattern to match.
+	pattern: String,
+	/// Require the pattern to match the entire string, not just any portion.
+	entire_string: bool,
+	/// Match letters regardless of case.
+	case_insensitive: bool,
+	/// Make `^` and `$` match the start and end of each line, not just the whole string.
+	multiline: bool,
+) -> bool {
+	let flags = match (case_insensitive, multiline) {
+		(false, false) => "",
+		(true, false) => "(?i)",
+		(false, true) => "(?m)",
+		(true, true) => "(?im)",
+	};
+	let wrapped_pattern = if entire_string { format!("{flags}\\A(?:{pattern})\\z") } else { format!("{flags}{pattern}") };
+
+	let Ok(regex) = fancy_regex::Regex::new(&wrapped_pattern) else {
+		log::error!("Invalid regex pattern: {pattern}");
+		return false;
+	};
+
+	regex.is_match(&string).unwrap_or(false)
+}
+
 /// Replaces matches of a regular expression pattern in the string. The replacement string supports backreferences: `$0` for the whole match, `$1`, `$2`, etc. for capture groups.
 #[node_macro::node(category("Text"))]
 fn regex_replace(
