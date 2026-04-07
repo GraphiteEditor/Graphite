@@ -648,6 +648,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
 					],
 					vec![
+						MenuListEntry::new("Reset Workspace")
+							.label("Reset Workspace")
+							.icon("Reset")
+							.on_commit(|_| PortfolioMessage::ResetWorkspaceLayout.into()),
+					],
+					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })

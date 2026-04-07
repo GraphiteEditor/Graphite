@@ -189,6 +189,7 @@ pub enum PortfolioMessage {
 	UpdateOpenDocumentsList,
 	UpdateWorkspacePanelLayout,
 	SaveWorkspaceLayout,
+	ResetWorkspaceLayout,
 	ResetPanelGroupSizes {
 		/// Path of child indices from the root to the split node whose children's sizes should be reset to defaults.
 		split_path: Vec<usize>,

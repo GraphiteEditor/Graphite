@@ -1548,6 +1548,29 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					workspace_layout: self.workspace_panel_layout.clone(),
 				});
 			}
+			PortfolioMessage::ResetWorkspaceLayout => {
+				// Destroy layouts for all currently visible non-document panels
+				for panel_type in [PanelType::Properties, PanelType::Layers, PanelType::Data] {
+					if self.workspace_panel_layout.is_panel_present(panel_type) {
+						Self::destroy_panel_layouts(panel_type, responses);
+					}
+				}
+
+				// Replace layout with the default and recalculate sizes
+				self.workspace_panel_layout = WorkspacePanelLayout::default();
+				self.workspace_panel_layout.recalculate_default_sizes();
+
+				// Refresh all visible panels since the layout has been completely replaced
+				for group_id in self.workspace_panel_layout.root.all_group_ids() {
+					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+						self.refresh_panel_content(panel_type, responses);
+					}
+				}
+
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+				responses.add(MenuBarMessage::SendLayout);
+			}
 			PortfolioMessage::ResetPanelGroupSizes { split_path } => {
 				// Walk the tree to the target split node using the path
 				let mut node = &mut self.workspace_panel_layout.root;
