@@ -460,6 +460,54 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.load_document(new_document, document_id, responses, false);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
+			PortfolioMessage::MoveAllPanelTabs {
+				source_group,
+				target_group,
+				insert_index,
+			} => {
+				if source_group == target_group {
+					return;
+				}
+
+				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
+				let tabs: Vec<PanelType> = source_state.tabs.clone();
+				if tabs.is_empty() {
+					return;
+				}
+
+				// Destroy layouts for all moved tabs and the displaced target tab
+				for &panel_type in &tabs {
+					Self::destroy_panel_layouts(panel_type, responses);
+				}
+				if let Some(old_target_panel) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					Self::destroy_panel_layouts(old_target_panel, responses);
+				}
+
+				// Clear the source group
+				if let Some(source) = self.workspace_panel_layout.panel_group_mut(source_group) {
+					source.tabs.clear();
+					source.active_tab_index = 0;
+				}
+
+				// Insert all tabs into the target group
+				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
+					let index = insert_index.min(target.tabs.len());
+					for (i, panel_type) in tabs.iter().enumerate() {
+						target.tabs.insert(index + i, *panel_type);
+					}
+					target.active_tab_index = index;
+				}
+
+				self.workspace_panel_layout.prune();
+
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+				// Refresh the new active tab
+				if let Some(panel_type) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					self.refresh_panel_content(panel_type, responses);
+				}
+			}
 			PortfolioMessage::MovePanelTab {
 				source_group,
 				target_group,
@@ -1222,6 +1270,37 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
+			PortfolioMessage::SplitPanelGroup { target_group, direction, tabs } => {
+				// Destroy layouts for the dragged tabs and the target group's active panel (it may get remounted by the frontend)
+				for &panel_type in &tabs {
+					Self::destroy_panel_layouts(panel_type, responses);
+				}
+				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					Self::destroy_panel_layouts(target_active, responses);
+				}
+
+				// Remove the dragged tabs from their current panel groups (without pruning, so the target group survives)
+				for &panel_type in &tabs {
+					self.remove_panel_from_layout(panel_type);
+				}
+
+				// Create the new panel group adjacent to the target, then prune empty groups
+				let new_id = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone());
+				self.workspace_panel_layout.prune();
+
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+				// Refresh the new panel group's active tab
+				if let Some(panel_type) = self.workspace_panel_layout.panel_group(new_id).and_then(|g| g.active_panel_type()) {
+					self.refresh_panel_content(panel_type, responses);
+				}
+
+				// Refresh the target group's active panel since its component may have been remounted
+				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					self.refresh_panel_content(target_active, responses);
+				}
+			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
@@ -1667,7 +1746,7 @@ impl PortfolioMessageHandler {
 		selected_nodes.first().copied()
 	}
 
-	/// Remove a dockable panel type from whichever panel group currently contains it, then prune empty groups.
+	/// Remove a dockable panel type from whichever panel group currently contains it. Does not prune empty groups.
 	fn remove_panel_from_layout(&mut self, panel_type: PanelType) {
 		// Save the panel's current position so it can be restored there later
 		self.workspace_panel_layout.save_panel_position(panel_type);
@@ -1678,8 +1757,6 @@ impl PortfolioMessageHandler {
 			group.tabs.retain(|&t| t != panel_type);
 			group.active_tab_index = group.active_tab_index.min(group.tabs.len().saturating_sub(1));
 		}
-
-		self.workspace_panel_layout.prune();
 	}
 
 	/// Toggle a dockable panel on or off. When toggling off, refresh the newly active tab in its panel group (if any).
@@ -1689,6 +1766,7 @@ impl PortfolioMessageHandler {
 			let was_visible = self.workspace_panel_layout.panel_group(group_id).is_some_and(|g| g.is_visible(panel_type));
 			Self::destroy_panel_layouts(panel_type, responses);
 			self.remove_panel_from_layout(panel_type);
+			self.workspace_panel_layout.prune();
 
 			// If the removed panel was the active tab, refresh whichever panel is now active in that panel group
 			if was_visible && let Some(new_active) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {

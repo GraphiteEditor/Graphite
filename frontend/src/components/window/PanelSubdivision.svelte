@@ -146,6 +146,14 @@
 		editor.movePanelTab(BigInt(sourcePanelId), BigInt(targetPanelId), insertIndex);
 	}
 
+	function groupDrop(sourcePanelId: string, targetPanelId: string, insertIndex: number) {
+		editor.moveAllPanelTabs(BigInt(sourcePanelId), BigInt(targetPanelId), insertIndex);
+	}
+
+	function splitDrop(targetPanelId: string, direction: string, tabs: string[]) {
+		editor.splitPanelGroup(BigInt(targetPanelId), direction, tabs);
+	}
+
 	function isDocumentGroup(state: PanelGroupState): boolean {
 		return state.tabs.some((t) => t === "Document" || t === "Welcome");
 	}
@@ -166,6 +174,8 @@
 			closeAction={(tabIndex) => editor.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 			reorderAction={(oldIndex, newIndex) => editor.reorderDocument($portfolio.documents[oldIndex].id, newIndex)}
 			tabActiveIndex={$portfolio.activeDocumentIndex}
+			groupDropAction={groupDrop}
+			splitDropAction={splitDrop}
 		/>
 	{:else}
 		<Panel
@@ -176,6 +186,8 @@
 			clickAction={(tabIndex) => editor.setPanelGroupActiveTab(group.id, tabIndex)}
 			reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab(group.id, oldIndex, newIndex)}
 			crossPanelDropAction={crossPanelDrop}
+			groupDropAction={groupDrop}
+			splitDropAction={splitDrop}
 		/>
 	{/if}
 {:else if "Split" in subdivision}
