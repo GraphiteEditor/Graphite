@@ -1,16 +1,16 @@
-{ info, deps, ... }:
+{
+  info,
+  deps,
+  self,
+  system,
+  ...
+}:
 
 (deps.crane.lib.overrideToolchain (_: deps.rustGPU.toolchain)).buildPackage {
-  pname = "raster-nodes-shaders";
+  pname = "graphite-raster-nodes-shaders";
   inherit (info) version src;
 
-  cargoVendorDir = deps.crane.lib.vendorMultipleCargoDeps {
-    inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
-    cargoLockList = [
-      "${info.src}/Cargo.lock"
-      "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
-    ];
-  };
+  inherit (self.packages.${system}.graphite) cargoVendorDir cargoArtifacts;
 
   strictDeps = true;
 
