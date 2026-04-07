@@ -294,7 +294,7 @@ impl App {
 				self.persistent_data.set_current_document(id);
 			}
 			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
-				self.persistent_data.set_document_order(ids);
+				self.persistent_data.force_document_order(ids);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
 				preferences::write(preferences);
