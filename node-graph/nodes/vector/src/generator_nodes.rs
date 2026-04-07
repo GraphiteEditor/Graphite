@@ -212,9 +212,29 @@ fn heart(
 	#[unit(" px")]
 	#[default(100.)]
 	height: f64,
-	#[default(50.)] top_lobe_roundness: f64,
+	#[default(50.)]
+	#[range((1., 100.))]
+	#[step(1.)]
+	top_lobe_roundness: f64,
+	#[default(0.25)]
+	#[range((0., 1.))]
+	#[step(0.01)]
+	#[display_decimal_places(2)]
+	top_dip_ratio: f64,
+	#[default(1.0)]
+	#[range((0., 2.))]
+	#[step(0.01)]
+	#[display_decimal_places(2)]
+	bottom_spike_ratio: f64,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(DVec2::ZERO, width, height, top_lobe_roundness)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(
+		DVec2::ZERO,
+		width,
+		height,
+		top_lobe_roundness,
+		top_dip_ratio,
+		bottom_spike_ratio,
+	)))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

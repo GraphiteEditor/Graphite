@@ -113,6 +113,8 @@ impl Heart {
 			Some(NodeInput::value(TaggedValue::F64(100.), false)),
 			Some(NodeInput::value(TaggedValue::F64(100.), false)),
 			Some(NodeInput::value(TaggedValue::F64(50.), false)),
+			Some(NodeInput::value(TaggedValue::F64(0.25), false)),
+			Some(NodeInput::value(TaggedValue::F64(1.0), false)),
 		])
 	}
 
