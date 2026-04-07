@@ -655,6 +655,87 @@ fn regex_replace(
 	}
 }
 
+/// Finds a regex match in the string and returns its components. The result is a list where the first element is the whole match and
+/// subsequent elements are the capture groups (if any). The match index selects which occurrence to return (0 for the first match).
+/// Returns an empty list if no match is found at the given index.
+#[node_macro::node(category(""))]
+fn regex_find(
+	_: impl Ctx,
+	/// The string to search within.
+	string: String,
+	/// The regular expression pattern to search for.
+	pattern: String,
+	/// Which occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.
+	match_index: SignedInteger,
+	/// Match letters regardless of case.
+	case_insensitive: bool,
+	/// Make `^` and `$` match the start and end of each line, not just the whole string.
+	multiline: bool,
+) -> Vec<String> {
+	let flags = match (case_insensitive, multiline) {
+		(false, false) => "",
+		(true, false) => "(?i)",
+		(false, true) => "(?m)",
+		(true, true) => "(?im)",
+	};
+	let full_pattern = format!("{flags}{pattern}");
+
+	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
+		log::error!("Invalid regex pattern: {pattern}");
+		return Vec::new();
+	};
+
+	// Collect all matches since we need to support negative indexing
+	let matches: Vec<_> = regex.captures_iter(&string).filter_map(|c| c.ok()).collect();
+
+	let match_index = match_index as i32;
+	let resolved_index = if match_index < 0 {
+		let from_end = (-match_index) as usize;
+		if from_end > matches.len() {
+			return Vec::new();
+		}
+		matches.len() - from_end
+	} else {
+		match_index as usize
+	};
+
+	let Some(captures) = matches.get(resolved_index) else {
+		return Vec::new();
+	};
+
+	// Index 0 is the whole match, 1+ are capture groups
+	(0..captures.len()).map(|i| captures.get(i).map_or(String::new(), |m| m.as_str().to_string())).collect()
+}
+
+/// Finds all non-overlapping matches of a regular expression pattern in the string, returning a list of the matched substrings.
+#[node_macro::node(category("Text"))]
+fn regex_find_all(
+	_: impl Ctx,
+	/// The string to search within.
+	string: String,
+	/// The regular expression pattern to search for.
+	pattern: String,
+	/// Match letters regardless of case.
+	case_insensitive: bool,
+	/// Make `^` and `$` match the start and end of each line, not just the whole string.
+	multiline: bool,
+) -> Vec<String> {
+	let flags = match (case_insensitive, multiline) {
+		(false, false) => "",
+		(true, false) => "(?i)",
+		(false, true) => "(?m)",
+		(true, true) => "(?im)",
+	};
+	let full_pattern = format!("{flags}{pattern}");
+
+	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
+		log::error!("Invalid regex pattern: {pattern}");
+		return Vec::new();
+	};
+
+	regex.find_iter(&string).filter_map(|m| m.ok()).map(|m| m.as_str().to_string()).collect()
+}
+
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the *Read String* node to access the current string inside the loop.
 #[node_macro::node(category("Text"))]
 async fn map_string(
