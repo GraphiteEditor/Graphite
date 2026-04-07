@@ -57,7 +57,6 @@ pub struct PortfolioMessageHandler {
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
-	pub focus_document: bool,
 	pub workspace_panel_layout: WorkspacePanelLayout,
 }
 
@@ -88,9 +87,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.focus_document,
-						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.focus_document,
-						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.focus_document,
+						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
+						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -156,9 +155,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.focus_document,
-						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.focus_document,
-						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.focus_document,
+						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
+						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -1482,44 +1481,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::ToggleFocusDocument => {
-				self.focus_document = !self.focus_document;
-				responses.add(MenuBarMessage::SendLayout);
+				self.workspace_panel_layout.focus_document = !self.workspace_panel_layout.focus_document;
 
-				let properties_present = self.workspace_panel_layout.is_panel_present(PanelType::Properties);
-				let layers_present = self.workspace_panel_layout.is_panel_present(PanelType::Layers);
-				let data_present = self.workspace_panel_layout.is_panel_present(PanelType::Data);
-
-				if self.focus_document {
-					if properties_present {
-						Self::destroy_panel_layouts(PanelType::Properties, responses);
-					}
-					if layers_present {
-						Self::destroy_panel_layouts(PanelType::Layers, responses);
-					}
-					if data_present {
-						Self::destroy_panel_layouts(PanelType::Data, responses);
-					}
-				} else {
-					// Run the graph to grab the data
-					if properties_present || layers_present || data_present {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-
-					if properties_present {
-						responses.add(PropertiesPanelMessage::Refresh);
-					}
-					if layers_present && self.active_document_id.is_some() {
-						responses.add(DeferMessage::AfterGraphRun {
-							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
-						});
+				// Destroy or refresh non-document panel layouts based on focus mode
+				for &panel_type in &[PanelType::Properties, PanelType::Layers, PanelType::Data] {
+					if self.workspace_panel_layout.is_panel_present(panel_type) {
+						if self.workspace_panel_layout.focus_document {
+							Self::destroy_panel_layouts(panel_type, responses);
+						} else {
+							self.refresh_panel_content(panel_type, responses);
+						}
 					}
 				}
 
+				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::TogglePropertiesPanelOpen => {
-				if self.focus_document {
+				if self.workspace_panel_layout.focus_document {
 					return;
 				}
 
@@ -1527,7 +1507,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.toggle_dockable_panel(panel_type, responses);
 			}
 			PortfolioMessage::ToggleLayersPanelOpen => {
-				if self.focus_document {
+				if self.workspace_panel_layout.focus_document {
 					return;
 				}
 
@@ -1535,7 +1515,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.toggle_dockable_panel(panel_type, responses);
 			}
 			PortfolioMessage::ToggleDataPanelOpen => {
-				if self.focus_document {
+				if self.workspace_panel_layout.focus_document {
 					return;
 				}
 
@@ -1556,9 +1536,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::UpdateWorkspacePanelLayout => {
-				responses.add(FrontendMessage::UpdateWorkspacePanelLayout {
-					panel_layout: self.workspace_panel_layout.clone(),
-				});
+				let panel_layout = if self.workspace_panel_layout.focus_document {
+					self.workspace_panel_layout.document_only_layout()
+				} else {
+					self.workspace_panel_layout.clone()
+				};
+				responses.add(FrontendMessage::UpdateWorkspacePanelLayout { panel_layout });
 			}
 			PortfolioMessage::SaveWorkspaceLayout => {
 				responses.add(FrontendMessage::TriggerSaveWorkspaceLayout {
@@ -1656,7 +1639,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 		}
 
 		// Extend with actions that are disabled when focusing the document
-		if !self.focus_document {
+		if !self.workspace_panel_layout.focus_document {
 			common.extend(actions!(PortfolioMessageDiscriminant;
 				TogglePropertiesPanelOpen,
 				ToggleLayersPanelOpen,
@@ -1750,8 +1733,14 @@ impl PortfolioMessageHandler {
 		} else {
 			self.document_ids.push_back(document_id);
 		}
-		new_document.update_layers_panel_control_bar_widgets(self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.focus_document, responses);
-		new_document.update_layers_panel_bottom_bar_widgets(self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.focus_document, responses);
+		new_document.update_layers_panel_control_bar_widgets(
+			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+			responses,
+		);
+		new_document.update_layers_panel_bottom_bar_widgets(
+			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+			responses,
+		);
 
 		self.documents.insert(document_id, new_document);
 
@@ -1798,7 +1787,7 @@ impl PortfolioMessageHandler {
 	/// Get the ID of the selected node that should be used as the current source for the Data panel.
 	pub fn node_to_inspect(&self) -> Option<NodeId> {
 		// Skip if the Data panel is not open
-		if !self.workspace_panel_layout.is_panel_visible(PanelType::Data) || self.focus_document {
+		if !self.workspace_panel_layout.is_panel_visible(PanelType::Data) || self.workspace_panel_layout.focus_document {
 			return None;
 		}
 
