@@ -14,6 +14,7 @@
 
 	export let subdivision: PanelLayoutSubdivision;
 	export let depth: number;
+	export let splitPath: number[] = [];
 
 	// Local size overrides for gutter resizing (keyed by child index)
 	let sizeOverrides: Record<number, number> = {};
@@ -55,13 +56,13 @@
 		if (!(nextSibling instanceof HTMLDivElement) || !(prevSibling instanceof HTMLDivElement) || !(parentElement instanceof HTMLDivElement)) return;
 
 		// Double-click resets both adjacent panels to their default sizes
-		const children = subdivision.Split.children;
 		const now = Date.now();
 		const isDoubleClick = now - lastGutterClickTime < DOUBLE_CLICK_MILLISECONDS && lastGutterClickTarget === gutter;
 		lastGutterClickTime = now;
 		lastGutterClickTarget = gutter;
 		if (isDoubleClick) {
-			sizeOverrides = { ...sizeOverrides, [prevIndex]: children[prevIndex].size, [nextIndex]: children[nextIndex].size };
+			sizeOverrides = {};
+			editor.resetPanelGroupSizes(splitPath);
 			return;
 		}
 
@@ -113,6 +114,12 @@
 			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
 			removeListeners();
 			activeResizeCleanup = undefined;
+
+			// Persist the resized sizes to the backend
+			if ("Split" in subdivision) {
+				const allSizes = subdivision.Split.children.map((child, i) => sizeOverrides[i] ?? child.size);
+				editor.setPanelGroupSizes(splitPath, allSizes);
+			}
 		};
 
 		const onMouseDown = (e: MouseEvent) => {
@@ -201,11 +208,11 @@
 		{/if}
 		{#if horizontal}
 			<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": resolvedSizes[index] }}>
-				<svelte:self subdivision={child.subdivision} depth={depth + 1} />
+				<svelte:self subdivision={child.subdivision} depth={depth + 1} splitPath={[...splitPath, index]} />
 			</LayoutCol>
 		{:else}
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": resolvedSizes[index] }}>
-				<svelte:self subdivision={child.subdivision} depth={depth + 1} />
+				<svelte:self subdivision={child.subdivision} depth={depth + 1} splitPath={[...splitPath, index]} />
 			</LayoutRow>
 		{/if}
 	{/each}

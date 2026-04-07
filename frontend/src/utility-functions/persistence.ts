@@ -161,6 +161,25 @@ export async function loadEditorPreferences(editor: EditorWrapper) {
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 }
 
+export async function saveWorkspaceLayout(layout: unknown) {
+	await databaseSet("workspace_layout", layout);
+}
+
+export async function loadWorkspaceLayout(editor: EditorWrapper) {
+	const layout = await databaseGet<Record<string, unknown> | string>("workspace_layout");
+	if (!layout) return;
+
+	// Handle legacy format where layout was stored as a JSON string
+	if (typeof layout === "string") {
+		editor.loadWorkspaceLayout(layout);
+		return;
+	}
+
+	// Convert BigInt values to numbers so JSON.stringify can handle them
+	const json = JSON.stringify(layout, (_key, value) => (typeof value === "bigint" ? Number(value) : value));
+	editor.loadWorkspaceLayout(json);
+}
+
 export async function wipeDocuments() {
 	await databaseDelete("documents_tab_order");
 	await databaseDelete("current_document_id");

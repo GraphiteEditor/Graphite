@@ -110,6 +110,16 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
+		FrontendMessage::TriggerSaveWorkspaceLayout { workspace_layout } => {
+			let Ok(workspace_layout) = serde_json::to_string(&workspace_layout) else {
+				tracing::error!("Failed to serialize workspace layout");
+				return None;
+			};
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteWorkspaceLayout { workspace_layout });
+		}
+		FrontendMessage::TriggerLoadWorkspaceLayout => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadWorkspaceLayout);
+		}
 		#[cfg(target_os = "macos")]
 		FrontendMessage::UpdateLayout {
 			layout_target: LayoutTarget::MenuBar,

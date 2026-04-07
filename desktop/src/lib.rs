@@ -20,6 +20,7 @@ mod persist;
 mod preferences;
 mod render;
 mod window;
+mod workspace_layout;
 
 pub(crate) mod consts;
 

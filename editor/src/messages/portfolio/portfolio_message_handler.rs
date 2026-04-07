@@ -1,6 +1,6 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
-use super::utility_types::{PanelType, PersistentData, WorkspacePanelLayout};
+use super::utility_types::{PanelLayoutSubdivision, PanelType, PersistentData, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
@@ -105,6 +105,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
+				responses.add(FrontendMessage::TriggerLoadWorkspaceLayout);
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -445,6 +446,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.load_layer_resources(responses);
 				}
 			}
+			PortfolioMessage::LoadWorkspaceLayout { layout } => {
+				self.workspace_panel_layout = layout;
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+				// Refresh all visible panels since the layout may have changed
+				for group_id in self.workspace_panel_layout.root.all_group_ids() {
+					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+						self.refresh_panel_content(panel_type, responses);
+					}
+				}
+			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
@@ -507,6 +519,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 				// Refresh the new active tab
 				if let Some(panel_type) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
@@ -556,6 +569,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 				// Refresh the moved panel's content in its new location
 				self.refresh_panel_content(panel_type, responses);
@@ -1190,6 +1204,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 
 					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+					responses.add(PortfolioMessage::SaveWorkspaceLayout);
 				}
 			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
@@ -1269,6 +1284,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 					// Send the layout update first so the frontend mounts the new panel component before it receives content
 					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+					responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group).and_then(|g| g.active_panel_type()) {
 						self.refresh_panel_content(panel_type, responses);
@@ -1303,6 +1319,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 				// Refresh the new panel group's active tab
 				if let Some(panel_type) = self.workspace_panel_layout.panel_group(new_id).and_then(|g| g.active_panel_type()) {
@@ -1499,6 +1516,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::TogglePropertiesPanelOpen => {
 				if self.focus_document {
@@ -1538,11 +1556,47 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::UpdateWorkspacePanelLayout => {
-				self.workspace_panel_layout.recalculate_default_sizes();
-
 				responses.add(FrontendMessage::UpdateWorkspacePanelLayout {
 					panel_layout: self.workspace_panel_layout.clone(),
 				});
+			}
+			PortfolioMessage::SaveWorkspaceLayout => {
+				responses.add(FrontendMessage::TriggerSaveWorkspaceLayout {
+					workspace_layout: self.workspace_panel_layout.clone(),
+				});
+			}
+			PortfolioMessage::ResetPanelGroupSizes { split_path } => {
+				// Walk the tree to the target split node using the path
+				let mut node = &mut self.workspace_panel_layout.root;
+				for &index in &split_path {
+					let PanelLayoutSubdivision::Split { children } = node else { return };
+					let Some(child) = children.get_mut(index) else { return };
+					node = &mut child.subdivision;
+				}
+
+				// Recalculate default sizes for this split node
+				node.recalculate_default_sizes();
+
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+			}
+			PortfolioMessage::SetPanelGroupSizes { split_path, sizes } => {
+				// Walk the tree to the target split node using the path
+				let mut node = &mut self.workspace_panel_layout.root;
+				for &index in &split_path {
+					let PanelLayoutSubdivision::Split { children } = node else { return };
+					let Some(child) = children.get_mut(index) else { return };
+					node = &mut child.subdivision;
+				}
+
+				// Apply the new sizes to the split's children
+				if let PanelLayoutSubdivision::Split { children } = node {
+					for (child, &size) in children.iter_mut().zip(sizes.iter()) {
+						child.size = size;
+					}
+				}
+
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
 				// Send the list of document tab names
@@ -1794,6 +1848,7 @@ impl PortfolioMessageHandler {
 
 		responses.add(MenuBarMessage::SendLayout);
 		responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+		responses.add(PortfolioMessage::SaveWorkspaceLayout);
 	}
 
 	/// Destroy the stored layout for a panel that is no longer the active tab.

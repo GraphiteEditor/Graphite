@@ -1,6 +1,16 @@
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { saveEditorPreferences, loadEditorPreferences, storeDocument, removeDocument, loadFirstDocument, loadRestDocuments, saveActiveDocument } from "/src/utility-functions/persistence";
+import {
+	saveEditorPreferences,
+	loadEditorPreferences,
+	saveWorkspaceLayout,
+	loadWorkspaceLayout,
+	storeDocument,
+	removeDocument,
+	loadFirstDocument,
+	loadRestDocuments,
+	saveActiveDocument,
+} from "/src/utility-functions/persistence";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -20,6 +30,14 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 
 	subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", async () => {
 		await loadEditorPreferences(editor);
+	});
+
+	subscriptions.subscribeFrontendMessage("TriggerSaveWorkspaceLayout", async (data) => {
+		await saveWorkspaceLayout(data.workspaceLayout);
+	});
+
+	subscriptions.subscribeFrontendMessage("TriggerLoadWorkspaceLayout", async () => {
+		await loadWorkspaceLayout(editor);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
@@ -53,6 +71,8 @@ export function destroyPersistenceManager() {
 
 	subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
 	subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
+	subscriptions.unsubscribeFrontendMessage("TriggerSaveWorkspaceLayout");
+	subscriptions.unsubscribeFrontendMessage("TriggerLoadWorkspaceLayout");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
