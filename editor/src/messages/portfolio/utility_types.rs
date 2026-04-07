@@ -84,26 +84,13 @@ impl FontCatalogStyle {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PanelType {
 	Welcome,
 	Document,
 	Layers,
 	Properties,
 	Data,
-}
-
-impl PanelType {
-	/// Returns the default panel group for this panel type.
-	pub fn default_panel_group(self) -> PanelGroupId {
-		match self {
-			PanelType::Document => PanelGroupId::DocumentGroup,
-			PanelType::Properties => PanelGroupId::PropertiesGroup,
-			PanelType::Layers => PanelGroupId::LayersGroup,
-			PanelType::Data => PanelGroupId::DataGroup,
-			PanelType::Welcome => panic!("PanelType::{self:?} has no default panel group (not a dockable panel)"),
-		}
-	}
 }
 
 impl From<String> for PanelType {
@@ -119,29 +106,14 @@ impl From<String> for PanelType {
 	}
 }
 
-/// Identifies a panel group in the workspace that can hold tabbed panels.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PanelGroupId {
-	DocumentGroup,
-	PropertiesGroup,
-	LayersGroup,
-	DataGroup,
-}
+/// Unique identifier for a panel group (a leaf subdivision in the layout tree that holds tabs).
+#[repr(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct PanelGroupId(pub u64);
 
-impl From<String> for PanelGroupId {
-	fn from(value: String) -> Self {
-		match value.as_str() {
-			"DocumentGroup" => PanelGroupId::DocumentGroup,
-			"PropertiesGroup" => PanelGroupId::PropertiesGroup,
-			"LayersGroup" => PanelGroupId::LayersGroup,
-			"DataGroup" => PanelGroupId::DataGroup,
-			_ => panic!("Unknown panel group: {value}"),
-		}
-	}
-}
-
-/// State of a single panel group in the workspace.
+/// State of a single panel group (leaf subdivision) in the workspace layout tree.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PanelGroupState {
 	pub tabs: Vec<PanelType>,
@@ -163,67 +135,348 @@ impl PanelGroupState {
 	}
 }
 
-/// The complete workspace panel layout describing which dockable panels are in which panel groups.
+/// A subdivision in the workspace layout tree. The root is always a row (horizontal).
+/// Direction alternates at each depth: row, column, row, column, etc.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WorkspacePanelLayout {
-	#[serde(rename = "propertiesGroup")]
-	pub properties_group: PanelGroupState,
-	#[serde(rename = "layersGroup")]
-	pub layers_group: PanelGroupState,
-	#[serde(rename = "dataGroup")]
-	pub data_group: PanelGroupState,
+pub enum PanelLayoutSubdivision {
+	/// A leaf subdivision: a panel group with tabbed panels.
+	PanelGroup { id: PanelGroupId, state: PanelGroupState },
+	/// A container subdivision that splits its space among children. Direction is implicit from depth (even = row, odd = column).
+	Split { children: Vec<SplitChild> },
 }
 
-impl Default for WorkspacePanelLayout {
-	fn default() -> Self {
-		Self {
-			properties_group: PanelGroupState {
-				tabs: vec![PanelType::Properties],
-				active_tab_index: 0,
-			},
-			layers_group: PanelGroupState {
-				tabs: vec![PanelType::Layers],
-				active_tab_index: 0,
-			},
-			data_group: PanelGroupState { tabs: vec![], active_tab_index: 0 },
-		}
-	}
+/// A child within a split container, with a proportional size weight.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SplitChild {
+	pub subdivision: PanelLayoutSubdivision,
+	/// Flex-grow weight for proportional sizing.
+	pub size: f64,
+}
+
+/// The complete workspace panel layout as a tree of nested rows and columns.
+/// The root subdivision is always a row (horizontal split). Direction alternates at each depth.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspacePanelLayout {
+	pub root: PanelLayoutSubdivision,
+	/// Counter for generating unique panel group IDs.
+	#[serde(rename = "nextGroupId")]
+	next_group_id: PanelGroupId,
+	/// Remembers where a panel was before being removed (panel type, group ID, and tab index), so it can be restored there.
+	#[serde(default, rename = "savedPositions")]
+	saved_positions: Vec<(PanelType, PanelGroupId, usize)>,
 }
 
 impl WorkspacePanelLayout {
-	pub fn panel_group(&self, panel_group_id: PanelGroupId) -> &PanelGroupState {
-		match panel_group_id {
-			PanelGroupId::DocumentGroup => panic!("PanelGroupId::{panel_group_id:?} is not a dockable panel group"),
-			PanelGroupId::PropertiesGroup => &self.properties_group,
-			PanelGroupId::LayersGroup => &self.layers_group,
-			PanelGroupId::DataGroup => &self.data_group,
-		}
+	/// Generate a new unique panel group ID.
+	pub fn next_id(&mut self) -> PanelGroupId {
+		let id = self.next_group_id;
+		self.next_group_id.0 += 1;
+		id
 	}
 
-	pub fn panel_group_mut(&mut self, panel_group_id: PanelGroupId) -> &mut PanelGroupState {
-		match panel_group_id {
-			PanelGroupId::DocumentGroup => panic!("PanelGroupId::{panel_group_id:?} is not a dockable panel group"),
-			PanelGroupId::PropertiesGroup => &mut self.properties_group,
-			PanelGroupId::LayersGroup => &mut self.layers_group,
-			PanelGroupId::DataGroup => &mut self.data_group,
-		}
+	/// Find the panel group state for a given ID.
+	pub fn panel_group(&self, id: PanelGroupId) -> Option<&PanelGroupState> {
+		self.root.find_group(id)
 	}
 
-	/// Find which panel group contains a given panel type.
+	/// Find the panel group state for a given ID (mutable).
+	pub fn panel_group_mut(&mut self, id: PanelGroupId) -> Option<&mut PanelGroupState> {
+		self.root.find_group_mut(id)
+	}
+
+	/// Find which panel group contains a given panel type, returning its ID.
 	pub fn find_panel(&self, panel_type: PanelType) -> Option<PanelGroupId> {
-		[PanelGroupId::PropertiesGroup, PanelGroupId::LayersGroup, PanelGroupId::DataGroup]
-			.into_iter()
-			.find(|&group_id| self.panel_group(group_id).contains(panel_type))
+		self.root.find_panel(panel_type)
 	}
 
 	/// Check if a panel type is the active (visible) tab in any panel group.
 	pub fn is_panel_visible(&self, panel_type: PanelType) -> bool {
-		self.find_panel(panel_type).is_some_and(|group_id| self.panel_group(group_id).is_visible(panel_type))
+		self.find_panel(panel_type).and_then(|id| self.panel_group(id)).is_some_and(|group| group.is_visible(panel_type))
 	}
 
 	/// Check if a panel type is present (as any tab) in any panel group, whether or not it's the active tab.
 	pub fn is_panel_present(&self, panel_type: PanelType) -> bool {
 		self.find_panel(panel_type).is_some()
+	}
+
+	/// Remove empty panel groups and collapse unnecessary single-child splits.
+	pub fn prune(&mut self) {
+		self.root.prune();
+	}
+
+	/// Recalculate the default sizes for all splits in the tree based on document panel proximity.
+	pub fn recalculate_default_sizes(&mut self) {
+		self.root.recalculate_default_sizes();
+	}
+
+	/// Remember which panel group and tab index a panel was in before removal, so it can be restored there later.
+	pub fn save_panel_position(&mut self, panel_type: PanelType) {
+		if let Some(group_id) = self.find_panel(panel_type) {
+			let tab_index = self.panel_group(group_id).and_then(|g| g.tabs.iter().position(|&t| t == panel_type)).unwrap_or(0);
+
+			// Replace any existing saved position for this panel type
+			self.saved_positions.retain(|(pt, _, _)| *pt != panel_type);
+			self.saved_positions.push((panel_type, group_id, tab_index));
+		}
+	}
+
+	/// Restore a panel to its previous position if available, otherwise to its default position.
+	/// If the panel was previously in a group that still exists, it's added back as a tab at its original index.
+	/// Otherwise, it's placed at its default structural position in the tree.
+	pub fn restore_panel(&mut self, panel_type: PanelType) {
+		// Try to restore to the previously saved group and tab position
+		let saved = self.saved_positions.iter().find(|(pt, _, _)| *pt == panel_type).copied();
+		if let Some((_, saved_group_id, saved_tab_index)) = saved
+			&& let Some(group) = self.panel_group_mut(saved_group_id)
+		{
+			let insert_index = saved_tab_index.min(group.tabs.len());
+			group.tabs.insert(insert_index, panel_type);
+			group.active_tab_index = insert_index;
+			self.saved_positions.retain(|(pt, _, _)| *pt != panel_type);
+			return;
+		}
+		self.saved_positions.retain(|(pt, _, _)| *pt != panel_type);
+
+		self.restore_panel_to_default_position(panel_type);
+	}
+
+	/// Place a panel at its default structural position in the layout tree.
+	/// - Data: below the document in the left column (root child 0)
+	/// - Properties: top of the right column (root child 1)
+	/// - Layers: bottom of the right column (root child 1)
+	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
+		let new_id = self.next_id();
+		let new_group = SplitChild {
+			subdivision: PanelLayoutSubdivision::PanelGroup {
+				id: new_id,
+				state: PanelGroupState {
+					tabs: vec![panel_type],
+					active_tab_index: 0,
+				},
+			},
+			size: match panel_type {
+				PanelType::Data => 30.,
+				PanelType::Properties => 45.,
+				PanelType::Layers => 55.,
+				_ => 50.,
+			},
+		};
+
+		// Determine which root child column to insert into and at which position
+		let (root_child_index, insert_at_end) = match panel_type {
+			PanelType::Data => (0, true),        // Left column, after document
+			PanelType::Properties => (1, false), // Right column, at top
+			PanelType::Layers => (1, true),      // Right column, at bottom
+			_ => (1, true),
+		};
+
+		// Ensure the root is a split
+		if !matches!(&self.root, PanelLayoutSubdivision::Split { .. }) {
+			let old_root = std::mem::replace(&mut self.root, PanelLayoutSubdivision::Split { children: vec![] });
+			if let PanelLayoutSubdivision::Split { children } = &mut self.root {
+				children.push(SplitChild { subdivision: old_root, size: 80. });
+			}
+		}
+
+		let PanelLayoutSubdivision::Split { children: root_children } = &mut self.root else { return };
+
+		// Ensure the target root child exists
+		while root_children.len() <= root_child_index {
+			root_children.push(SplitChild {
+				subdivision: PanelLayoutSubdivision::Split { children: vec![] },
+				size: 20.,
+			});
+		}
+
+		// The target should be a split (column at depth 1) so we can add children to it
+		let target = &mut root_children[root_child_index].subdivision;
+		if !matches!(target, PanelLayoutSubdivision::Split { .. }) {
+			let old_subdivision = std::mem::replace(target, PanelLayoutSubdivision::Split { children: vec![] });
+			if let PanelLayoutSubdivision::Split { children } = target {
+				children.push(SplitChild {
+					subdivision: old_subdivision,
+					size: 50.,
+				});
+			}
+		}
+
+		if let PanelLayoutSubdivision::Split { children } = target {
+			if insert_at_end {
+				children.push(new_group);
+			} else {
+				children.insert(0, new_group);
+			}
+		}
+	}
+}
+
+impl Default for WorkspacePanelLayout {
+	fn default() -> Self {
+		// Default layout (sizes are recalculated by `recalculate_default_sizes` before being sent to the frontend):
+		// Row [
+		//   Column [Document]
+		//   Column [Properties, Layers]
+		// ]
+		Self {
+			root: PanelLayoutSubdivision::Split {
+				children: vec![
+					SplitChild {
+						subdivision: PanelLayoutSubdivision::Split {
+							children: vec![SplitChild {
+								subdivision: PanelLayoutSubdivision::PanelGroup {
+									id: PanelGroupId(0),
+									state: PanelGroupState {
+										tabs: vec![PanelType::Document],
+										active_tab_index: 0,
+									},
+								},
+								size: 100.,
+							}],
+						},
+						size: 80.,
+					},
+					SplitChild {
+						subdivision: PanelLayoutSubdivision::Split {
+							children: vec![
+								SplitChild {
+									subdivision: PanelLayoutSubdivision::PanelGroup {
+										id: PanelGroupId(1),
+										state: PanelGroupState {
+											tabs: vec![PanelType::Properties],
+											active_tab_index: 0,
+										},
+									},
+									size: 50.,
+								},
+								SplitChild {
+									subdivision: PanelLayoutSubdivision::PanelGroup {
+										id: PanelGroupId(2),
+										state: PanelGroupState {
+											tabs: vec![PanelType::Layers],
+											active_tab_index: 0,
+										},
+									},
+									size: 50.,
+								},
+							],
+						},
+						size: 20.,
+					},
+				],
+			},
+			next_group_id: PanelGroupId(3),
+			saved_positions: Vec::new(),
+		}
+	}
+}
+
+impl PanelLayoutSubdivision {
+	/// Find the panel group state for a given ID.
+	pub fn find_group(&self, target_id: PanelGroupId) -> Option<&PanelGroupState> {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { id, state } if *id == target_id => Some(state),
+			PanelLayoutSubdivision::PanelGroup { .. } => None,
+			PanelLayoutSubdivision::Split { children } => children.iter().find_map(|child| child.subdivision.find_group(target_id)),
+		}
+	}
+
+	/// Find the panel group state for a given ID (mutable).
+	pub fn find_group_mut(&mut self, target_id: PanelGroupId) -> Option<&mut PanelGroupState> {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { id, state } if *id == target_id => Some(state),
+			PanelLayoutSubdivision::PanelGroup { .. } => None,
+			PanelLayoutSubdivision::Split { children } => children.iter_mut().find_map(|child| child.subdivision.find_group_mut(target_id)),
+		}
+	}
+
+	/// Find the panel group ID that contains a given panel type.
+	pub fn find_panel(&self, panel_type: PanelType) -> Option<PanelGroupId> {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { id, state } if state.contains(panel_type) => Some(*id),
+			PanelLayoutSubdivision::PanelGroup { .. } => None,
+			PanelLayoutSubdivision::Split { children } => children.iter().find_map(|child| child.subdivision.find_panel(panel_type)),
+		}
+	}
+
+	/// Collect all panel group IDs in the tree.
+	pub fn all_group_ids(&self) -> Vec<PanelGroupId> {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { id, .. } => vec![*id],
+			PanelLayoutSubdivision::Split { children } => children.iter().flat_map(|child| child.subdivision.all_group_ids()).collect(),
+		}
+	}
+
+	/// Remove empty panel groups and collapse single-child splits.
+	pub fn prune(&mut self) {
+		if let PanelLayoutSubdivision::Split { children } = self {
+			// Recursively prune children first
+			children.iter_mut().for_each(|child| child.subdivision.prune());
+
+			// Remove empty panel groups
+			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { state, .. } if state.tabs.is_empty()));
+
+			// If a split has exactly one child, replace this subdivision with that child's subdivision
+			if children.len() == 1 {
+				*self = children.remove(0).subdivision;
+			}
+		}
+	}
+
+	/// Check if this subtree contains the document panel.
+	pub fn contains_document(&self) -> bool {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { state, .. } => state.contains(PanelType::Document) || state.contains(PanelType::Welcome),
+			PanelLayoutSubdivision::Split { children } => children.iter().any(|child| child.subdivision.contains_document()),
+		}
+	}
+
+	/// Recalculate the default sizes for this subdivision's children based on proximity to the document panel.
+	/// Splits directly surrounding the document panel use 80-20 weighting.
+	/// All other splits use equal division.
+	pub fn recalculate_default_sizes(&mut self) {
+		if let PanelLayoutSubdivision::Split { children } = self {
+			let child_count = children.len();
+			if child_count == 0 {
+				return;
+			}
+
+			// Check if any child directly contains (or is) the document panel
+			let document_child_index = children.iter().position(|child| child.subdivision.contains_document());
+
+			if let Some(document_index) = document_child_index {
+				// This split directly surrounds the document panel, so use 80-20 weighting
+				let non_document_count = child_count - 1;
+				let document_share = if non_document_count > 0 { 80. } else { 100. };
+				let other_share = if non_document_count > 0 { 20. / non_document_count as f64 } else { 0. };
+
+				for (i, child) in children.iter_mut().enumerate() {
+					child.size = if i == document_index { document_share } else { other_share };
+				}
+			} else {
+				// This split doesn't directly contain the document, use equal division
+				let equal_share = 100. / child_count as f64;
+				for child in children.iter_mut() {
+					child.size = equal_share;
+				}
+			}
+
+			// Recurse into children
+			for child in children.iter_mut() {
+				child.subdivision.recalculate_default_sizes();
+			}
+		}
+	}
+
+	/// Remove a panel group by ID and prune the tree.
+	pub fn remove_group(&mut self, target_id: PanelGroupId) {
+		if let PanelLayoutSubdivision::Split { children } = self {
+			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { id, .. } if *id == target_id));
+
+			children.iter_mut().for_each(|child| child.subdivision.remove_group(target_id));
+		}
 	}
 }
 
