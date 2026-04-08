@@ -474,13 +474,14 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = splitPanelGroup)]
-	pub fn split_panel_group(&self, target_group: u64, direction: String, tabs: JsValue) {
+	pub fn split_panel_group(&self, target_group: u64, direction: String, tabs: JsValue, active_tab_index: usize) {
 		let direction: DockingSplitDirection = serde_wasm_bindgen::from_value(JsValue::from_str(&direction)).unwrap();
 		let tabs: Vec<PanelType> = serde_wasm_bindgen::from_value(tabs).unwrap();
 		let message = PortfolioMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
 			tabs,
+			active_tab_index,
 		};
 		self.dispatch(message);
 	}

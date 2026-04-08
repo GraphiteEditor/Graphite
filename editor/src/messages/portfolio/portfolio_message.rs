@@ -155,6 +155,7 @@ pub enum PortfolioMessage {
 		target_group: PanelGroupId,
 		direction: DockingSplitDirection,
 		tabs: Vec<PanelType>,
+		active_tab_index: usize,
 	},
 	SelectDocument {
 		document_id: DocumentId,

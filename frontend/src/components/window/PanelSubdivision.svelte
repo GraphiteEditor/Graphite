@@ -150,8 +150,8 @@
 		editor.moveAllPanelTabs(BigInt(sourcePanelId), BigInt(targetPanelId), insertIndex);
 	}
 
-	function splitDrop(targetPanelId: string, direction: string, tabs: string[]) {
-		editor.splitPanelGroup(BigInt(targetPanelId), direction, tabs);
+	function splitDrop(targetPanelId: string, direction: string, tabs: string[], activeTabIndex: number) {
+		editor.splitPanelGroup(BigInt(targetPanelId), direction, tabs, activeTabIndex);
 	}
 
 	function isDocumentGroup(state: PanelGroupState): boolean {

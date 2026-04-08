@@ -471,6 +471,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
 				let tabs: Vec<PanelType> = source_state.tabs.clone();
+				let source_active_tab_index = source_state.active_tab_index;
 				if tabs.is_empty() {
 					return;
 				}
@@ -489,13 +490,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					source.active_tab_index = 0;
 				}
 
-				// Insert all tabs into the target group
+				// Insert all tabs into the target group, preserving which tab was active in the source
 				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
 					let index = insert_index.min(target.tabs.len());
 					for (i, panel_type) in tabs.iter().enumerate() {
 						target.tabs.insert(index + i, *panel_type);
 					}
-					target.active_tab_index = index;
+					target.active_tab_index = index + source_active_tab_index.min(tabs.len().saturating_sub(1));
 				}
 
 				self.workspace_panel_layout.prune();
@@ -1270,7 +1271,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
-			PortfolioMessage::SplitPanelGroup { target_group, direction, tabs } => {
+			PortfolioMessage::SplitPanelGroup {
+				target_group,
+				direction,
+				tabs,
+				active_tab_index,
+			} => {
 				// Destroy layouts for the dragged tabs and the target group's active panel (it may get remounted by the frontend)
 				for &panel_type in &tabs {
 					Self::destroy_panel_layouts(panel_type, responses);
@@ -1285,7 +1291,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				// Create the new panel group adjacent to the target, then prune empty groups
-				let new_id = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone());
+				let new_id = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index);
 				self.workspace_panel_layout.prune();
 
 				responses.add(MenuBarMessage::SendLayout);

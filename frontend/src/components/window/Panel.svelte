@@ -39,7 +39,7 @@
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
 	export let groupDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
-	export let splitDropAction: ((targetPanelId: string, direction: DockingEdge, tabs: PanelType[]) => void) | undefined = undefined;
+	export let splitDropAction: ((targetPanelId: string, direction: DockingEdge, tabs: PanelType[], activeTabIndex: number) => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -199,7 +199,12 @@
 			}
 			// Edge docking drop: create a new split adjacent to the target panel
 			else if (crossPanelState.active && crossPanelState.hoverDockingPanelId && crossPanelState.hoverDockingEdge) {
-				splitDropAction?.(crossPanelState.hoverDockingPanelId, crossPanelState.hoverDockingEdge, crossPanelState.draggedTabs);
+				splitDropAction?.(
+					crossPanelState.hoverDockingPanelId,
+					crossPanelState.hoverDockingEdge,
+					crossPanelState.draggedTabs,
+					crossPanelState.draggingGroup ? crossPanelState.sourceTabIndex : 0,
+				);
 			}
 			// Cross-panel tab bar drop: insert as a tab in the target panel group
 			else if (

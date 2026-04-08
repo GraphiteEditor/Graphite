@@ -221,12 +221,12 @@ impl WorkspacePanelLayout {
 	/// The direction determines where the new group goes relative to the target.
 	/// Left/Right creates a horizontal (row) split, Top/Bottom creates a vertical (column) split.
 	/// Returns the ID of the newly created panel group.
-	pub fn split_panel_group(&mut self, target_group_id: PanelGroupId, direction: DockingSplitDirection, tabs: Vec<PanelType>) -> PanelGroupId {
+	pub fn split_panel_group(&mut self, target_group_id: PanelGroupId, direction: DockingSplitDirection, tabs: Vec<PanelType>, active_tab_index: usize) -> PanelGroupId {
 		let new_id = self.next_id();
 		let new_group = SplitChild {
 			subdivision: PanelLayoutSubdivision::PanelGroup {
 				id: new_id,
-				state: PanelGroupState { tabs, active_tab_index: 0 },
+				state: PanelGroupState { tabs, active_tab_index },
 			},
 			size: 50.,
 		};
