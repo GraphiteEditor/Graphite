@@ -476,6 +476,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				}
 
+				// Validate that the target group exists before modifying the source
+				if self.workspace_panel_layout.panel_group(target_group).is_none() {
+					log::error!("Target panel group {target_group:?} not found");
+					return;
+				}
+
 				// Destroy layouts for all moved tabs and the displaced target tab
 				for &panel_type in &tabs {
 					Self::destroy_panel_layouts(panel_type, responses);
@@ -493,9 +499,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Insert all tabs into the target group, preserving which tab was active in the source
 				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
 					let index = insert_index.min(target.tabs.len());
-					for (i, panel_type) in tabs.iter().enumerate() {
-						target.tabs.insert(index + i, *panel_type);
-					}
+					target.tabs.splice(index..index, tabs.iter().copied());
 					target.active_tab_index = index + source_active_tab_index.min(tabs.len().saturating_sub(1));
 				}
 
