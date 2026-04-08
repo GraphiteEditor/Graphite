@@ -1035,9 +1035,14 @@ impl PenToolData {
 
 		match self.handle_mode {
 			HandleMode::ColinearLocked | HandleMode::ColinearEquidistant => {
-				self.g1_continuous = true;
-				self.apply_colinear_constraint(responses, layer, self.next_point, &vector);
-				self.adjust_handle_length(responses, layer, &vector);
+				let should_skip =
+					self.handle_type == TargetHandle::FuturePreviewOutHandle && self.handle_end.is_none() && self.prior_segment_endpoint.map_or(true, |ep| vector.all_connected(ep).count() >= 2);
+
+				self.g1_continuous = !should_skip;
+				if !should_skip {
+					self.apply_colinear_constraint(responses, layer, self.next_point, &vector);
+					self.adjust_handle_length(responses, layer, &vector);
+				}
 			}
 			HandleMode::Free => {
 				self.g1_continuous = false;
