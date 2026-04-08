@@ -418,6 +418,9 @@ impl PanelLayoutSubdivision {
 			// Remove empty panel groups
 			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { state, .. } if state.tabs.is_empty()));
 
+			// Remove empty splits (splits that lost all their children after pruning)
+			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::Split { children } if children.is_empty()));
+
 			// If a split has exactly one child, replace this subdivision with that child's subdivision
 			if children.len() == 1 {
 				*self = children.remove(0).subdivision;
@@ -470,7 +473,7 @@ impl PanelLayoutSubdivision {
 		}
 	}
 
-	/// Remove a panel group by ID and prune the tree.
+	/// Remove a panel group by ID from the tree. Does not prune.
 	pub fn remove_group(&mut self, target_id: PanelGroupId) {
 		if let PanelLayoutSubdivision::Split { children } = self {
 			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { id, .. } if *id == target_id));

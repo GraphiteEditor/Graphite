@@ -82,11 +82,9 @@
 
 		const abortResize = () => {
 			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
+			pointerCaptureId = undefined;
 			removeListeners();
 			activeResizeCleanup = undefined;
-
-			pointerCaptureId = e.pointerId;
-			gutter.setPointerCapture(pointerCaptureId);
 
 			if (gutterResizeRestore !== undefined) {
 				sizeOverrides = { ...sizeOverrides, [nextIndex]: gutterResizeRestore[0], [prevIndex]: gutterResizeRestore[1] };

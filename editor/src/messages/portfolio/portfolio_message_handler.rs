@@ -472,6 +472,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
 				let Some(panel_type) = source_state.active_panel_type() else { return };
 
+				// Validate that the target group exists before modifying the source
+				if self.workspace_panel_layout.panel_group(target_group).is_none() {
+					log::error!("Target panel group {target_group:?} not found");
+					return;
+				}
+
 				// Destroy layouts for the moved panel (so backend and frontend start in sync when it remounts)
 				// and for the panel that was previously active in the target panel group (it will be displaced by the incoming tab)
 				Self::destroy_panel_layouts(panel_type, responses);
