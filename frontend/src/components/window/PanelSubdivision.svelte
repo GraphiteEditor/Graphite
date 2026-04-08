@@ -210,3 +210,35 @@
 		{/if}
 	{/each}
 {/if}
+
+<style lang="scss">
+	.workspace-grid-subdivision {
+		position: relative;
+		flex: 1 1 0;
+		min-height: 28px;
+
+		&.folded {
+			flex-grow: 0;
+			height: 0;
+		}
+	}
+
+	.workspace-grid-resize-gutter {
+		flex: 0 0 4px;
+		border-radius: 2px;
+		transition: background 0.2s 0s;
+
+		&.layout-row {
+			cursor: ns-resize;
+		}
+
+		&.layout-col {
+			cursor: ew-resize;
+		}
+
+		&:hover {
+			background: var(--color-5-dullgray);
+			transition: background 0.2s 0.1s;
+		}
+	}
+</style>
