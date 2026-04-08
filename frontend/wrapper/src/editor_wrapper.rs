@@ -18,7 +18,7 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, PanelGroupId};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -435,25 +435,31 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = reorderPanelGroupTab)]
-	pub fn reorder_panel_group_tab(&self, group: String, old_index: usize, new_index: usize) {
-		let group = group.into();
-		let message = PortfolioMessage::ReorderPanelGroupTab { group, old_index, new_index };
+	pub fn reorder_panel_group_tab(&self, group: u64, old_index: usize, new_index: usize) {
+		let message = PortfolioMessage::ReorderPanelGroupTab {
+			group: PanelGroupId(group),
+			old_index,
+			new_index,
+		};
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = movePanelTab)]
-	pub fn move_panel_tab(&self, source_group: String, target_group: String, insert_index: usize) {
+	pub fn move_panel_tab(&self, source_group: u64, target_group: u64, insert_index: usize) {
 		let message = PortfolioMessage::MovePanelTab {
-			source_group: source_group.into(),
-			target_group: target_group.into(),
+			source_group: PanelGroupId(source_group),
+			target_group: PanelGroupId(target_group),
 			insert_index,
 		};
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = setPanelGroupActiveTab)]
-	pub fn set_panel_group_active_tab(&self, group: String, tab_index: usize) {
-		let message = PortfolioMessage::SetPanelGroupActiveTab { group: group.into(), tab_index };
+	pub fn set_panel_group_active_tab(&self, group: u64, tab_index: usize) {
+		let message = PortfolioMessage::SetPanelGroupActiveTab {
+			group: PanelGroupId(group),
+			tab_index,
+		};
 		self.dispatch(message);
 	}
 

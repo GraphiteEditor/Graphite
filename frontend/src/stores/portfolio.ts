@@ -4,20 +4,9 @@ import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { storeDocumentTabOrder } from "/src/utility-functions/persistence";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, OpenDocument, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, OpenDocument, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
-
-export type PanelGroupState = {
-	tabs: PanelType[];
-	activeTabIndex: number;
-};
-
-export type WorkspacePanelLayout = {
-	propertiesGroup: PanelGroupState;
-	layersGroup: PanelGroupState;
-	dataGroup: PanelGroupState;
-};
 
 type PortfolioStoreState = {
 	unsaved: boolean;
@@ -29,11 +18,7 @@ const initialState: PortfolioStoreState = {
 	unsaved: false,
 	documents: [],
 	activeDocumentIndex: 0,
-	panelLayout: {
-		propertiesGroup: { tabs: ["Properties"], activeTabIndex: 0 },
-		layersGroup: { tabs: ["Layers"], activeTabIndex: 0 },
-		dataGroup: { tabs: [], activeTabIndex: 0 },
-	},
+	panelLayout: { root: { Split: { children: [] } }, nextGroupId: 0n },
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -115,14 +100,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
-		// Coerce activeTabIndex from BigInt (produced by serde_wasm_bindgen for usize) to number
-		const layout = data.panelLayout;
-		layout.propertiesGroup.activeTabIndex = Number(layout.propertiesGroup.activeTabIndex);
-		layout.layersGroup.activeTabIndex = Number(layout.layersGroup.activeTabIndex);
-		layout.dataGroup.activeTabIndex = Number(layout.dataGroup.activeTabIndex);
-
 		update((state) => {
-			state.panelLayout = layout;
+			state.panelLayout = data.panelLayout;
 			return state;
 		});
 	});
