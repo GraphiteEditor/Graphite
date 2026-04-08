@@ -43,6 +43,7 @@ pub struct TypesettingConfig {
 	pub max_height: Option<f64>,
 	pub tilt: f64,
 	pub align: TextAlign,
+	pub hyphenate: bool,
 }
 
 impl Default for TypesettingConfig {
@@ -55,6 +56,7 @@ impl Default for TypesettingConfig {
 			max_height: None,
 			tilt: 0.,
 			align: TextAlign::default(),
+			hyphenate: false,
 		}
 	}
 }

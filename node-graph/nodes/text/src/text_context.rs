@@ -2,15 +2,28 @@ use super::{Font, FontCache, TypesettingConfig};
 use core::cell::RefCell;
 use core_types::table::Table;
 use glam::DVec2;
+use hyphenation::{Hyphenator, Language, Load, Standard};
 use parley::fontique::{Blob, FamilyId, FontInfo};
-use parley::{AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, OverflowWrap, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use vector_types::Vector;
 
 use super::path_builder::PathBuilder;
 
 thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
+}
+
+static EN_US_DICT: OnceLock<Standard> = OnceLock::new();
+
+fn get_dict_for_language(lang: Language) -> Option<&'static Standard> {
+	match lang {
+		Language::EnglishUS | Language::EnglishGB => EN_US_DICT
+			.get_or_init(|| Standard::from_embedded(Language::EnglishUS).expect("embed_all feature must be enabled"))
+			.into(),
+		_ => None,
+	}
 }
 
 /// Unified thread-local text processing context that combines font and layout management
@@ -61,14 +74,25 @@ impl TextContext {
 	}
 
 	/// Create a text layout using the specified font and typesetting configuration
+	// TODO: Cache layout builder to avoid re-shaping text continuously.
 	fn layout_text(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig) -> Option<Layout<()>> {
 		// Note that the actual_font may not be the desired font if that font is not yet loaded.
 		// It is important not to cache the default font under the name of another font.
 		let (font_data, actual_font) = self.resolve_font_data(font, font_cache)?;
 		let (font_family, font_info) = self.get_font_info(actual_font, &font_data)?;
 
+		let injected: String;
+		let layout_text = if typesetting.hyphenate && typesetting.max_width.is_some() {
+			// TODO: pull language from typesetting config
+			injected = apply_hyphenation(text, Language::EnglishUS);
+
+			&injected
+		} else {
+			text
+		};
+
 		const DISPLAY_SCALE: f32 = 1.;
-		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, DISPLAY_SCALE, false);
+		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, layout_text, DISPLAY_SCALE, false);
 
 		builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
 		builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
@@ -77,8 +101,8 @@ impl TextContext {
 		builder.push_default(StyleProperty::FontStyle(font_info.style()));
 		builder.push_default(StyleProperty::FontWidth(font_info.width()));
 		builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
-
-		let mut layout: Layout<()> = builder.build(text);
+		builder.push_default(StyleProperty::OverflowWrap(OverflowWrap::BreakWord));
+		let mut layout = builder.build(layout_text);
 
 		layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
 		layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
@@ -132,4 +156,39 @@ impl TextContext {
 		let bounds = self.bounding_box(text, font, font_cache, typesetting, true);
 		max_height < bounds.y
 	}
+}
+
+/// Apply hyphenation to the given text.
+fn apply_hyphenation(text: &str, lang: Language) -> String {
+	let Some(dict) = get_dict_for_language(lang) else {
+		return text.to_string();
+	};
+	let mut out = String::with_capacity(text.len() + text.len() / 8);
+	let mut word_start: Option<usize> = None;
+
+	fn push_hyphenated(out: &mut String, dict: &hyphenation::Standard, word: &str) {
+		const SOFT_HYPHEN: char = '\u{00AD}';
+		let mut segs = dict.hyphenate(word).into_iter().segments().peekable();
+		while let Some(seg) = segs.next() {
+			out.push_str(seg);
+			if segs.peek().is_some() {
+				out.push(SOFT_HYPHEN);
+			}
+		}
+	}
+
+	for (i, c) in text.char_indices() {
+		if c.is_alphabetic() {
+			word_start.get_or_insert(i);
+		} else {
+			if let Some(start) = word_start.take() {
+				push_hyphenated(&mut out, dict, &text[start..i]);
+			}
+			out.push(c);
+		}
+	}
+	if let Some(start) = word_start {
+		push_hyphenated(&mut out, dict, &text[start..]);
+	}
+	out
 }
