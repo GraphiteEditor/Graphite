@@ -1295,7 +1295,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				// Create the new panel group adjacent to the target, then prune empty groups
-				let new_id = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index);
+				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index) else {
+					log::error!("Failed to insert split adjacent to panel group {target_group:?}");
+					return;
+				};
 				self.workspace_panel_layout.prune();
 
 				responses.add(MenuBarMessage::SendLayout);

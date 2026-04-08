@@ -220,8 +220,8 @@ impl WorkspacePanelLayout {
 	/// Split a panel group by inserting a new panel group adjacent to it.
 	/// The direction determines where the new group goes relative to the target.
 	/// Left/Right creates a horizontal (row) split, Top/Bottom creates a vertical (column) split.
-	/// Returns the ID of the newly created panel group.
-	pub fn split_panel_group(&mut self, target_group_id: PanelGroupId, direction: DockingSplitDirection, tabs: Vec<PanelType>, active_tab_index: usize) -> PanelGroupId {
+	/// Returns the ID of the newly created panel group, or `None` if insertion failed.
+	pub fn split_panel_group(&mut self, target_group_id: PanelGroupId, direction: DockingSplitDirection, tabs: Vec<PanelType>, active_tab_index: usize) -> Option<PanelGroupId> {
 		let new_id = self.next_id();
 		let new_group = SplitChild {
 			subdivision: PanelLayoutSubdivision::PanelGroup {
@@ -234,11 +234,7 @@ impl WorkspacePanelLayout {
 		let insert_before = matches!(direction, DockingSplitDirection::Left | DockingSplitDirection::Top);
 		let needs_horizontal = matches!(direction, DockingSplitDirection::Left | DockingSplitDirection::Right);
 
-		if !self.root.insert_split_adjacent(target_group_id, new_group, insert_before, needs_horizontal, 0) {
-			log::error!("Failed to insert split adjacent to panel group {target_group_id:?}: no matching-direction ancestor found");
-		}
-
-		new_id
+		self.root.insert_split_adjacent(target_group_id, new_group, insert_before, needs_horizontal, 0).then_some(new_id)
 	}
 
 	/// Recalculate the default sizes for all splits in the tree based on document panel proximity.
