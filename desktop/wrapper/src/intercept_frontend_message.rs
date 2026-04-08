@@ -111,7 +111,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
 		FrontendMessage::TriggerSaveWorkspaceLayout { workspace_layout } => {
-			let Ok(workspace_layout) = serde_json::to_string(&workspace_layout) else {
+			let Ok(workspace_layout) = ron::ser::to_string_pretty(&workspace_layout, ron::ser::PrettyConfig::default()) else {
 				tracing::error!("Failed to serialize workspace layout");
 				return None;
 			};

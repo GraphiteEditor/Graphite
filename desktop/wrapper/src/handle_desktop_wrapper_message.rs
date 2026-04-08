@@ -75,7 +75,7 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::LoadWorkspaceLayout { layout_json } => match serde_json::from_str(&layout_json) {
+		DesktopWrapperMessage::LoadWorkspaceLayout { layout_ron } => match ron::from_str(&layout_ron) {
 			Ok(layout) => {
 				let message = PortfolioMessage::LoadWorkspaceLayout { layout };
 				dispatcher.queue_editor_message(message);

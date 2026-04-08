@@ -10,6 +10,6 @@ pub(crate) fn read() -> Option<String> {
 
 fn file_path() -> std::path::PathBuf {
 	let mut path = crate::dirs::app_data_dir();
-	path.push("workspace_layout.json");
+	path.push("workspace_layout.ron");
 	path
 }

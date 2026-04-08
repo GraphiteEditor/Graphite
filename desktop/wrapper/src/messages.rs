@@ -122,7 +122,7 @@ pub enum DesktopWrapperMessage {
 		preferences: Preferences,
 	},
 	LoadWorkspaceLayout {
-		layout_json: String,
+		layout_ron: String,
 	},
 	MenuEvent {
 		id: String,
