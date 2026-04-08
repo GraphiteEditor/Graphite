@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::PanelGroupId;
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
@@ -60,6 +60,11 @@ pub enum PortfolioMessage {
 	},
 	LoadDocumentResources {
 		document_id: DocumentId,
+	},
+	MoveAllPanelTabs {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
 	},
 	MovePanelTab {
 		source_group: PanelGroupId,
@@ -145,6 +150,12 @@ pub enum PortfolioMessage {
 	SetPanelGroupActiveTab {
 		group: PanelGroupId,
 		tab_index: usize,
+	},
+	SplitPanelGroup {
+		target_group: PanelGroupId,
+		direction: DockingSplitDirection,
+		tabs: Vec<PanelType>,
+		active_tab_index: usize,
 	},
 	SelectDocument {
 		document_id: DocumentId,

@@ -9,7 +9,8 @@
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import { panelDrag, startCrossPanelDrag, endCrossPanelDrag, updateCrossPanelHover } from "/src/stores/panel-drag";
+	import { panelDrag, startCrossPanelDrag, endCrossPanelDrag, updateCrossPanelHover, updateDockingHover } from "/src/stores/panel-drag";
+	import type { DockingEdge } from "/src/stores/panel-drag";
 	import type { EditorWrapper, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const PANEL_COMPONENTS = {
@@ -37,6 +38,8 @@
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
+	export let groupDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
+	export let splitDropAction: ((targetPanelId: string, direction: DockingEdge, tabs: PanelType[], activeTabIndex: number) => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -48,7 +51,7 @@
 	let tabElements: (LayoutRow | undefined)[] = [];
 
 	// Tab drag-and-drop state
-	let dragStartState: { tabIndex: number; pointerX: number; pointerY: number } | undefined = undefined;
+	let dragStartState: { tabIndex: number; pointerX: number; pointerY: number; isGroupDrag: boolean } | undefined = undefined;
 	let dragging = false;
 	let insertionIndex: number | undefined = undefined;
 	let insertionMarkerLeft: number | undefined = undefined;
@@ -62,6 +65,20 @@
 	function onEmptySpaceAction(e: MouseEvent) {
 		if (e.target !== e.currentTarget) return;
 		if (e.button === BUTTON_MIDDLE || (e.button === BUTTON_LEFT && e.detail === 2)) emptySpaceAction?.();
+	}
+
+	function tabBarPointerDown(e: PointerEvent) {
+		// Only start a group drag from the tab bar background (not from a tab or button)
+		if (e.button !== BUTTON_LEFT) return;
+		if (e.target !== e.currentTarget) return;
+		if (!crossPanelDropAction) return;
+
+		dragStartState = { tabIndex: tabActiveIndex, pointerX: e.clientX, pointerY: e.clientY, isGroupDrag: true };
+		dragging = false;
+		insertionIndex = undefined;
+		insertionMarkerLeft = undefined;
+
+		addDragListeners();
 	}
 
 	export async function scrollTabIntoView(newIndex: number) {
@@ -83,7 +100,7 @@
 		const canCrossPanelDrag = crossPanelDropAction !== undefined;
 		if (!canReorder && !canCrossPanelDrag) return;
 
-		dragStartState = { tabIndex, pointerX: e.clientX, pointerY: e.clientY };
+		dragStartState = { tabIndex, pointerX: e.clientX, pointerY: e.clientY, isGroupDrag: false };
 		dragging = false;
 		insertionIndex = undefined;
 		insertionMarkerLeft = undefined;
@@ -103,8 +120,12 @@
 			dragging = true;
 
 			if (crossPanelDropAction) {
-				// Notify the shared store that a cross-panel drag has started
-				startCrossPanelDrag(panelId, tabLabels[dragStartState.tabIndex].name, dragStartState.tabIndex);
+				if (dragStartState.isGroupDrag) {
+					startCrossPanelDrag(panelId, [...panelTypes], tabActiveIndex, true);
+				} else {
+					const draggedTab = panelTypes[dragStartState.tabIndex];
+					startCrossPanelDrag(panelId, [draggedTab], dragStartState.tabIndex, false);
+				}
 			}
 		}
 
@@ -123,7 +144,7 @@
 
 		// Check if the pointer is over any other dockable panel's tab bar
 		if (crossPanelDropAction) {
-			const target = Array.from(document.querySelectorAll("[data-panel-tab-bar]")).find((element) => {
+			const tabBarTarget = Array.from(document.querySelectorAll("[data-panel-tab-bar]")).find((element) => {
 				const targetPanelId = element.getAttribute("data-panel-tab-bar");
 				if (!targetPanelId || targetPanelId === panelId) return false;
 
@@ -131,12 +152,39 @@
 				return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
 			});
 
-			const targetPanelId = target?.getAttribute("data-panel-tab-bar");
-			if (target instanceof HTMLDivElement && targetPanelId) {
-				calculateForeignInsertionIndex(e.clientX, targetPanelId, target);
-			} else {
-				updateCrossPanelHover(undefined, undefined, undefined);
+			const tabBarTargetId = tabBarTarget?.getAttribute("data-panel-tab-bar");
+			if (tabBarTarget instanceof HTMLDivElement && tabBarTargetId) {
+				calculateForeignInsertionIndex(e.clientX, tabBarTargetId, tabBarTarget);
+				return;
 			}
+
+			// Check if the pointer is over any panel body's edge zone for split docking
+			const panelBody = Array.from(document.querySelectorAll("[data-panel-body]")).find((element) => {
+				const rect = element.getBoundingClientRect();
+				return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+			});
+
+			const bodyPanelId = panelBody && panelBody.getAttribute("data-panel-body");
+			if (bodyPanelId) {
+				const rect = panelBody.getBoundingClientRect();
+				let edge: DockingEdge | undefined = detectDockingEdge(e.clientX, e.clientY, rect);
+
+				// Block center drops between document and non-document panels
+				if (edge === "Center") {
+					const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
+					const sourceIsDockable = crossPanelDropAction !== undefined;
+					if (targetIsDockable !== sourceIsDockable) edge = undefined;
+				}
+
+				if (edge) {
+					updateDockingHover(bodyPanelId, edge);
+					return;
+				}
+			}
+
+			// Not hovering any drop target
+			updateCrossPanelHover(undefined, undefined, undefined);
+			updateDockingHover(undefined, undefined);
 		}
 	}
 
@@ -144,15 +192,30 @@
 		if (dragging && dragStartState) {
 			const crossPanelState = $panelDrag;
 
-			// Cross-panel drop: the pointer is over a different panel's tab bar
-			if (
+			// Center drop: append tabs to the target panel group
+			if (crossPanelState.active && crossPanelState.hoverDockingPanelId && crossPanelState.hoverDockingEdge === "Center") {
+				const dropAction = crossPanelState.draggingGroup ? groupDropAction : crossPanelDropAction;
+				dropAction?.(panelId, crossPanelState.hoverDockingPanelId, Number.MAX_SAFE_INTEGER);
+			}
+			// Edge docking drop: create a new split adjacent to the target panel
+			else if (crossPanelState.active && crossPanelState.hoverDockingPanelId && crossPanelState.hoverDockingEdge) {
+				splitDropAction?.(
+					crossPanelState.hoverDockingPanelId,
+					crossPanelState.hoverDockingEdge,
+					crossPanelState.draggedTabs,
+					crossPanelState.draggingGroup ? crossPanelState.sourceTabIndex : 0,
+				);
+			}
+			// Cross-panel tab bar drop: insert as a tab in the target panel group
+			else if (
 				crossPanelDropAction &&
 				crossPanelState.active &&
 				crossPanelState.hoverTargetPanelId &&
 				crossPanelState.hoverTargetPanelId !== panelId &&
 				crossPanelState.hoverInsertionIndex !== undefined
 			) {
-				crossPanelDropAction?.(panelId, crossPanelState.hoverTargetPanelId, crossPanelState.hoverInsertionIndex);
+				const dropAction = crossPanelState.draggingGroup ? groupDropAction : crossPanelDropAction;
+				dropAction?.(panelId, crossPanelState.hoverTargetPanelId, crossPanelState.hoverInsertionIndex);
 			}
 			// Within-panel reorder
 			else if (insertionIndex !== undefined) {
@@ -197,6 +260,27 @@
 
 		const rect = groupDiv.getBoundingClientRect();
 		return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+	}
+
+	/// Detect which zone the pointer is in: the nearest edge (by diagonal quadrant) if within the 25% border, or center if interior.
+	function detectDockingEdge(clientX: number, clientY: number, rect: DOMRect): DockingEdge {
+		const distLeft = clientX - rect.left;
+		const distRight = rect.right - clientX;
+		const distTop = clientY - rect.top;
+		const distBottom = rect.bottom - clientY;
+		const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+		// If the nearest edge is beyond the 25% threshold, it's the center zone
+		const THRESHOLD = 0.25;
+		const edgeThresholdX = rect.width * THRESHOLD;
+		const edgeThresholdY = rect.height * THRESHOLD;
+		if (distLeft > edgeThresholdX && distRight > edgeThresholdX && distTop > edgeThresholdY && distBottom > edgeThresholdY) return "Center";
+
+		// Return whichever edge is closest (diagonal dividing lines between quadrants)
+		if (minDist === distLeft) return "Left";
+		if (minDist === distRight) return "Right";
+		if (minDist === distTop) return "Top";
+		return "Bottom";
 	}
 
 	// Calculate the insertion position for a foreign panel's tab bar
@@ -270,12 +354,21 @@
 	}
 </script>
 
-<LayoutCol on:pointerdown={() => panelTypes[tabActiveIndex] && editor.setActivePanel(panelTypes[tabActiveIndex])} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
+<LayoutCol
+	on:pointerdown={() => panelTypes[tabActiveIndex] && editor.setActivePanel(panelTypes[tabActiveIndex])}
+	class={`panel ${className}`.trim()}
+	{classes}
+	style={styleName}
+	{styles}
+	data-panel-body={panelId}
+	data-panel-dockable={crossPanelDropAction ? "" : undefined}
+>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow
 			class="tab-group"
 			scrollableX={true}
 			data-panel-tab-bar={crossPanelDropAction ? panelId : undefined}
+			on:pointerdown={tabBarPointerDown}
 			on:click={onEmptySpaceAction}
 			on:auxclick={onEmptySpaceAction}
 			bind:this={tabGroupElement}
@@ -330,6 +423,16 @@
 			<svelte:component this={PANEL_COMPONENTS[panelTypes[tabActiveIndex]]} />
 		{/if}
 	</LayoutCol>
+	{#if $panelDrag.active && $panelDrag.hoverDockingPanelId === panelId && $panelDrag.hoverDockingEdge}
+		<div
+			class="docking-ghost"
+			class:left={$panelDrag.hoverDockingEdge === "Left"}
+			class:right={$panelDrag.hoverDockingEdge === "Right"}
+			class:top={$panelDrag.hoverDockingEdge === "Top"}
+			class:bottom={$panelDrag.hoverDockingEdge === "Bottom"}
+			class:center={$panelDrag.hoverDockingEdge === "Center"}
+		></div>
+	{/if}
 </LayoutCol>
 
 <style lang="scss">
@@ -337,6 +440,7 @@
 		background: var(--color-1-nearblack);
 		border-radius: 6px;
 		overflow: hidden;
+		position: relative;
 
 		.tab-bar {
 			position: relative;
@@ -471,6 +575,59 @@
 
 			> div {
 				padding-bottom: 4px;
+			}
+		}
+
+		&:has(.docking-ghost) .tab-bar,
+		&:has(.docking-ghost) .panel-body {
+			pointer-events: none;
+		}
+
+		.docking-ghost {
+			position: absolute;
+			background: rgba(var(--color-f-white-rgb), 0.2);
+			border-radius: 6px;
+			pointer-events: none;
+			z-index: 1;
+			transition:
+				top 0.2s ease,
+				left 0.2s ease,
+				width 0.2s ease,
+				height 0.2s ease;
+
+			&.left {
+				top: 0;
+				left: 0;
+				width: 50%;
+				height: 100%;
+			}
+
+			&.right {
+				top: 0;
+				left: 50%;
+				width: 50%;
+				height: 100%;
+			}
+
+			&.top {
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 50%;
+			}
+
+			&.bottom {
+				top: 50%;
+				left: 0;
+				width: 100%;
+				height: 50%;
+			}
+
+			&.center {
+				top: 6px;
+				left: 6px;
+				width: calc(100% - 12px);
+				height: calc(100% - 12px);
 			}
 		}
 	}

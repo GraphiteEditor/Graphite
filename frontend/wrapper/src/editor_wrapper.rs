@@ -18,7 +18,7 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, PanelGroupId};
+use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -444,6 +444,16 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = moveAllPanelTabs)]
+	pub fn move_all_panel_tabs(&self, source_group: u64, target_group: u64, insert_index: usize) {
+		let message = PortfolioMessage::MoveAllPanelTabs {
+			source_group: PanelGroupId(source_group),
+			target_group: PanelGroupId(target_group),
+			insert_index,
+		};
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = movePanelTab)]
 	pub fn move_panel_tab(&self, source_group: u64, target_group: u64, insert_index: usize) {
 		let message = PortfolioMessage::MovePanelTab {
@@ -459,6 +469,19 @@ impl EditorWrapper {
 		let message = PortfolioMessage::SetPanelGroupActiveTab {
 			group: PanelGroupId(group),
 			tab_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = splitPanelGroup)]
+	pub fn split_panel_group(&self, target_group: u64, direction: String, tabs: JsValue, active_tab_index: usize) {
+		let direction: DockingSplitDirection = serde_wasm_bindgen::from_value(JsValue::from_str(&direction)).unwrap();
+		let tabs: Vec<PanelType> = serde_wasm_bindgen::from_value(tabs).unwrap();
+		let message = PortfolioMessage::SplitPanelGroup {
+			target_group: PanelGroupId(target_group),
+			direction,
+			tabs,
+			active_tab_index,
 		};
 		self.dispatch(message);
 	}

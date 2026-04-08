@@ -54,30 +54,6 @@
 
 		.workspace {
 			position: relative;
-			flex: 1 1 100%;
-
-			.workspace-grid-subdivision {
-				position: relative;
-				flex: 1 1 0;
-				min-height: 28px;
-
-				&.folded {
-					flex-grow: 0;
-					height: 0;
-				}
-			}
-
-			.workspace-grid-resize-gutter {
-				flex: 0 0 4px;
-
-				&.layout-row {
-					cursor: ns-resize;
-				}
-
-				&.layout-col {
-					cursor: ew-resize;
-				}
-			}
 		}
 
 		// Needed for the viewport hole punch on desktop

@@ -112,6 +112,16 @@ impl From<String> for PanelType {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PanelGroupId(pub u64);
 
+/// Which edge of a panel group to split on when docking a dragged panel.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DockingSplitDirection {
+	Left,
+	Right,
+	Top,
+	Bottom,
+}
+
 /// State of a single panel group (leaf subdivision) in the workspace layout tree.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -205,6 +215,26 @@ impl WorkspacePanelLayout {
 	/// Remove empty panel groups and collapse unnecessary single-child splits.
 	pub fn prune(&mut self) {
 		self.root.prune();
+	}
+
+	/// Split a panel group by inserting a new panel group adjacent to it.
+	/// The direction determines where the new group goes relative to the target.
+	/// Left/Right creates a horizontal (row) split, Top/Bottom creates a vertical (column) split.
+	/// Returns the ID of the newly created panel group, or `None` if insertion failed.
+	pub fn split_panel_group(&mut self, target_group_id: PanelGroupId, direction: DockingSplitDirection, tabs: Vec<PanelType>, active_tab_index: usize) -> Option<PanelGroupId> {
+		let new_id = self.next_id();
+		let new_group = SplitChild {
+			subdivision: PanelLayoutSubdivision::PanelGroup {
+				id: new_id,
+				state: PanelGroupState { tabs, active_tab_index },
+			},
+			size: 50.,
+		};
+
+		let insert_before = matches!(direction, DockingSplitDirection::Left | DockingSplitDirection::Top);
+		let needs_horizontal = matches!(direction, DockingSplitDirection::Left | DockingSplitDirection::Right);
+
+		self.root.insert_split_adjacent(target_group_id, new_group, insert_before, needs_horizontal, 0).then_some(new_id)
 	}
 
 	/// Recalculate the default sizes for all splits in the tree based on document panel proximity.
@@ -409,23 +439,78 @@ impl PanelLayoutSubdivision {
 		}
 	}
 
-	/// Remove empty panel groups and collapse single-child splits.
+	/// Remove empty panel groups and collapse unnecessary nesting.
+	/// Does NOT collapse single-child splits into their child, as that would change subdivision depths
+	/// and break the direction-by-depth alternation system.
 	pub fn prune(&mut self) {
-		if let PanelLayoutSubdivision::Split { children } = self {
-			// Recursively prune children first
-			children.iter_mut().for_each(|child| child.subdivision.prune());
+		let PanelLayoutSubdivision::Split { children } = self else { return };
 
-			// Remove empty panel groups
-			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { state, .. } if state.tabs.is_empty()));
+		// Recursively prune children
+		children.iter_mut().for_each(|child| child.subdivision.prune());
 
-			// Remove empty splits (splits that lost all their children after pruning)
-			children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::Split { children } if children.is_empty()));
+		// Remove empty panel groups
+		children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { state, .. } if state.tabs.is_empty()));
 
-			// If a split has exactly one child, replace this subdivision with that child's subdivision
-			if children.len() == 1 {
-				*self = children.remove(0).subdivision;
-			}
+		// Remove empty splits (splits that lost all their children after pruning)
+		children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::Split { children } if children.is_empty()));
+	}
+
+	/// Check if this subtree contains a panel group with the given ID.
+	pub fn contains_group(&self, target_id: PanelGroupId) -> bool {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { id, .. } => *id == target_id,
+			PanelLayoutSubdivision::Split { children } => children.iter().any(|child| child.subdivision.contains_group(target_id)),
 		}
+	}
+
+	/// Inserts a new split child adjacent to a target panel group and returns whether the insertion was successful.
+	/// Recurses to the deepest split closest to the target that matches the requested split direction.
+	/// If the target is a direct child of a mismatched-direction split, this wraps it in a new sub-split.
+	pub fn insert_split_adjacent(&mut self, target_id: PanelGroupId, new_child: SplitChild, insert_before: bool, needs_horizontal: bool, depth: usize) -> bool {
+		let PanelLayoutSubdivision::Split { children } = self else { return false };
+
+		let is_horizontal = depth.is_multiple_of(2);
+		let direction_matches = is_horizontal == needs_horizontal;
+
+		// Find which child subtree contains the target
+		let Some(containing_index) = children.iter().position(|child| child.subdivision.contains_group(target_id)) else {
+			return false;
+		};
+
+		// If the target is a direct child: we can certainly insert the new split, either as a sibling (if direction matches) or wrapping the target in a new split (if direction is mismatched)
+		let target_is_direct_child = matches!(&children[containing_index].subdivision, PanelLayoutSubdivision::PanelGroup { id, .. } if *id == target_id);
+		if target_is_direct_child {
+			// Direction matches and target is right here: insert as a sibling
+			if direction_matches {
+				let insert_index = if insert_before { containing_index } else { containing_index + 1 };
+				children.insert(insert_index, new_child);
+			}
+			// Direction mismatch: wrap the target in a new sub-split (at depth+1, which has the opposite direction of this and thus is the requested direction)
+			else {
+				let old_child_subdivision = std::mem::replace(&mut children[containing_index].subdivision, PanelLayoutSubdivision::Split { children: vec![] });
+				let old_child = SplitChild {
+					subdivision: old_child_subdivision,
+					size: 50.,
+				};
+
+				if let PanelLayoutSubdivision::Split { children: sub_children } = &mut children[containing_index].subdivision {
+					if insert_before {
+						sub_children.push(new_child);
+						sub_children.push(old_child);
+					} else {
+						sub_children.push(old_child);
+						sub_children.push(new_child);
+					}
+				}
+			}
+
+			return true;
+		}
+
+		// The target is deeper, so recurse into the containing child's subtree and return its insertion outcome
+		children[containing_index]
+			.subdivision
+			.insert_split_adjacent(target_id, new_child.clone(), insert_before, needs_horizontal, depth + 1)
 	}
 
 	/// Check if this subtree contains the document panel.
