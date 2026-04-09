@@ -8,6 +8,7 @@ authors.workspace = true
 [features]
 default = []
 gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
+wasm = ["graphene-std/wasm"]
 
 [dependencies]
 # Local dependencies

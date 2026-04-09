@@ -1,25 +1,25 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, UVec2};
-use graph_craft::document::value::TaggedValue;
+use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
+#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
-use graphene_std::renderer::{Render, RenderParams, SvgRender};
-use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
+use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
-/// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
+/// Some of these fields are put into a [`PlatformEditorApi`] which is passed to the final compiled graph network upon each execution.
 /// Once the implementation is finished, this will live in a separate thread. Right now it's part of the main JS thread, but its own separate JS stack frame independent from the editor.
 pub struct NodeRuntime {
 	#[cfg(test)]
@@ -41,7 +41,7 @@ pub struct NodeRuntime {
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
 
-	editor_api: Arc<WasmEditorApi>,
+	editor_api: Arc<PlatformEditorApi>,
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
@@ -57,10 +57,10 @@ pub struct NodeRuntime {
 	vector_modify: HashMap<NodeId, Vector>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
-	#[cfg(all(target_family = "wasm", feature = "gpu"))]
-	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
-	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 	current_viewport_texture: Option<ImageTexture>,
 }
 
@@ -128,7 +128,7 @@ impl NodeRuntime {
 			old_graph: None,
 			update_thumbnails: true,
 
-			editor_api: WasmEditorApi {
+			editor_api: PlatformEditorApi {
 				font_cache: FontCache::default(),
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
@@ -146,7 +146,7 @@ impl NodeRuntime {
 			vector_modify: Default::default(),
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
-			wasm_viewport_surface: None,
+			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			current_viewport_texture: None,
 		}
@@ -154,11 +154,11 @@ impl NodeRuntime {
 
 	pub async fn run(&mut self) -> Option<ImageTexture> {
 		if self.editor_api.application_io.is_none() {
-			self.editor_api = WasmEditorApi {
+			self.editor_api = PlatformEditorApi {
 				#[cfg(all(not(test), target_family = "wasm"))]
-				application_io: Some(WasmApplicationIo::new().await.into()),
+				application_io: Some(PlatformApplicationIo::new().await.into()),
 				#[cfg(any(test, not(target_family = "wasm")))]
-				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
+				application_io: Some(PlatformApplicationIo::new().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
 				editor_preferences: Box::new(self.editor_preferences.clone()),
@@ -208,7 +208,7 @@ impl NodeRuntime {
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
-					self.editor_api = WasmEditorApi {
+					self.editor_api = PlatformEditorApi {
 						font_cache,
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
@@ -222,7 +222,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
-					self.editor_api = WasmEditorApi {
+					self.editor_api = PlatformEditorApi {
 						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
@@ -280,7 +280,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -304,7 +304,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -318,83 +318,20 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							self.current_viewport_texture = Some(image_texture.clone());
+
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
-							// Get or create the cached surface
-							if self.wasm_viewport_surface.is_none() {
-								let surface_handle = app_io.create_window();
-								let wasm_surface = executor
-									.create_surface(graphene_std::wasm_application_io::WasmSurfaceHandle {
-										surface: surface_handle.surface.clone(),
-										window_id: surface_handle.window_id,
-									})
-									.expect("Failed to create surface");
-								self.wasm_viewport_surface = Some(Arc::new(wasm_surface));
-							}
+							self.wasm_canvas_cache.present(&image_texture, executor);
 
-							let surface = self.wasm_viewport_surface.as_ref().unwrap();
-
-							// Use logical resolution for CSS sizing, physical resolution for the actual surface/texture
-							let physical_resolution = render_config.viewport.resolution;
-							let logical_resolution = physical_resolution.as_dvec2() / render_config.scale;
-
-							// Blit the texture to the surface
-							let mut encoder = executor.context.device.create_command_encoder(&vello::wgpu::CommandEncoderDescriptor {
-								label: Some("Texture to Surface Blit"),
-							});
-
-							// Configure the surface at physical resolution (for HiDPI displays)
-							let surface_inner = &surface.surface.inner;
-							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
-							surface_inner.configure(
-								&executor.context.device,
-								&vello::wgpu::SurfaceConfiguration {
-									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
-									format: vello::wgpu::TextureFormat::Rgba8Unorm,
-									width: physical_resolution.x,
-									height: physical_resolution.y,
-									present_mode: surface_caps.present_modes[0],
-									alpha_mode: vello::wgpu::CompositeAlphaMode::PreMultiplied,
-									view_formats: vec![],
-									desired_maximum_frame_latency: 2,
-								},
-							);
-
-							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
-							self.current_viewport_texture = Some(image_texture.clone());
-
-							encoder.copy_texture_to_texture(
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: image_texture.texture.as_ref(),
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: &surface_texture.texture,
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								image_texture.texture.size(),
-							);
-
-							executor.context.queue.submit([encoder.finish()]);
-							surface_texture.present();
-
-							// TODO: Figure out if we can explicityl destroy the wgpu texture here to reduce the allocation pressure. We might also be able to use a texture allocation pool
-
-							let frame = graphene_std::application_io::SurfaceFrame {
-								surface_id: surface.window_id,
-								resolution: logical_resolution,
-								transform: glam::DAffine2::IDENTITY,
-							};
-
+							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
 							(
 								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::CanvasFrame(frame),
+									data: RenderOutputType::CanvasFrame {
+										canvas_id: self.wasm_canvas_cache.id(),
+										resolution: logical_resolution,
+									},
 									metadata,
 								})),
 								None,
@@ -592,10 +529,10 @@ pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
 }
-pub async fn replace_application_io(application_io: WasmApplicationIo) {
+pub async fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.editor_api = WasmEditorApi {
+		node_runtime.editor_api = PlatformEditorApi {
 			font_cache: node_runtime.editor_api.font_cache.clone(),
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(node_runtime.sender.clone()),

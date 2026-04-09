@@ -1,5 +1,5 @@
 use core_types::{Ctx, table::Table};
-use graph_craft::wasm_application_io::WasmEditorApi;
+use graph_craft::application_io::PlatformEditorApi;
 use graphic_types::Vector;
 pub use text_nodes::*;
 
@@ -9,7 +9,7 @@ fn text<'i: 'n>(
 	_: impl Ctx,
 	/// The Graphite editor's source for global font resources.
 	#[scope("editor-api")]
-	editor_resources: &'i WasmEditorApi,
+	editor_resources: &'i PlatformEditorApi,
 	/// The text content to be drawn.
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	#[default("Lorem ipsum")]

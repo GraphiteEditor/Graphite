@@ -947,12 +947,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::import(concrete!(String), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::load_resource::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::load_resource::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::decode_image::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::decode_image::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -1010,8 +1010,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::create_surface::IDENTIFIER),
+								inputs: vec![],
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
 								skip_deduplication: true,
 								..Default::default()
 							},
@@ -1022,7 +1022,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::rasterize::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
 								..Default::default()
 							},
 						]

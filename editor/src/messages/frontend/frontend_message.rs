@@ -131,7 +131,7 @@ pub enum FrontendMessage {
 	TriggerOpen,
 	TriggerImport,
 	TriggerSavePreferences {
-		#[tsify(type = "unknown")]
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
 	},
 	TriggerSaveWorkspaceLayout {

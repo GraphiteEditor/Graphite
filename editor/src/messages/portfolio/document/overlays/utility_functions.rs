@@ -11,8 +11,10 @@ use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
+#[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
 
+#[cfg(target_family = "wasm")]
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
 	let window = web_sys::window()?;
 	let document = window.document()?;
@@ -20,6 +22,7 @@ pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
 	canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok()
 }
 
+#[cfg(target_family = "wasm")]
 pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 	let create_context = || {
 		let context = overlay_canvas_element()?.get_context("2d").ok().flatten()?;

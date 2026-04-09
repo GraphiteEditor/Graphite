@@ -1,4 +1,4 @@
-use graph_craft::wasm_application_io::WasmApplicationIo;
+use graph_craft::application_io::PlatformApplicationIo;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
@@ -38,7 +38,7 @@ impl DesktopWrapper {
 	}
 
 	pub fn init(&self, wgpu_context: WgpuContext) {
-		let application_io = WasmApplicationIo::new_with_context(wgpu_context);
+		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
@@ -51,7 +51,7 @@ impl DesktopWrapper {
 	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
 		let result = graphite_editor::node_graph_executor::run_node_graph().await;
 		match result {
-			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),
+			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(Into::into)),
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
 	}
