@@ -95,11 +95,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			// Forward this to update the UI
 			return Some(FrontendMessage::UpdateOpenDocumentsList { open_documents });
 		}
-		FrontendMessage::TriggerLoadFirstAutoSaveDocument => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadCurrentDocument);
-		}
-		FrontendMessage::TriggerLoadRestAutoSaveDocuments => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
+		FrontendMessage::TriggerLoadAutoSaveDocuments => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadDocuments);
 		}
 		FrontendMessage::TriggerOpenLaunchDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::OpenLaunchDocuments);

@@ -50,8 +50,7 @@ pub enum DesktopFrontendMessage {
 	PersistenceUpdateCurrentDocument {
 		id: DocumentId,
 	},
-	PersistenceLoadCurrentDocument,
-	PersistenceLoadRemainingDocuments,
+	PersistenceLoadDocuments,
 	PersistenceUpdateDocumentsList {
 		ids: Vec<DocumentId>,
 	},

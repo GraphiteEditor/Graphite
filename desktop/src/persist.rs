@@ -55,32 +55,8 @@ impl PersistentData {
 		}
 	}
 
-	pub(crate) fn current_document(&self) -> Option<(DocumentId, Document)> {
-		let current_id = self.current_document_id()?;
-		Some((current_id, self.read_document(&current_id)?))
-	}
-
-	pub(crate) fn documents_before_current(&self) -> Vec<(DocumentId, Document)> {
-		let Some(current_id) = self.current_document_id() else {
-			return Vec::new();
-		};
-		self.documents
-			.iter()
-			.take_while(|doc| doc.id != current_id)
-			.filter_map(|doc| Some((doc.id, self.read_document(&doc.id)?)))
-			.collect()
-	}
-
-	pub(crate) fn documents_after_current(&self) -> Vec<(DocumentId, Document)> {
-		let Some(current_id) = self.current_document_id() else {
-			return Vec::new();
-		};
-		self.documents
-			.iter()
-			.skip_while(|doc| doc.id != current_id)
-			.skip(1)
-			.filter_map(|doc| Some((doc.id, self.read_document(&doc.id)?)))
-			.collect()
+	pub(crate) fn all_documents(&self) -> Vec<(DocumentId, Document)> {
+		self.documents.iter().filter_map(|doc| Some((doc.id, self.read_document(&doc.id)?))).collect()
 	}
 
 	pub(crate) fn set_current_document(&mut self, id: DocumentId) {
@@ -154,6 +130,32 @@ impl PersistentData {
 			}
 		};
 		*self = loaded;
+
+		self.garbage_collect_document_files();
+	}
+
+	// Remove orphaned document content files that have no corresponding entry in the persisted state
+	fn garbage_collect_document_files(&self) {
+		let valid_paths: std::collections::HashSet<_> = self.documents.iter().map(|doc| Self::document_content_path(&doc.id)).collect();
+
+		let directory = crate::dirs::app_autosave_documents_dir();
+		let entries = match std::fs::read_dir(&directory) {
+			Ok(entries) => entries,
+			Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+			Err(e) => {
+				tracing::error!("Failed to read autosave documents directory: {e}");
+				return;
+			}
+		};
+
+		for entry in entries.flatten() {
+			let path = entry.path();
+			if path.is_file() && !valid_paths.contains(&path) {
+				if let Err(e) = std::fs::remove_file(&path) {
+					tracing::error!("Failed to remove orphaned document file {path:?}: {e}");
+				}
+			}
+		}
 	}
 
 	fn state_file_path() -> std::path::PathBuf {

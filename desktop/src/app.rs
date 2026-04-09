@@ -314,39 +314,25 @@ impl App {
 					responses.push(message);
 				}
 			}
-			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
-				if let Some((id, document)) = self.persistent_data.current_document() {
-					let message = DesktopWrapperMessage::LoadDocument {
+			DesktopFrontendMessage::PersistenceLoadDocuments => {
+				let current_id = self.persistent_data.current_document_id();
+				let mut seen_current = false;
+
+				for (id, document) in self.persistent_data.all_documents() {
+					let is_current = current_id == Some(id);
+					let to_front = !seen_current && !is_current;
+					seen_current |= is_current;
+
+					responses.push(DesktopWrapperMessage::LoadDocument {
 						id,
 						document,
-						to_front: false,
-						select_after_open: true,
-					};
-					responses.push(message);
-				}
-			}
-			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
-				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: true,
+						to_front,
 						select_after_open: false,
-					};
-					responses.push(message);
+					});
 				}
-				for (id, document) in self.persistent_data.documents_after_current() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: false,
-					};
-					responses.push(message);
-				}
-				if let Some(id) = self.persistent_data.current_document_id() {
-					let message = DesktopWrapperMessage::SelectDocument { id };
-					responses.push(message);
+
+				if let Some(id) = current_id {
+					responses.push(DesktopWrapperMessage::SelectDocument { id });
 				}
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {

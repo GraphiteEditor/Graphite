@@ -119,7 +119,7 @@ export async function removeDocument(id: string, portfolio: PortfolioStore) {
 	});
 }
 
-export async function loadFirstDocument(editor: EditorWrapper) {
+export async function loadDocuments(editor: EditorWrapper) {
 	await migrateToNewFormat();
 	await garbageCollectDocuments();
 
@@ -127,54 +127,22 @@ export async function loadFirstDocument(editor: EditorWrapper) {
 	const documentContents = await databaseGet<Record<string, string>>("documents");
 	if (!state || !documentContents || state.documents.length === 0) return;
 
-	// Find and open the current document (or fall back to the last document in the list)
+	// Find the current document (or fall back to the last document in the list)
 	const currentId = state.current_document;
 	const currentEntry = currentId !== undefined ? state.documents.find((doc) => doc.id === currentId) : undefined;
-	const entryToOpen = currentEntry || state.documents[state.documents.length - 1];
-
-	const content = documentContents[String(entryToOpen.id)];
-	if (content === undefined) return;
-
-	editor.openAutoSavedDocument(entryToOpen.id, entryToOpen.name, entryToOpen.is_saved, content, false);
-	editor.selectDocument(entryToOpen.id);
-}
-
-export async function loadRestDocuments(editor: EditorWrapper) {
-	const state = await databaseGet<PersistedState>("state");
-	const documentContents = await databaseGet<Record<string, string>>("documents");
-	if (!state || !documentContents || state.documents.length === 0) return;
-
-	const currentId = state.current_document;
-	const currentIndex = currentId !== undefined ? state.documents.findIndex((doc) => doc.id === currentId) : -1;
+	const current = currentEntry || state.documents[state.documents.length - 1];
+	const currentIndex = state.documents.indexOf(current);
 
 	// Open documents in order around the current document, placing earlier ones before it and later ones after
-	if (currentIndex !== -1 && currentId !== undefined) {
-		for (let i = currentIndex - 1; i >= 0; i--) {
-			const entry = state.documents[i];
-			const content = documentContents[String(entry.id)];
-			if (content !== undefined) editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, true);
-		}
+	state.documents.forEach((entry, index) => {
+		const content = documentContents[String(entry.id)];
+		if (content === undefined) return;
 
-		for (let i = currentIndex + 1; i < state.documents.length; i++) {
-			const entry = state.documents[i];
-			const content = documentContents[String(entry.id)];
-			if (content !== undefined) editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, false);
-		}
+		const toFront = index < currentIndex;
+		editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, toFront);
+	});
 
-		editor.selectDocument(currentId);
-	}
-	// No valid current document: open all remaining documents and select the last one
-	else {
-		const length = state.documents.length;
-
-		for (let i = length - 2; i >= 0; i--) {
-			const entry = state.documents[i];
-			const content = documentContents[String(entry.id)];
-			if (content !== undefined) editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, true);
-		}
-
-		if (length > 0) editor.selectDocument(state.documents[length - 1].id);
-	}
+	editor.selectDocument(current.id);
 }
 
 export async function saveActiveDocument(documentId: bigint) {
@@ -244,7 +212,7 @@ async function wipeOldFormat() {
 }
 
 // TODO: Eventually remove this document upgrade code
-export async function migrateToNewFormat() {
+async function migrateToNewFormat() {
 	// Detect the old format by checking for the existence of the "documents_tab_order" key
 	const oldTabOrder = await databaseGet<string[]>("documents_tab_order");
 	if (oldTabOrder === undefined) return;

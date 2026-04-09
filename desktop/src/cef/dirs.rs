@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::dirs::{app_data_dir, ensure_dir_exists};
 
-static CEF_DIR_NAME: &str = "browser";
+static CEF_DIR_NAME: &str = "cef";
 
 pub(crate) fn delete_instance_dirs() {
 	let cef_dir = app_data_dir().join(CEF_DIR_NAME);

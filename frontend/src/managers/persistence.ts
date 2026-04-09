@@ -7,8 +7,7 @@ import {
 	loadWorkspaceLayout,
 	storeDocument,
 	removeDocument,
-	loadFirstDocument,
-	loadRestDocuments,
+	loadDocuments,
 	saveActiveDocument,
 } from "/src/utility-functions/persistence";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -48,12 +47,8 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 		await removeDocument(String(data.documentId), portfolio);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument", async () => {
-		await loadFirstDocument(editor);
-	});
-
-	subscriptions.subscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments", async () => {
-		await loadRestDocuments(editor);
+	subscriptions.subscribeFrontendMessage("TriggerLoadAutoSaveDocuments", async () => {
+		await loadDocuments(editor);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
@@ -75,8 +70,7 @@ export function destroyPersistenceManager() {
 	subscriptions.unsubscribeFrontendMessage("TriggerLoadWorkspaceLayout");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments");
+	subscriptions.unsubscribeFrontendMessage("TriggerLoadAutoSaveDocuments");
 	subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
 }
