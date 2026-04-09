@@ -21,6 +21,21 @@ pub struct DocumentDetails {
 	pub is_auto_saved: bool,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PersistedDocumentInfo {
+	pub id: DocumentId,
+	pub name: String,
+	pub is_saved: bool,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PersistedState {
+	pub documents: Vec<PersistedDocumentInfo>,
+	pub current_document: Option<DocumentId>,
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MouseCursorIcon {
