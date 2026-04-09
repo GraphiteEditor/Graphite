@@ -109,17 +109,11 @@ impl<P: Copy + Pixel> BitmapMut for Image<P> {
 	}
 }
 
-// TODO: Evaluate if this will be a problem for our use case.
-/// Warning: This is an approximation of a hash, and is not guaranteed to not collide.
 impl<P: Hash + Pixel> Hash for Image<P> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		const HASH_SAMPLES: u64 = 1000;
-		let data_length = self.data.len() as u64;
 		self.width.hash(state);
 		self.height.hash(state);
-		for i in 0..HASH_SAMPLES.min(data_length) {
-			self.data[(i * data_length / HASH_SAMPLES) as usize].hash(state);
-		}
+		self.data.hash(state);
 	}
 }
 

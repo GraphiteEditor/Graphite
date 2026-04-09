@@ -63,7 +63,7 @@
 	</div>
 </FloatingMenu>
 
-<style lang="scss" global>
+<style lang="scss">
 	.eyedropper-preview {
 		pointer-events: none;
 

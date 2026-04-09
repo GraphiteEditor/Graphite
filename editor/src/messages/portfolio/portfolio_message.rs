@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::PanelType;
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType, WorkspacePanelLayout};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
@@ -60,6 +60,19 @@ pub enum PortfolioMessage {
 	},
 	LoadDocumentResources {
 		document_id: DocumentId,
+	},
+	LoadWorkspaceLayout {
+		layout: WorkspacePanelLayout,
+	},
+	MoveAllPanelTabs {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
+	},
+	MovePanelTab {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
 	},
 	NewDocumentWithName {
 		name: String,
@@ -126,10 +139,26 @@ pub enum PortfolioMessage {
 		layers: Vec<LayerNodeIdentifier>,
 	},
 	PrevDocument,
+	ReorderDocument {
+		document_id: DocumentId,
+		new_index: usize,
+	},
+	ReorderPanelGroupTab {
+		group: PanelGroupId,
+		old_index: usize,
+		new_index: usize,
+	},
 	RequestWelcomeScreenButtonsLayout,
 	RequestStatusBarInfoLayout,
-	SetActivePanel {
-		panel: PanelType,
+	SetPanelGroupActiveTab {
+		group: PanelGroupId,
+		tab_index: usize,
+	},
+	SplitPanelGroup {
+		target_group: PanelGroupId,
+		direction: DockingSplitDirection,
+		tabs: Vec<PanelType>,
+		active_tab_index: usize,
 	},
 	SelectDocument {
 		document_id: DocumentId,
@@ -157,4 +186,17 @@ pub enum PortfolioMessage {
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
+	UpdateWorkspacePanelLayout,
+	SaveWorkspaceLayout,
+	ResetWorkspaceLayout,
+	ResetPanelGroupSizes {
+		/// Path of child indices from the root to the split node whose children's sizes should be reset to defaults.
+		split_path: Vec<usize>,
+	},
+	SetPanelGroupSizes {
+		/// Path of child indices from the root to the split node whose children's sizes are being set.
+		split_path: Vec<usize>,
+		/// New sizes for the children at that split node.
+		sizes: Vec<f64>,
+	},
 }

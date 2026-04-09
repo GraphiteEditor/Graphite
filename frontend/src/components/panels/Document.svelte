@@ -703,7 +703,7 @@
 	</LayoutRow>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.document {
 		height: 100%;
 

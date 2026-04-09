@@ -12,7 +12,7 @@
 	{/if}
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.separator {
 		&.vertical {
 			flex: 0 0 auto;

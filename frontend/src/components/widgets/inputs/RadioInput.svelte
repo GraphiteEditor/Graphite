@@ -46,7 +46,7 @@
 	{/each}
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.radio-input {
 		background: var(--color-4-dimgray);
 		border-radius: 2px;
