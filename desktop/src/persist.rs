@@ -1,8 +1,9 @@
-use crate::wrapper::messages::{Document, DocumentId};
+use crate::wrapper::messages::{Document, DocumentId, PersistedDocumentInfo};
 
+// Wraps PersistedState (shared with the web frontend) and adds desktop-specific behavior like file I/O
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {
-	documents: DocumentStore,
+	documents: Vec<PersistedDocumentInfo>,
 	current_document: Option<DocumentId>,
 	#[serde(skip)]
 	document_order: Option<Vec<DocumentId>>,
@@ -10,9 +11,26 @@ pub(crate) struct PersistentData {
 
 impl PersistentData {
 	pub(crate) fn write_document(&mut self, id: DocumentId, document: Document) {
-		self.documents.write(id, document);
+		// Update or add the document metadata
+		let info = PersistedDocumentInfo {
+			id,
+			name: document.name.clone(),
+			path: document.path.clone(),
+			is_saved: document.is_saved,
+		};
+		if let Some(existing) = self.documents.iter_mut().find(|doc| doc.id == id) {
+			*existing = info;
+		} else {
+			self.documents.push(info);
+		}
+
+		// Write the document content to a separate file
+		if let Err(e) = std::fs::write(Self::document_content_path(&id), document.content) {
+			tracing::error!("Failed to write document {id:?} to disk: {e}");
+		}
+
 		if let Some(order) = &self.document_order {
-			self.documents.force_order(order);
+			self.force_order(order.clone());
 		}
 		self.flush();
 	}
@@ -21,20 +39,25 @@ impl PersistentData {
 		if Some(*id) == self.current_document {
 			self.current_document = None;
 		}
-		self.documents.delete(id);
+
+		self.documents.retain(|doc| doc.id != *id);
+		if let Err(e) = std::fs::remove_file(Self::document_content_path(id)) {
+			tracing::error!("Failed to delete document {id:?} from disk: {e}");
+		}
+
 		self.flush();
 	}
 
 	pub(crate) fn current_document_id(&self) -> Option<DocumentId> {
 		match self.current_document {
 			Some(id) => Some(id),
-			None => Some(*self.documents.document_ids().first()?),
+			None => Some(self.documents.first()?.id),
 		}
 	}
 
 	pub(crate) fn current_document(&self) -> Option<(DocumentId, Document)> {
 		let current_id = self.current_document_id()?;
-		Some((current_id, self.documents.read(&current_id)?))
+		Some((current_id, self.read_document(&current_id)?))
 	}
 
 	pub(crate) fn documents_before_current(&self) -> Vec<(DocumentId, Document)> {
@@ -42,10 +65,9 @@ impl PersistentData {
 			return Vec::new();
 		};
 		self.documents
-			.document_ids()
-			.into_iter()
-			.take_while(|id| *id != current_id)
-			.filter_map(|id| Some((id, self.documents.read(&id)?)))
+			.iter()
+			.take_while(|doc| doc.id != current_id)
+			.filter_map(|doc| Some((doc.id, self.read_document(&doc.id)?)))
 			.collect()
 	}
 
@@ -54,11 +76,10 @@ impl PersistentData {
 			return Vec::new();
 		};
 		self.documents
-			.document_ids()
-			.into_iter()
-			.skip_while(|id| *id != current_id)
+			.iter()
+			.skip_while(|doc| doc.id != current_id)
 			.skip(1)
-			.filter_map(|id| Some((id, self.documents.read(&id)?)))
+			.filter_map(|doc| Some((doc.id, self.read_document(&doc.id)?)))
 			.collect()
 	}
 
@@ -68,9 +89,35 @@ impl PersistentData {
 	}
 
 	pub(crate) fn force_document_order(&mut self, order: Vec<DocumentId>) {
+		self.force_order(order.clone());
 		self.document_order = Some(order);
-		self.documents.force_order(self.document_order.as_ref().unwrap());
 		self.flush();
+	}
+
+	// Reads serialized document content from disk and combines it with the stored metadata
+	fn read_document(&self, id: &DocumentId) -> Option<Document> {
+		let info = self.documents.iter().find(|doc| doc.id == *id)?;
+		let content = std::fs::read_to_string(Self::document_content_path(id)).ok()?;
+		Some(Document {
+			content,
+			name: info.name.clone(),
+			path: info.path.clone(),
+			is_saved: info.is_saved,
+		})
+	}
+
+	// Reorders the documents array to match a desired ordering, keeping unmentioned documents at the end
+	fn force_order(&mut self, desired_order: Vec<DocumentId>) {
+		let mut ordered_prefix_length = 0;
+		for id in &desired_order {
+			if let Some(offset) = self.documents[ordered_prefix_length..].iter().position(|doc| doc.id == *id) {
+				let found_index = ordered_prefix_length + offset;
+				if found_index != ordered_prefix_length {
+					self.documents[ordered_prefix_length..=found_index].rotate_right(1);
+				}
+				ordered_prefix_length += 1;
+			}
+		}
 	}
 
 	fn flush(&self) {
@@ -114,79 +161,10 @@ impl PersistentData {
 		path.push(crate::consts::APP_STATE_FILE_NAME);
 		path
 	}
-}
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
-struct DocumentStore(Vec<DocumentInfo>);
-impl DocumentStore {
-	fn write(&mut self, id: DocumentId, document: Document) {
-		let meta = DocumentInfo::new(id, &document);
-		if let Some(existing) = self.0.iter_mut().find(|meta| meta.id == id) {
-			*existing = meta;
-		} else {
-			self.0.push(meta);
-		}
-		if let Err(e) = std::fs::write(Self::document_path(&id), document.content) {
-			tracing::error!("Failed to write document {id:?} to disk: {e}");
-		}
-	}
-
-	fn delete(&mut self, id: &DocumentId) {
-		self.0.retain(|meta| meta.id != *id);
-		if let Err(e) = std::fs::remove_file(Self::document_path(id)) {
-			tracing::error!("Failed to delete document {id:?} from disk: {e}");
-		}
-	}
-
-	fn read(&self, id: &DocumentId) -> Option<Document> {
-		let meta = self.0.iter().find(|meta| meta.id == *id)?;
-		let content = std::fs::read_to_string(Self::document_path(id)).ok()?;
-		Some(Document {
-			content,
-			name: meta.name.clone(),
-			path: meta.path.clone(),
-			is_saved: meta.is_saved,
-		})
-	}
-
-	fn force_order(&mut self, desired_order: &[DocumentId]) {
-		let mut ordered_prefix_len = 0;
-		for id in desired_order {
-			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == *id) {
-				let found_index = ordered_prefix_len + offset;
-				if found_index != ordered_prefix_len {
-					self.0[ordered_prefix_len..=found_index].rotate_right(1);
-				}
-				ordered_prefix_len += 1;
-			}
-		}
-	}
-
-	fn document_ids(&self) -> Vec<DocumentId> {
-		self.0.iter().map(|meta| meta.id).collect()
-	}
-
-	fn document_path(id: &DocumentId) -> std::path::PathBuf {
+	fn document_content_path(id: &DocumentId) -> std::path::PathBuf {
 		let mut path = crate::dirs::app_autosave_documents_dir();
 		path.push(format!("{:x}.{}", id.0, graphite_desktop_wrapper::FILE_EXTENSION));
 		path
-	}
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct DocumentInfo {
-	id: DocumentId,
-	name: String,
-	path: Option<std::path::PathBuf>,
-	is_saved: bool,
-}
-impl DocumentInfo {
-	fn new(id: DocumentId, Document { name, path, is_saved, .. }: &Document) -> Self {
-		Self {
-			id,
-			name: name.clone(),
-			path: path.clone(),
-			is_saved: *is_saved,
-		}
 	}
 }

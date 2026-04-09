@@ -26,6 +26,8 @@ pub struct DocumentDetails {
 pub struct PersistedDocumentInfo {
 	pub id: DocumentId,
 	pub name: String,
+	#[serde(default)]
+	pub path: Option<PathBuf>,
 	pub is_saved: bool,
 }
 
