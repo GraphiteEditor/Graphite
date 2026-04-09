@@ -1,5 +1,5 @@
 use dyn_any::StaticType;
-use graphene_application_io::{ApplicationError, ApplicationIo, EditorApi, ResourceFuture};
+use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture};
 use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
@@ -102,16 +102,4 @@ impl ApplicationIo for WasmApplicationIo {
 
 unsafe impl StaticType for WasmApplicationIo {
 	type Static = WasmApplicationIo;
-}
-
-impl<'a> From<&'a EditorApi<WasmApplicationIo>> for &'a WasmApplicationIo {
-	fn from(editor_api: &'a EditorApi<WasmApplicationIo>) -> Self {
-		editor_api.application_io.as_ref().unwrap()
-	}
-}
-#[cfg(feature = "wgpu")]
-impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
-	fn from(app_io: &'a WasmApplicationIo) -> Self {
-		app_io.gpu_executor.as_ref().unwrap()
-	}
 }
