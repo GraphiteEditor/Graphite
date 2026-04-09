@@ -1121,6 +1121,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetDocumentMode { document_mode } => {
 				self.document_mode = document_mode;
 			}
+			DocumentMessage::EnterMaskMode => {
+				self.document_mode = DocumentMode::MaskMode;
+			}
+			DocumentMessage::ExitMaskMode { discard: _ } => {
+				self.document_mode = DocumentMode::DesignMode;
+			}
+			DocumentMessage::DrawMarchingAntsOverlay { context: _ } => {}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
 				responses.add_front(DocumentMessage::CommitTransaction);
