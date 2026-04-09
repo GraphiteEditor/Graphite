@@ -15,13 +15,18 @@ thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
 }
 
-static EN_US_DICT: OnceLock<Standard> = OnceLock::new();
+static EN_US_DICT: OnceLock<Option<Standard>> = OnceLock::new();
 
 fn get_dict_for_language(lang: Language) -> Option<&'static Standard> {
 	match lang {
 		Language::EnglishUS | Language::EnglishGB => EN_US_DICT
-			.get_or_init(|| Standard::from_embedded(Language::EnglishUS).expect("embed_all feature must be enabled"))
-			.into(),
+			.get_or_init(|| {
+				Standard::from_embedded(Language::EnglishUS).map_err(|err| {
+					log::error!("Failed to load hyphenation dictionary: {err}");
+					err
+				}).ok()
+			})
+			.as_ref(),
 		_ => None,
 	}
 }

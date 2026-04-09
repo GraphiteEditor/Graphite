@@ -59,9 +59,9 @@ fn text<'i: 'n>(
 	/// To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
-	hyphenate: bool,
 	/// Whether to split every letterform into its own vector path element. Otherwise, a single compound path is produced.
 	separate_glyph_elements: bool,
+	hyphenate: bool,
 ) -> Table<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size: size,
