@@ -30,7 +30,7 @@ impl PersistentData {
 		}
 
 		if let Some(order) = &self.document_order {
-			self.force_order(order.clone());
+			self.force_order(&order.clone());
 		}
 		self.flush();
 	}
@@ -65,7 +65,7 @@ impl PersistentData {
 	}
 
 	pub(crate) fn force_document_order(&mut self, order: Vec<DocumentId>) {
-		self.force_order(order.clone());
+		self.force_order(&order);
 		self.document_order = Some(order);
 		self.flush();
 	}
@@ -83,9 +83,9 @@ impl PersistentData {
 	}
 
 	// Reorders the documents array to match a desired ordering, keeping unmentioned documents at the end
-	fn force_order(&mut self, desired_order: Vec<DocumentId>) {
+	fn force_order(&mut self, desired_order: &[DocumentId]) {
 		let mut ordered_prefix_length = 0;
-		for id in &desired_order {
+		for id in desired_order {
 			if let Some(offset) = self.documents[ordered_prefix_length..].iter().position(|doc| doc.id == *id) {
 				let found_index = ordered_prefix_length + offset;
 				if found_index != ordered_prefix_length {
@@ -132,6 +132,7 @@ impl PersistentData {
 		*self = loaded;
 
 		self.garbage_collect_document_files();
+		Self::delete_old_cef_browser_directory();
 	}
 
 	// Remove orphaned document content files that have no corresponding entry in the persisted state
@@ -155,6 +156,14 @@ impl PersistentData {
 					tracing::error!("Failed to remove orphaned document file {path:?}: {e}");
 				}
 			}
+		}
+	}
+
+	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory (renamed to "cef")
+	fn delete_old_cef_browser_directory() {
+		let old_browser_dir = crate::dirs::app_data_dir().join("browser");
+		if old_browser_dir.is_dir() {
+			let _ = std::fs::remove_dir_all(&old_browser_dir);
 		}
 	}
 

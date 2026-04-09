@@ -315,23 +315,17 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::PersistenceLoadDocuments => {
-				let current_id = self.persistent_data.current_document_id();
-				let mut seen_current = false;
-
+				// Open all documents in persisted tab order, then select the current one
 				for (id, document) in self.persistent_data.all_documents() {
-					let is_current = current_id == Some(id);
-					let to_front = !seen_current && !is_current;
-					seen_current |= is_current;
-
 					responses.push(DesktopWrapperMessage::LoadDocument {
 						id,
 						document,
-						to_front,
+						to_front: false,
 						select_after_open: false,
 					});
 				}
 
-				if let Some(id) = current_id {
+				if let Some(id) = self.persistent_data.current_document_id() {
 					responses.push(DesktopWrapperMessage::SelectDocument { id });
 				}
 			}

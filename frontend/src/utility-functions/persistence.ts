@@ -16,6 +16,25 @@ function createDocumentInfo(id: bigint, name: string, isSaved: boolean): Persist
 	return { id, name, is_saved: isSaved };
 }
 
+// Reorder document entries to match the given ID ordering, appending any unmentioned entries at the end
+function reorderDocuments(documents: PersistedDocumentInfo[], orderedIds: bigint[]): PersistedDocumentInfo[] {
+	const byId = new Map(documents.map((entry) => [entry.id, entry]));
+	const reordered: PersistedDocumentInfo[] = [];
+
+	orderedIds.forEach((id) => {
+		const existing = byId.get(id);
+		if (existing) {
+			reordered.push(existing);
+			byId.delete(id);
+		}
+	});
+
+	// Append any entries not yet present in the portfolio (e.g. documents still loading at startup)
+	byId.forEach((entry) => reordered.push(entry));
+
+	return reordered;
+}
+
 // ====================================
 // State-based persistence (new format)
 // ====================================
@@ -26,22 +45,7 @@ export async function storeDocumentTabOrder(portfolio: PortfolioStore) {
 
 	await databaseUpdate<PersistedState>("state", (old) => {
 		const state = old || emptyPersistedState();
-
-		// Reorder existing document entries to match the portfolio's tab order, preserving metadata
-		const byId = new Map(state.documents.map((entry) => [entry.id, entry]));
-		const reordered: PersistedDocumentInfo[] = [];
-		orderedIds.forEach((id) => {
-			const existing = byId.get(id);
-			if (existing) {
-				reordered.push(existing);
-				byId.delete(id);
-			}
-		});
-
-		// Append any entries not yet present in the portfolio (e.g. documents still loading at startup)
-		byId.forEach((entry) => reordered.push(entry));
-
-		return { ...state, documents: reordered };
+		return { ...state, documents: reorderDocuments(state.documents, orderedIds) };
 	});
 }
 
@@ -71,23 +75,9 @@ export async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersis
 			state.documents.push(entry);
 		}
 
-		// Reorder to match the portfolio's tab order
-		const byId = new Map(state.documents.map((doc) => [doc.id, doc]));
-		const reordered: PersistedDocumentInfo[] = [];
-		orderedIds.forEach((id) => {
-			const existing = byId.get(id);
-			if (existing) {
-				reordered.push(existing);
-				byId.delete(id);
-			}
-		});
-
-		// Append any entries not yet present in the portfolio (e.g. documents still loading at startup)
-		byId.forEach((entry) => reordered.push(entry));
-
 		// eslint-disable-next-line camelcase
 		state.current_document = documentId;
-		state.documents = reordered;
+		state.documents = reorderDocuments(state.documents, orderedIds);
 		return state;
 	});
 }
@@ -131,15 +121,13 @@ export async function loadDocuments(editor: EditorWrapper) {
 	const currentId = state.current_document;
 	const currentEntry = currentId !== undefined ? state.documents.find((doc) => doc.id === currentId) : undefined;
 	const current = currentEntry || state.documents[state.documents.length - 1];
-	const currentIndex = state.documents.indexOf(current);
 
-	// Open documents in order around the current document, placing earlier ones before it and later ones after
-	state.documents.forEach((entry, index) => {
+	// Open all documents in persisted tab order, then select the current one
+	state.documents.forEach((entry) => {
 		const content = documentContents[String(entry.id)];
 		if (content === undefined) return;
 
-		const toFront = index < currentIndex;
-		editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, toFront);
+		editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, false);
 	});
 
 	editor.selectDocument(current.id);
@@ -252,9 +240,9 @@ async function migrateToNewFormat() {
 			let name = "";
 			if ("name" in details && typeof details.name === "string") name = details.name;
 
-			const status = savedStatusFromUnknown(details);
+			const isSaved = extractIsSavedFromUnknown(details);
 
-			newDocumentInfos.push(createDocumentInfo(id, name, status.isSaved));
+			newDocumentInfos.push(createDocumentInfo(id, name, isSaved));
 		});
 	}
 
@@ -271,20 +259,16 @@ async function migrateToNewFormat() {
 }
 
 // TODO: Eventually remove this document upgrade code
-function savedStatusFromUnknown(details: unknown): { isSaved: boolean; isAutoSaved: boolean } {
-	if (typeof details !== "object" || details === null) return { isSaved: false, isAutoSaved: false };
+function extractIsSavedFromUnknown(details: unknown): boolean {
+	if (typeof details !== "object" || details === null) return false;
 
 	// Old camelCase format
-	if ("isSaved" in details && "isAutoSaved" in details) {
-		return { isSaved: Boolean(details.isSaved), isAutoSaved: Boolean(details.isAutoSaved) };
-	}
+	if ("isSaved" in details) return Boolean(details.isSaved);
 
 	// New snake_case format
-	if ("is_saved" in details && "is_auto_saved" in details) {
-		return { isSaved: Boolean(details.is_saved), isAutoSaved: Boolean(details.is_auto_saved) };
-	}
+	if ("is_saved" in details) return Boolean(details.is_saved);
 
-	return { isSaved: false, isAutoSaved: false };
+	return false;
 }
 
 // =================
