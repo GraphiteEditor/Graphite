@@ -1,7 +1,7 @@
 import { get } from "svelte/store";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { DocumentDetails, EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const PERSISTENCE_DB = "graphite";
 const PERSISTENCE_STORE = "store";
@@ -72,13 +72,13 @@ export async function loadFirstDocument(editor: EditorWrapper) {
 
 	if (currentDocumentId !== undefined && String(currentDocumentId) in previouslySavedDocuments) {
 		const doc = previouslySavedDocuments[String(currentDocumentId)];
-		editor.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
+		editor.openAutoSavedDocument(doc.documentId, doc.details.name, savedStatus(doc.details).isSaved, doc.document, false);
 		editor.selectDocument(currentDocumentId);
 	} else {
 		const len = orderedSavedDocuments.length;
 		if (len > 0) {
 			const doc = orderedSavedDocuments[len - 1];
-			editor.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
+			editor.openAutoSavedDocument(doc.documentId, doc.details.name, savedStatus(doc.details).isSaved, doc.document, false);
 			editor.selectDocument(doc.documentId);
 		}
 	}
@@ -108,13 +108,11 @@ export async function loadRestDocuments(editor: EditorWrapper) {
 	if (currentIndex !== -1 && currentDocumentId !== undefined) {
 		for (let i = currentIndex - 1; i >= 0; i--) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
-			const { name, isSaved } = details;
-			editor.openAutoSavedDocument(documentId, name, isSaved, document, true);
+			editor.openAutoSavedDocument(documentId, details.name, savedStatus(details).isSaved, document, true);
 		}
 		for (let i = currentIndex + 1; i < orderedSavedDocuments.length; i++) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
-			const { name, isSaved } = details;
-			editor.openAutoSavedDocument(documentId, name, isSaved, document, false);
+			editor.openAutoSavedDocument(documentId, details.name, savedStatus(details).isSaved, document, false);
 		}
 
 		editor.selectDocument(currentDocumentId);
@@ -125,8 +123,7 @@ export async function loadRestDocuments(editor: EditorWrapper) {
 
 		for (let i = length - 2; i >= 0; i--) {
 			const { documentId, document, details } = orderedSavedDocuments[i];
-			const { name, isSaved } = details;
-			editor.openAutoSavedDocument(documentId, name, isSaved, document, true);
+			editor.openAutoSavedDocument(documentId, details.name, savedStatus(details).isSaved, document, true);
 		}
 
 		if (length > 0) editor.selectDocument(orderedSavedDocuments[length - 1].documentId);
@@ -235,4 +232,14 @@ async function databaseUpdate<T>(key: string, updater: (existing: T | undefined)
 		transaction.oncomplete = () => resolve();
 		transaction.onerror = () => reject(transaction.error);
 	});
+}
+
+// TODO: Eventually remove this document upgrade code
+export function savedStatus(details: DocumentDetails): { isSaved: boolean; isAutoSaved: boolean } {
+	const unknownDetails: unknown = details;
+	if (typeof unknownDetails === "object" && unknownDetails !== null && "isSaved" in unknownDetails && "isAutoSaved" in unknownDetails) {
+		return { isSaved: Boolean(unknownDetails.isSaved), isAutoSaved: Boolean(unknownDetails.isAutoSaved) };
+	}
+
+	return { isSaved: details.is_saved, isAutoSaved: details.is_auto_saved };
 }

@@ -71,9 +71,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
 				id: document_id,
 				document: Document {
+					content: document,
 					name: details.name,
 					path: details.path,
-					content: document,
 					is_saved: details.is_saved,
 				},
 			});

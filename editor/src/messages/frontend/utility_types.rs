@@ -15,9 +15,9 @@ pub struct OpenDocument {
 pub struct DocumentDetails {
 	pub name: String,
 	pub path: Option<PathBuf>,
-	#[serde(rename = "isSaved")]
+	#[serde(alias = "isSaved")]
 	pub is_saved: bool,
-	#[serde(rename = "isAutoSaved")]
+	#[serde(alias = "isAutoSaved")]
 	pub is_auto_saved: bool,
 }
 
