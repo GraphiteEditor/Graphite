@@ -191,6 +191,13 @@ pub enum DocumentMessage {
 	SetDocumentMode {
 		document_mode: DocumentMode,
 	},
+	EnterMaskMode,
+	ExitMaskMode {
+		discard: bool,
+	},
+	DrawMarchingAntsOverlay {
+		context: OverlayContext,
+	},
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,
