@@ -12,8 +12,9 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
-	export let subdivision: PanelLayoutSubdivision;
+	export let subdivision: PanelLayoutSubdivision | undefined;
 	export let depth: number;
+	export let splitPath: number[] = [];
 
 	// Local size overrides for gutter resizing (keyed by child index)
 	let sizeOverrides: Record<number, number> = {};
@@ -29,7 +30,7 @@
 	// Reset overrides when the subdivision changes (e.g., backend sends a new layout)
 	$: if (subdivision) sizeOverrides = {};
 	// Reactive array of resolved sizes (merging backend defaults with local overrides)
-	$: resolvedSizes = "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
+	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
 		const unsaved = !doc.details.isSaved;
@@ -44,7 +45,7 @@
 	});
 
 	function resizePanel(e: PointerEvent, prevIndex: number, nextIndex: number) {
-		if (!("Split" in subdivision)) return;
+		if (!(subdivision && "Split" in subdivision)) return;
 
 		const gutter = e.target;
 		if (!(gutter instanceof HTMLDivElement)) return;
@@ -55,13 +56,13 @@
 		if (!(nextSibling instanceof HTMLDivElement) || !(prevSibling instanceof HTMLDivElement) || !(parentElement instanceof HTMLDivElement)) return;
 
 		// Double-click resets both adjacent panels to their default sizes
-		const children = subdivision.Split.children;
 		const now = Date.now();
 		const isDoubleClick = now - lastGutterClickTime < DOUBLE_CLICK_MILLISECONDS && lastGutterClickTarget === gutter;
 		lastGutterClickTime = now;
 		lastGutterClickTarget = gutter;
 		if (isDoubleClick) {
-			sizeOverrides = { ...sizeOverrides, [prevIndex]: children[prevIndex].size, [nextIndex]: children[nextIndex].size };
+			sizeOverrides = {};
+			editor.resetPanelGroupSizes(splitPath);
 			return;
 		}
 
@@ -113,6 +114,12 @@
 			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
 			removeListeners();
 			activeResizeCleanup = undefined;
+
+			// Persist the resized sizes to the backend
+			if ("Split" in subdivision) {
+				const allSizes = subdivision.Split.children.map((child, i) => sizeOverrides[i] ?? child.size);
+				editor.setPanelGroupSizes(splitPath, allSizes);
+			}
 		};
 
 		const onMouseDown = (e: MouseEvent) => {
@@ -159,7 +166,7 @@
 	}
 </script>
 
-{#if "PanelGroup" in subdivision}
+{#if subdivision && "PanelGroup" in subdivision}
 	{@const group = subdivision.PanelGroup}
 	{#if isDocumentGroup(group.state)}
 		<Panel
@@ -182,7 +189,7 @@
 			panelId={String(group.id)}
 			panelTypes={group.state.tabs}
 			tabLabels={group.state.tabs.map((name) => ({ name }))}
-			tabActiveIndex={Number(group.state.activeTabIndex)}
+			tabActiveIndex={Number(group.state.active_tab_index)}
 			clickAction={(tabIndex) => editor.setPanelGroupActiveTab(group.id, tabIndex)}
 			reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab(group.id, oldIndex, newIndex)}
 			crossPanelDropAction={crossPanelDrop}
@@ -190,7 +197,7 @@
 			splitDropAction={splitDrop}
 		/>
 	{/if}
-{:else if "Split" in subdivision}
+{:else if subdivision && "Split" in subdivision}
 	{#each subdivision.Split.children as child, index}
 		{#if index > 0}
 			{#if horizontal}
@@ -201,28 +208,17 @@
 		{/if}
 		{#if horizontal}
 			<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": resolvedSizes[index] }}>
-				<svelte:self subdivision={child.subdivision} depth={depth + 1} />
+				<svelte:self subdivision={child.subdivision} depth={depth + 1} splitPath={[...splitPath, index]} />
 			</LayoutCol>
 		{:else}
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": resolvedSizes[index] }}>
-				<svelte:self subdivision={child.subdivision} depth={depth + 1} />
+				<svelte:self subdivision={child.subdivision} depth={depth + 1} splitPath={[...splitPath, index]} />
 			</LayoutRow>
 		{/if}
 	{/each}
 {/if}
 
 <style lang="scss">
-	.workspace-grid-subdivision {
-		position: relative;
-		flex: 1 1 0;
-		min-height: 28px;
-
-		&.folded {
-			flex-grow: 0;
-			height: 0;
-		}
-	}
-
 	.workspace-grid-resize-gutter {
 		flex: 0 0 4px;
 		border-radius: 2px;
@@ -240,5 +236,26 @@
 			background: var(--color-5-dullgray);
 			transition: background 0.2s 0.1s;
 		}
+	}
+
+	.workspace-grid-subdivision {
+		position: relative;
+		flex: 1 1 0;
+		min-height: 28px;
+
+		&.folded {
+			flex-grow: 0;
+			height: 0;
+		}
+	}
+
+	// Needed for the viewport hole punch on desktop
+	.viewport-hole-punch .workspace-grid-subdivision:has(> .panel.document-panel)::after {
+		content: "";
+		position: absolute;
+		z-index: -1;
+		inset: 6px;
+		border-radius: 6px;
+		box-shadow: 0 0 0 calc(100vw + 100vh) var(--color-2-mildblack);
 	}
 </style>

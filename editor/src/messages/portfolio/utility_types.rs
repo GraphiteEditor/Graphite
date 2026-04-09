@@ -106,6 +106,12 @@ impl From<String> for PanelType {
 	}
 }
 
+impl PanelType {
+	pub fn non_document_panels() -> &'static [PanelType] {
+		&[PanelType::Layers, PanelType::Properties, PanelType::Data]
+	}
+}
+
 /// Unique identifier for a panel group (a leaf subdivision in the layout tree that holds tabs).
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
@@ -127,7 +133,6 @@ pub enum DockingSplitDirection {
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PanelGroupState {
 	pub tabs: Vec<PanelType>,
-	#[serde(rename = "activeTabIndex")]
 	pub active_tab_index: usize,
 }
 
@@ -156,6 +161,12 @@ pub enum PanelLayoutSubdivision {
 	Split { children: Vec<SplitChild> },
 }
 
+impl Default for PanelLayoutSubdivision {
+	fn default() -> Self {
+		PanelLayoutSubdivision::Split { children: Vec::new() }
+	}
+}
+
 /// A child within a split container, with a proportional size weight.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -170,13 +181,17 @@ pub struct SplitChild {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkspacePanelLayout {
+	#[serde(default)]
 	pub root: PanelLayoutSubdivision,
 	/// Counter for generating unique panel group IDs.
-	#[serde(rename = "nextGroupId")]
+	#[serde(default)]
 	next_group_id: PanelGroupId,
 	/// Remembers where a panel was before being removed (panel type, group ID, and tab index), so it can be restored there.
-	#[serde(default, rename = "savedPositions")]
+	#[serde(default)]
 	saved_positions: Vec<(PanelType, PanelGroupId, usize)>,
+	/// Whether Focus Document mode is active, hiding all non-document panels.
+	#[serde(default)]
+	pub focus_document: bool,
 }
 
 impl WorkspacePanelLayout {
@@ -215,6 +230,14 @@ impl WorkspacePanelLayout {
 	/// Remove empty panel groups and collapse unnecessary single-child splits.
 	pub fn prune(&mut self) {
 		self.root.prune();
+	}
+
+	/// Produce a filtered copy of this layout containing only the document panel, for use in Focus Document mode.
+	pub fn document_only_layout(&self) -> WorkspacePanelLayout {
+		let mut layout = self.clone();
+		layout.root.retain_only_document_panels();
+		layout.root.prune();
+		layout
 	}
 
 	/// Split a panel group by inserting a new panel group adjacent to it.
@@ -399,6 +422,7 @@ impl Default for WorkspacePanelLayout {
 			},
 			next_group_id: PanelGroupId(3),
 			saved_positions: Vec::new(),
+			focus_document: false,
 		}
 	}
 }
@@ -453,6 +477,19 @@ impl PanelLayoutSubdivision {
 
 		// Remove empty splits (splits that lost all their children after pruning)
 		children.retain(|child| !matches!(&child.subdivision, PanelLayoutSubdivision::Split { children } if children.is_empty()));
+	}
+
+	/// Remove all non-document/non-welcome tabs from panel groups, leaving only document-related panels.
+	pub fn retain_only_document_panels(&mut self) {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { state, .. } => {
+				state.tabs.retain(|t| matches!(t, PanelType::Document | PanelType::Welcome));
+				state.active_tab_index = state.active_tab_index.min(state.tabs.len().saturating_sub(1));
+			}
+			PanelLayoutSubdivision::Split { children } => {
+				children.iter_mut().for_each(|child| child.subdivision.retain_only_document_panels());
+			}
+		}
 	}
 
 	/// Check if this subtree contains a panel group with the given ID.

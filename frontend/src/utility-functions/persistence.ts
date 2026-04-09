@@ -161,6 +161,15 @@ export async function loadEditorPreferences(editor: EditorWrapper) {
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 }
 
+export async function saveWorkspaceLayout(layout: unknown) {
+	await databaseSet("workspace_layout", layout);
+}
+
+export async function loadWorkspaceLayout(editor: EditorWrapper) {
+	const layout = await databaseGet<Record<string, unknown>>("workspace_layout");
+	if (layout) editor.loadWorkspaceLayout(layout);
+}
+
 export async function wipeDocuments() {
 	await databaseDelete("documents_tab_order");
 	await databaseDelete("current_document_id");

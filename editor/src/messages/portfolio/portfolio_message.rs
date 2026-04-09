@@ -1,5 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType, WorkspacePanelLayout};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
@@ -60,6 +60,9 @@ pub enum PortfolioMessage {
 	},
 	LoadDocumentResources {
 		document_id: DocumentId,
+	},
+	LoadWorkspaceLayout {
+		layout: WorkspacePanelLayout,
 	},
 	MoveAllPanelTabs {
 		source_group: PanelGroupId,
@@ -184,4 +187,16 @@ pub enum PortfolioMessage {
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateWorkspacePanelLayout,
+	SaveWorkspaceLayout,
+	ResetWorkspaceLayout,
+	ResetPanelGroupSizes {
+		/// Path of child indices from the root to the split node whose children's sizes should be reset to defaults.
+		split_path: Vec<usize>,
+	},
+	SetPanelGroupSizes {
+		/// Path of child indices from the root to the split node whose children's sizes are being set.
+		split_path: Vec<usize>,
+		/// New sizes for the children at that split node.
+		sizes: Vec<f64>,
+	},
 }

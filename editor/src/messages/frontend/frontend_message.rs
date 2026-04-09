@@ -127,11 +127,16 @@ pub enum FrontendMessage {
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
+	TriggerLoadWorkspaceLayout,
 	TriggerOpen,
 	TriggerImport,
 	TriggerSavePreferences {
 		#[tsify(type = "unknown")]
 		preferences: PreferencesMessageHandler,
+	},
+	TriggerSaveWorkspaceLayout {
+		#[serde(rename = "workspaceLayout")]
+		workspace_layout: WorkspacePanelLayout,
 	},
 	TriggerSaveActiveDocument {
 		#[serde(rename = "documentId")]

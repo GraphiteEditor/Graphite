@@ -379,6 +379,16 @@ impl EditorWrapper {
 		}
 	}
 
+	#[wasm_bindgen(js_name = loadWorkspaceLayout)]
+	pub fn load_workspace_layout(&self, layout: JsValue) {
+		let Ok(layout) = serde_wasm_bindgen::from_value(layout) else {
+			log::error!("Failed to deserialize workspace layout");
+			return;
+		};
+		let message = PortfolioMessage::LoadWorkspaceLayout { layout };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = selectDocument)]
 	pub fn select_document(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
@@ -483,6 +493,21 @@ impl EditorWrapper {
 			tabs,
 			active_tab_index,
 		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = resetPanelGroupSizes)]
+	pub fn reset_panel_group_sizes(&self, split_path: JsValue) {
+		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
+		let message = PortfolioMessage::ResetPanelGroupSizes { split_path };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = setPanelGroupSizes)]
+	pub fn set_panel_group_sizes(&self, split_path: JsValue, sizes: JsValue) {
+		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
+		let sizes: Vec<f64> = serde_wasm_bindgen::from_value(sizes).unwrap();
+		let message = PortfolioMessage::SetPanelGroupSizes { split_path, sizes };
 		self.dispatch(message);
 	}
 
