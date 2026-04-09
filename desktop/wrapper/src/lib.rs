@@ -4,7 +4,7 @@ use graphite_editor::messages::prelude::{FrontendMessage, Message};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
-pub use graphite_editor::consts::FILE_EXTENSION;
+pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use wgpu_executor::TargetTexture;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;

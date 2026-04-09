@@ -120,7 +120,7 @@
 	<slot />
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.field-input {
 		min-width: 80px;
 		height: auto;

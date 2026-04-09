@@ -10,7 +10,6 @@
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { patchLayout } from "/src/utility-functions/widgets";
 	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
-	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
@@ -22,8 +21,8 @@
 
 	let menuBarLayout: Layout = [];
 
-	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (isPlatformNative() && $appWindow.fullscreen);
-	$: isFullscreen = isPlatformNative() ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
+	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (import.meta.env.MODE === "native" && $appWindow.fullscreen);
+	$: isFullscreen = import.meta.env.MODE === "native" ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
 	// On Mac, the menu bar height needs to be scaled by the inverse of the UI scale to fit its native window buttons
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
@@ -39,7 +38,7 @@
 	});
 </script>
 
-<LayoutRow class="title-bar" styles={{ height: height + "px" }}>
+<LayoutRow class="title-bar" styles={{ "--title-bar-height": height + "px" }}>
 	<!-- Menu bar -->
 	<LayoutRow class="menu-bar">
 		{#if $appWindow.platform !== "Mac"}
@@ -59,7 +58,7 @@
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
-						if (isPlatformNative()) editor.appWindowFullscreen();
+						if (import.meta.env.MODE === "native") editor.appWindowFullscreen();
 						else ($fullscreen.windowFullscreen ? exitFullscreen : enterFullscreen)();
 					}}
 				>
@@ -80,18 +79,41 @@
 	</LayoutRow>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.title-bar {
 		flex: 0 0 auto;
+		height: var(--height);
+		--height: var(--title-bar-height);
+
+		// Frameless PWA drag regions and left/right offsets for window controls, see:
+		// https://web.dev/articles/window-controls-overlay
+		@media not (display-mode: fullscreen) {
+			--height: env(titlebar-area-height, var(--title-bar-height));
+
+			> .layout-row {
+				&.window-frame {
+					-webkit-app-region: drag;
+					// app-region: drag; // TODO: Uncomment this when SCSS doesn't consider it an unknown property, which produces a warning that CI treats as a failure
+				}
+
+				&:first-child {
+					margin-left: env(titlebar-area-x, 0);
+				}
+
+				&:last-child {
+					margin-right: calc(100% - env(titlebar-area-width, 100%) - env(titlebar-area-x, 0px));
+				}
+			}
+		}
 
 		> .layout-row {
 			flex: 0 0 auto;
 
 			> .widget-span {
-				--row-height: 28px;
+				--row-height: var(--height);
 
 				> * {
-					--widget-height: 28px;
+					--widget-height: var(--height);
 				}
 			}
 

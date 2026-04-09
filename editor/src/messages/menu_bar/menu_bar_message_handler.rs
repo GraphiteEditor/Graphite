@@ -495,6 +495,18 @@ impl LayoutHolder for MenuBarMessageHandler {
 									})
 									.disabled(no_active_document || !has_selected_layers),
 							]]),
+						MenuListEntry::new("Blend")
+							.label("Blend")
+							.icon("InterpolationBlend")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::BlendSelectedLayers))
+							.on_commit(|_| DocumentMessage::BlendSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Morph")
+							.label("Morph")
+							.icon("InterpolationMorph")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::MorphSelectedLayers))
+							.on_commit(|_| DocumentMessage::MorphSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
 						MenuListEntry::new("Make Path Editable")
@@ -634,6 +646,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.focus_document { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleFocusDocument))
 							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
+					],
+					vec![
+						MenuListEntry::new("Reset Workspace")
+							.label("Reset Workspace")
+							.icon("Reset")
+							.on_commit(|_| PortfolioMessage::ResetWorkspaceLayout.into()),
 					],
 					vec![
 						MenuListEntry::new("Properties")

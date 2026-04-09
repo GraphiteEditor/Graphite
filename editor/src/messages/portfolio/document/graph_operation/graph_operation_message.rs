@@ -74,6 +74,17 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	NewInterpolationLayer {
+		id: NodeId,
+		control_path_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		blend_count: Option<usize>,
+	},
+	ConnectInterpolationControlPathToChildren {
+		interpolation_layer_id: NodeId,
+		control_path_id: NodeId,
+	},
 	NewBooleanOperationLayer {
 		id: NodeId,
 		operation: graphene_std::vector::misc::BooleanOperation,

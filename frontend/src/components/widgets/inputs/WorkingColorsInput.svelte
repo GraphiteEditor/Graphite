@@ -63,7 +63,7 @@
 	</LayoutRow>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.working-colors-button {
 		flex: 0 0 auto;
 

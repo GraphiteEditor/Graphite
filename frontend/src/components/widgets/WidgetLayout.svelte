@@ -23,4 +23,4 @@
 	{/if}
 {/each}
 
-<style lang="scss" global></style>
+<style lang="scss"></style>

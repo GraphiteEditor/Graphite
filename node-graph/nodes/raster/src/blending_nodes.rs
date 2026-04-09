@@ -130,7 +130,7 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 }
 
 #[node_macro::node(category("Raster"), cfg(feature = "std"))]
-fn blend<T: Blend<Color> + Send>(
+fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,

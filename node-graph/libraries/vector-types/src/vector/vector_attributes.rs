@@ -104,6 +104,12 @@ impl PointDomain {
 		self.position.clear();
 	}
 
+	#[inline(always)]
+	pub fn reserve(&mut self, additional: usize) {
+		self.id.reserve(additional);
+		self.position.reserve(additional);
+	}
+
 	pub fn retain(&mut self, segment_domain: &mut SegmentDomain, f: impl Fn(&PointId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.position.retain(|_| keep.next().unwrap_or_default());
@@ -129,14 +135,16 @@ impl PointDomain {
 	}
 
 	pub fn push(&mut self, id: PointId, position: DVec2) {
+		#[cfg(debug_assertions)]
 		if self.id.contains(&id) {
+			warn!("Tried to push a duplicate point to a point domain");
 			return;
 		}
 
-		self.id.push(id);
-		self.position.push(position);
+		self.push_unchecked(id, position);
 	}
 
+	#[inline(always)]
 	pub fn push_unchecked(&mut self, id: PointId, position: DVec2) {
 		self.id.push(id);
 		self.position.push(position);
@@ -234,6 +242,15 @@ impl SegmentDomain {
 		self.stroke.clear();
 	}
 
+	#[inline(always)]
+	pub fn reserve(&mut self, additional: usize) {
+		self.id.reserve(additional);
+		self.start_point.reserve(additional);
+		self.end_point.reserve(additional);
+		self.handles.reserve(additional);
+		self.stroke.reserve(additional);
+	}
+
 	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
 		let additional_delete_ids = self
 			.id
@@ -316,9 +333,15 @@ impl SegmentDomain {
 	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
 		#[cfg(debug_assertions)]
 		if self.id.contains(&id) {
-			warn!("Tried to push an existing point to a point domain");
+			warn!("Tried to push a duplicate segment to a segment domain");
+			return;
 		}
 
+		self.push_unchecked(id, start, end, handles, stroke);
+	}
+
+	#[inline(always)]
+	pub fn push_unchecked(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
 		self.id.push(id);
 		self.start_point.push(start);
 		self.end_point.push(end);
@@ -596,6 +619,13 @@ impl RegionDomain {
 		self.fill.clear();
 	}
 
+	#[inline(always)]
+	pub fn reserve(&mut self, additional: usize) {
+		self.id.reserve(additional);
+		self.segment_range.reserve(additional);
+		self.fill.reserve(additional);
+	}
+
 	pub fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.segment_range.retain(|_| keep.next().unwrap_or_default());
@@ -618,10 +648,17 @@ impl RegionDomain {
 	}
 
 	pub fn push(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>, fill: FillId) {
+		#[cfg(debug_assertions)]
 		if self.id.contains(&id) {
-			warn!("Duplicate region");
+			warn!("Tried to push a duplicate region to a region domain");
 			return;
 		}
+
+		self.push_unchecked(id, segment_range, fill);
+	}
+
+	#[inline(always)]
+	pub fn push_unchecked(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>, fill: FillId) {
 		self.id.push(id);
 		self.segment_range.push(segment_range);
 		self.fill.push(fill);
