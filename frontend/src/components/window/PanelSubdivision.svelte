@@ -219,17 +219,6 @@
 {/if}
 
 <style lang="scss">
-	.workspace-grid-subdivision {
-		position: relative;
-		flex: 1 1 0;
-		min-height: 28px;
-
-		&.folded {
-			flex-grow: 0;
-			height: 0;
-		}
-	}
-
 	.workspace-grid-resize-gutter {
 		flex: 0 0 4px;
 		border-radius: 2px;
@@ -247,5 +236,26 @@
 			background: var(--color-5-dullgray);
 			transition: background 0.2s 0.1s;
 		}
+	}
+
+	.workspace-grid-subdivision {
+		position: relative;
+		flex: 1 1 0;
+		min-height: 28px;
+
+		&.folded {
+			flex-grow: 0;
+			height: 0;
+		}
+	}
+
+	// Needed for the viewport hole punch on desktop
+	.viewport-hole-punch .workspace-grid-subdivision:has(> .panel.document-panel)::after {
+		content: "";
+		position: absolute;
+		z-index: -1;
+		inset: 6px;
+		border-radius: 6px;
+		box-shadow: 0 0 0 calc(100vw + 100vh) var(--color-2-mildblack);
 	}
 </style>

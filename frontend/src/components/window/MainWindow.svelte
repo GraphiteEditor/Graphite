@@ -51,39 +51,25 @@
 		height: 100%;
 		overflow: auto;
 		touch-action: none;
+	}
 
-		.workspace {
-			position: relative;
-		}
+	.release-candidate-expiry {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		background-color: var(--color-e-nearwhite);
+		color: var(--color-2-mildblack);
+		opacity: 0.9;
+		pointer-events: none;
+		padding: 12px 40px;
+		border-radius: 4px;
+		text-align-last: justify;
+		font-size: 18px;
+		z-index: 1000;
 
-		// Needed for the viewport hole punch on desktop
-		.viewport-hole-punch .workspace .workspace-grid-subdivision:has(.panel.document-panel)::after {
-			content: "";
-			position: absolute;
-			inset: 6px;
-			border-radius: 6px;
-			box-shadow: 0 0 0 calc(100vw + 100vh) var(--color-2-mildblack);
-			z-index: -1;
-		}
-
-		.release-candidate-expiry {
-			position: absolute;
-			top: 50%;
-			left: 50%;
-			transform: translate(-50%, -50%);
-			background-color: var(--color-e-nearwhite);
-			color: var(--color-2-mildblack);
-			opacity: 0.9;
-			pointer-events: none;
-			padding: 12px 40px;
-			border-radius: 4px;
-			text-align-last: justify;
-			font-size: 18px;
-			z-index: 1000;
-
-			.text-label {
-				line-height: 1.5;
-			}
+		.text-label {
+			line-height: 1.5;
 		}
 	}
 </style>
