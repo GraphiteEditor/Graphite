@@ -12,7 +12,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
-	export let subdivision: PanelLayoutSubdivision;
+	export let subdivision: PanelLayoutSubdivision | undefined;
 	export let depth: number;
 	export let splitPath: number[] = [];
 
@@ -30,7 +30,7 @@
 	// Reset overrides when the subdivision changes (e.g., backend sends a new layout)
 	$: if (subdivision) sizeOverrides = {};
 	// Reactive array of resolved sizes (merging backend defaults with local overrides)
-	$: resolvedSizes = "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
+	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
 		const unsaved = !doc.details.isSaved;
@@ -45,7 +45,7 @@
 	});
 
 	function resizePanel(e: PointerEvent, prevIndex: number, nextIndex: number) {
-		if (!("Split" in subdivision)) return;
+		if (!(subdivision && "Split" in subdivision)) return;
 
 		const gutter = e.target;
 		if (!(gutter instanceof HTMLDivElement)) return;
@@ -166,7 +166,7 @@
 	}
 </script>
 
-{#if "PanelGroup" in subdivision}
+{#if subdivision && "PanelGroup" in subdivision}
 	{@const group = subdivision.PanelGroup}
 	{#if isDocumentGroup(group.state)}
 		<Panel
@@ -189,7 +189,7 @@
 			panelId={String(group.id)}
 			panelTypes={group.state.tabs}
 			tabLabels={group.state.tabs.map((name) => ({ name }))}
-			tabActiveIndex={Number(group.state.activeTabIndex)}
+			tabActiveIndex={Number(group.state.active_tab_index)}
 			clickAction={(tabIndex) => editor.setPanelGroupActiveTab(group.id, tabIndex)}
 			reorderAction={(oldIndex, newIndex) => editor.reorderPanelGroupTab(group.id, oldIndex, newIndex)}
 			crossPanelDropAction={crossPanelDrop}
@@ -197,7 +197,7 @@
 			splitDropAction={splitDrop}
 		/>
 	{/if}
-{:else if "Split" in subdivision}
+{:else if subdivision && "Split" in subdivision}
 	{#each subdivision.Split.children as child, index}
 		{#if index > 0}
 			{#if horizontal}

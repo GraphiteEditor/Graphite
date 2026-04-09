@@ -309,8 +309,8 @@ impl App {
 				workspace_layout::write(&layout);
 			}
 			DesktopFrontendMessage::PersistenceLoadWorkspaceLayout => {
-				if let Some(layout_ron) = workspace_layout::read() {
-					let message = DesktopWrapperMessage::LoadWorkspaceLayout { layout_ron };
+				if let Some(workspace_layout) = workspace_layout::read() {
+					let message = DesktopWrapperMessage::LoadWorkspaceLayout { workspace_layout };
 					responses.push(message);
 				}
 			}

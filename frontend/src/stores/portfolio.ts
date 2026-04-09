@@ -18,7 +18,7 @@ const initialState: PortfolioStoreState = {
 	unsaved: false,
 	documents: [],
 	activeDocumentIndex: 0,
-	panelLayout: { root: { Split: { children: [] } }, nextGroupId: 0n },
+	panelLayout: {},
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;

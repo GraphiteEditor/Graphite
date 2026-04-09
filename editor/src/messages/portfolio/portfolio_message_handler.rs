@@ -1484,7 +1484,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.workspace_panel_layout.focus_document = !self.workspace_panel_layout.focus_document;
 
 				// Destroy or refresh non-document panel layouts based on focus mode
-				for &panel_type in &[PanelType::Properties, PanelType::Layers, PanelType::Data] {
+				for &panel_type in PanelType::non_document_panels() {
 					if self.workspace_panel_layout.is_panel_present(panel_type) {
 						if self.workspace_panel_layout.focus_document {
 							Self::destroy_panel_layouts(panel_type, responses);
@@ -1536,10 +1536,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::UpdateWorkspacePanelLayout => {
-				let panel_layout = if self.workspace_panel_layout.focus_document {
-					self.workspace_panel_layout.document_only_layout()
-				} else {
-					self.workspace_panel_layout.clone()
+				let panel_layout = match self.workspace_panel_layout.focus_document {
+					true => self.workspace_panel_layout.document_only_layout(),
+					false => self.workspace_panel_layout.clone(),
 				};
 				responses.add(FrontendMessage::UpdateWorkspacePanelLayout { panel_layout });
 			}
@@ -1550,7 +1549,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::ResetWorkspaceLayout => {
 				// Destroy layouts for all currently visible non-document panels
-				for panel_type in [PanelType::Properties, PanelType::Layers, PanelType::Data] {
+				for &panel_type in PanelType::non_document_panels() {
 					if self.workspace_panel_layout.is_panel_present(panel_type) {
 						Self::destroy_panel_layouts(panel_type, responses);
 					}

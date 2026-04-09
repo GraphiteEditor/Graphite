@@ -106,6 +106,12 @@ impl From<String> for PanelType {
 	}
 }
 
+impl PanelType {
+	pub fn non_document_panels() -> &'static [PanelType] {
+		&[PanelType::Layers, PanelType::Properties, PanelType::Data]
+	}
+}
+
 /// Unique identifier for a panel group (a leaf subdivision in the layout tree that holds tabs).
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
@@ -127,7 +133,6 @@ pub enum DockingSplitDirection {
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PanelGroupState {
 	pub tabs: Vec<PanelType>,
-	#[serde(rename = "activeTabIndex")]
 	pub active_tab_index: usize,
 }
 
@@ -156,6 +161,12 @@ pub enum PanelLayoutSubdivision {
 	Split { children: Vec<SplitChild> },
 }
 
+impl Default for PanelLayoutSubdivision {
+	fn default() -> Self {
+		PanelLayoutSubdivision::Split { children: Vec::new() }
+	}
+}
+
 /// A child within a split container, with a proportional size weight.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -170,15 +181,16 @@ pub struct SplitChild {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkspacePanelLayout {
+	#[serde(default)]
 	pub root: PanelLayoutSubdivision,
 	/// Counter for generating unique panel group IDs.
-	#[serde(rename = "nextGroupId")]
+	#[serde(default)]
 	next_group_id: PanelGroupId,
 	/// Remembers where a panel was before being removed (panel type, group ID, and tab index), so it can be restored there.
-	#[serde(default, rename = "savedPositions")]
+	#[serde(default)]
 	saved_positions: Vec<(PanelType, PanelGroupId, usize)>,
 	/// Whether Focus Document mode is active, hiding all non-document panels.
-	#[serde(default, rename = "focusDocument")]
+	#[serde(default)]
 	pub focus_document: bool,
 }
 

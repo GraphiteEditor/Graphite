@@ -380,15 +380,13 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = loadWorkspaceLayout)]
-	pub fn load_workspace_layout(&self, layout: Option<String>) {
-		if let Some(layout) = layout {
-			let Ok(layout) = serde_json::from_str(&layout) else {
-				log::error!("Failed to deserialize workspace layout");
-				return;
-			};
-			let message = PortfolioMessage::LoadWorkspaceLayout { layout };
-			self.dispatch(message);
-		}
+	pub fn load_workspace_layout(&self, layout: JsValue) {
+		let Ok(layout) = serde_wasm_bindgen::from_value(layout) else {
+			log::error!("Failed to deserialize workspace layout");
+			return;
+		};
+		let message = PortfolioMessage::LoadWorkspaceLayout { layout };
+		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = selectDocument)]

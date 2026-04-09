@@ -62,7 +62,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	LoadWorkspaceLayout {
-		#[serde(skip)]
 		layout: WorkspacePanelLayout,
 	},
 	MoveAllPanelTabs {
