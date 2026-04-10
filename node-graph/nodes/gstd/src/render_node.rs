@@ -208,7 +208,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 
 			// Infinite canvas checkerboard (when no artboards are present)
 			let show_checkerboard = !render_params.for_export && !contains_artboard && !render_params.hide_artboards;
-			if show_checkerboard && scale > 0. {
+			if show_checkerboard && scale > 0. && render_params.viewport_zoom > 0. {
 				// Compute the axis-aligned bounding box of all four viewport corners in document space,
 				// which is necessary so the rect fully covers the visible area when the canvas is tilted
 				let inverse_footprint = footprint_transform.inverse();

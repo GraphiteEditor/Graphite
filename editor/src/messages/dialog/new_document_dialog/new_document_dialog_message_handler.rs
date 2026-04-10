@@ -24,14 +24,8 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			NewDocumentDialogMessage::Submit => {
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
-				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
-				if create_artboard {
-					responses.add(GraphOperationMessage::NewArtboard {
-						id: NodeId::new(),
-						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
-					});
-					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
-				} else {
+				if self.infinite {
+					// Infinite canvas: add a locked white background layer
 					let node_id = NodeId::new();
 					responses.add(GraphOperationMessage::NewColorFillLayer {
 						node_id,
@@ -44,6 +38,13 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 						alias: "Background".to_string(),
 					});
 					responses.add(NodeGraphMessage::SetLocked { node_id, locked: true });
+				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
+					// Finite canvas: create an artboard with the specified dimensions
+					responses.add(GraphOperationMessage::NewArtboard {
+						id: NodeId::new(),
+						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
+					});
+					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
