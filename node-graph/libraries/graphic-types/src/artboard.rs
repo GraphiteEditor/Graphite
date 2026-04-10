@@ -36,7 +36,7 @@ impl Artboard {
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
 			background: Color::WHITE,
-			clip: false,
+			clip: true,
 		}
 	}
 }

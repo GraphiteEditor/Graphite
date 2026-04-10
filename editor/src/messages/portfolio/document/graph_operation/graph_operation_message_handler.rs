@@ -274,6 +274,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			GraphOperationMessage::NewColorFillLayer { node_id, color, parent, insert_index } => {
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+				let layer = modify_inputs.create_layer(node_id);
+				modify_inputs.insert_color_value(color, layer);
+				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);

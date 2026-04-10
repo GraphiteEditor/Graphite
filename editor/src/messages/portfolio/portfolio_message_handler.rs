@@ -1382,7 +1382,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				file_type,
 				scale_factor,
 				bounds,
-				transparent_background,
 				artboard_name,
 				artboard_count,
 			} => {
@@ -1392,7 +1391,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					file_type,
 					scale_factor,
 					bounds,
-					transparent_background,
 					artboard_name,
 					artboard_count,
 					..Default::default()

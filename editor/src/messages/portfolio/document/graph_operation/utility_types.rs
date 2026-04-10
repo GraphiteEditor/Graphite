@@ -7,7 +7,6 @@ use glam::{DAffine2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, Raster};
@@ -17,7 +16,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
-use graphene_std::{Graphic, NodeInputDecleration};
+use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -287,6 +286,19 @@ impl<'a> ModifyInputsContext<'a> {
 		let fill_id = NodeId::new();
 		self.network_interface.insert_node(fill_id, fill, &[]);
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
+	}
+
+	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) {
+		let color_value = resolve_proto_node_type(graphene_std::math_nodes::color_value::IDENTIFIER)
+			.expect("Color Value node does not exist")
+			.node_template_input_override([
+				Some(NodeInput::value(TaggedValue::None, false)),
+				Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(color)), false)),
+			]);
+
+		let color_value_id = NodeId::new();
+		self.network_interface.insert_node(color_value_id, color_value, &[]);
+		self.network_interface.move_node_to_chain_start(&color_value_id, layer, &[], self.import);
 	}
 
 	pub fn insert_image_data(&mut self, image_frame: Table<Raster<CPU>>, layer: LayerNodeIdentifier) {
