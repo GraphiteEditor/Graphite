@@ -1124,15 +1124,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMode::MaskMode => DocumentMode::DesignMode,
 					_ => DocumentMode::MaskMode,
 				};
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::SetDocumentMode { document_mode } => {
-				self.document_mode = document_mode;
+				if self.document_mode != document_mode {
+					self.document_mode = document_mode;
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 			}
 			DocumentMessage::EnterMaskMode => {
-				self.document_mode = DocumentMode::MaskMode;
+				if self.document_mode != DocumentMode::MaskMode {
+					self.document_mode = DocumentMode::MaskMode;
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 			}
 			DocumentMessage::ExitMaskMode { discard: _ } => {
-				self.document_mode = DocumentMode::DesignMode;
+				if self.document_mode != DocumentMode::DesignMode {
+					self.document_mode = DocumentMode::DesignMode;
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 			}
 			DocumentMessage::DrawMarchingAntsOverlay { context: _ } => {}
 			DocumentMessage::AddTransaction => {
