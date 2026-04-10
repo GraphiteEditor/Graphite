@@ -111,6 +111,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 					transform: DAffine2::IDENTITY,
 					alpha_blending: AlphaBlending::default(),
 					source_node_id,
+					additional: Default::default(),
 				});
 			}
 			table
@@ -124,6 +125,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 				transform,
 				alpha_blending,
 				source_node_id: None,
+				additional: Default::default(),
 			})
 			.collect(),
 		ArtboardFormat::ArtboardTable(artboard_table) => artboard_table,

@@ -1,4 +1,10 @@
-use core_types::{Color, render_complexity::RenderComplexity};
+use std::collections::HashMap;
+
+use core_types::{
+	AlphaBlending, Color,
+	render_complexity::RenderComplexity,
+	table::{CustomColumnValue, TableRow, TableRowRef},
+};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
@@ -515,10 +521,72 @@ impl core_types::bounds::BoundingBox for GradientStops {
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|vec| transform.transform_point2(vec));
-		let min = corners.iter().fold(DVec2::MAX, |acc, &p| acc.min(p));
-		let max = corners.iter().fold(DVec2::MIN, |acc, &p| acc.max(p));
+		// We don't have the gradient type or artboard size here,
+		// so we use the gradient's radius as the bounding box to ensure a radial gradient fits within the thumbnail
+		let center = transform.transform_point2(DVec2::ZERO);
+		let edge = transform.transform_point2(DVec2::X);
+		let radius = center.distance(edge).max(300.);
+		let radius_vec = DVec2::splat(radius);
 
-		core_types::bounds::RenderBoundingBox::Rectangle([min, max])
+		core_types::bounds::RenderBoundingBox::Rectangle([center - radius_vec, center + radius_vec])
+	}
+}
+
+pub const GRADIENT_TYPE_KEY: &str = "gradient_type";
+pub const GRADIENT_SPREAD_METHOD_KEY: &str = "gradient_spread_method";
+
+pub trait GradientTableRowExt {
+	fn new_gradient_row(element: GradientStops, transform: DAffine2, gradient_type: GradientType, spread_method: GradientSpreadMethod) -> Self;
+}
+
+impl GradientTableRowExt for TableRow<GradientStops> {
+	fn new_gradient_row(element: GradientStops, transform: DAffine2, gradient_type: GradientType, spread_method: GradientSpreadMethod) -> Self {
+		let gradient_type_raw = match gradient_type {
+			GradientType::Linear => CustomColumnValue::U32(0),
+			GradientType::Radial => CustomColumnValue::U32(1),
+		};
+
+		let spread_method_raw = match spread_method {
+			GradientSpreadMethod::Pad => CustomColumnValue::U32(0),
+			GradientSpreadMethod::Reflect => CustomColumnValue::U32(1),
+			GradientSpreadMethod::Repeat => CustomColumnValue::U32(2),
+		};
+
+		Self {
+			element,
+			// This is to ensure the gradient visible by default as identity transform will render 1px width gradient
+			transform,
+			alpha_blending: AlphaBlending::default(),
+			source_node_id: None,
+			additional: HashMap::from([(GRADIENT_TYPE_KEY.to_string(), gradient_type_raw), (GRADIENT_SPREAD_METHOD_KEY.to_string(), spread_method_raw)]),
+		}
+	}
+}
+
+pub trait GradientTableRowRefExt {
+	fn gradient_type(&self) -> Option<GradientType>;
+	fn spread_method(&self) -> Option<GradientSpreadMethod>;
+}
+
+impl GradientTableRowRefExt for TableRowRef<'_, GradientStops> {
+	fn gradient_type(&self) -> Option<GradientType> {
+		let gradient_type_raw = self.additional.get(GRADIENT_TYPE_KEY)?;
+
+		match gradient_type_raw {
+			CustomColumnValue::U32(0) => Some(GradientType::Linear),
+			CustomColumnValue::U32(1) => Some(GradientType::Radial),
+			_ => None,
+		}
+	}
+
+	fn spread_method(&self) -> Option<GradientSpreadMethod> {
+		let spread_method_raw = self.additional.get(GRADIENT_SPREAD_METHOD_KEY)?;
+
+		match spread_method_raw {
+			CustomColumnValue::U32(0) => Some(GradientSpreadMethod::Pad),
+			CustomColumnValue::U32(1) => Some(GradientSpreadMethod::Reflect),
+			CustomColumnValue::U32(2) => Some(GradientSpreadMethod::Repeat),
+			_ => None,
+		}
 	}
 }

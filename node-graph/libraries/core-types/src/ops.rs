@@ -67,6 +67,7 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 				transform: row.transform,
 				alpha_blending: row.alpha_blending,
 				source_node_id: row.source_node_id,
+				additional: row.additional,
 			})
 			.collect();
 		table

@@ -280,6 +280,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 						transform: *current_row.transform,
 						alpha_blending: *current_row.alpha_blending,
 						source_node_id: reference,
+						additional: current_row.additional.into_iter().map(|(key, value)| (key.to_string(), value.clone())).collect(),
 					});
 				}
 			}

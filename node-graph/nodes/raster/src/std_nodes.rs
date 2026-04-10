@@ -178,6 +178,7 @@ pub fn combine_channels(
 				transform,
 				alpha_blending,
 				source_node_id,
+				additional: Default::default(),
 			})
 		})
 		.collect()

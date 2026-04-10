@@ -11,9 +11,9 @@ use graphene_std::Context;
 use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
-use graphene_std::table::Table;
+use graphene_std::table::{CustomColumnValue, Table};
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::vector::style::{Fill, FillChoice, GRADIENT_SPREAD_METHOD_KEY, GRADIENT_TYPE_KEY};
 use graphene_std::{Artboard, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -204,6 +204,9 @@ trait TableRowLayout {
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![]
 	}
+	fn format_column_value(_key: &str, value: &CustomColumnValue) -> String {
+		format!("{value:?}")
+	}
 }
 
 impl<T: TableRowLayout> TableRowLayout for Vec<T> {
@@ -258,11 +261,13 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 			}
 		}
 
+		let additional_keys = self.additional_column_keys();
+
 		let mut rows = self
 			.iter()
 			.enumerate()
 			.map(|(index, row)| {
-				vec![
+				let mut data = vec![
 					TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
 					row.element.element_widget(index),
 					TextLabel::new(format_transform_matrix(row.transform)).narrow(true).widget_instance(),
@@ -270,11 +275,21 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0)))
 						.narrow(true)
 						.widget_instance(),
-				]
+				];
+
+				for key in &additional_keys {
+					let value = *(row.additional.get(key).unwrap_or(&&CustomColumnValue::None));
+					let formatted_value = T::format_column_value(key, value);
+					log::debug!("formatted_value {}", formatted_value);
+					data.push(TextLabel::new(formatted_value).narrow(true).widget_instance());
+				}
+				data
 			})
 			.collect::<Vec<_>>();
 
-		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
+		let mut headings = vec!["", "element", "transform", "alpha_blending", "source_node_id"];
+		headings.extend(additional_keys);
+		rows.insert(0, column_headings(headings.as_slice()));
 
 		vec![LayoutGroup::table(rows, false)]
 	}
@@ -573,6 +588,16 @@ impl TableRowLayout for GradientStops {
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
 		vec![LayoutGroup::row(widgets)]
+	}
+	fn format_column_value(key: &str, value: &CustomColumnValue) -> String {
+		match (key, value) {
+			(GRADIENT_TYPE_KEY, CustomColumnValue::U32(0)) => "Linear".to_string(),
+			(GRADIENT_TYPE_KEY, CustomColumnValue::U32(1)) => "Radial".to_string(),
+			(GRADIENT_SPREAD_METHOD_KEY, CustomColumnValue::U32(0)) => "Pad".to_string(),
+			(GRADIENT_SPREAD_METHOD_KEY, CustomColumnValue::U32(1)) => "Reflect".to_string(),
+			(GRADIENT_SPREAD_METHOD_KEY, CustomColumnValue::U32(2)) => "Repeat".to_string(),
+			_ => format!("{value:?}"),
+		}
 	}
 }
 

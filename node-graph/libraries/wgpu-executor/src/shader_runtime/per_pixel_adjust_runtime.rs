@@ -241,6 +241,7 @@ impl PerPixelAdjustGraphicsPipeline {
 					transform: *instance.transform,
 					alpha_blending: *instance.alpha_blending,
 					source_node_id: *instance.source_node_id,
+					additional: Default::default(),
 				}
 			})
 			.collect::<Table<_>>();

@@ -421,6 +421,7 @@ async fn round_corners(
 				transform: source_transform,
 				alpha_blending: Default::default(),
 				source_node_id: *source_node_id,
+				additional: Default::default(),
 			}
 		})
 		.collect()
@@ -1019,6 +1020,7 @@ async fn auto_tangents(
 				transform,
 				alpha_blending,
 				source_node_id,
+				additional: Default::default(),
 			}
 		})
 		.collect()
@@ -1210,6 +1212,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				transform,
 				alpha_blending,
 				source_node_id,
+				additional: Default::default(),
 			};
 
 			// If the original vector has a fill, preserve it as a separate row with the stroke cleared.
@@ -1221,6 +1224,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 					transform,
 					alpha_blending,
 					source_node_id,
+					additional: Default::default(),
 				}
 			});
 
@@ -1255,6 +1259,7 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 						transform,
 						alpha_blending,
 						source_node_id,
+						additional: Default::default(),
 					}
 				})
 				.collect::<Vec<TableRow<Vector>>>()

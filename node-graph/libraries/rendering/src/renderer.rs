@@ -15,7 +15,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
+use graphic_types::vector_types::vector::style::{Fill, GRADIENT_TABLE_END, GRADIENT_TABLE_START, GradientSpreadMethod, GradientTableRowRefExt, PaintOrder, RenderMode, Stroke, StrokeAlign};
 use graphic_types::{Artboard, Graphic};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
@@ -24,7 +24,7 @@ use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::{GRADIENT_TABLE_END, GRADIENT_TABLE_START, GradientSpreadMethod};
+use vello::peniko::GradientKind;
 use vello::*;
 
 /// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
@@ -939,6 +939,7 @@ impl Render for Table<Vector> {
 					alpha_blending: *row.alpha_blending,
 					transform: *row.transform,
 					source_node_id: None,
+					additional: Default::default(),
 				});
 
 				(id, mask_type, vector_row)
@@ -1253,6 +1254,7 @@ impl Render for Table<Vector> {
 							alpha_blending: *row.alpha_blending,
 							transform: *row.transform,
 							source_node_id: None,
+							additional: Default::default(),
 						});
 
 						let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
@@ -1737,19 +1739,24 @@ impl Render for Table<GradientStops> {
 				} else {
 					format!(r#" gradientTransform="{gradient_transform_matrix}""#)
 				};
+				let spread_method = row.spread_method().unwrap_or_default();
+				let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
+					String::new()
+				} else {
+					format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+				};
 
 				let gradient_id = generate_uuid();
 				let start = GRADIENT_TABLE_START;
 				let end = GRADIENT_TABLE_END;
 
-				// Linear gradient only for now
-				match GradientType::Linear {
+				match row.gradient_type().unwrap_or_default() {
 					GradientType::Linear => {
 						let (x1, y1) = (start.x, start.y);
 						let (x2, y2) = (end.x, end.y);
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
 					GradientType::Radial => {
@@ -1757,7 +1764,7 @@ impl Render for Table<GradientStops> {
 						let r = start.distance(end);
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="{cx}" cy="{cy}" r="{r}"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="{cx}" cy="{cy}" r="{r}"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 						);
 					}
 				}
@@ -1798,13 +1805,33 @@ impl Render for Table<GradientStops> {
 				})
 			}
 
-			let fill = peniko::Brush::Gradient(peniko::Gradient {
-				kind: peniko::LinearGradientPosition {
+			let kind = match row.gradient_type().unwrap_or_default() {
+				GradientType::Linear => GradientKind::from(peniko::LinearGradientPosition {
 					start: to_point(GRADIENT_TABLE_START),
 					end: to_point(GRADIENT_TABLE_END),
+				}),
+				GradientType::Radial => {
+					let center = to_point(GRADIENT_TABLE_START);
+					let radius = center.distance(to_point(GRADIENT_TABLE_END));
+					GradientKind::from(peniko::RadialGradientPosition {
+						start_center: center,
+						start_radius: 0.,
+						end_center: center,
+						end_radius: radius as f32,
+					})
 				}
-				.into(),
+			};
+
+			let extend = match row.spread_method().unwrap_or_default() {
+				GradientSpreadMethod::Pad => peniko::Extend::Pad,
+				GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+				GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+			};
+
+			let fill = peniko::Brush::Gradient(peniko::Gradient {
 				stops,
+				kind,
+				extend,
 				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 				..Default::default()
 			});

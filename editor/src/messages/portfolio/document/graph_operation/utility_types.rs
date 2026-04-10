@@ -13,8 +13,8 @@ use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Stroke};
-use graphene_std::vector::{GradientStops, PointId, Vector, VectorModificationType};
+use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientTableRowExt, Stroke};
+use graphene_std::vector::{GradientStops, GradientType, PointId, Vector, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -456,16 +456,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
 	}
 
-	pub fn gradient_table_set(&mut self, stops: GradientStops, transform: DAffine2) {
+	pub fn gradient_table_set(&mut self, stops: GradientStops, transform: DAffine2, gradient_type: GradientType, spread_method: GradientSpreadMethod) {
 		let Some(gradient_node_id) = self.existing_proto_node_id(graphene_std::math_nodes::gradient_value::IDENTIFIER, true) else {
 			return;
 		};
 
-		let table = Table::new_from_row(TableRow {
-			element: stops,
-			transform,
-			..Default::default()
-		});
+		let table = Table::new_from_row(TableRow::new_gradient_row(stops, transform, gradient_type, spread_method));
 		let input_connector = InputConnector::node(gradient_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientTable(table), false), false);
 	}

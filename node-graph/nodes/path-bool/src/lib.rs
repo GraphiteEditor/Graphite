@@ -217,6 +217,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 							transform: row.transform,
 							alpha_blending: row.alpha_blending,
 							source_node_id: row.source_node_id,
+							additional: row.additional,
 						}
 					})
 					.collect::<Vec<_>>(),
@@ -235,6 +236,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 							transform: row.transform,
 							alpha_blending: row.alpha_blending,
 							source_node_id: row.source_node_id,
+							additional: row.additional,
 						}
 					})
 					.collect::<Vec<_>>(),

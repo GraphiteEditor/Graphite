@@ -10,8 +10,8 @@ use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Stroke};
-use graphene_std::vector::{GradientStops, PointId, VectorModificationType};
+use graphene_std::vector::style::{Fill, GradientSpreadMethod, Stroke};
+use graphene_std::vector::{GradientStops, GradientType, PointId, VectorModificationType};
 use graphene_std::{Artboard, Color};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
@@ -29,6 +29,8 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		stops: GradientStops,
 		transform: DAffine2,
+		gradient_type: GradientType,
+		spread_method: GradientSpreadMethod,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

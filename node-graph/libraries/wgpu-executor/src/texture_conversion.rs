@@ -160,6 +160,7 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
 					transform: *row.transform,
 					alpha_blending: *row.alpha_blending,
 					source_node_id: *row.source_node_id,
+					additional: Default::default(),
 				}
 			})
 			.collect();
@@ -211,6 +212,7 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 				transform: row.transform,
 				alpha_blending: row.alpha_blending,
 				source_node_id: row.source_node_id,
+				additional: Default::default(),
 			});
 		}
 
@@ -234,6 +236,7 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 				transform: row.transform,
 				alpha_blending: row.alpha_blending,
 				source_node_id: row.source_node_id,
+				additional: Default::default(),
 			})
 			.collect()
 	}

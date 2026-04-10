@@ -92,6 +92,7 @@ pub mod migrations {
 					transform,
 					alpha_blending,
 					source_node_id: None,
+					additional: Default::default(),
 				})
 				.collect(),
 			VectorFormat::VectorTable(vector_table) => vector_table,

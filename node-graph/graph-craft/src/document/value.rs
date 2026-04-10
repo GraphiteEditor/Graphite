@@ -15,17 +15,16 @@ use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::vector_types::gradient::GradientTableRowExt;
 use graphic_types::vector_types::vector;
 use graphic_types::vector_types::vector::ReferencePoint;
-use graphic_types::vector_types::vector::style::Fill;
-use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::vector_types::vector::style::{Fill, GradientSpreadMethod, GradientStop, GradientStops, GradientType};
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
-use text_nodes::vector_types::GradientStop;
 
 pub struct TaggedValueTypeError;
 
@@ -120,11 +119,7 @@ macro_rules! tagged_value {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
 							// Table-wrapped types need a single-row default with the element's default, not an empty table
 							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
-							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_row(TableRow {
-								element: GradientStops::default(),
-								transform: DAffine2::from_scale(DVec2::splat(100.)),
-								..Default::default()
-							})),
+							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_row(TableRow::new_gradient_row(GradientStops::default(), DAffine2::from_scale(DVec2::splat(100.)), GradientType::Linear, GradientSpreadMethod::Pad))),
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
 						})
