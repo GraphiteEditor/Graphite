@@ -6,7 +6,6 @@ pub mod texture_conversion;
 use crate::resample::Resampler;
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
-use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
