@@ -478,7 +478,7 @@ impl NodeGraphExecutor {
 				use image::buffer::ConvertBuffer;
 				use image::{ImageFormat, RgbImage, RgbaImage};
 
-				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+				let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
 					return Err("Failed to create image buffer for export".to_string());
 				};
 
@@ -493,6 +493,14 @@ impl NodeGraphExecutor {
 						}
 					}
 					FileType::Jpg => {
+						// Composite onto a white background since JPG doesn't support transparency
+						for pixel in image.pixels_mut() {
+							let [r, g, b, a] = pixel.0;
+							let alpha = a as f32 / 255.;
+							let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
+							*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
+						}
+
 						let image: RgbImage = image.convert();
 						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
 						if let Err(err) = result {
