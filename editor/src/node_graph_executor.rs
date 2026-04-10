@@ -153,7 +153,6 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode: document.render_mode,
-			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: false,
 		};
@@ -218,7 +217,6 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode,
-			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
 		};
@@ -241,10 +239,10 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -266,7 +264,6 @@ impl NodeGraphExecutor {
 			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
-			hide_artboards: export_config.transparent_background,
 			for_export: true,
 			for_eyedropper: false,
 		};

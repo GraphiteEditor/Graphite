@@ -112,7 +112,6 @@ pub struct RenderConfig {
 	#[serde(alias = "view_mode")]
 	pub render_mode: RenderMode,
 	pub export_format: ExportFormat,
-	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
 }
