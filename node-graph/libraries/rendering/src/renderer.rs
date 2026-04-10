@@ -1,9 +1,8 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
 use core_types::blending::BlendMode;
-use core_types::bounds::BoundingBox;
-use core_types::bounds::RenderBoundingBox;
-use core_types::color::Color;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::color::{Alpha, Color};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
@@ -26,6 +25,46 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
+
+/// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
+static CHECKERBOARD_IMAGE_DATA: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| {
+	const SIZE: u32 = 16;
+	const HALF: u32 = 8;
+
+	let mut data = vec![0_u8; (SIZE * SIZE * 4) as usize];
+	for y in 0..SIZE {
+		for x in 0..SIZE {
+			let is_light = ((x / HALF) + (y / HALF)).is_multiple_of(2);
+			let value = if is_light { 0xff } else { 0xcc };
+			let index = ((y * SIZE + x) * 4) as usize;
+			data[index] = value;
+			data[index + 1] = value;
+			data[index + 2] = value;
+			data[index + 3] = 0xff;
+		}
+	}
+
+	Arc::new(data)
+});
+
+/// Creates a 16x16 tiling transparency checkerboard brush for Vello.
+pub fn checkerboard_brush() -> peniko::Brush {
+	peniko::Brush::Image(peniko::ImageBrush {
+		image: peniko::ImageData {
+			data: peniko::Blob::new(CHECKERBOARD_IMAGE_DATA.clone()),
+			format: peniko::ImageFormat::Rgba8,
+			width: 16,
+			height: 16,
+			alpha_type: peniko::ImageAlphaType::Alpha,
+		},
+		sampler: peniko::ImageSampler {
+			x_extend: peniko::Extend::Repeat,
+			y_extend: peniko::Extend::Repeat,
+			quality: peniko::ImageQuality::Low, // Nearest-neighbor sampling for crisp edges
+			alpha: 1.,
+		},
+	})
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 enum MaskType {
@@ -471,18 +510,45 @@ impl Render for Graphic {
 
 impl Render for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let x = self.location.x.min(self.location.x + self.dimensions.x);
+		let y = self.location.y.min(self.location.y + self.dimensions.y);
+		let width = self.dimensions.x.abs();
+		let height = self.dimensions.y.abs();
+
 		// Rectangle for the artboard
 		if !render_params.hide_artboards {
+			// Transparency checkerboard behind the artboard background (viewport only)
+			let show_checkerboard = self.background.alpha() < 1. && render_params.to_canvas();
+			if show_checkerboard && render_params.viewport_zoom > 0. {
+				let checker_id = format!("checkered-artboard-{}", generate_uuid());
+				let cell_size = 8. / render_params.viewport_zoom;
+				let pattern_size = cell_size * 2.;
+
+				// Anchor pattern at this artboard's top-left corner (x, y), not the document origin
+				let _ = write!(
+					&mut render.svg_defs,
+					r##"<pattern id="{checker_id}" x="{x}" y="{y}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#fff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#ccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#ccc" /></pattern>"##
+				);
+
+				render.leaf_tag("rect", |attributes| {
+					attributes.push("x", x.to_string());
+					attributes.push("y", y.to_string());
+					attributes.push("width", width.to_string());
+					attributes.push("height", height.to_string());
+					attributes.push("fill", format!("url(#{checker_id})"));
+				});
+			}
+
 			// Background
 			render.leaf_tag("rect", |attributes| {
 				attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
 				if self.background.a() < 1. {
 					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
 				}
-				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
-				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
-				attributes.push("width", self.dimensions.x.abs().to_string());
-				attributes.push("height", self.dimensions.y.abs().to_string());
+				attributes.push("x", x.to_string());
+				attributes.push("y", y.to_string());
+				attributes.push("width", width.to_string());
+				attributes.push("height", height.to_string());
 			});
 		}
 
@@ -503,7 +569,7 @@ impl Render for Artboard {
 
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
 						self.dimensions.x, self.dimensions.y,
 					)
 					.unwrap();
@@ -527,9 +593,22 @@ impl Render for Artboard {
 
 		// Render background
 		if !render_params.hide_artboards {
+			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+
+			// Transparency checkerboard behind the artboard background (viewport only)
+			let show_checkerboard = self.background.alpha() < 1. && render_params.to_canvas();
+			if show_checkerboard && render_params.viewport_zoom > 0. {
+				// Anchor pattern at THIS artboard's top-left corner
+				// brush_transform is an image placement transform: it maps brush pixel coords → shape coords
+				// scale(1/zoom) sets each brush pixel to 1/zoom document units (constant CSS size after viewport transform)
+				// then_translate places the brush origin at the artboard corner
+				let brush_transform = kurbo::Affine::scale(1. / render_params.viewport_zoom).then_translate(kurbo::Vec2::new(rect.x0, rect.y0));
+				scene.fill(peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
+			}
+
 			let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
-			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
+			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
+			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
 			scene.pop_layer();
 		}
 
