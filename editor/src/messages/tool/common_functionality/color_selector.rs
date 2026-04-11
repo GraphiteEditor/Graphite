@@ -2,7 +2,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use graphene_std::Color;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::{FillChoice, StrokeCap};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -68,7 +68,7 @@ impl ToolColorOptions {
 
 	pub fn apply_stroke(&self, weight: f64, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		if let Some(color) = self.active_color() {
-			let stroke = graphene_std::vector::style::Stroke::new(Some(color.to_gamma_srgb()), weight);
+			let stroke = graphene_std::vector::style::Stroke::new(Some(color.to_gamma_srgb()), weight).with_stroke_cap(StrokeCap::Round);
 			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 		}
 	}

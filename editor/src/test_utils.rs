@@ -44,7 +44,16 @@ impl EditorTestUtils {
 				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
 			};
 
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+			let document_network_hash = document.network_interface.network_hash();
+			if let Err(e) = exector.submit_current_node_graph_evaluation(
+				document,
+				document_id,
+				UVec2::ONE,
+				1.,
+				Default::default(),
+				DVec2::ZERO,
+				document_network_hash,
+			) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
 			runtime.run().await;

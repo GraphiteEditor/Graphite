@@ -211,6 +211,8 @@ pub struct RenderParams {
 	pub hide_artboards: bool,
 	/// Are we exporting
 	pub for_export: bool,
+	/// Sampling pixels for the eyedropper (distinct from main viewport cache identity).
+	pub for_eyedropper: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
 	/// Are we generating a mask for alignment? Used to prevent unnecessary transforms in masks
@@ -220,6 +222,8 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
+	/// Matches [`graphene_application_io::RenderConfig::document_network_hash`]. When it changes, tile caches must drop stale pixels.
+	pub document_network_hash: u64,
 }
 
 impl Hash for RenderParams {
@@ -230,6 +234,7 @@ impl Hash for RenderParams {
 		self.thumbnail.hash(state);
 		self.hide_artboards.hash(state);
 		self.for_export.hash(state);
+		self.for_eyedropper.hash(state);
 		self.for_mask.hash(state);
 		if let Some(x) = self.alignment_parent_transform {
 			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
@@ -238,6 +243,7 @@ impl Hash for RenderParams {
 		self.override_paint_order.hash(state);
 		self.artboard_background.hash(state);
 		self.viewport_zoom.to_bits().hash(state);
+		self.document_network_hash.hash(state);
 	}
 }
 

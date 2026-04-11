@@ -43,6 +43,7 @@ pub struct CacheKey {
 	pub rotation: u64,
 	pub hide_artboards: bool,
 	pub for_export: bool,
+	pub for_eyedropper: bool,
 	pub for_mask: bool,
 	pub thumbnail: bool,
 	pub aligned_strokes: bool,
@@ -50,6 +51,7 @@ pub struct CacheKey {
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
 	pub pointer: [u8; 16],
+	pub document_network_hash: u64,
 }
 
 impl CacheKey {
@@ -62,6 +64,7 @@ impl CacheKey {
 		rotation: f64,
 		hide_artboards: bool,
 		for_export: bool,
+		for_eyedropper: bool,
 		for_mask: bool,
 		thumbnail: bool,
 		aligned_strokes: bool,
@@ -69,6 +72,7 @@ impl CacheKey {
 		animation_time: f64,
 		real_time: f64,
 		pointer: Option<DVec2>,
+		document_network_hash: u64,
 	) -> Self {
 		let pointer_bytes = pointer
 			.map(|p| {
@@ -89,6 +93,7 @@ impl CacheKey {
 			rotation: quantized_rotation.to_bits(),
 			hide_artboards,
 			for_export,
+			for_eyedropper,
 			for_mask,
 			thumbnail,
 			aligned_strokes,
@@ -96,6 +101,7 @@ impl CacheKey {
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
 			pointer: pointer_bytes,
+			document_network_hash,
 		}
 	}
 }
@@ -413,6 +419,7 @@ pub async fn render_output_cache<'a: 'n>(
 		rotation,
 		render_params.hide_artboards,
 		render_params.for_export,
+		render_params.for_eyedropper,
 		render_params.for_mask,
 		render_params.thumbnail,
 		render_params.aligned_strokes,
@@ -420,6 +427,7 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
 		ctx.try_pointer_position(),
+		render_params.document_network_hash,
 	);
 
 	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_area);
