@@ -10,9 +10,17 @@ use graph_craft::document::{NodeId, NodeNetwork};
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct LayerStructureEntry {
+	/// The node ID of the layer this entry represents.
 	#[serde(rename = "layerId")]
 	pub layer_id: NodeId,
+	/// The expanded child entries nested within this layer. Empty when the layer is collapsed or has no children.
 	pub children: Vec<LayerStructureEntry>,
+	/// Whether this layer has children reachable in the graph, even when they are omitted from `children` because the layer is collapsed.
+	#[serde(rename = "childrenPresent")]
+	pub children_present: bool,
+	/// Whether any descendant layer in the graph is selected, including through collapsed subtrees not listed in `children`.
+	#[serde(rename = "descendantSelected")]
+	pub descendant_selected: bool,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -28,21 +36,9 @@ pub struct LayerPanelEntry {
 	pub in_selected_network: bool,
 	#[serde(rename = "childrenAllowed")]
 	pub children_allowed: bool,
-	#[serde(rename = "childrenPresent")]
-	pub children_present: bool,
-	pub expanded: bool,
-	pub depth: u32,
 	pub visible: bool,
-	#[serde(rename = "parentsVisible")]
-	pub parents_visible: bool,
 	pub unlocked: bool,
-	#[serde(rename = "parentsUnlocked")]
-	pub parents_unlocked: bool,
-	#[serde(rename = "parentId")]
-	pub parent_id: Option<NodeId>,
 	pub selected: bool,
-	#[serde(rename = "ancestorOfSelected")]
-	pub ancestor_of_selected: bool,
 	#[serde(rename = "descendantOfSelected")]
 	pub descendant_of_selected: bool,
 	pub clipped: bool,
@@ -163,4 +159,7 @@ impl SelectedNodes {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct CollapsedLayers(pub Vec<LayerNodeIdentifier>);
+/// Tracks which layer instances are collapsed in the Layers panel. Each entry is an "instance path":
+/// the sequence of ancestor node IDs from the root down to the collapsed layer. This allows the same
+/// layer appearing under multiple parents to have independent expand/collapse state per instance.
+pub struct CollapsedLayers(pub Vec<Vec<NodeId>>);

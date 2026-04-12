@@ -68,11 +68,14 @@
 	{/if}
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.widget-section {
 		flex: 0 0 auto;
 		margin: 0 4px;
-		margin-top: 4px;
+
+		+ .widget-section {
+			margin-top: 4px;
+		}
 
 		.header {
 			text-align: left;

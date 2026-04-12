@@ -20,7 +20,7 @@
 	{/each}
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.breadcrumb-trail-buttons {
 		.text-button {
 			position: relative;

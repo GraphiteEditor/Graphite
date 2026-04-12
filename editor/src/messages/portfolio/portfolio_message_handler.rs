@@ -1,6 +1,6 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
-use super::utility_types::{PanelType, PersistentData};
+use super::utility_types::{PanelLayoutSubdivision, PanelType, PersistentData, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
@@ -24,7 +24,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
-use derivative::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -48,24 +47,17 @@ pub struct PortfolioMessageContext<'a> {
 	pub viewport: &'a ViewportMessageHandler,
 }
 
-#[derive(Debug, Derivative, ExtractField)]
-#[derivative(Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: VecDeque<DocumentId>,
-	active_panel: PanelType,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
-	pub focus_document: bool,
-	#[derivative(Default(value = "true"))]
-	pub properties_panel_open: bool,
-	#[derivative(Default(value = "true"))]
-	pub layers_panel_open: bool,
-	pub data_panel_open: bool,
+	pub workspace_panel_layout: WorkspacePanelLayout,
 }
 
 #[message_handler_data]
@@ -95,9 +87,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.data_panel_open && !self.focus_document,
-						layers_panel_open: self.layers_panel_open && !self.focus_document,
-						properties_panel_open: self.properties_panel_open && !self.focus_document,
+						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
+						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -112,6 +104,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
+				responses.add(FrontendMessage::TriggerLoadWorkspaceLayout);
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -121,6 +114,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Display the menu bar at the top of the window
 				responses.add(MenuBarMessage::SendLayout);
+
+				// Send the initial workspace panel layout to the frontend
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 
 				// Send the information for tooltips and categories for each node/input.
 				responses.add(FrontendMessage::SendUIMetadata {
@@ -159,9 +155,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.data_panel_open && !self.focus_document,
-						layers_panel_open: self.layers_panel_open && !self.focus_document,
-						properties_panel_open: self.properties_panel_open && !self.focus_document,
+						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
+						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -449,6 +445,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.load_layer_resources(responses);
 				}
 			}
+			PortfolioMessage::LoadWorkspaceLayout { layout } => {
+				self.workspace_panel_layout = layout;
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+				// Refresh all visible panels since the layout may have changed
+				for group_id in self.workspace_panel_layout.root.all_group_ids() {
+					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+						self.refresh_panel_content(panel_type, responses);
+					}
+				}
+			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
@@ -463,6 +470,114 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				self.load_document(new_document, document_id, responses, false);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::MoveAllPanelTabs {
+				source_group,
+				target_group,
+				insert_index,
+			} => {
+				if source_group == target_group {
+					return;
+				}
+
+				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
+				let tabs: Vec<PanelType> = source_state.tabs.clone();
+				let source_active_tab_index = source_state.active_tab_index;
+				if tabs.is_empty() {
+					return;
+				}
+
+				// Validate that the target group exists before modifying the source
+				if self.workspace_panel_layout.panel_group(target_group).is_none() {
+					log::error!("Target panel group {target_group:?} not found");
+					return;
+				}
+
+				// Destroy layouts for all moved tabs and the displaced target tab
+				for &panel_type in &tabs {
+					Self::destroy_panel_layouts(panel_type, responses);
+				}
+				if let Some(old_target_panel) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					Self::destroy_panel_layouts(old_target_panel, responses);
+				}
+
+				// Clear the source group
+				if let Some(source) = self.workspace_panel_layout.panel_group_mut(source_group) {
+					source.tabs.clear();
+					source.active_tab_index = 0;
+				}
+
+				// Insert all tabs into the target group, preserving which tab was active in the source
+				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
+					let index = insert_index.min(target.tabs.len());
+					target.tabs.splice(index..index, tabs.iter().copied());
+					target.active_tab_index = index + source_active_tab_index.min(tabs.len().saturating_sub(1));
+				}
+
+				self.workspace_panel_layout.prune();
+
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+
+				// Refresh the new active tab
+				if let Some(panel_type) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					self.refresh_panel_content(panel_type, responses);
+				}
+			}
+			PortfolioMessage::MovePanelTab {
+				source_group,
+				target_group,
+				insert_index,
+			} => {
+				if source_group == target_group {
+					return;
+				}
+
+				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
+				let Some(panel_type) = source_state.active_panel_type() else { return };
+
+				// Validate that the target group exists before modifying the source
+				if self.workspace_panel_layout.panel_group(target_group).is_none() {
+					log::error!("Target panel group {target_group:?} not found");
+					return;
+				}
+
+				// Destroy layouts for the moved panel (so backend and frontend start in sync when it remounts)
+				// and for the panel that was previously active in the target panel group (it will be displaced by the incoming tab)
+				Self::destroy_panel_layouts(panel_type, responses);
+				if let Some(old_target_panel) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					Self::destroy_panel_layouts(old_target_panel, responses);
+				}
+
+				// Remove from source panel group
+				if let Some(source) = self.workspace_panel_layout.panel_group_mut(source_group) {
+					source.tabs.retain(|&t| t != panel_type);
+					source.active_tab_index = source.active_tab_index.min(source.tabs.len().saturating_sub(1));
+				}
+
+				// Insert into target panel group
+				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
+					let index = insert_index.min(target.tabs.len());
+					target.tabs.insert(index, panel_type);
+					target.active_tab_index = index;
+				}
+
+				// Remove empty panel groups from the tree
+				self.workspace_panel_layout.prune();
+
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+
+				// Refresh the moved panel's content in its new location
+				self.refresh_panel_content(panel_type, responses);
+
+				// Refresh the source panel group's newly active tab (if any remain) so it's not left stale
+				if let Some(new_source_active) = self.workspace_panel_layout.panel_group(source_group).and_then(|g| g.active_panel_type()) {
+					Self::destroy_panel_layouts(new_source_active, responses);
+					self.refresh_panel_content(new_source_active, responses);
+				}
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -1053,6 +1168,44 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
+			PortfolioMessage::ReorderDocument { document_id, new_index } => {
+				let new_index = new_index.min(self.document_ids.len().saturating_sub(1));
+				let Some(current_index) = self.document_ids.iter().position(|&id| id == document_id) else {
+					return;
+				};
+
+				if new_index != current_index {
+					self.document_ids.remove(current_index);
+					self.document_ids.insert(new_index, document_id);
+
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+
+					// Re-send the active document so the frontend recalculates the active tab index after reordering
+					if let Some(active_document_id) = self.active_document_id {
+						responses.add(FrontendMessage::UpdateActiveDocument { document_id: active_document_id });
+					}
+				}
+			}
+			PortfolioMessage::ReorderPanelGroupTab { group, old_index, new_index } => {
+				let Some(group_state) = self.workspace_panel_layout.panel_group_mut(group) else { return };
+
+				if old_index < group_state.tabs.len() && new_index < group_state.tabs.len() && old_index != new_index {
+					let tab = group_state.tabs.remove(old_index);
+					group_state.tabs.insert(new_index, tab);
+
+					// Keep the active tab following the reorder
+					if group_state.active_tab_index == old_index {
+						group_state.active_tab_index = new_index;
+					} else if old_index < group_state.active_tab_index && new_index >= group_state.active_tab_index {
+						group_state.active_tab_index = group_state.active_tab_index.saturating_sub(1);
+					} else if old_index > group_state.active_tab_index && new_index <= group_state.active_tab_index {
+						group_state.active_tab_index += 1;
+					}
+
+					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+					responses.add(PortfolioMessage::SaveWorkspaceLayout);
+				}
+			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
@@ -1113,9 +1266,69 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					layout_target: LayoutTarget::StatusBarInfo,
 				});
 			}
-			PortfolioMessage::SetActivePanel { panel } => {
-				self.active_panel = panel;
-				responses.add(DocumentMessage::SetActivePanel { active_panel: self.active_panel });
+			PortfolioMessage::SetPanelGroupActiveTab { group, tab_index } => {
+				let Some(group_state) = self.workspace_panel_layout.panel_group(group) else { return };
+				if tab_index < group_state.tabs.len() && tab_index != group_state.active_tab_index {
+					// Destroy layouts for the old and new panels so the backend's diffing state is in sync with the frontend's fresh mount
+					if let Some(old_panel_type) = group_state.active_panel_type() {
+						Self::destroy_panel_layouts(old_panel_type, responses);
+					}
+					let new_panel_type = group_state.tabs[tab_index];
+					Self::destroy_panel_layouts(new_panel_type, responses);
+
+					// Update the active tab index for the panel
+					if let Some(group_state) = self.workspace_panel_layout.panel_group_mut(group) {
+						group_state.active_tab_index = tab_index;
+					}
+
+					// Send the layout update first so the frontend mounts the new panel component before it receives content
+					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+					responses.add(PortfolioMessage::SaveWorkspaceLayout);
+
+					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group).and_then(|g| g.active_panel_type()) {
+						self.refresh_panel_content(panel_type, responses);
+					}
+				}
+			}
+			PortfolioMessage::SplitPanelGroup {
+				target_group,
+				direction,
+				tabs,
+				active_tab_index,
+			} => {
+				// Destroy layouts for the dragged tabs and the target group's active panel (it may get remounted by the frontend)
+				for &panel_type in &tabs {
+					Self::destroy_panel_layouts(panel_type, responses);
+				}
+				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					Self::destroy_panel_layouts(target_active, responses);
+				}
+
+				// Remove the dragged tabs from their current panel groups (without pruning, so the target group survives)
+				for &panel_type in &tabs {
+					self.remove_panel_from_layout(panel_type);
+				}
+
+				// Create the new panel group adjacent to the target, then prune empty groups
+				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index) else {
+					log::error!("Failed to insert split adjacent to panel group {target_group:?}");
+					return;
+				};
+				self.workspace_panel_layout.prune();
+
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+
+				// Refresh the new panel group's active tab
+				if let Some(panel_type) = self.workspace_panel_layout.panel_group(new_id).and_then(|g| g.active_panel_type()) {
+					self.refresh_panel_content(panel_type, responses);
+				}
+
+				// Refresh the target group's active panel since its component may have been remounted
+				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
+					self.refresh_panel_content(target_active, responses);
+				}
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
@@ -1169,7 +1382,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				file_type,
 				scale_factor,
 				bounds,
-				transparent_background,
 				artboard_name,
 				artboard_count,
 			} => {
@@ -1179,7 +1391,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					file_type,
 					scale_factor,
 					bounds,
-					transparent_background,
 					artboard_name,
 					artboard_count,
 					..Default::default()
@@ -1268,116 +1479,46 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::ToggleFocusDocument => {
-				self.focus_document = !self.focus_document;
-				responses.add(MenuBarMessage::SendLayout);
+				self.workspace_panel_layout.focus_document = !self.workspace_panel_layout.focus_document;
 
-				if self.focus_document {
-					if self.properties_panel_open {
-						responses.add(PropertiesPanelMessage::Clear);
-						responses.add(FrontendMessage::UpdatePropertiesPanelState { open: false });
-					}
-
-					if self.layers_panel_open {
-						responses.add(DocumentMessage::ClearLayersPanel);
-						responses.add(FrontendMessage::UpdateLayersPanelState { open: false });
-					}
-
-					if self.data_panel_open {
-						responses.add(DataPanelMessage::ClearLayout);
-						responses.add(FrontendMessage::UpdateDataPanelState { open: false });
-					}
-				} else {
-					if self.properties_panel_open {
-						responses.add(FrontendMessage::UpdatePropertiesPanelState { open: true });
-					}
-					if self.layers_panel_open {
-						responses.add(FrontendMessage::UpdateLayersPanelState { open: true });
-					}
-					if self.data_panel_open {
-						responses.add(FrontendMessage::UpdateDataPanelState { open: true });
-					}
-
-					// Run the graph to grab the data
-					if self.properties_panel_open || self.layers_panel_open || self.data_panel_open {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-
-					if self.properties_panel_open {
-						responses.add(PropertiesPanelMessage::Refresh);
-					}
-					if self.layers_panel_open && self.active_document_id.is_some() {
-						responses.add(DeferMessage::AfterGraphRun {
-							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
-						});
+				// Destroy or refresh non-document panel layouts based on focus mode
+				for &panel_type in PanelType::non_document_panels() {
+					if self.workspace_panel_layout.is_panel_present(panel_type) {
+						if self.workspace_panel_layout.focus_document {
+							Self::destroy_panel_layouts(panel_type, responses);
+						} else {
+							self.refresh_panel_content(panel_type, responses);
+						}
 					}
 				}
+
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::TogglePropertiesPanelOpen => {
-				if self.focus_document {
+				if self.workspace_panel_layout.focus_document {
 					return;
 				}
 
-				self.properties_panel_open = !self.properties_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				// Run the graph to grab the data
-				if self.properties_panel_open {
-					responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(PropertiesPanelMessage::Refresh);
-				} else {
-					responses.add(PropertiesPanelMessage::Clear);
-					responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
-				}
+				let panel_type = PanelType::Properties;
+				self.toggle_dockable_panel(panel_type, responses);
 			}
 			PortfolioMessage::ToggleLayersPanelOpen => {
-				if self.focus_document {
+				if self.workspace_panel_layout.focus_document {
 					return;
 				}
 
-				self.layers_panel_open = !self.layers_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				// Run the graph to grab the data
-				if self.layers_panel_open {
-					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
-					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					if self.active_document_id.is_some() {
-						responses.add(DeferMessage::AfterGraphRun {
-							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
-						});
-					}
-				} else {
-					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the layers panel next time it is opened
-					responses.add(DocumentMessage::ClearLayersPanel);
-
-					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
-					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
-				}
+				let panel_type = PanelType::Layers;
+				self.toggle_dockable_panel(panel_type, responses);
 			}
 			PortfolioMessage::ToggleDataPanelOpen => {
-				if self.focus_document {
+				if self.workspace_panel_layout.focus_document {
 					return;
 				}
 
-				self.data_panel_open = !self.data_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				// Run the graph to grab the data
-				if self.data_panel_open {
-					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
-					responses.add(FrontendMessage::UpdateDataPanelState { open: self.data_panel_open });
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				} else {
-					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the data panel next time it is opened
-					responses.add(DataPanelMessage::ClearLayout);
-
-					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
-					responses.add(FrontendMessage::UpdateDataPanelState { open: self.data_panel_open });
-				}
+				let panel_type = PanelType::Data;
+				self.toggle_dockable_panel(panel_type, responses);
 			}
 			PortfolioMessage::ToggleRulers => {
 				if let Some(document) = self.active_document_mut() {
@@ -1391,6 +1532,74 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
 				}
+			}
+			PortfolioMessage::UpdateWorkspacePanelLayout => {
+				let panel_layout = match self.workspace_panel_layout.focus_document {
+					true => self.workspace_panel_layout.document_only_layout(),
+					false => self.workspace_panel_layout.clone(),
+				};
+				responses.add(FrontendMessage::UpdateWorkspacePanelLayout { panel_layout });
+			}
+			PortfolioMessage::SaveWorkspaceLayout => {
+				responses.add(FrontendMessage::TriggerSaveWorkspaceLayout {
+					workspace_layout: self.workspace_panel_layout.clone(),
+				});
+			}
+			PortfolioMessage::ResetWorkspaceLayout => {
+				// Destroy layouts for all currently visible non-document panels
+				for &panel_type in PanelType::non_document_panels() {
+					if self.workspace_panel_layout.is_panel_present(panel_type) {
+						Self::destroy_panel_layouts(panel_type, responses);
+					}
+				}
+
+				// Replace layout with the default and recalculate sizes
+				self.workspace_panel_layout = WorkspacePanelLayout::default();
+				self.workspace_panel_layout.recalculate_default_sizes();
+
+				// Refresh all visible panels since the layout has been completely replaced
+				for group_id in self.workspace_panel_layout.root.all_group_ids() {
+					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+						self.refresh_panel_content(panel_type, responses);
+					}
+				}
+
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+				responses.add(MenuBarMessage::SendLayout);
+			}
+			PortfolioMessage::ResetPanelGroupSizes { split_path } => {
+				// Walk the tree to the target split node using the path
+				let mut node = &mut self.workspace_panel_layout.root;
+				for &index in &split_path {
+					let PanelLayoutSubdivision::Split { children } = node else { return };
+					let Some(child) = children.get_mut(index) else { return };
+					node = &mut child.subdivision;
+				}
+
+				// Recalculate default sizes for this split node
+				node.recalculate_default_sizes();
+
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+			}
+			PortfolioMessage::SetPanelGroupSizes { split_path, sizes } => {
+				// Walk the tree to the target split node using the path
+				let mut node = &mut self.workspace_panel_layout.root;
+				for &index in &split_path {
+					let PanelLayoutSubdivision::Split { children } = node else { return };
+					let Some(child) = children.get_mut(index) else { return };
+					node = &mut child.subdivision;
+				}
+
+				// Apply the new sizes to the split's children
+				if let PanelLayoutSubdivision::Split { children } = node {
+					for (child, &size) in children.iter_mut().zip(sizes.iter()) {
+						child.size = size;
+					}
+				}
+
+				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
 				// Send the list of document tab names
@@ -1450,7 +1659,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 		}
 
 		// Extend with actions that are disabled when focusing the document
-		if !self.focus_document {
+		if !self.workspace_panel_layout.focus_document {
 			common.extend(actions!(PortfolioMessageDiscriminant;
 				TogglePropertiesPanelOpen,
 				ToggleLayersPanelOpen,
@@ -1544,8 +1753,14 @@ impl PortfolioMessageHandler {
 		} else {
 			self.document_ids.push_back(document_id);
 		}
-		new_document.update_layers_panel_control_bar_widgets(self.layers_panel_open && !self.focus_document, responses);
-		new_document.update_layers_panel_bottom_bar_widgets(self.layers_panel_open && !self.focus_document, responses);
+		new_document.update_layers_panel_control_bar_widgets(
+			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+			responses,
+		);
+		new_document.update_layers_panel_bottom_bar_widgets(
+			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+			responses,
+		);
 
 		self.documents.insert(document_id, new_document);
 
@@ -1592,7 +1807,7 @@ impl PortfolioMessageHandler {
 	/// Get the ID of the selected node that should be used as the current source for the Data panel.
 	pub fn node_to_inspect(&self) -> Option<NodeId> {
 		// Skip if the Data panel is not open
-		if !self.data_panel_open || self.focus_document {
+		if !self.workspace_panel_layout.is_panel_visible(PanelType::Data) || self.workspace_panel_layout.focus_document {
 			return None;
 		}
 
@@ -1605,5 +1820,80 @@ impl PortfolioMessageHandler {
 		}
 
 		selected_nodes.first().copied()
+	}
+
+	/// Remove a dockable panel type from whichever panel group currently contains it. Does not prune empty groups.
+	fn remove_panel_from_layout(&mut self, panel_type: PanelType) {
+		// Save the panel's current position so it can be restored there later
+		self.workspace_panel_layout.save_panel_position(panel_type);
+
+		if let Some(group_id) = self.workspace_panel_layout.find_panel(panel_type)
+			&& let Some(group) = self.workspace_panel_layout.panel_group_mut(group_id)
+		{
+			group.tabs.retain(|&t| t != panel_type);
+			group.active_tab_index = group.active_tab_index.min(group.tabs.len().saturating_sub(1));
+		}
+	}
+
+	/// Toggle a dockable panel on or off. When toggling off, refresh the newly active tab in its panel group (if any).
+	fn toggle_dockable_panel(&mut self, panel_type: PanelType, responses: &mut VecDeque<Message>) {
+		if let Some(group_id) = self.workspace_panel_layout.find_panel(panel_type) {
+			// Panel is present, remove it
+			let was_visible = self.workspace_panel_layout.panel_group(group_id).is_some_and(|g| g.is_visible(panel_type));
+			Self::destroy_panel_layouts(panel_type, responses);
+			self.remove_panel_from_layout(panel_type);
+			self.workspace_panel_layout.prune();
+
+			// If the removed panel was the active tab, refresh whichever panel is now active in that panel group
+			if was_visible && let Some(new_active) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+				Self::destroy_panel_layouts(new_active, responses);
+				self.refresh_panel_content(new_active, responses);
+			}
+		} else {
+			// Panel is not present, restore it to its default position in the layout tree
+			self.workspace_panel_layout.restore_panel(panel_type);
+			self.refresh_panel_content(panel_type, responses);
+		}
+
+		responses.add(MenuBarMessage::SendLayout);
+		responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+		responses.add(PortfolioMessage::SaveWorkspaceLayout);
+	}
+
+	/// Destroy the stored layout for a panel that is no longer the active tab.
+	/// This resets the backend's diffing state so it won't try to send updates to a frontend component that has been unmounted.
+	fn destroy_panel_layouts(panel_type: PanelType, responses: &mut VecDeque<Message>) {
+		let targets: &[LayoutTarget] = match panel_type {
+			PanelType::Properties => &[LayoutTarget::PropertiesPanel],
+			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelControlRightBar, LayoutTarget::LayersPanelBottomBar],
+			PanelType::Data => &[LayoutTarget::DataPanel],
+			PanelType::Document | PanelType::Welcome => return,
+		};
+
+		for &layout_target in targets {
+			responses.add(LayoutMessage::DestroyLayout { layout_target });
+		}
+	}
+
+	/// Trigger a content refresh for a panel that just became the active tab.
+	fn refresh_panel_content(&self, panel_type: PanelType, responses: &mut VecDeque<Message>) {
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+
+		match panel_type {
+			PanelType::Properties => {
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			PanelType::Layers => {
+				if self.active_document_id.is_some() {
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
+					});
+				}
+			}
+			PanelType::Data => {
+				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
+			}
+			PanelType::Document | PanelType::Welcome => {}
+		}
 	}
 }

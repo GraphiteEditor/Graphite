@@ -1,7 +1,9 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use glam::{IVec2, UVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -22,25 +24,39 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			NewDocumentDialogMessage::Submit => {
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
-				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
-				if create_artboard {
+				if self.infinite {
+					// Infinite canvas: add a locked white background layer
+					let node_id = NodeId::new();
+					responses.add(GraphOperationMessage::NewColorFillLayer {
+						node_id,
+						color: Color::WHITE,
+						parent: LayerNodeIdentifier::ROOT_PARENT,
+						insert_index: 0,
+					});
+					responses.add(NodeGraphMessage::SetDisplayNameImpl {
+						node_id,
+						alias: "Background".to_string(),
+					});
+					responses.add(NodeGraphMessage::SetLocked { node_id, locked: true });
+				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
+					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
 						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
 					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-
-					responses.add(ViewportMessage::RepropagateUpdate);
-
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![
-							DocumentMessage::ZoomCanvasToFitAll.into(),
-							DocumentMessage::DeselectAllLayers.into(),
-							PortfolioMessage::AutoSaveActiveDocument.into(),
-						],
-					});
 				}
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(ViewportMessage::RepropagateUpdate);
+
+				responses.add(DeferMessage::AfterNavigationReady {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DocumentMessage::DeselectAllLayers.into(),
+						PortfolioMessage::AutoSaveActiveDocument.into(),
+					],
+				});
 
 				responses.add(DocumentMessage::MarkAsSaved);
 			}

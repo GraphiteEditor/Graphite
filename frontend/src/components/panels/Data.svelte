@@ -28,10 +28,11 @@
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.data-panel {
 		flex-grow: 1;
 		padding: 4px;
+		padding-top: 0;
 
 		table {
 			margin: -4px;
@@ -42,7 +43,7 @@
 			}
 
 			&:not(:first-child) {
-				margin-top: 0;
+				margin-top: -4px;
 			}
 
 			tr:first-child:has(td:first-child label:empty) ~ tr td:first-child {

@@ -34,7 +34,7 @@
 	on:click={action}
 />
 
-<style lang="scss" global>
+<style lang="scss">
 	.image-button {
 		width: auto;
 		height: auto;

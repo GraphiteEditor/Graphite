@@ -1,16 +1,16 @@
 use graph_craft::ProtoNodeIdentifier;
+use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::generic;
-use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_std::Context;
 use graphene_std::ContextFeatures;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 use wgpu_executor::WgpuExecutor;
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let inner_network = DocumentNode {
@@ -102,7 +102,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			..Default::default()
 		},
 	];
-	let mut scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))];
+	let mut scope_injections = vec![("editor-api".to_string(), (NodeId(2), concrete!(&PlatformEditorApi)))];
 
 	if cfg!(feature = "gpu") {
 		nodes.push(DocumentNode {

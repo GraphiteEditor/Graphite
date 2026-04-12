@@ -76,7 +76,7 @@
 	</div>
 {/if}
 
-<style lang="scss" global>
+<style lang="scss">
 	.tooltip {
 		position: absolute;
 		pointer-events: none;

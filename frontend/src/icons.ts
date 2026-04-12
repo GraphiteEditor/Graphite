@@ -154,6 +154,8 @@ import HistoryRedo from "/../branding/assets/icon-16px-solid/history-redo.svg";
 import HistoryUndo from "/../branding/assets/icon-16px-solid/history-undo.svg";
 import IconsGrid from "/../branding/assets/icon-16px-solid/icons-grid.svg";
 import Image from "/../branding/assets/icon-16px-solid/image.svg";
+import InterpolationBlend from "/../branding/assets/icon-16px-solid/interpolation-blend.svg";
+import InterpolationMorph from "/../branding/assets/icon-16px-solid/interpolation-morph.svg";
 import Layer from "/../branding/assets/icon-16px-solid/layer.svg";
 import License from "/../branding/assets/icon-16px-solid/license.svg";
 import NewLayer from "/../branding/assets/icon-16px-solid/new-layer.svg";
@@ -271,6 +273,8 @@ const SOLID_16PX = {
 	HistoryUndo: { svg: HistoryUndo, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },
 	Image: { svg: Image, size: 16 },
+	InterpolationBlend: { svg: InterpolationBlend, size: 16 },
+	InterpolationMorph: { svg: InterpolationMorph, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
 	NewLayer: { svg: NewLayer, size: 16 },
