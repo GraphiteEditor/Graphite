@@ -35,10 +35,20 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2, per_glyph_instances: bool) {
+	fn draw_glyph(
+		&mut self,
+		glyph: &OutlineGlyph<'_>,
+		size: f32,
+		normalized_coords: &[NormalizedCoord],
+		glyph_offset: DVec2,
+		style_skew: Option<DAffine2>,
+		skew: DAffine2,
+		per_glyph_instances: bool,
+	) -> bool {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
 		glyph.draw(settings, self).unwrap();
+		let has_geometry = !self.glyph_subpaths.is_empty();
 
 		// Apply transforms in correct order: style-based skew first, then user-requested skew
 		// This ensures font synthesis (italic) is applied before user transformations
@@ -62,10 +72,12 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 				self.vector_table.get_mut(0).unwrap().element.append_subpath(subpath, false);
 			}
 		}
+
+		has_geometry
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool) {
-		let mut run_x = glyph_run.offset();
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool, x_offset: f64, space_extra: f32) {
+		let mut run_x = glyph_run.offset() + x_offset as f32;
 		let run_y = glyph_run.baseline();
 
 		let run = glyph_run.run();
@@ -113,7 +125,11 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 				if !per_glyph_instances {
 					self.origin = glyph_offset;
 				}
-				self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_instances);
+				let drew_geometry = self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_instances);
+
+				if !drew_geometry && space_extra != 0. && glyph.advance > 0. {
+					run_x += space_extra;
+				}
 			}
 		}
 	}

@@ -204,17 +204,25 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 			.into()
 		})
 		.widget_instance();
-	let align_entries: Vec<_> = [TextAlign::Left, TextAlign::Center, TextAlign::Right, TextAlign::JustifyLeft]
-		.into_iter()
-		.map(|align| {
-			RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
-				TextToolMessage::UpdateOptions {
-					options: TextOptionsUpdate::Align(align),
-				}
-				.into()
-			})
+	let align_entries: Vec<_> = [
+		TextAlign::Left,
+		TextAlign::Center,
+		TextAlign::Right,
+		TextAlign::JustifyLeft,
+		TextAlign::JustifyCenter,
+		TextAlign::JustifyRight,
+		TextAlign::JustifyAll,
+	]
+	.into_iter()
+	.map(|align| {
+		RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Align(align),
+			}
+			.into()
 		})
-		.collect();
+	})
+	.collect();
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,
@@ -290,7 +298,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
-			TextOptionsUpdate::Align(align) => self.options.align = align,
+			TextOptionsUpdate::Align(align) => {
+				self.options.align = align;	
+				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
+					editing_text.typesetting.align = align;
+				}
+				if let Some(node_id) = graph_modification_utils::get_text_id(self.tool_data.layer, &context.document.network_interface) {
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::AlignInput::INDEX),
+						input: NodeInput::value(TaggedValue::TextAlign(align), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+			}
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
