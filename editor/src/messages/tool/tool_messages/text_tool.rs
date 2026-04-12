@@ -299,7 +299,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
 			TextOptionsUpdate::Align(align) => {
-				self.options.align = align;	
+				self.options.align = align;
 				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
 					editing_text.typesetting.align = align;
 				}
