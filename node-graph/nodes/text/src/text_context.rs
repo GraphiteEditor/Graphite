@@ -101,24 +101,27 @@ impl TextContext {
 			let range = line.text_range();
 			let is_last_para_line = range.end == text.len() || text.get(range.clone()).map(|s| s.ends_with('\n')).unwrap_or(false) || text.as_bytes().get(range.end) == Some(&b'\n');
 
-			let (x_offset, space_extra) = if is_last_para_line {
-				if let Some(correction) = last_line_correction {
-					let metrics = line.metrics();
-					let content_advance = metrics.advance - metrics.trailing_whitespace;
-					let free_space = alignment_width - content_advance;
+			let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+				let metrics = line.metrics();
+				let content_advance = metrics.advance - metrics.trailing_whitespace;
+				let free_space = alignment_width - content_advance;
 
-					match correction {
-						parley::Alignment::Center => (free_space as f64 * 0.5, 0_f32),
-						parley::Alignment::Right => (free_space as f64, 0_f32),
-						parley::Alignment::Justify => {
-							let space_count: usize = line.runs().map(|run| run.clusters().filter(|c| c.is_space_or_nbsp()).count()).sum();
-							let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
-							(0_f64, extra)
-						}
-						_ => (0_f64, 0_f32),
+				match correction {
+					parley::Alignment::Center => (free_space as f64 * 0.5, 0_f32),
+					parley::Alignment::Right => (free_space as f64, 0_f32),
+					parley::Alignment::Justify => {
+						let line_text = text.get(range.clone()).unwrap_or("");
+						let trailing_len = line_text.len() - line_text.trim_end().len();
+						let visible_end_index = range.end - trailing_len;
+
+						let space_count: usize = line
+							.runs()
+							.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
+							.sum();
+						let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
+						(0_f64, extra)
 					}
-				} else {
-					(0_f64, 0_f32)
+					_ => (0_f64, 0_f32),
 				}
 			} else {
 				(0_f64, 0_f32)
