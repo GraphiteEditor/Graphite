@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
-
-	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let className = "";
 	export { className as class };
@@ -62,7 +61,10 @@
 	}
 
 	onMount(() => watchForCheckbox(forCheckbox));
-	onDestroy(() => watchForCheckbox(undefined));
+	onDestroy(() => {
+		handlePointerLeave();
+		watchForCheckbox(undefined);
+	});
 </script>
 
 <label
@@ -86,7 +88,7 @@
 	<slot />
 </label>
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-label {
 		line-height: 18px;
 		white-space: nowrap;

@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { MenuListEntry, ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { IconName } from "@graphite/icons";
-
-	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
-	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import MenuList from "/src/components/floating-menus/MenuList.svelte";
+	import ConditionalWrapper from "/src/components/layout/ConditionalWrapper.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { IconName } from "/src/icons";
+	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 
@@ -107,7 +105,7 @@
 	{/if}
 </ConditionalWrapper>
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-button-container {
 		display: flex;
 		position: relative;
@@ -196,15 +194,15 @@
 		.text-label {
 			overflow: hidden;
 		}
+	}
 
-		// Custom styling for when multiple TextButton widgets are used next to one another in a row or column
-		.widget-span.row > & + .text-button,
-		.layout-row > & + .text-button {
-			margin-left: 8px;
-		}
-		.widget-span.column > & + .text-button,
-		.layout-column > & + .text-button {
-			margin-top: 8px;
-		}
+	// Custom styling for when multiple TextButton widgets are used next to one another in a row or column
+	.widget-span.row > .text-button + .text-button,
+	.layout-row > .text-button + .text-button {
+		margin-left: 8px;
+	}
+	.widget-span.column > .text-button + .text-button,
+	.layout-column > .text-button + .text-button {
+		margin-top: 8px;
 	}
 </style>

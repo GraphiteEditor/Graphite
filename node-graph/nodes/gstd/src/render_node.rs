@@ -1,15 +1,16 @@
 use core_types::table::Table;
 use core_types::transform::{Footprint, Transform};
+use core_types::uuid::generate_uuid;
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+pub use graph_craft::application_io::*;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
-pub use graph_craft::wasm_application_io::*;
-use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig};
+use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
+use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, checkerboard_brush};
 use rendering::{RenderMetadata, SvgSegment};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -103,12 +104,12 @@ async fn create_context<'a: 'n>(
 
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
-		hide_artboards: render_config.hide_artboards,
+		hide_artboards: false,
 		for_export: render_config.for_export,
 		render_output_type,
 		footprint: Footprint::default(),
 		scale: render_config.scale,
-		viewport_zoom: footprint.decompose_scale().x,
+		viewport_zoom: footprint.scale_magnitudes().x,
 		..Default::default()
 	};
 
@@ -124,7 +125,7 @@ async fn create_context<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a WasmEditorApi, data: RenderIntermediate) -> RenderOutput {
+async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderIntermediate) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -145,22 +146,47 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 	let data = match (render_params.render_output_type, &ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
 			let mut rendering = SvgRender::new();
+
+			// Infinite canvas background (no artboards)
 			if !contains_artboard && !render_params.hide_artboards {
-				rendering.leaf_tag("rect", |attributes| {
-					attributes.push("x", "0");
-					attributes.push("y", "0");
-					attributes.push("width", logical_resolution.x.to_string());
-					attributes.push("height", logical_resolution.y.to_string());
-					let matrix = format_transform_matrix(footprint.transform.inverse());
-					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
-					}
-					attributes.push("fill", "white");
-				});
+				let show_checkerboard = render_params.to_canvas();
+				if show_checkerboard && render_params.viewport_zoom > 0. {
+					// Checkerboard pattern anchored at the document origin, tiling at 8x8 viewport pixels
+					let checker_id = format!("checkered-canvas-{}", generate_uuid());
+					let cell_size = 8. / render_params.viewport_zoom;
+					let pattern_size = cell_size * 2.;
+
+					// Compute the axis-aligned bounding box of all four viewport corners in document space,
+					// which is necessary when the view is rotated so the rect fully covers the visible area
+					let inverse_transform = footprint.transform.inverse();
+					let corners = [
+						inverse_transform.transform_point2(glam::DVec2::ZERO),
+						inverse_transform.transform_point2(glam::DVec2::new(logical_resolution.x, 0.)),
+						inverse_transform.transform_point2(glam::DVec2::new(0., logical_resolution.y)),
+						inverse_transform.transform_point2(logical_resolution),
+					];
+					let bb_min = corners.iter().fold(glam::DVec2::MAX, |acc, &c| acc.min(c));
+					let bb_max = corners.iter().fold(glam::DVec2::MIN, |acc, &c| acc.max(c));
+
+					rendering.leaf_tag("rect", |attributes| {
+						attributes.push("x", bb_min.x.to_string());
+						attributes.push("y", bb_min.y.to_string());
+						attributes.push("width", (bb_max.x - bb_min.x).to_string());
+						attributes.push("height", (bb_max.y - bb_min.y).to_string());
+						attributes.push("fill", format!("url(#{checker_id})"));
+					});
+
+					// Pattern defs will be appended after the intermediate defs are copied below
+					rendering.svg_defs = format!(
+						r##"<pattern id="{checker_id}" x="0" y="0" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#fff"/><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#ccc"/><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#ccc"/></pattern>"##,
+					);
+				}
 			}
+
+			let existing_defs = rendering.svg_defs.clone();
 			rendering.svg.push(SvgSegment::from(svg_data.0.clone()));
 			rendering.image_data = svg_data.1.clone();
-			rendering.svg_defs = svg_data.2.clone();
+			rendering.svg_defs = format!("{existing_defs}{}", svg_data.2);
 
 			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
 			RenderOutputType::Svg {
@@ -179,6 +205,29 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
 
 			let mut scene = vello::Scene::new();
+
+			// Infinite canvas checkerboard (when no artboards are present)
+			let show_checkerboard = !render_params.for_export && !contains_artboard && !render_params.hide_artboards;
+			if show_checkerboard && scale > 0. && render_params.viewport_zoom > 0. {
+				// Compute the axis-aligned bounding box of all four viewport corners in document space,
+				// which is necessary so the rect fully covers the visible area when the canvas is tilted
+				let inverse_footprint = footprint_transform.inverse();
+				let corners = [
+					inverse_footprint.transform_point2(glam::DVec2::ZERO),
+					inverse_footprint.transform_point2(glam::DVec2::new(physical_resolution.x as f64, 0.)),
+					inverse_footprint.transform_point2(glam::DVec2::new(0., physical_resolution.y as f64)),
+					inverse_footprint.transform_point2(physical_resolution.as_dvec2()),
+				];
+				let bb_min = corners.iter().fold(glam::DVec2::MAX, |acc, &c| acc.min(c));
+				let bb_max = corners.iter().fold(glam::DVec2::MIN, |acc, &c| acc.max(c));
+				let doc_rect = vello::kurbo::Rect::new(bb_min.x, bb_min.y, bb_max.x, bb_max.y);
+
+				// Draw in document space, transformed to screen by footprint_transform (includes rotation)
+				// Brush maps each pixel to 1/viewport_zoom document units, giving constant 8px cells
+				let brush_transform = vello::kurbo::Affine::scale(1. / render_params.viewport_zoom);
+				scene.fill(vello::peniko::Fill::NonZero, footprint_transform_vello, &checkerboard_brush(), Some(brush_transform), &doc_rect);
+			}
+
 			scene.append(child, Some(footprint_transform_vello));
 
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
@@ -190,19 +239,9 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				}
 			}
 
-			let background = if !render_params.for_export && !contains_artboard && !render_params.hide_artboards {
-				Some(Color::WHITE)
-			} else {
-				None
-			};
+			let texture = Arc::new(exec.render_vello_scene_to_texture(&scene, physical_resolution, context).await.expect("Failed to render Vello scene"));
 
-			let texture = Arc::new(
-				exec.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
-					.await
-					.expect("Failed to render Vello scene"),
-			);
-
-			RenderOutputType::Texture(ImageTexture { texture })
+			RenderOutputType::Texture(texture.into())
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};

@@ -1,9 +1,8 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
 use core_types::blending::BlendMode;
-use core_types::bounds::BoundingBox;
-use core_types::bounds::RenderBoundingBox;
-use core_types::color::Color;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::color::{Alpha, Color};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
@@ -26,6 +25,46 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
+
+/// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
+static CHECKERBOARD_IMAGE_DATA: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| {
+	const SIZE: u32 = 16;
+	const HALF: u32 = 8;
+
+	let mut data = vec![0_u8; (SIZE * SIZE * 4) as usize];
+	for y in 0..SIZE {
+		for x in 0..SIZE {
+			let is_light = ((x / HALF) + (y / HALF)).is_multiple_of(2);
+			let value = if is_light { 0xff } else { 0xcc };
+			let index = ((y * SIZE + x) * 4) as usize;
+			data[index] = value;
+			data[index + 1] = value;
+			data[index + 2] = value;
+			data[index + 3] = 0xff;
+		}
+	}
+
+	Arc::new(data)
+});
+
+/// Creates a 16x16 tiling transparency checkerboard brush for Vello.
+pub fn checkerboard_brush() -> peniko::Brush {
+	peniko::Brush::Image(peniko::ImageBrush {
+		image: peniko::ImageData {
+			data: peniko::Blob::new(CHECKERBOARD_IMAGE_DATA.clone()),
+			format: peniko::ImageFormat::Rgba8,
+			width: 16,
+			height: 16,
+			alpha_type: peniko::ImageAlphaType::Alpha,
+		},
+		sampler: peniko::ImageSampler {
+			x_extend: peniko::Extend::Repeat,
+			y_extend: peniko::Extend::Repeat,
+			quality: peniko::ImageQuality::Low, // Nearest-neighbor sampling for crisp edges
+			alpha: 1.,
+		},
+	})
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 enum MaskType {
@@ -471,18 +510,45 @@ impl Render for Graphic {
 
 impl Render for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let x = self.location.x.min(self.location.x + self.dimensions.x);
+		let y = self.location.y.min(self.location.y + self.dimensions.y);
+		let width = self.dimensions.x.abs();
+		let height = self.dimensions.y.abs();
+
 		// Rectangle for the artboard
 		if !render_params.hide_artboards {
+			// Transparency checkerboard behind the artboard background (viewport only)
+			let show_checkerboard = self.background.alpha() < 1. && render_params.to_canvas();
+			if show_checkerboard && render_params.viewport_zoom > 0. {
+				let checker_id = format!("checkered-artboard-{}", generate_uuid());
+				let cell_size = 8. / render_params.viewport_zoom;
+				let pattern_size = cell_size * 2.;
+
+				// Anchor pattern at this artboard's top-left corner (x, y), not the document origin
+				let _ = write!(
+					&mut render.svg_defs,
+					r##"<pattern id="{checker_id}" x="{x}" y="{y}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#fff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#ccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#ccc" /></pattern>"##
+				);
+
+				render.leaf_tag("rect", |attributes| {
+					attributes.push("x", x.to_string());
+					attributes.push("y", y.to_string());
+					attributes.push("width", width.to_string());
+					attributes.push("height", height.to_string());
+					attributes.push("fill", format!("url(#{checker_id})"));
+				});
+			}
+
 			// Background
 			render.leaf_tag("rect", |attributes| {
 				attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
 				if self.background.a() < 1. {
 					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
 				}
-				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
-				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
-				attributes.push("width", self.dimensions.x.abs().to_string());
-				attributes.push("height", self.dimensions.y.abs().to_string());
+				attributes.push("x", x.to_string());
+				attributes.push("y", y.to_string());
+				attributes.push("width", width.to_string());
+				attributes.push("height", height.to_string());
 			});
 		}
 
@@ -503,7 +569,7 @@ impl Render for Artboard {
 
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}"/></clipPath>"##,
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
 						self.dimensions.x, self.dimensions.y,
 					)
 					.unwrap();
@@ -522,18 +588,34 @@ impl Render for Artboard {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		// Render background
-		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-		scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
-		scene.pop_layer();
+		// Render background
+		if !render_params.hide_artboards {
+			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+
+			// Transparency checkerboard behind the artboard background (viewport only)
+			let show_checkerboard = self.background.alpha() < 1. && render_params.to_canvas();
+			if show_checkerboard && render_params.viewport_zoom > 0. {
+				// Anchor pattern at THIS artboard's top-left corner
+				// brush_transform is an image placement transform: it maps brush pixel coords → shape coords
+				// scale(1/zoom) sets each brush pixel to 1/zoom document units (constant CSS size after viewport transform)
+				// then_translate places the brush origin at the artboard corner
+				let brush_transform = kurbo::Affine::scale(1. / render_params.viewport_zoom).then_translate(kurbo::Vec2::new(rect.x0, rect.y0));
+				scene.fill(peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
+			}
+
+			let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
+			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
+			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
+			scene.pop_layer();
+		}
 
 		if self.clip {
 			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
+
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
 		let mut render_params = render_params.clone();
@@ -727,11 +809,14 @@ impl Render for Table<Graphic> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for row in self.iter() {
-			if let Some(element_id) = row.source_node_id {
-				let mut footprint = footprint;
-				footprint.transform *= *row.transform;
+			let mut footprint = footprint;
+			footprint.transform *= *row.transform;
 
+			if let Some(element_id) = row.source_node_id {
 				row.element.collect_metadata(metadata, footprint, Some(*element_id));
+			} else {
+				// Recurse through anonymous wrapper rows to reach nested content with source_node_ids
+				row.element.collect_metadata(metadata, footprint, None);
 			}
 		}
 
@@ -1226,12 +1311,20 @@ impl Render for Table<Vector> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		for row in self.iter() {
 			let transform = *row.transform;
 			let vector = row.element;
 
-			if let Some(element_id) = element_id {
+			if let Some(element_id) = caller_element_id.or(*row.source_node_id) {
+				// When recovering element_id from the row's source_node_id (because the caller
+				// passed None), also store the transform metadata that Graphic::collect_metadata
+				// normally provides but skipped due to the None element_id.
+				if caller_element_id.is_none() {
+					metadata.upstream_footprints.entry(element_id).or_insert(footprint);
+					metadata.local_transforms.entry(element_id).or_insert(transform);
+				}
+
 				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let filled = vector.style.fill() != &Fill::None;
 				let fill = |mut subpath: Subpath<_>| {
@@ -1266,8 +1359,9 @@ impl Render for Table<Vector> {
 			}
 
 			if let Some(upstream_nested_layers) = &vector.upstream_data {
-				footprint.transform *= transform;
-				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+				let mut upstream_footprint = footprint;
+				upstream_footprint.transform *= transform;
+				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
 			}
 		}
 	}

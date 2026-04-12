@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { RadioEntryData } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { RadioEntryData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
@@ -48,7 +46,7 @@
 	{/each}
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.radio-input {
 		background: var(--color-4-dimgray);
 		border-radius: 2px;

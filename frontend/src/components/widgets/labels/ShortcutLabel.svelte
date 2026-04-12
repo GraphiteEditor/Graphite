@@ -1,11 +1,10 @@
 <script lang="ts">
-	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { IconName } from "@graphite/icons";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { IconName } from "/src/icons";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let shortcut: ActionShortcut;
@@ -131,7 +130,7 @@
 	{/each}
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.shortcut-label {
 		align-items: center;
 
@@ -157,34 +156,34 @@
 				fill: var(--color-8-uppergray);
 			}
 		}
+	}
 
-		.floating-menu-content .row > & {
-			.key-label,
-			.mouse-icon {
-				color: var(--color-8-uppergray);
-				background: none;
+	.floating-menu-content .row > .shortcut-label {
+		.key-label,
+		.mouse-icon {
+			color: var(--color-8-uppergray);
+			background: none;
 
-				&:first-child {
-					padding-left: 0;
-				}
-
-				&:last-child {
-					padding-right: 0;
-				}
+			&:first-child {
+				padding-left: 0;
 			}
 
-			.key-label svg {
-				fill: var(--color-8-uppergray);
+			&:last-child {
+				padding-right: 0;
 			}
+		}
 
-			.mouse-icon svg {
-				// 3 shades brighter than the 8-uppergray of key labels/icons
-				fill: var(--color-b-lightgray);
+		.key-label svg {
+			fill: var(--color-8-uppergray);
+		}
 
-				.dim {
-					// 3 shades darker than the 8-uppergray of key labels/icons
-					fill: var(--color-5-dullgray);
-				}
+		.mouse-icon svg {
+			// 3 shades brighter than the 8-uppergray of key labels/icons
+			fill: var(--color-b-lightgray);
+
+			.dim {
+				// 3 shades darker than the 8-uppergray of key labels/icons
+				fill: var(--color-5-dullgray);
 			}
 		}
 	}

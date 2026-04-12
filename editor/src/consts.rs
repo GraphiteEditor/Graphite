@@ -4,6 +4,12 @@ pub const EXPORTS_TO_TOP_EDGE_PIXEL_GAP: u32 = 72;
 pub const EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP: u32 = 120;
 pub const IMPORTS_TO_TOP_EDGE_PIXEL_GAP: u32 = 72;
 pub const IMPORTS_TO_LEFT_EDGE_PIXEL_GAP: u32 = 120;
+/// Vertical grid distance between adjacent stack siblings, or between a parent layer and its first stack child.
+pub const STACK_VERTICAL_GAP: i32 = 3;
+/// Horizontal grid indentation of a child layer relative to its parent layer.
+pub const LAYER_INDENT_OFFSET: i32 = 8;
+/// Horizontal grid width of a non-layer node in a chain.
+pub const NODE_CHAIN_WIDTH: i32 = 7;
 
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
@@ -180,3 +186,6 @@ pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
 pub const UI_SCALE_DEFAULT: f64 = 1.;
 pub const UI_SCALE_MIN: f64 = 0.5;
 pub const UI_SCALE_MAX: f64 = 3.;
+
+// ACTIONS
+pub const BLEND_COUNT_PER_LAYER: usize = 10;

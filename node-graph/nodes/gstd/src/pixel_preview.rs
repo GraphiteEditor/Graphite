@@ -2,16 +2,16 @@ use crate::render_node::RenderOutputType;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2};
+use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::RenderOutput;
-use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_application_io::{ApplicationIo, ImageTexture};
+use graphene_application_io::ApplicationIo;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
 
 #[node_macro::node(category(""))]
 pub async fn pixel_preview<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
-	editor_api: &'a WasmEditorApi,
+	editor_api: &'a PlatformEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
 ) -> RenderOutput {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
@@ -22,7 +22,7 @@ pub async fn pixel_preview<'a: 'n>(
 	let physical_scale = render_params.scale;
 
 	let footprint = *ctx.footprint();
-	let viewport_zoom = footprint.decompose_scale().x * physical_scale;
+	let viewport_zoom = footprint.scale_magnitudes().x * physical_scale;
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
 		let context = OwnedContextImpl::from(ctx).into_context();
@@ -59,9 +59,9 @@ pub async fn pixel_preview<'a: 'n>(
 	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let resampled = exec.resample_texture(&source_texture.texture, physical_resolution, &transform);
+	let resampled = exec.resample_texture(source_texture.as_ref(), physical_resolution, &transform);
 
-	result.data = RenderOutputType::Texture(ImageTexture { texture: resampled.into() });
+	result.data = RenderOutputType::Texture(resampled.into());
 
 	result
 		.metadata

@@ -20,6 +20,7 @@ mod persist;
 mod preferences;
 mod render;
 mod window;
+mod workspace_layout;
 
 pub(crate) mod consts;
 
@@ -114,7 +115,7 @@ pub fn start() {
 
 	match exit_reason {
 		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
-			tracing::error!("Restarting application");
+			tracing::info!("Restarting application");
 			let mut command = std::process::Command::new(std::env::current_exe().unwrap());
 			#[cfg(target_family = "unix")]
 			let _ = std::os::unix::process::CommandExt::exec(&mut command);

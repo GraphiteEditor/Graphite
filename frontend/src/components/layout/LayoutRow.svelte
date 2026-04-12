@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let className = "";
 	export { className as class };
@@ -90,7 +90,7 @@ on:touchcancel
 on:touchend
 -->
 
-<style lang="scss" global>
+<style lang="scss">
 	.layout-row {
 		display: flex;
 		flex-direction: row;

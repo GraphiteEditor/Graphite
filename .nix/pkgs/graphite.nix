@@ -14,12 +14,70 @@
 
 let
   branding = self.packages.${system}.graphite-branding;
-  cargoVendorDir = deps.crane.lib.vendorCargoDeps { inherit (info) src; };
-  resourcesCommon = {
-    pname = "${info.pname}-resources";
-    inherit (info) version src;
-    inherit cargoVendorDir;
+  libs = [
+    pkgs.wayland
+    pkgs.vulkan-loader
+    pkgs.libGL
+    pkgs.openssl
+    pkgs.libraw
+    # X11 Support
+    pkgs.libxkbcommon
+    pkgs.libXcursor
+    pkgs.libxcb
+    pkgs.libX11
+  ];
+
+  common = {
+    inherit (info) pname version src;
+    cargoVendorDir = deps.crane.lib.vendorCargoDepsFlatten (
+      deps.crane.lib.vendorMultipleCargoDeps {
+        inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
+        cargoLockList = [
+          "${info.src}/Cargo.lock"
+          "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
+        ];
+      }
+    );
+    buildInputs = libs;
     strictDeps = true;
+    doCheck = false;
+  };
+
+  cargoArtifacts = deps.crane.lib.buildDepsOnly (
+    common
+    // {
+      nativeBuildInputs = [
+        pkgs.pkg-config
+        pkgs.lld
+      ];
+      env = deps.cef.env;
+      buildPhase =
+        let
+          profile = if dev then "dev" else "release";
+        in
+        ''
+          cargo check --profile ${profile} --locked -p graphite-desktop-platform-linux
+          cargo build --profile ${profile} --locked -p graphite-desktop-platform-linux
+
+          cargo check --profile ${profile} --target wasm32-unknown-unknown --locked -p graphite-wasm-wrapper --no-default-features --features native
+          cargo build --profile ${profile} --target wasm32-unknown-unknown --locked -p graphite-wasm-wrapper --no-default-features --features native
+
+          cargo check --locked -p third-party-licenses --features desktop
+          cargo build --locked -p third-party-licenses --features desktop
+
+          cargo check --profile ${profile} --locked -p graphite-desktop-bundle
+          cargo build --profile ${profile} --locked -p graphite-desktop-bundle
+        '';
+    }
+  );
+in
+
+deps.crane.lib.buildPackage (
+  common
+  // {
+    inherit cargoArtifacts;
+
+    buildInputs = libs;
     nativeBuildInputs = [
       pkgs.pkg-config
       pkgs.lld
@@ -29,110 +87,34 @@ let
       pkgs.wasm-bindgen-cli_0_2_100
       pkgs.wasm-pack
       pkgs.cargo-about
-    ];
-    buildInputs = [ pkgs.openssl ];
-    env.CARGO_PROFILE = if dev then "dev" else "release";
-    cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm --no-default-features --features native";
-    doCheck = false;
-  };
-  resources = deps.crane.lib.buildPackage (
-    resourcesCommon
-    // {
-      cargoArtifacts = deps.crane.lib.buildDepsOnly resourcesCommon;
-
-      npmDeps = pkgs.importNpmLock {
-        npmRoot = "${info.src}/frontend";
-      };
-
-      npmRoot = "frontend";
-      npmConfigScript = "setup";
-      makeCacheWritable = true;
-
-      nativeBuildInputs = [
-        pkgs.importNpmLock.npmConfigHook
-        pkgs.removeReferencesTo
-      ]
-      ++ resourcesCommon.nativeBuildInputs;
-
-      prePatch = ''
-        mkdir branding
-        cp -r ${branding}/* branding
-        cp ${info.src}/.branding branding/.branding
-      '';
-
-      buildPhase = ''
-        export HOME="$TMPDIR"
-
-        pushd frontend
-        npm run native:build-${if dev then "dev" else "production"}
-        popd
-      '';
-
-      installPhase = ''
-        mkdir -p $out
-        cp -r frontend/dist/* $out/
-      '';
-
-      postFixup = ''
-        find "$out" -type f -exec remove-references-to -t "${cargoVendorDir}" '{}' +
-      '';
-    }
-  );
-  libs = [
-    pkgs.wayland
-    pkgs.vulkan-loader
-    pkgs.libGL
-    pkgs.openssl
-    pkgs.libraw
-
-    # X11 Support
-    pkgs.libxkbcommon
-    pkgs.libXcursor
-    pkgs.libxcb
-    pkgs.libX11
-  ];
-  common = {
-    inherit (info) pname version src;
-    inherit cargoVendorDir;
-    strictDeps = true;
-    buildInputs = libs;
-    nativeBuildInputs = [
-      pkgs.pkg-config
-      pkgs.cargo-about
       pkgs.removeReferencesTo
+      pkgs.importNpmLock.npmConfigHook
     ];
-    env = deps.cef.env // {
-      CARGO_PROFILE = if dev then "dev" else "release";
-    };
-    cargoExtraArgs = "-p graphite-desktop";
-    doCheck = false;
-  };
-in
-
-deps.crane.lib.buildPackage (
-  common
-  // {
-    cargoArtifacts = deps.crane.lib.buildDepsOnly common;
-
-    env = common.env // {
-      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
-      EMBEDDED_RESOURCES = resources;
-      GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
-      GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
-    };
 
     npmDeps = pkgs.importNpmLock {
       npmRoot = "${info.src}/frontend";
     };
     npmRoot = "frontend";
-    nativeBuildInputs = [
-      pkgs.importNpmLock.npmConfigHook
-      pkgs.nodePackages.npm
-    ]
-    ++ common.nativeBuildInputs;
+    npmConfigScript = "setup";
+    makeCacheWritable = true;
+
+    env = deps.cef.env // {
+      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
+      GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
+      GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
+    };
+
+    postPatch = ''
+      mkdir branding
+      cp -r ${branding}/* branding
+      cp ${info.src}/.branding branding/.branding
+    '';
 
     preBuild = ''
-      ${lib.getExe self.packages.${system}.tools.third-party-licenses}
+      # Prevent `package-installer.js` from trying to update npm dependencies
+      touch -r frontend/package-lock.json -d '+1 year' frontend/node_modules/.install-timestamp
+
+      export HOME="$TMPDIR"
     ''
     + (
       if self ? rev then
@@ -142,6 +124,10 @@ deps.crane.lib.buildPackage (
       else
         ""
     );
+
+    buildPhaseCargoCommand = "cargo run build desktop${if dev then " debug" else ""}";
+
+    doNotPostBuildInstallCargoBinaries = true;
 
     installPhase = ''
       mkdir -p $out/bin
@@ -161,12 +147,14 @@ deps.crane.lib.buildPackage (
     '';
 
     postFixup = ''
-      remove-references-to -t "${cargoVendorDir}" $out/bin/graphite
+      remove-references-to -t "${common.cargoVendorDir}" $out/bin/graphite
 
       patchelf \
         --set-rpath "${pkgs.lib.makeLibraryPath libs}:${deps.cef.env.CEF_PATH}" \
         --add-needed libGL.so \
         $out/bin/graphite
     '';
+
+    passthru.deps = cargoArtifacts;
   }
 )

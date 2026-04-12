@@ -1,27 +1,33 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
-
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
 		bottomLayer: boolean;
 		editingName: boolean;
 		entry: LayerPanelEntry;
+		depth: number;
+		parentId: bigint | undefined;
+		childrenPresent: boolean;
+		expanded: boolean;
+		ancestorOfSelected: boolean;
+		parentsVisible: boolean;
+		parentsUnlocked: boolean;
+		instancePath: bigint[];
 	};
 
 	type DraggingData = {
@@ -30,6 +36,7 @@
 		insertDepth: number;
 		insertIndex: number | undefined;
 		highlightFolder: boolean;
+		highlightFolderIndex: number | undefined;
 		markerHeight: number;
 	};
 
@@ -41,9 +48,10 @@
 		startY: number;
 	};
 
-	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const editor = getContext<EditorWrapper>("editor");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -69,26 +77,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
+		subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -107,11 +115,11 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
@@ -125,17 +133,17 @@
 	});
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, instancePath: bigint[]) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(BigUint64Array.from(instancePath), collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -162,7 +170,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -200,7 +208,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -247,7 +255,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -256,7 +264,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -272,6 +280,7 @@
 
 		// Whether you are inserting into a folder and should show the folder outline
 		let highlightFolder = false;
+		let highlightFolderIndex: number | undefined = undefined;
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
@@ -280,40 +289,41 @@
 			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
 				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+				const listing = layers[parseInt(indexAttribute, 10)];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
 					return;
 				}
 				const pointerPercentage = (clientY - rect.top) / rect.height;
-				if (layer.childrenAllowed) {
+				if (listing.entry.childrenAllowed || listing.childrenPresent) {
 					if (pointerPercentage < 0.25) {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
-					} else if (pointerPercentage < 0.75 || (layer.childrenPresent && layer.expanded)) {
-						insertParentId = layer.id;
-						insertDepth = layer.depth;
+					} else if (pointerPercentage < 0.75 || (listing.childrenPresent && listing.expanded)) {
+						insertParentId = listing.entry.id;
+						insertDepth = listing.depth;
 						insertIndex = 0;
 						highlightFolder = true;
+						highlightFolderIndex = parseInt(indexAttribute, 10);
 					} else {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex + 1;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex + 1;
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				} else {
 					if (pointerPercentage < 0.5) {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
 					} else {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex + 1;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex + 1;
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
@@ -321,7 +331,7 @@
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
-				const numberRootLayers = layers.filter((layer) => layer.entry.depth === 1).length;
+				const numberRootLayers = layers.filter((listing) => listing.depth === 1).length;
 				insertParentId = undefined;
 				insertDepth = 0;
 				insertIndex = numberRootLayers;
@@ -335,6 +345,7 @@
 			insertDepth,
 			insertIndex,
 			highlightFolder,
+			highlightFolderIndex,
 			markerHeight,
 		};
 	}
@@ -389,7 +400,7 @@
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -445,7 +456,7 @@
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
 			const name = inputElement.value || "";
-			editor.handle.setLayerName(currentListing.entry.id, name);
+			editor.setLayerName(currentListing.entry.id, name);
 			currentListing.entry.alias = name;
 		}
 
@@ -494,42 +505,57 @@
 	}
 
 	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
-		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
-		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
+		// Track the editing state by flat list index, not layer ID, since a layer can appear at multiple positions
+		const editingIndex = layers.findIndex((layer: LayerListingInfo) => layer.editingName);
 
 		// Clear the layer hierarchy before rebuilding it
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (children: LayerStructureEntry[]) => {
+		const recurse = (children: LayerStructureEntry[], depth: number, parentId: bigint | undefined, parentPath: bigint[], parentsVisible: boolean, parentsUnlocked: boolean) => {
 			children.forEach((item, index) => {
+				const instancePath = [...parentPath, item.layerId];
 				const mapping = layerCache.get(String(item.layerId));
+
 				if (mapping) {
 					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
 						bottomLayer: index === children.length - 1,
 						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === item.layerId,
+						editingName: editingIndex === layers.length,
+						depth,
+						parentId,
+						childrenPresent: item.childrenPresent,
+						expanded: item.childrenPresent && item.children.length > 0,
+						ancestorOfSelected: item.descendantSelected,
+						parentsVisible,
+						parentsUnlocked,
+						instancePath,
 					});
 				}
 
-				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item.children);
+				// Call self recursively, propagating this layer's visibility/lock state to its children
+				const childParentsVisible = parentsVisible && (mapping?.visible ?? true);
+				const childParentsUnlocked = parentsUnlocked && (mapping?.unlocked ?? true);
+				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, instancePath, childParentsVisible, childParentsUnlocked);
 			});
 		};
-		recurse(layerStructure);
+		recurse(layerStructure, 1, undefined, [], true, true);
 		layers = layers;
 	}
 
 	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
 		layerCache.set(String(targetId), targetLayer);
 
-		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
-		if (layer) {
-			layer.entry = targetLayer;
-			layers = layers;
-		}
+		let changed = false;
+		layers.forEach((layer) => {
+			if (layer.entry.id === targetId) {
+				layer.entry = targetLayer;
+				changed = true;
+			}
+		});
+		if (changed) layers = layers;
 	}
 </script>
 
@@ -557,29 +583,29 @@
 					class="layer"
 					classes={{
 						selected,
-						"ancestor-of-selected": listing.entry.ancestorOfSelected,
+						"ancestor-of-selected": listing.ancestorOfSelected,
 						"descendant-of-selected": listing.entry.descendantOfSelected,
 						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
-						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
+						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.highlightFolderIndex === index,
 					}}
-					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
+					styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
 					data-layer
 					data-index={index}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
-					{#if listing.entry.childrenAllowed}
+					{#if listing.entry.childrenAllowed || listing.childrenPresent}
 						<button
 							class="expand-arrow"
-							class:expanded={listing.entry.expanded}
-							disabled={!listing.entry.childrenPresent}
-							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
-							data-tooltip-description={(listing.entry.expanded
-								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
-								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
-								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							class:expanded={listing.expanded}
+							disabled={!listing.childrenPresent}
+							data-tooltip-label={listing.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.expanded
+								? "Hide this layer's children. (To recursively collapse all descendants, perform the shortcut shown.)"
+								: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
+								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
 							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.instancePath)}
 							tabindex="0"
 						></button>
 					{:else}
@@ -629,27 +655,27 @@
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
-					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
+					{#if !listing.entry.unlocked || !listing.parentsUnlocked}
 						<IconButton
 							class="status-toggle"
-							classes={{ inherited: !listing.entry.parentsUnlocked }}
+							classes={{ inherited: !listing.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
 							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
-							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+							tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
 						/>
 					{/if}
 					<IconButton
 						class="status-toggle"
-						classes={{ inherited: !listing.entry.parentsVisible }}
+						classes={{ inherited: !listing.parentsVisible }}
 						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
 						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
 					/>
 				</LayoutRow>
 			{/each}
@@ -663,7 +689,7 @@
 	</LayoutRow>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.layers {
 		// Control bar
 		.control-bar {
@@ -738,9 +764,13 @@
 					background: rgba(var(--color-4-dimgray-rgb), 0.5);
 				}
 
-				&.insert-folder {
-					outline: 3px solid var(--color-e-nearwhite);
-					outline-offset: -3px;
+				&.insert-folder::after {
+					content: "";
+					position: absolute;
+					inset: 0;
+					border: 3px solid var(--color-e-nearwhite);
+					border-radius: 2px;
+					pointer-events: none;
 				}
 
 				.expand-arrow {

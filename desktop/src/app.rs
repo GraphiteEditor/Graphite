@@ -21,6 +21,7 @@ use crate::persist::PersistentData;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
+use crate::workspace_layout;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
@@ -294,7 +295,7 @@ impl App {
 				self.persistent_data.set_current_document(id);
 			}
 			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
-				self.persistent_data.set_document_order(ids);
+				self.persistent_data.force_document_order(ids);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
 				preferences::write(preferences);
@@ -303,6 +304,15 @@ impl App {
 				let preferences = preferences::read();
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
 				responses.push(message);
+			}
+			DesktopFrontendMessage::PersistenceWriteWorkspaceLayout { workspace_layout: layout } => {
+				workspace_layout::write(&layout);
+			}
+			DesktopFrontendMessage::PersistenceLoadWorkspaceLayout => {
+				if let Some(workspace_layout) = workspace_layout::read() {
+					let message = DesktopWrapperMessage::LoadWorkspaceLayout { workspace_layout };
+					responses.push(message);
+				}
 			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
 				if let Some((id, document)) = self.persistent_data.current_document() {
