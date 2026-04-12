@@ -35,7 +35,7 @@
 	<button on:click={() => setValue("BottomRight")} class="row-3 col-3" class:active={value === "BottomRight"} tabindex="-1" {disabled}><div></div></button>
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.reference-point-input {
 		position: relative;
 		flex: 0 0 auto;

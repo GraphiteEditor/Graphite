@@ -54,7 +54,7 @@
 	</FloatingMenu>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.popover-button {
 		position: relative;
 		width: 16px;

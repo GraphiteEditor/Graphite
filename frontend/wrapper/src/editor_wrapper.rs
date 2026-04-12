@@ -18,7 +18,7 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
+use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -379,6 +379,16 @@ impl EditorWrapper {
 		}
 	}
 
+	#[wasm_bindgen(js_name = loadWorkspaceLayout)]
+	pub fn load_workspace_layout(&self, layout: JsValue) {
+		let Ok(layout) = serde_wasm_bindgen::from_value(layout) else {
+			log::error!("Failed to deserialize workspace layout");
+			return;
+		};
+		let message = PortfolioMessage::LoadWorkspaceLayout { layout };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = selectDocument)]
 	pub fn select_document(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
@@ -424,6 +434,80 @@ impl EditorWrapper {
 	pub fn trigger_auto_save(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::AutoSaveDocument { document_id };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = reorderDocument)]
+	pub fn reorder_document(&self, document_id: u64, new_index: usize) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::ReorderDocument { document_id, new_index };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = reorderPanelGroupTab)]
+	pub fn reorder_panel_group_tab(&self, group: u64, old_index: usize, new_index: usize) {
+		let message = PortfolioMessage::ReorderPanelGroupTab {
+			group: PanelGroupId(group),
+			old_index,
+			new_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = moveAllPanelTabs)]
+	pub fn move_all_panel_tabs(&self, source_group: u64, target_group: u64, insert_index: usize) {
+		let message = PortfolioMessage::MoveAllPanelTabs {
+			source_group: PanelGroupId(source_group),
+			target_group: PanelGroupId(target_group),
+			insert_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = movePanelTab)]
+	pub fn move_panel_tab(&self, source_group: u64, target_group: u64, insert_index: usize) {
+		let message = PortfolioMessage::MovePanelTab {
+			source_group: PanelGroupId(source_group),
+			target_group: PanelGroupId(target_group),
+			insert_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = setPanelGroupActiveTab)]
+	pub fn set_panel_group_active_tab(&self, group: u64, tab_index: usize) {
+		let message = PortfolioMessage::SetPanelGroupActiveTab {
+			group: PanelGroupId(group),
+			tab_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = splitPanelGroup)]
+	pub fn split_panel_group(&self, target_group: u64, direction: String, tabs: JsValue, active_tab_index: usize) {
+		let direction: DockingSplitDirection = serde_wasm_bindgen::from_value(JsValue::from_str(&direction)).unwrap();
+		let tabs: Vec<PanelType> = serde_wasm_bindgen::from_value(tabs).unwrap();
+		let message = PortfolioMessage::SplitPanelGroup {
+			target_group: PanelGroupId(target_group),
+			direction,
+			tabs,
+			active_tab_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = resetPanelGroupSizes)]
+	pub fn reset_panel_group_sizes(&self, split_path: JsValue) {
+		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
+		let message = PortfolioMessage::ResetPanelGroupSizes { split_path };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = setPanelGroupSizes)]
+	pub fn set_panel_group_sizes(&self, split_path: JsValue, sizes: JsValue) {
+		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
+		let sizes: Vec<f64> = serde_wasm_bindgen::from_value(sizes).unwrap();
+		let message = PortfolioMessage::SetPanelGroupSizes { split_path, sizes };
 		self.dispatch(message);
 	}
 
@@ -858,16 +942,16 @@ impl EditorWrapper {
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, id: u64, recursive: bool) {
-		let id = NodeId(id);
-		let message = DocumentMessage::ToggleLayerExpansion { id, recursive };
+	pub fn toggle_layer_expansion(&self, instance_path: &[u64], recursive: bool) {
+		let instance_path = instance_path.iter().map(|&id| NodeId(id)).collect();
+		let message = DocumentMessage::ToggleLayerExpansion { instance_path, recursive };
 		self.dispatch(message);
 	}
 
 	/// Set the active panel to the most recently clicked panel
 	#[wasm_bindgen(js_name = setActivePanel)]
 	pub fn set_active_panel(&self, panel: String) {
-		let message = PortfolioMessage::SetActivePanel { panel: panel.into() };
+		let message = DocumentMessage::SetActivePanel { active_panel: panel.into() };
 		self.dispatch(message);
 	}
 
@@ -901,18 +985,6 @@ impl EditorWrapper {
 // ====================================================================
 // Static functions callable from JavaScript without an Editor instance
 // ====================================================================
-
-#[wasm_bindgen(js_name = isPlatformNative)]
-pub fn is_platform_native() -> bool {
-	#[cfg(feature = "native")]
-	{
-		true
-	}
-	#[cfg(not(feature = "native"))]
-	{
-		false
-	}
-}
 
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {

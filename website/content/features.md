@@ -138,9 +138,13 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 66" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>All-around performance optimizations</span>
 		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
+		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Blend tool to morph between shapes</span>
+		</div>
+		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Dockable panels and tab reordering</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -251,10 +255,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<h3>— Beta 2 —</h3>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Dockable and multi-window panels</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 52" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Command palette</span>
 		</div>
@@ -289,6 +289,14 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 27" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Automation/batch processing tools</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Multiple adjacent document panels</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Tear-out panels as separate windows</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />

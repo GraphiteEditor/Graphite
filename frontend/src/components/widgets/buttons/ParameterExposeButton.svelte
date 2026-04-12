@@ -44,7 +44,7 @@
 	</button>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.parameter-expose-button {
 		display: flex;
 		align-items: center;

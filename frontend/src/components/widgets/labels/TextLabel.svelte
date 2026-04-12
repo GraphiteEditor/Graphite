@@ -88,7 +88,7 @@
 	<slot />
 </label>
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-label {
 		line-height: 18px;
 		white-space: nowrap;
