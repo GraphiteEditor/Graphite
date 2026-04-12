@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, Raster};
@@ -14,6 +13,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::{Artboard, Color};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -74,6 +74,17 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	NewInterpolationLayer {
+		id: NodeId,
+		control_path_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		blend_count: Option<usize>,
+	},
+	ConnectInterpolationControlPathToChildren {
+		interpolation_layer_id: NodeId,
+		control_path_id: NodeId,
+	},
 	NewBooleanOperationLayer {
 		id: NodeId,
 		operation: graphene_std::vector::misc::BooleanOperation,
@@ -83,6 +94,12 @@ pub enum GraphOperationMessage {
 	NewCustomLayer {
 		id: NodeId,
 		nodes: Vec<(NodeId, NodeTemplate)>,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
+	NewColorFillLayer {
+		node_id: NodeId,
+		color: Color,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

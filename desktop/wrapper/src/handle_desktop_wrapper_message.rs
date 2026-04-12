@@ -75,6 +75,15 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message);
 		}
+		DesktopWrapperMessage::LoadWorkspaceLayout { workspace_layout } => match ron::from_str(&workspace_layout) {
+			Ok(layout) => {
+				let message = PortfolioMessage::LoadWorkspaceLayout { layout };
+				dispatcher.queue_editor_message(message);
+			}
+			Err(e) => {
+				tracing::error!("Failed to deserialize workspace layout: {e}");
+			}
+		},
 		#[cfg(target_os = "macos")]
 		DesktopWrapperMessage::MenuEvent { id } => {
 			if let Some(message) = crate::utils::menu::parse_item_path(id) {

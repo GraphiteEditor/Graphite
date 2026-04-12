@@ -28,7 +28,7 @@
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.properties {
 		height: 100%;
 		flex: 1 1 100%;

@@ -161,7 +161,7 @@
 	/>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.dropdown-input {
 		position: relative;
 		--widget-height: 24px;

@@ -73,7 +73,7 @@
 	</LayoutRow>
 </FloatingMenu>
 
-<style lang="scss" global>
+<style lang="scss">
 	.dialog {
 		position: absolute;
 		pointer-events: none;

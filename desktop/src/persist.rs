@@ -67,8 +67,9 @@ impl PersistentData {
 		self.flush();
 	}
 
-	pub(crate) fn set_document_order(&mut self, order: Vec<DocumentId>) {
+	pub(crate) fn force_document_order(&mut self, order: Vec<DocumentId>) {
 		self.document_order = Some(order);
+		self.documents.force_order(self.document_order.as_ref().unwrap());
 		self.flush();
 	}
 
@@ -148,7 +149,7 @@ impl DocumentStore {
 		})
 	}
 
-	fn force_order(&mut self, desired_order: &Vec<DocumentId>) {
+	fn force_order(&mut self, desired_order: &[DocumentId]) {
 		let mut ordered_prefix_len = 0;
 		for id in desired_order {
 			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == *id) {
@@ -159,7 +160,6 @@ impl DocumentStore {
 				ordered_prefix_len += 1;
 			}
 		}
-		self.0.truncate(ordered_prefix_len);
 	}
 
 	fn document_ids(&self) -> Vec<DocumentId> {

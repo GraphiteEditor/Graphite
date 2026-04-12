@@ -58,6 +58,10 @@ pub enum DesktopFrontendMessage {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
+	PersistenceWriteWorkspaceLayout {
+		workspace_layout: String,
+	},
+	PersistenceLoadWorkspaceLayout,
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
@@ -116,6 +120,9 @@ pub enum DesktopWrapperMessage {
 	},
 	LoadPreferences {
 		preferences: Preferences,
+	},
+	LoadWorkspaceLayout {
+		workspace_layout: String,
 	},
 	MenuEvent {
 		id: String,

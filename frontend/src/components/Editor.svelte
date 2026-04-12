@@ -75,7 +75,7 @@
 
 <MainWindow />
 
-<style lang="scss" global>
+<style lang="scss">
 	// Disable the spinning loading indicator
 	body::before,
 	body::after {

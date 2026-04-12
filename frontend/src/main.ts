@@ -2,6 +2,12 @@
 
 import { mount, unmount } from "svelte";
 import App from "/src/App.svelte";
+import { registerServiceWorker } from "/src/utility-functions/service-worker";
+
+// Register the service worker, except in dev mode and native (CEF) builds
+if (!import.meta.env.DEV && import.meta.env.MODE !== "native" && "serviceWorker" in navigator) {
+	registerServiceWorker();
+}
 
 document.body.setAttribute("data-app-container", "");
 

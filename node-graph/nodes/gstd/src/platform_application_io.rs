@@ -1,6 +1,8 @@
 #[cfg(target_family = "wasm")]
 use base64::Engine;
 #[cfg(target_family = "wasm")]
+use canvas_utils::{Canvas, CanvasHandle};
+#[cfg(target_family = "wasm")]
 use core_types::WasmNotSend;
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
@@ -8,9 +10,11 @@ use core_types::table::Table;
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx};
+pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
-pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
+#[cfg(target_family = "wasm")]
+pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
@@ -22,17 +26,6 @@ use graphic_types::vector_types::gradient::GradientStops;
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
-#[cfg(target_family = "wasm")]
-use wasm_bindgen::JsCast;
-#[cfg(target_family = "wasm")]
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-
-/// Allocates GPU memory and a rendering context for vector-to-raster conversion.
-#[cfg(feature = "wgpu")]
-#[node_macro::node(category(""))]
-async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	Arc::new(editor.application_io.as_ref().unwrap().create_window())
-}
 
 fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -132,7 +125,7 @@ fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a PlatformEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor_resources.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
 	};
@@ -168,6 +161,12 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
+#[cfg(target_family = "wasm")]
+#[node_macro::node(category(""))]
+async fn create_canvas(_: impl Ctx) -> CanvasHandle {
+	CanvasHandle::new()
+}
+
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
@@ -182,7 +181,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	)]
 	mut data: Table<T>,
 	footprint: Footprint,
-	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
+	mut canvas: CanvasHandle,
 ) -> Table<Raster<CPU>>
 where
 	Table<T>: Render,
@@ -211,11 +210,8 @@ where
 	render.format_svg(glam::DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();
 
-	let canvas = &surface_handle.surface;
-	canvas.set_width(resolution.x);
-	canvas.set_height(resolution.y);
-
-	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+	canvas.set_resolution(resolution);
+	let context = canvas.context();
 
 	let preamble = "data:image/svg+xml;base64,";
 	let mut base64_string = String::with_capacity(preamble.len() + svg_string.len() * 4);

@@ -2,8 +2,9 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
+import { storeDocumentTabOrder } from "/src/utility-functions/persistence";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, OpenDocument } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, OpenDocument, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
@@ -11,17 +12,13 @@ type PortfolioStoreState = {
 	unsaved: boolean;
 	documents: OpenDocument[];
 	activeDocumentIndex: number;
-	dataPanelOpen: boolean;
-	propertiesPanelOpen: boolean;
-	layersPanelOpen: boolean;
+	panelLayout: WorkspacePanelLayout;
 };
 const initialState: PortfolioStoreState = {
 	unsaved: false,
 	documents: [],
 	activeDocumentIndex: 0,
-	dataPanelOpen: false,
-	propertiesPanelOpen: true,
-	layersPanelOpen: true,
+	panelLayout: {},
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -41,6 +38,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 			state.documents = data.openDocuments;
 			return state;
 		});
+		storeDocumentTabOrder({ subscribe });
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateActiveDocument", (data) => {
@@ -101,23 +99,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateDataPanelState", async (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
 		update((state) => {
-			state.dataPanelOpen = data.open;
-			return state;
-		});
-	});
-
-	subscriptions.subscribeFrontendMessage("UpdatePropertiesPanelState", async (data) => {
-		update((state) => {
-			state.propertiesPanelOpen = data.open;
-			return state;
-		});
-	});
-
-	subscriptions.subscribeFrontendMessage("UpdateLayersPanelState", async (data) => {
-		update((state) => {
-			state.layersPanelOpen = data.open;
+			state.panelLayout = data.panelLayout;
 			return state;
 		});
 	});
@@ -137,7 +121,5 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
-	subscriptions.unsubscribeFrontendMessage("UpdateDataPanelState");
-	subscriptions.unsubscribeFrontendMessage("UpdatePropertiesPanelState");
-	subscriptions.unsubscribeFrontendMessage("UpdateLayersPanelState");
+	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 }

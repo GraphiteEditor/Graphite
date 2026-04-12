@@ -6,6 +6,11 @@ import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 const PERSISTENCE_DB = "graphite";
 const PERSISTENCE_STORE = "store";
 
+export async function storeDocumentTabOrder(portfolio: PortfolioStore) {
+	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
+	await databaseSet("documents_tab_order", documentOrder);
+}
+
 export async function storeCurrentDocumentId(documentId: string) {
 	await databaseSet("current_document_id", String(documentId));
 }
@@ -17,8 +22,7 @@ export async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersis
 		return documents;
 	});
 
-	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
-	await databaseSet("documents_tab_order", documentOrder);
+	await storeDocumentTabOrder(portfolio);
 	await storeCurrentDocumentId(String(autoSaveDocument.documentId));
 }
 
@@ -155,6 +159,15 @@ export async function saveEditorPreferences(preferences: unknown) {
 export async function loadEditorPreferences(editor: EditorWrapper) {
 	const preferences = await databaseGet<Record<string, unknown>>("preferences");
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
+}
+
+export async function saveWorkspaceLayout(layout: unknown) {
+	await databaseSet("workspace_layout", layout);
+}
+
+export async function loadWorkspaceLayout(editor: EditorWrapper) {
+	const layout = await databaseGet<Record<string, unknown>>("workspace_layout");
+	if (layout) editor.loadWorkspaceLayout(layout);
 }
 
 export async function wipeDocuments() {
