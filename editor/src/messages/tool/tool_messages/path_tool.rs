@@ -798,6 +798,11 @@ impl PathToolData {
 					self.saved_selection_before_handle_drag = old_selection;
 				}
 
+				if handle_drag_from_anchor && dragging_only_handles {
+					// Alt held at drag start on a handle: break colinearity (make the handle sharp)
+					shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+				}
+
 				if handle_drag_from_anchor && let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 					// Check that selected point is an anchor
 					if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {

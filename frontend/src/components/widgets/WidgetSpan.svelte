@@ -283,7 +283,7 @@
 	{/each}
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.widget-span.column {
 		flex: 0 0 auto;
 		display: flex;

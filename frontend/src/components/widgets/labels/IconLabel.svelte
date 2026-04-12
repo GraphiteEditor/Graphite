@@ -37,7 +37,7 @@
 	{@html ICON_SVG_STRINGS[icon] || "�"}
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.icon-label {
 		flex: 0 0 auto;
 		fill: var(--color-e-nearwhite);

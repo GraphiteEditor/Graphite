@@ -1,17 +1,16 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::document::value::{RenderOutput, TaggedValue};
+use graph_craft::application_io::EditorPreferences;
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
+use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
-use graphene_std::wasm_application_io::RenderOutputType;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 mod runtime_io;
@@ -154,7 +153,6 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode: document.render_mode,
-			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: false,
 		};
@@ -219,7 +217,6 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode,
-			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
 		};
@@ -242,10 +239,10 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -267,7 +264,6 @@ impl NodeGraphExecutor {
 			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
-			hide_artboards: export_config.transparent_background,
 			for_export: true,
 			for_eyedropper: false,
 		};
@@ -380,6 +376,7 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
+				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 			}
 		}
 
@@ -397,12 +394,11 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
-			RenderOutputType::CanvasFrame(frame) => {
-				let matrix = format_transform_matrix(frame.transform);
-				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
+			#[cfg(target_family = "wasm")]
+			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
+					r#"<svg><foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					resolution.x, resolution.y, canvas_id,
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
@@ -482,7 +478,7 @@ impl NodeGraphExecutor {
 				use image::buffer::ConvertBuffer;
 				use image::{ImageFormat, RgbImage, RgbaImage};
 
-				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+				let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
 					return Err("Failed to create image buffer for export".to_string());
 				};
 
@@ -497,6 +493,14 @@ impl NodeGraphExecutor {
 						}
 					}
 					FileType::Jpg => {
+						// Composite onto a white background since JPG doesn't support transparency
+						for pixel in image.pixels_mut() {
+							let [r, g, b, a] = pixel.0;
+							let alpha = a as f32 / 255.;
+							let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
+							*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
+						}
+
 						let image: RgbImage = image.convert();
 						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
 						if let Err(err) = result {

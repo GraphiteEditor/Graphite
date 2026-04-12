@@ -1822,7 +1822,7 @@ impl ShapeState {
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
 	fn closest_segment(&self, network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
 		let transform = network_interface.document_metadata().transform_to_viewport_if_feeds(layer, network_interface);
-		let layer_pos = transform.inverse().transform_point2(position);
+		let layer_pos = (transform.matrix2.determinant().abs() >= f64::EPSILON).then(|| transform.inverse().transform_point2(position))?;
 
 		let tolerance = tolerance + 0.5;
 

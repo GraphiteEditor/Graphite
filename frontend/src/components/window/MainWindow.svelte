@@ -3,25 +3,29 @@
 	import Dialog from "/src/components/floating-menus/Dialog.svelte";
 	import Tooltip from "/src/components/floating-menus/Tooltip.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import PanelSubdivision from "/src/components/window/PanelSubdivision.svelte";
 	import StatusBar from "/src/components/window/StatusBar.svelte";
 	import TitleBar from "/src/components/window/TitleBar.svelte";
-	import Workspace from "/src/components/window/Workspace.svelte";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DialogStore } from "/src/stores/dialog";
+	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import { isPlatformNative } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dialog = getContext<DialogStore>("dialog");
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const appWindow = getContext<AppWindowStore>("appWindow");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 </script>
 
 <LayoutCol class="main-window" classes={{ "viewport-hole-punch": $appWindow.viewportHolePunch }}>
 	{#if !($appWindow.platform == "Mac" && $appWindow.fullscreen)}
 		<TitleBar />
 	{/if}
-	<Workspace />
+	<LayoutRow class="workspace" data-workspace>
+		<PanelSubdivision subdivision={$portfolio.panelLayout.root} depth={0} />
+	</LayoutRow>
 	<StatusBar />
 	{#if $dialog.visible}
 		<Dialog />
@@ -29,7 +33,7 @@
 	{#if $tooltip.visible}
 		<Tooltip />
 	{/if}
-	{#if isPlatformNative() && new Date() > new Date("2026-04-30")}
+	{#if import.meta.env.MODE === "native" && new Date() > new Date("2026-04-30")}
 		<LayoutCol class="release-candidate-expiry">
 			<TextLabel>
 				<p>
@@ -42,7 +46,7 @@
 	{/if}
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.main-window {
 		height: 100%;
 		overflow: auto;

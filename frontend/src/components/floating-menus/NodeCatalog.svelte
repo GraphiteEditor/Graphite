@@ -136,7 +136,7 @@
 	</div>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.node-catalog {
 		max-height: 30vh;
 		min-width: 250px;

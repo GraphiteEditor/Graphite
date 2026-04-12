@@ -36,7 +36,7 @@
 	<WidgetLayout class="info" layout={statusBarInfoLayout} layoutTarget="StatusBarInfo" />
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.status-bar {
 		height: 24px;
 		width: 100%;
