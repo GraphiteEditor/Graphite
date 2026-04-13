@@ -12,9 +12,11 @@ use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::Color;
 use graphene_std::math::quad::Quad;
+use graphene_std::raster::curve;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::stroke::DashLengthsInput;
 use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
@@ -907,45 +909,50 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, stroke_transform: Option<DAffine2>) {
-		self.start_dpi_aware_transform();
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, stroke_transform: DAffine2) {
+		// self.render_context.save();
+		// self.start_dpi_aware_transform();
 
-		// let a = stroke_transform.matrix2.x_axis.x;
-		// let b = stroke_transform.matrix2.y_axis.x;
-		// let c = stroke_transform.matrix2.x_axis.y;
-		// let d = stroke_transform.matrix2.y_axis.y;
-		// let e = stroke_transform.translation.x;
-		// let f = stroke_transform.translation.y;
+		// let a = transform.matrix2.x_axis.x;
+		// let b = transform.matrix2.y_axis.x;
+		// let c = transform.matrix2.x_axis.y;
+		// let d = transform.matrix2.y_axis.y;
+		// let e = transform.translation.x;
+		// let f = transform.translation.y;
+		// self.render_context.transform(a, b, c, d, e, f);
+		// self.render_context.set_transform(a, b, c, d, e, f);
 		self.render_context.begin_path();
 		for subpath in subpaths {
-			let mut subpath = subpath.borrow().clone();
-			let mut curves = subpath.iter().peekable();
+			let subpath = subpath.borrow().clone();
+			let mut bezpath = subpath.to_bezpath();
+			bezpath.apply_affine(Affine::new((stroke_transform).to_cols_array()));
+			let mut curves = bezpath.segments().peekable();
 
 			let Some(&first) = curves.peek() else {
 				continue;
 			};
 
-			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
+			let start_point = point_to_dvec2(first.start());
 			self.render_context.move_to(start_point.x, start_point.y);
 
 			for curve in curves {
 				match curve {
 					PathSeg::Line(line) => {
-						let a = transform.transform_point2(point_to_dvec2(line.p1));
+						let a = point_to_dvec2(line.p1);
 						let a = a.round() - DVec2::splat(0.5);
 						self.render_context.line_to(a.x, a.y);
 					}
 					PathSeg::Quad(quad_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
+						let a = point_to_dvec2(quad_bez.p1);
+						let b = point_to_dvec2(quad_bez.p2);
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
 					}
 					PathSeg::Cubic(cubic_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
-						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
+						let a = point_to_dvec2(cubic_bez.p1);
+						let b = point_to_dvec2(cubic_bez.p2);
+						let c = point_to_dvec2(cubic_bez.p3);
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
@@ -959,11 +966,14 @@ impl OverlayContext {
 			}
 		}
 
-		self.end_dpi_aware_transform();
+		// self.end_dpi_aware_transform();
+		// self.render_context.restore();
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		self.render_context.save();
+		self.start_dpi_aware_transform();
 		let mut subpaths: Vec<Subpath<PointId>> = vec![];
 
 		target_types.for_each(|target_type| match target_type.borrow() {
@@ -974,13 +984,16 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			self.draw_path_from_subpaths(subpaths.iter(), transform, None);
+			// TODO: Modify stroke_transform to take note of this
+			self.draw_path_from_subpaths(subpaths.iter(), transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
 			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
+		self.end_dpi_aware_transform();
+		self.render_context.restore();
 	}
 
 	/// Default canvas pattern used for filling stroke or fill of a path.
@@ -1029,8 +1042,7 @@ impl OverlayContext {
 		stroke_width: Option<f64>,
 	) {
 		self.render_context.save();
-		self.render_context.set_line_width(stroke_width.unwrap_or(1.));
-		self.draw_path_from_subpaths(subpaths, transform, Some(stroke_transform));
+		self.start_dpi_aware_transform();
 
 		if with_pattern {
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
@@ -1038,54 +1050,52 @@ impl OverlayContext {
 			let color_str = format!("#{:?}", color.to_rgba_hex_srgb());
 			self.render_context.set_fill_style_str(&color_str.as_str());
 		}
+		// let stroke_transform = Some(stroke_transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
+		let a = transform.matrix2.x_axis.x;
+		let b = transform.matrix2.y_axis.x;
+		let c = transform.matrix2.x_axis.y;
+		let d = transform.matrix2.y_axis.y;
+		let e = transform.translation.x;
+		let f = transform.translation.y;
+		self.render_context.transform(a, b, c, d, e, f);
+		self.draw_path_from_subpaths(subpaths, stroke_transform);
 		self.render_context.fill();
 
 		// Make the stroke transparent and erase the fill area overlapping the stroke.
 		if clear_stroke_part {
-			// self.render_context.save();
-			// let stroke_transform = Some(stroke_transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
-			// let a = stroke_transform.matrix2.x_axis.x;
-			// let b = stroke_transform.matrix2.y_axis.x;
-			// let c = stroke_transform.matrix2.x_axis.y;
-			// let d = stroke_transform.matrix2.y_axis.y;
-			// let e = stroke_transform.translation.x;
-			// let f = stroke_transform.translation.y;
-			// self.render_context.set_transform(a, b, c, d, e, f);
-
+			self.render_context.set_line_width(stroke_width.unwrap_or(1.));
 			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
 			self.render_context.set_stroke_style_str(&"#000000");
 			self.render_context.stroke();
-			// self.render_context.restore();
 		}
 
+		self.end_dpi_aware_transform();
 		self.render_context.restore();
 	}
 
 	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, overlay_stroke: &Stroke) {
 		self.render_context.save();
-
-		// debug!("overlay_stroke.weight * ptz.zoom(): {:?}", overlay_stroke.weight);
-		self.render_context.set_line_width(overlay_stroke.weight);
-		self.draw_path_from_subpaths(subpaths, transform, Some(overlay_stroke.transform));
-
-		// self.render_context.save();
-		// let stroke_transform = Some(overlay_stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
-		// let a = stroke_transform.matrix2.x_axis.x;
-		// let b = stroke_transform.matrix2.y_axis.x;
-		// let c = stroke_transform.matrix2.x_axis.y;
-		// let d = stroke_transform.matrix2.y_axis.y;
-		// let e = stroke_transform.translation.x;
-		// let f = stroke_transform.translation.y;
-		// self.render_context.set_transform(a, b, c, d, e, f);
+		self.start_dpi_aware_transform();
 
 		self.render_context
 			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
+		self.render_context.set_line_width(overlay_stroke.weight);
 		self.render_context.set_line_cap(overlay_stroke.cap.html_canvas_name().as_str());
 		self.render_context.set_line_join(overlay_stroke.join.html_canvas_name().as_str());
 		self.render_context.set_miter_limit(overlay_stroke.join_miter_limit);
+		// let stroke_transform = Some(overlay_stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
+		// let stroke_transform = overlay_stroke.transform;
+		let a = transform.matrix2.x_axis.x;
+		let b = transform.matrix2.y_axis.x;
+		let c = transform.matrix2.x_axis.y;
+		let d = transform.matrix2.y_axis.y;
+		let e = transform.translation.x;
+		let f = transform.translation.y;
+		self.render_context.transform(a, b, c, d, e, f);
+		self.draw_path_from_subpaths(subpaths, overlay_stroke.transform);
 		self.render_context.stroke();
-		// self.render_context.restore();
 
+		self.end_dpi_aware_transform();
 		self.render_context.restore();
 	}
 

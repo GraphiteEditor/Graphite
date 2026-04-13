@@ -727,10 +727,11 @@ impl Render for Table<Vector> {
 		for row in self.iter() {
 			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 1.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*row.transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
+
 			let element_transform = set_stroke_transform.map(|stroke_transform| *row.transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
@@ -742,7 +743,7 @@ impl Render for Table<Vector> {
 			let mut path = String::new();
 
 			for mut bezpath in row.element.stroke_bezpath_iter() {
-				// Only affects upstream-transformed (from stroke node) layers with row.transform
+				// Only seems to affect upstream-transformed (from stroke node) layers ~~with row.transform~~
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				path.push_str(bezpath.to_svg().as_str());
 			}
@@ -761,6 +762,7 @@ impl Render for Table<Vector> {
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 
 			if needs_separate_alignment_fill && !wants_stroke_below {
+				log::info!("Entering needs_separate_alignment_fill && !wants_stroke_below");
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path.clone());
 					let matrix = format_transform_matrix(element_transform);
@@ -799,6 +801,7 @@ impl Render for Table<Vector> {
 			});
 
 			if vector.is_branching() {
+				log::info!("Entering vector.is_branching()");
 				for mut face_path in vector.construct_faces().filter(|face| !(face.area() < 0.0)) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 
@@ -826,8 +829,8 @@ impl Render for Table<Vector> {
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
-				// Only affects layers with downstream-transformed layers (from stroke node) with row.transform*stroke_transform.inverse()
-				// and affect layers with upstream-transformed (from stroke node) layers with IDENTITY
+				// Only seem to affect layers with downstream-transformed layers (from stroke node) with ~~row.transform*stroke_transform.inverse()~~
+				// and affect layers with upstream-transformed (from stroke node) layers ~~with IDENTITY~~
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
@@ -835,6 +838,7 @@ impl Render for Table<Vector> {
 
 				let defs = &mut attributes.0.svg_defs;
 				if let Some((ref id, mask_type, ref vector_row)) = push_id {
+					log::info!("Entering Some(p) = push_id");
 					let mut svg = SvgRender::new();
 					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = row.element.style.stroke().unwrap();
@@ -868,6 +872,7 @@ impl Render for Table<Vector> {
 				}
 
 				let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
+				// log::info!("file_and_stroke: {:?}", fill_and_stroke);
 
 				if let Some((id, mask_type, _)) = push_id {
 					let selector = format!("url(#{id})");
@@ -888,6 +893,7 @@ impl Render for Table<Vector> {
 
 			// When splitting passes and stroke is below, draw the fill after the stroke.
 			if needs_separate_alignment_fill && wants_stroke_below {
+				log::info!("Entering needs_separate_alignment_fill && wants_stroke_below");
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path);
 					let matrix = format_transform_matrix(element_transform);

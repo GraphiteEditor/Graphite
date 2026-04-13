@@ -6,8 +6,8 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
-use graphene_std::vector::stroke::{CapInput, JoinInput, MiterLimitInput};
-use graphene_std::vector::style::{Fill, Stroke, StrokeCap, StrokeJoin};
+use graphene_std::vector::stroke::{AlignInput, CapInput, JoinInput, MiterLimitInput, PaintOrderInput};
+use graphene_std::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use kurbo::ParamCurveNearest;
 
 #[derive(Default, ExtractField)]
@@ -155,11 +155,18 @@ impl Fsm for FillToolFsmState {
 						// Stroke
 						let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
 						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-
 						let stroke = vector_data.style.stroke();
+
+						let has_real_stroke = stroke.filter(|stroke| stroke.weight() > 0.);
+						let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+						let applied_stroke_transform = set_stroke_transform.unwrap_or(document.metadata().transform_to_viewport(layer));
+						let element_transform = set_stroke_transform
+							.map(|stroke_transform| document.metadata().transform_to_viewport(layer) * stroke_transform.inverse())
+							.unwrap_or(DAffine2::IDENTITY);
+
 						let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
-						let zoom = document.document_ptz.zoom();
-						let modified_stroke_width = stroke_width * zoom;
+						let zoom: f64 = document.document_ptz.zoom();
+						let modified_stroke_width = stroke_width;
 						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
 
 						// Fill
@@ -170,23 +177,36 @@ impl Fsm for FillToolFsmState {
 						if stroke_exists_and_visible && close_to_stroke {
 							let overlay_stroke = || {
 								let mut overlay_stroke = Stroke::new(Some(preview_color), modified_stroke_width);
-								overlay_stroke.transform = DAffine2::IDENTITY;
+								overlay_stroke.transform = applied_stroke_transform;
+
+								let align = graph_layer.find_input(&STROKE_ID, AlignInput::INDEX).unwrap();
+								overlay_stroke.align = if let TaggedValue::StrokeAlign(align) = align { *align } else { StrokeAlign::default() };
+
 								let line_cap = graph_layer.find_input(&STROKE_ID, CapInput::INDEX).unwrap();
 								overlay_stroke.cap = if let TaggedValue::StrokeCap(line_cap) = line_cap { *line_cap } else { StrokeCap::default() };
+
 								let line_join = graph_layer.find_input(&STROKE_ID, JoinInput::INDEX).unwrap();
 								overlay_stroke.join = if let TaggedValue::StrokeJoin(line_join) = line_join { *line_join } else { StrokeJoin::default() };
+
 								let miter_limit = graph_layer.find_input(&STROKE_ID, MiterLimitInput::INDEX).unwrap();
 								overlay_stroke.join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { f64::default() };
+
+								let paint_order = graph_layer.find_input(&STROKE_ID, PaintOrderInput::INDEX).unwrap();
+								overlay_stroke.paint_order = if let TaggedValue::PaintOrder(paint_order) = paint_order {
+									*paint_order
+								} else {
+									PaintOrder::default()
+								};
 
 								overlay_stroke
 							};
 
-							overlay_context.fill_stroke(subpaths, document.metadata().transform_to_viewport_with_stroke_transform(layer, vector_data.clone()), &overlay_stroke());
+							overlay_context.fill_stroke(subpaths, element_transform, &overlay_stroke());
 						} else if fill_exists_and_visible {
 							overlay_context.fill_path(
 								subpaths,
-								document.metadata().transform_to_viewport_with_stroke_transform(layer, vector_data.clone()),
-								DAffine2::IDENTITY,
+								element_transform,
+								applied_stroke_transform,
 								&preview_color,
 								true,
 								stroke_exists_and_visible,
