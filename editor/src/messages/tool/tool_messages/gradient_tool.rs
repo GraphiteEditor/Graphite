@@ -54,7 +54,7 @@ pub enum GradientOptionsUpdate {
 	Type(GradientType),
 	ReverseStops,
 	ReverseDirection,
-	SpreadMethod(GradientSpreadMethod),
+	SetSpreadMethod(GradientSpreadMethod),
 }
 
 impl ToolMetadata for GradientTool {
@@ -86,7 +86,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				GradientOptionsUpdate::ReverseDirection => {
 					apply_gradient_update(&mut self.data, context, responses, |_| true, |g| std::mem::swap(&mut g.start, &mut g.end));
 				}
-				GradientOptionsUpdate::SpreadMethod(spread_method) => {
+				GradientOptionsUpdate::SetSpreadMethod(spread_method) => {
 					self.options.spread_method = spread_method;
 					apply_gradient_update(&mut self.data, context, responses, |g| g.spread_method != spread_method, |g| g.spread_method = spread_method);
 				}
@@ -193,19 +193,19 @@ impl LayoutHolder for GradientTool {
 		let spread_method = RadioInput::new(vec![
 			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Pad),
+					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
 				}
 				.into()
 			}),
 			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Reflect),
+					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
 				}
 				.into()
 			}),
 			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Repeat),
+					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
 				}
 				.into()
 			}),
@@ -2020,7 +2020,7 @@ mod test_gradient {
 		// Update spread method to Repeat
 		editor
 			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Repeat),
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
 			})
 			.await;
 
@@ -2030,7 +2030,7 @@ mod test_gradient {
 		// Update spread method to Reflect
 		editor
 			.handle_message(GradientToolMessage::UpdateOptions {
-				options: GradientOptionsUpdate::SpreadMethod(GradientSpreadMethod::Reflect),
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
 			})
 			.await;
 

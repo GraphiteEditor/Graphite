@@ -2042,7 +2042,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							set_input_value(&()),
 							set_backup_value(&()),
 							GradientToolMessage::UpdateOptions {
-								options: GradientOptionsUpdate::SpreadMethod(spread_method),
+								options: GradientOptionsUpdate::SetSpreadMethod(spread_method),
 							}
 							.into(),
 						]),
