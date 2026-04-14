@@ -119,6 +119,13 @@ pub struct DocumentMessageHandler {
 	/// The current editor-only mode for the active document.
 	#[serde(skip)]
 	pub document_mode: DocumentMode,
+	/// The NodeId of the mask group layer when in MaskMode, or None otherwise.
+	#[serde(skip)]
+	pub mask_group_id: Option<NodeId>,
+	/// The layers that are targets for the current mask operation.
+	/// When entering MaskMode, this stores the selected layers so the mask can be applied to them on exit.
+	#[serde(skip)]
+	pub mask_target_layers: Vec<LayerNodeIdentifier>,
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
@@ -178,6 +185,8 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			document_mode: DocumentMode::default(),
+			mask_group_id: None,
+			mask_target_layers: Vec::new(),
 			path: None,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
@@ -1133,16 +1142,69 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::EnterMaskMode => {
-				if self.document_mode != DocumentMode::MaskMode {
-					self.document_mode = DocumentMode::MaskMode;
-					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				if self.document_mode == DocumentMode::MaskMode {
+					return;
 				}
+
+				self.document_mode = DocumentMode::MaskMode;
+
+				// Store the currently selected layers as mask targets
+				self.mask_target_layers = self.network_interface.selected_nodes().selected_layers(self.network_interface.document_metadata()).collect();
+
+				// Create a new group layer for the mask
+				let mask_group_id = NodeId::new();
+				self.mask_group_id = Some(mask_group_id);
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				// Create the mask group layer as an empty custom layer container
+				graph_modification_utils::new_custom(mask_group_id, Vec::new(), self.new_layer_parent(true), responses);
+
+				// Set the mask group opacity to 50% so the user can see artwork beneath
+				responses.add(GraphOperationMessage::OpacitySet {
+					layer: LayerNodeIdentifier::new_unchecked(mask_group_id),
+					opacity: 0.5,
+				});
+
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::ExitMaskMode { discard: _ } => {
-				if self.document_mode != DocumentMode::DesignMode {
-					self.document_mode = DocumentMode::DesignMode;
-					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			DocumentMessage::ExitMaskMode { discard } => {
+				if self.document_mode != DocumentMode::MaskMode {
+					return;
 				}
+
+				self.document_mode = DocumentMode::DesignMode;
+
+				if discard {
+					// Delete the mask group without applying it
+					if let Some(mask_group_id) = self.mask_group_id {
+						responses.add(DocumentMessage::AddTransaction);
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![mask_group_id],
+							delete_children: true,
+						});
+						responses.add(DocumentMessage::EndTransaction);
+					}
+				} else {
+					// Rasterize the mask group and apply it to target layers
+					if let Some(mask_group_id) = self.mask_group_id {
+						responses.add(GraphOperationMessage::ApplyMaskStencil {
+							layers: self.mask_target_layers.clone(),
+							mask_image: graphene_std::raster::Image::new(1, 1, graphene_std::Color::WHITE),
+						});
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![mask_group_id],
+							delete_children: true,
+						});
+					}
+				}
+
+				// Clear mask state
+				self.mask_group_id = None;
+				self.mask_target_layers.clear();
+
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::DrawMarchingAntsOverlay { context: _ } => {}
 			DocumentMessage::AddTransaction => {
@@ -2116,6 +2178,13 @@ impl DocumentMessageHandler {
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
+		// If we're in MaskMode and have a mask group, all new layers should go into the mask group
+		if self.document_mode == DocumentMode::MaskMode
+			&& let Some(mask_group_id) = self.mask_group_id
+		{
+			return LayerNodeIdentifier::new_unchecked(mask_group_id);
+		}
+
 		let Some(selected_nodes) = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
 			warn!("No selected nodes found in new_layer_parent. Defaulting to ROOT_PARENT.");
 			return LayerNodeIdentifier::ROOT_PARENT;

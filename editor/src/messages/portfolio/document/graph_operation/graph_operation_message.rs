@@ -14,6 +14,8 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::raster::Image;
+use graphene_std::Color;
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -125,5 +127,9 @@ pub enum GraphOperationMessage {
 		insert_index: usize,
 		/// When true, centers the SVG at the transform origin (clipboard paste / drag-drop). When false, keeps natural SVG coordinates (file-open flow).
 		center: bool,
+	},
+	ApplyMaskStencil {
+		layers: Vec<LayerNodeIdentifier>,
+		mask_image: Image<Color>,
 	},
 }
