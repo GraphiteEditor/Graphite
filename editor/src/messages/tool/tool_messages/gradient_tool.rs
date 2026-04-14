@@ -202,7 +202,35 @@ impl LayoutHolder for GradientTool {
 			.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 			.widget_instance();
 
-			widgets.extend([gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance()]);
+			let spread_method = RadioInput::new(vec![
+				RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad").on_update(move |_| {
+					GradientToolMessage::UpdateOptions {
+						options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
+					}
+					.into()
+				}),
+				RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
+					GradientToolMessage::UpdateOptions {
+						options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+					}
+					.into()
+				}),
+				RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
+					GradientToolMessage::UpdateOptions {
+						options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+					}
+					.into()
+				}),
+			])
+			.selected_index(Some(self.options.spread_method as u32))
+			.widget_instance();
+
+			widgets.extend([
+				gradient_type,
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				spread_method,
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			]);
 		}
 
 		let reverse_stops = IconButton::new("Reverse", 24)
@@ -217,36 +245,6 @@ impl LayoutHolder for GradientTool {
 			})
 			.widget_instance();
 
-		let spread_method = RadioInput::new(vec![
-			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
-				}
-				.into()
-			}),
-			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
-				GradientToolMessage::UpdateOptions {
-					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
-				}
-				.into()
-			}),
-		])
-		.selected_index(Some(self.options.spread_method as u32))
-		.widget_instance();
-
-		let mut widgets = vec![
-			gradient_type,
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			spread_method,
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			reverse_stops,
-		];
 		widgets.push(reverse_stops);
 
 		if self.options.gradient_type == GradientType::Radial && !self.data.is_gradient_table {
@@ -325,7 +323,7 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 }
 
 // TODO: This conversion is a temporary solution, this should be removed after migration to Table<GradientStops> for all gradient use.
-// TODO: We only support linear gradient since there is no place to store the gradient type in the table row currently.
+// TODO: We only support linear gradient with pad spread method since there is no place to store the gradient type in the table row currently.
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	match (get_gradient_table(layer, network_interface), graph_modification_utils::get_gradient(layer, network_interface)) {
 		(Some(gradient_graphic), _) => {
@@ -335,6 +333,7 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 			let gradient = Gradient {
 				stops,
 				gradient_type: GradientType::Linear,
+				spread_method: GradientSpreadMethod::Pad,
 				start: transform.transform_point2(GRADIENT_TABLE_START),
 				end: transform.transform_point2(GRADIENT_TABLE_END),
 			};
