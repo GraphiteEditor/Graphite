@@ -459,6 +459,7 @@ impl TextToolData {
 		}
 
 		self.layer = layer;
+		self.is_lorem_ipsum = false; // Editing an existing layer — discard any lorem ipsum state
 		if self.load_layer_text_node(document).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
@@ -1095,6 +1096,9 @@ fn get_lorem_ipsum_text(constraint_size: Option<DVec2>, font: &Font, font_cache:
 		let average_advance = if sample_width > 0. { sample_width / SAMPLE_TEXT.len() as f64 } else { font_size * 0.45 };
 
 		let line_height = font_size * line_height_ratio;
+		if line_height <= 0. {
+			return LOREM_IPSUM.split_whitespace().take(LOREM_IPSUM_DEFAULT_WORD_COUNT).collect::<Vec<_>>().join(" ");
+		}
 		let chars_per_line = (size.x / average_advance).floor().max(1.) as usize;
 		let lines = (size.y / line_height).floor().max(1.) as usize;
 
