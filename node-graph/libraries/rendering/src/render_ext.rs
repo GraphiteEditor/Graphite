@@ -4,6 +4,7 @@ use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
+use vector_types::gradient::GradientSpreadMethod;
 
 pub trait RenderExt {
 	type Output;
@@ -47,8 +48,11 @@ impl RenderExt for Gradient {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
-		let spread_method = self.spread_method.svg_name();
-		let spread_method = if spread_method.is_empty() { String::new() } else { format!(r#" spreadMethod="{spread_method}""#) };
+		let spread_method = if self.spread_method == GradientSpreadMethod::Pad {
+			String::new()
+		} else {
+			format!(r#" spreadMethod="{}""#, self.spread_method.svg_name())
+		};
 
 		let gradient_id = generate_uuid();
 

@@ -348,7 +348,7 @@ pub enum GradientSpreadMethod {
 impl GradientSpreadMethod {
 	pub fn svg_name(&self) -> &'static str {
 		match self {
-			GradientSpreadMethod::Pad => "",
+			GradientSpreadMethod::Pad => "pad",
 			GradientSpreadMethod::Reflect => "reflect",
 			GradientSpreadMethod::Repeat => "repeat",
 		}
