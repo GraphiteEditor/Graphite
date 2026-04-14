@@ -1720,10 +1720,14 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 	// Read the current values before borrowing context mutably for widgets
 	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
-			let is_simple = matches!(
-				document_node.inputs.get(CapitalizationInput::INDEX).and_then(|input| input.as_value()),
-				Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
-			);
+			let capitalization_input = document_node.inputs.get(CapitalizationInput::INDEX);
+			let capitalization_exposed = capitalization_input.map_or(false, |input| input.is_exposed());
+			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
+			let is_simple = !capitalization_exposed
+				&& matches!(
+					capitalization_input.and_then(|input| input.as_value()),
+					Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
+				);
 			let use_joiner = match document_node.inputs.get(UseJoinerInput::INDEX).and_then(|input| input.as_value()) {
 				Some(&TaggedValue::Bool(x)) => x,
 				_ => true,

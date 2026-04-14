@@ -9,6 +9,31 @@ use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use unicode_segmentation::UnicodeSegmentation;
 
+/// Processes escape sequences in a string, converting `\n`, `\r`, `\t`, `\0`, and `\\` into their corresponding characters.
+/// Unrecognized escape sequences (e.g. `\x`) are preserved as-is.
+fn unescape(input: String) -> String {
+	let mut result = String::with_capacity(input.len());
+	let mut chars = input.chars();
+
+	while let Some(c) = chars.next() {
+		if c == '\\' {
+			match chars.next() {
+				Some('n') => result.push('\n'),
+				Some('r') => result.push('\r'),
+				Some('t') => result.push('\t'),
+				Some('0') => result.push('\0'),
+				Some('\\') => result.push('\\'),
+				Some(unrecognized) => result.extend(['\\', unrecognized]),
+				None => result.push('\\'),
+			}
+		} else {
+			result.push(c);
+		}
+	}
+
+	result
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum StringCapitalization {
@@ -234,11 +259,7 @@ fn string_repeat(
 	#[default(true)]
 	separator_escaping: bool,
 ) -> String {
-	let separator = if separator_escaping {
-		separator.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\0", "\0").replace("\\\\", "\\")
-	} else {
-		separator
-	};
+	let separator = if separator_escaping { unescape(separator) } else { separator };
 
 	let count = count.max(1) as usize;
 
@@ -399,20 +420,18 @@ fn string_capitalization(
 			StringCapitalization::UpperCase => string.to_uppercase(),
 			StringCapitalization::CapitalCase => {
 				let mut capitalize_next = true;
-				string
-					.chars()
-					.map(|c| {
-						if c.is_whitespace() || c == '_' || c == '-' {
-							capitalize_next = true;
-							c
-						} else if capitalize_next {
-							capitalize_next = false;
-							c.to_uppercase().next().unwrap_or(c)
-						} else {
-							c
-						}
-					})
-					.collect()
+				string.chars().fold(String::with_capacity(string.len()), |mut result, c| {
+					if c.is_whitespace() || c == '_' || c == '-' {
+						capitalize_next = true;
+						result.push(c);
+					} else if capitalize_next {
+						capitalize_next = false;
+						result.extend(c.to_uppercase());
+					} else {
+						result.push(c);
+					}
+					result
+				})
 			}
 			StringCapitalization::HeadlineCase => titlecase::titlecase(&string),
 			StringCapitalization::SentenceCase => {
@@ -424,20 +443,18 @@ fn string_capitalization(
 			}
 			StringCapitalization::CamelCase => {
 				let mut capitalize_next = false;
-				string
-					.chars()
-					.map(|c| {
-						if c.is_whitespace() || c == '_' || c == '-' {
-							capitalize_next = true;
-							c
-						} else if capitalize_next {
-							capitalize_next = false;
-							c.to_uppercase().next().unwrap_or(c)
-						} else {
-							c.to_lowercase().next().unwrap_or(c)
-						}
-					})
-					.collect()
+				string.chars().fold(String::with_capacity(string.len()), |mut result, c| {
+					if c.is_whitespace() || c == '_' || c == '-' {
+						capitalize_next = true;
+						result.push(c);
+					} else if capitalize_next {
+						capitalize_next = false;
+						result.extend(c.to_uppercase());
+					} else {
+						result.extend(c.to_lowercase());
+					}
+					result
+				})
 			}
 		}
 	}
@@ -466,11 +483,7 @@ fn string_split(
 	#[default(true)]
 	delimeter_escaping: bool,
 ) -> Vec<String> {
-	let delimeter = if delimeter_escaping {
-		delimeter.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\0", "\0").replace("\\\\", "\\")
-	} else {
-		delimeter
-	};
+	let delimeter = if delimeter_escaping { unescape(delimeter) } else { delimeter };
 
 	string.split(&delimeter).map(str::to_string).collect()
 }
@@ -490,11 +503,7 @@ fn string_join(
 	#[default(true)]
 	separator_escaping: bool,
 ) -> String {
-	let separator = if separator_escaping {
-		separator.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\0", "\0").replace("\\\\", "\\")
-	} else {
-		separator
-	};
+	let separator = if separator_escaping { unescape(separator) } else { separator };
 
 	strings.join(&separator)
 }
