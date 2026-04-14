@@ -2,12 +2,9 @@ use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
-use graph_craft::document::value::TaggedValue;
-use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
-use graphene_std::vector::stroke::{AlignInput, CapInput, JoinInput, MiterLimitInput, PaintOrderInput};
-use graphene_std::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::Fill;
 use kurbo::ParamCurveNearest;
 
 #[derive(Default, ExtractField)]
@@ -94,15 +91,6 @@ pub fn close_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, stroke_widt
 	}
 
 	return is_close;
-
-	// if let Some((segment_index, t)) = subpath.project(mouse_pos) {
-	// 	let nearest_point = subpath.evaluate(SubpathTValue::Parametric { segment_index, t });
-	// 	// debug!("max_stroke_distance: {max_stroke_distance}");
-	// 	// debug!("mouse-stroke distance: {:?}", (mouse_pos - nearest_point).length());
-	// 	(mouse_pos - nearest_point).length_squared() <= max_stroke_distance
-	// } else {
-	// 	false
-	// }
 }
 
 const STROKE_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
@@ -157,16 +145,8 @@ impl Fsm for FillToolFsmState {
 						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
 						let stroke = vector_data.style.stroke();
 
-						let has_real_stroke = stroke.filter(|stroke| stroke.weight() > 0.);
-						let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-						let applied_stroke_transform = set_stroke_transform.unwrap_or(document.metadata().transform_to_viewport(layer));
-						let element_transform = set_stroke_transform
-							.map(|stroke_transform| document.metadata().transform_to_viewport(layer) * stroke_transform.inverse())
-							.unwrap_or(DAffine2::IDENTITY);
-
 						let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
-						let zoom: f64 = document.document_ptz.zoom();
-						let modified_stroke_width = stroke_width;
+						let zoom = document.document_ptz.zoom();
 						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
 
 						// Fill
@@ -174,44 +154,11 @@ impl Fsm for FillToolFsmState {
 						let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
 						subpaths = vector_data.stroke_bezier_paths();
+						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 						if stroke_exists_and_visible && close_to_stroke {
-							let overlay_stroke = || {
-								let mut overlay_stroke = Stroke::new(Some(preview_color), modified_stroke_width);
-								overlay_stroke.transform = applied_stroke_transform;
-
-								let align = graph_layer.find_input(&STROKE_ID, AlignInput::INDEX).unwrap();
-								overlay_stroke.align = if let TaggedValue::StrokeAlign(align) = align { *align } else { StrokeAlign::default() };
-
-								let line_cap = graph_layer.find_input(&STROKE_ID, CapInput::INDEX).unwrap();
-								overlay_stroke.cap = if let TaggedValue::StrokeCap(line_cap) = line_cap { *line_cap } else { StrokeCap::default() };
-
-								let line_join = graph_layer.find_input(&STROKE_ID, JoinInput::INDEX).unwrap();
-								overlay_stroke.join = if let TaggedValue::StrokeJoin(line_join) = line_join { *line_join } else { StrokeJoin::default() };
-
-								let miter_limit = graph_layer.find_input(&STROKE_ID, MiterLimitInput::INDEX).unwrap();
-								overlay_stroke.join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { f64::default() };
-
-								let paint_order = graph_layer.find_input(&STROKE_ID, PaintOrderInput::INDEX).unwrap();
-								overlay_stroke.paint_order = if let TaggedValue::PaintOrder(paint_order) = paint_order {
-									*paint_order
-								} else {
-									PaintOrder::default()
-								};
-
-								overlay_stroke
-							};
-
-							overlay_context.fill_stroke(subpaths, element_transform, &overlay_stroke());
+							overlay_context.stroke_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
 						} else if fill_exists_and_visible {
-							overlay_context.fill_path(
-								subpaths,
-								element_transform,
-								applied_stroke_transform,
-								&preview_color,
-								true,
-								stroke_exists_and_visible,
-								Some(modified_stroke_width),
-							);
+							overlay_context.fill_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
 						}
 					}
 				}

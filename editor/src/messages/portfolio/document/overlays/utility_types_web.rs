@@ -17,7 +17,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::stroke::DashLengthsInput;
-use graphene_std::vector::style::Stroke;
+use graphene_std::vector::style::{PaintOrder, Stroke};
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
@@ -1031,69 +1031,97 @@ impl OverlayContext {
 
 	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
-	pub fn fill_path(
-		&mut self,
-		subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>,
-		transform: DAffine2,
-		stroke_transform: DAffine2,
-		color: &Color,
-		with_pattern: bool,
-		clear_stroke_part: bool,
-		stroke_width: Option<f64>,
-	) {
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+		self.draw_path_from_subpaths(subpaths, transform);
+
+		let color_str = format!("#{:?}", color.to_rgba_hex_srgb());
+		self.render_context.set_fill_style_str(&color_str.as_str());
+		self.render_context.fill();
+	}
+
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, layer_to_viewport: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		// Render for elements with fill
+		// Render for elements with fill only
+		// Render for elements with fill and stroke
+		//----PaintOrder
+		//----StrokeAlign
+
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 
-		if with_pattern {
-			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-		} else {
-			let color_str = format!("#{:?}", color.to_rgba_hex_srgb());
-			self.render_context.set_fill_style_str(&color_str.as_str());
-		}
-		// let stroke_transform = Some(stroke_transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
-		let a = transform.matrix2.x_axis.x;
-		let b = transform.matrix2.y_axis.x;
-		let c = transform.matrix2.x_axis.y;
-		let d = transform.matrix2.y_axis.y;
-		let e = transform.translation.x;
-		let f = transform.translation.y;
-		self.render_context.transform(a, b, c, d, e, f);
-		self.draw_path_from_subpaths(subpaths, stroke_transform);
-		self.render_context.fill();
+		if let Some(stroke) = stroke {
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { layer_to_viewport };
+			let element_transform = if has_real_stroke { layer_to_viewport * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
-		// Make the stroke transparent and erase the fill area overlapping the stroke.
-		if clear_stroke_part {
-			self.render_context.set_line_width(stroke_width.unwrap_or(1.));
-			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
-			self.render_context.set_stroke_style_str(&"#000000");
-			self.render_context.stroke();
+			let [a, b, c, d, e, f] = element_transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f);
+
+			self.draw_path_from_subpaths(subpaths, applied_stroke_transform);
+
+			match stroke.paint_order {
+				PaintOrder::StrokeAbove => {
+					self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+					self.render_context.fill();
+
+					// Make the stroke transparent and erase the fill area overlapping the stroke.
+					self.render_context.set_stroke_style_str(&"#000000");
+					self.render_context.set_line_width(stroke.weight());
+					self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
+					self.render_context.stroke();
+				}
+				PaintOrder::StrokeBelow => {
+					self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+					self.render_context.fill();
+				}
+			}
+		} else {
+			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+			self.render_context.fill();
 		}
 
 		self.end_dpi_aware_transform();
 		self.render_context.restore();
 	}
 
-	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, overlay_stroke: &Stroke) {
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, layer_to_viewport: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		// Render for elements with stroke
+		//----StrokeAlign
+		// Render for elements with stroke only
+		// Render for elements with stroke and fill
+		//----PaintOrder
+
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 
-		self.render_context
-			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
-		self.render_context.set_line_width(overlay_stroke.weight);
-		self.render_context.set_line_cap(overlay_stroke.cap.html_canvas_name().as_str());
-		self.render_context.set_line_join(overlay_stroke.join.html_canvas_name().as_str());
-		self.render_context.set_miter_limit(overlay_stroke.join_miter_limit);
-		// let stroke_transform = Some(overlay_stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.).unwrap_or(DAffine2::IDENTITY);
-		// let stroke_transform = overlay_stroke.transform;
-		let a = transform.matrix2.x_axis.x;
-		let b = transform.matrix2.y_axis.x;
-		let c = transform.matrix2.x_axis.y;
-		let d = transform.matrix2.y_axis.y;
-		let e = transform.translation.x;
-		let f = transform.translation.y;
-		self.render_context.transform(a, b, c, d, e, f);
-		self.draw_path_from_subpaths(subpaths, overlay_stroke.transform);
-		self.render_context.stroke();
+		if let Some(stroke) = stroke {
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { layer_to_viewport };
+			let element_transform = if has_real_stroke { layer_to_viewport * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+
+			let [a, b, c, d, e, f] = element_transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f);
+
+			self.draw_path_from_subpaths(subpaths, applied_stroke_transform);
+
+			self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
+			self.render_context.set_line_width(stroke.weight);
+			self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
+			self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
+			self.render_context.set_miter_limit(stroke.join_miter_limit);
+			match stroke.paint_order {
+				PaintOrder::StrokeAbove => {
+					self.render_context.stroke();
+				}
+				PaintOrder::StrokeBelow => {
+					self.render_context.stroke();
+
+					self.render_context.set_fill_style_str(&"#000000");
+					self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
+					self.render_context.fill();
+				}
+			}
+		}
 
 		self.end_dpi_aware_transform();
 		self.render_context.restore();
