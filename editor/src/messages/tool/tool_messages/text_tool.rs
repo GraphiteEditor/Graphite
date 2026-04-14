@@ -529,6 +529,7 @@ impl TextToolData {
 		}
 
 		self.layer = layer;
+		self.is_lorem_ipsum = false; // Editing an existing layer — discard any lorem ipsum state
 		if self.load_layer_text_node(document, fonts).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
