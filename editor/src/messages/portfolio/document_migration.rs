@@ -109,48 +109,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::animation::RealTimeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::text_nodes::serialize::IDENTIFIER,
-		aliases: &["graphene_core::logic::SerializeNode", "graphene_core::text::SerializeNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::debug::size_of::IDENTIFIER,
 		aliases: &["graphene_core::ops::SizeOfNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::some::IDENTIFIER,
 		aliases: &["graphene_core::ops::SomeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::string_concatenate::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringConcatenateNode", "graphene_core::text::StringConcatenateNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::string_length::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringLengthNode", "graphene_core::text::StringLengthNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::string_replace::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringReplaceNode", "graphene_core::text::StringReplaceNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::string_slice::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringSliceNode", "graphene_core::text::StringSliceNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::string_split::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringSplitNode", "graphene_core::text::StringSplitNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::switch::IDENTIFIER,
-		aliases: &["graphene_core::logic::SwitchNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::to_string::IDENTIFIER,
-		aliases: &["graphene_core::logic::ToStringNode", "graphene_core::text::ToStringNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::json_get::IDENTIFIER,
-		aliases: &["graphene_core::logic::JsonGetNode", "graphene_core::text::JsonGetNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::unwrap_option::IDENTIFIER,
@@ -421,10 +385,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::SineInverseNode", "graphene_core::ops::SineInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::text_nodes::string_value::IDENTIFIER,
-		aliases: &["graphene_math_nodes::StringValueNode", "graphene_core::ops::StringValueNode", "math_nodes::StringValueNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::subtract::IDENTIFIER,
 		aliases: &["graphene_math_nodes::SubtractNode", "graphene_core::ops::SubtractNode"],
 	},
@@ -683,6 +643,46 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::text::text::IDENTIFIER,
 		aliases: &["graphene_core::text::text::TextNode", "graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::StringValueNode", "graphene_core::ops::StringValueNode", "math_nodes::StringValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_concatenate::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringConcatenateNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_length::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringLengthNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_replace::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringReplaceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_slice::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringSliceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_split::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringSplitNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::switch::IDENTIFIER,
+		aliases: &["graphene_core::logic::SwitchNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::to_string::IDENTIFIER,
+		aliases: &["graphene_core::logic::ToStringNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::json_get::IDENTIFIER,
+		aliases: &["graphene_core::logic::JsonGetNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::serialize::IDENTIFIER,
+		aliases: &["graphene_core::logic::SerializeNode"],
 	},
 	// ================================
 	// transform

@@ -153,7 +153,7 @@ fn to_string(_: impl Ctx, value: String) -> String {
 /// Joins two strings together.
 #[node_macro::node(category("Text"))]
 fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, second: TextArea) -> String {
-	first.clone() + &second
+	first + &second
 }
 
 /// Replaces all occurrences of "From" with "To" in the input string.
