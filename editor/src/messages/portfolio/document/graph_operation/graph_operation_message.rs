@@ -14,8 +14,6 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::style::{Fill, Stroke};
-use graphene_std::raster::Image;
-use graphene_std::Color;
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -130,6 +128,5 @@ pub enum GraphOperationMessage {
 	},
 	ApplyMaskStencil {
 		layers: Vec<LayerNodeIdentifier>,
-		mask_image: Image<Color>,
 	},
 }

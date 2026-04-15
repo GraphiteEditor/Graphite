@@ -1150,6 +1150,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Store the currently selected layers as mask targets
 				self.mask_target_layers = self.network_interface.selected_nodes().selected_layers(self.network_interface.document_metadata()).collect();
+				let layer_parent = self.new_layer_parent(true);
 
 				// Create a new group layer for the mask
 				let mask_group_id = NodeId::new();
@@ -1158,7 +1159,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::AddTransaction);
 
 				// Create the mask group layer as an empty custom layer container
-				graph_modification_utils::new_custom(mask_group_id, Vec::new(), self.new_layer_parent(true), responses);
+				graph_modification_utils::new_custom(mask_group_id, Vec::new(), layer_parent, responses);
 
 				// Set the mask group opacity to 50% so the user can see artwork beneath
 				responses.add(GraphOperationMessage::OpacitySet {
@@ -1187,16 +1188,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(DocumentMessage::EndTransaction);
 					}
 				} else {
-					// Rasterize the mask group and apply it to target layers
-					if let Some(mask_group_id) = self.mask_group_id {
-						responses.add(GraphOperationMessage::ApplyMaskStencil {
-							layers: self.mask_target_layers.clone(),
-							mask_image: graphene_std::raster::Image::new(1, 1, graphene_std::Color::WHITE),
-						});
-						responses.add(NodeGraphMessage::DeleteNodes {
-							node_ids: vec![mask_group_id],
-							delete_children: true,
-						});
+					// Apply the mask group to the target layers
+					if self.mask_group_id.is_some() {
+						responses.add(DocumentMessage::AddTransaction);
+						responses.add(GraphOperationMessage::ApplyMaskStencil { layers: self.mask_target_layers.clone() });
+						responses.add(DocumentMessage::EndTransaction);
 					}
 				}
 

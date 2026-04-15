@@ -439,9 +439,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
 				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
 			}
-			GraphOperationMessage::ApplyMaskStencil { layers, mask_image } => {
-				let _ = mask_image;
-
+			GraphOperationMessage::ApplyMaskStencil { layers } => {
 				// For each target layer, toggle clip mode so the existing clip infrastructure is engaged.
 				for layer in layers {
 					responses.add(GraphOperationMessage::ClipModeToggle { layer });
