@@ -33,7 +33,7 @@
 	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
 		const name = doc.details.name;
-		const unsaved = !doc.details.isSaved;
+		const unsaved = !doc.details.is_saved;
 		if (!editor.inDevelopmentMode()) return { name, unsaved };
 
 		const tooltipDescription = `Document ID: ${doc.id}`;

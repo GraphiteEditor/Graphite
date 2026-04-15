@@ -314,39 +314,19 @@ impl App {
 					responses.push(message);
 				}
 			}
-			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
-				if let Some((id, document)) = self.persistent_data.current_document() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: true,
-					};
-					responses.push(message);
-				}
-			}
-			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
-				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: true,
-						select_after_open: false,
-					};
-					responses.push(message);
-				}
-				for (id, document) in self.persistent_data.documents_after_current() {
-					let message = DesktopWrapperMessage::LoadDocument {
+			DesktopFrontendMessage::PersistenceLoadDocuments => {
+				// Open all documents in persisted tab order, then select the current one
+				for (id, document) in self.persistent_data.documents() {
+					responses.push(DesktopWrapperMessage::LoadDocument {
 						id,
 						document,
 						to_front: false,
 						select_after_open: false,
-					};
-					responses.push(message);
+					});
 				}
+
 				if let Some(id) = self.persistent_data.current_document_id() {
-					let message = DesktopWrapperMessage::SelectDocument { id };
-					responses.push(message);
+					responses.push(DesktopWrapperMessage::SelectDocument { id });
 				}
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {

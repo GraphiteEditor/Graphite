@@ -1,155 +1,148 @@
 import { get } from "svelte/store";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, PersistedDocumentInfo, PersistedState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const PERSISTENCE_DB = "graphite";
 const PERSISTENCE_STORE = "store";
 
-export async function storeDocumentTabOrder(portfolio: PortfolioStore) {
-	const documentOrder = get(portfolio).documents.map((doc) => String(doc.id));
-	await databaseSet("documents_tab_order", documentOrder);
+function emptyPersistedState(): PersistedState {
+	// eslint-disable-next-line camelcase
+	return { documents: [], current_document: undefined };
 }
 
-export async function storeCurrentDocumentId(documentId: string) {
-	await databaseSet("current_document_id", String(documentId));
+function createDocumentInfo(id: bigint, name: string, isSaved: boolean): PersistedDocumentInfo {
+	// eslint-disable-next-line camelcase
+	return { id, name, is_saved: isSaved };
+}
+
+// Reorder document entries to match the given ID ordering, appending any unmentioned entries at the end
+function reorderDocuments(documents: PersistedDocumentInfo[], orderedIds: bigint[]): PersistedDocumentInfo[] {
+	const byId = new Map(documents.map((entry) => [entry.id, entry]));
+	const reordered: PersistedDocumentInfo[] = [];
+
+	orderedIds.forEach((id) => {
+		const existing = byId.get(id);
+		if (existing) {
+			reordered.push(existing);
+			byId.delete(id);
+		}
+	});
+
+	// Append any entries not yet present in the portfolio (e.g. documents still loading at startup)
+	byId.forEach((entry) => reordered.push(entry));
+
+	return reordered;
+}
+
+// ====================================
+// State-based persistence (new format)
+// ====================================
+
+export async function storeDocumentTabOrder(portfolio: PortfolioStore) {
+	const portfolioData = get(portfolio);
+	const orderedIds = portfolioData.documents.map((doc) => doc.id);
+
+	await databaseUpdate<PersistedState>("state", (old) => {
+		const state = old || emptyPersistedState();
+		return { ...state, documents: reorderDocuments(state.documents, orderedIds) };
+	});
 }
 
 export async function storeDocument(autoSaveDocument: MessageBody<"TriggerPersistenceWriteDocument">, portfolio: PortfolioStore) {
-	await databaseUpdate<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", (old) => {
+	const { documentId, document, details } = autoSaveDocument;
+
+	// Update content in the documents store
+	await databaseUpdate<Record<string, string>>("documents", (old) => {
 		const documents = old || {};
-		documents[String(autoSaveDocument.documentId)] = autoSaveDocument;
+		documents[String(documentId)] = document;
 		return documents;
 	});
 
-	await storeDocumentTabOrder(portfolio);
-	await storeCurrentDocumentId(String(autoSaveDocument.documentId));
+	// Update metadata and ordering in the state store
+	const portfolioData = get(portfolio);
+	const orderedIds = portfolioData.documents.map((doc) => doc.id);
+
+	await databaseUpdate<PersistedState>("state", (old) => {
+		const state = old || emptyPersistedState();
+
+		// Update (or add) the document info entry
+		const entry = createDocumentInfo(documentId, details.name, details.is_saved);
+		const existingIndex = state.documents.findIndex((doc) => doc.id === documentId);
+		if (existingIndex !== -1) {
+			state.documents[existingIndex] = entry;
+		} else {
+			state.documents.push(entry);
+		}
+
+		// eslint-disable-next-line camelcase
+		state.current_document = documentId;
+		state.documents = reorderDocuments(state.documents, orderedIds);
+		return state;
+	});
 }
 
 export async function removeDocument(id: string, portfolio: PortfolioStore) {
-	await databaseUpdate<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents", (old) => {
+	const documentId = BigInt(id);
+
+	// Remove content from the documents store
+	await databaseUpdate<Record<string, string>>("documents", (old) => {
 		const documents = old || {};
 		delete documents[id];
 		return documents;
 	});
 
-	await databaseUpdate<string[]>("documents_tab_order", (old) => {
-		const order = old || [];
-		return order.filter((docId) => docId !== id);
+	// Update state: remove the entry and update current_document
+	const portfolioData = get(portfolio);
+	const documentCount = portfolioData.documents.length;
+
+	await databaseUpdate<PersistedState>("state", (old) => {
+		const state: PersistedState = old || emptyPersistedState();
+		state.documents = state.documents.filter((doc) => doc.id !== documentId);
+
+		if (state.current_document === documentId) {
+			// eslint-disable-next-line camelcase
+			state.current_document = documentCount > 0 ? portfolioData.documents[portfolioData.activeDocumentIndex].id : undefined;
+		}
+
+		return state;
+	});
+}
+
+export async function loadDocuments(editor: EditorWrapper) {
+	await migrateToNewFormat();
+	await garbageCollectDocuments();
+
+	const state = await databaseGet<PersistedState>("state");
+	const documentContents = await databaseGet<Record<string, string>>("documents");
+	if (!state || !documentContents || state.documents.length === 0) return;
+
+	// Find the current document (or fall back to the last document in the list)
+	const currentId = state.current_document;
+	const currentEntry = currentId !== undefined ? state.documents.find((doc) => doc.id === currentId) : undefined;
+	const current = currentEntry || state.documents[state.documents.length - 1];
+
+	// Open all documents in persisted tab order, then select the current one
+	state.documents.forEach((entry) => {
+		const content = documentContents[String(entry.id)];
+		if (content === undefined) return;
+
+		editor.openAutoSavedDocument(entry.id, entry.name, entry.is_saved, content, false);
 	});
 
-	const documentCount = get(portfolio).documents.length;
-	if (documentCount > 0) {
-		const documentIndex = get(portfolio).activeDocumentIndex;
-		const documentId = String(get(portfolio).documents[documentIndex].id);
-
-		const tabOrder = (await databaseGet<string[]>("documents_tab_order")) || [];
-		if (tabOrder.includes(documentId)) {
-			await storeCurrentDocumentId(documentId);
-		}
-	} else {
-		await databaseDelete("current_document_id");
-	}
-}
-
-export async function loadFirstDocument(editor: EditorWrapper) {
-	const previouslySavedDocuments = await databaseGet<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents");
-
-	// TODO: Eventually remove this document upgrade code
-	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if the browser is storing the old format as strings
-	if (previouslySavedDocuments) {
-		Object.values(previouslySavedDocuments).forEach((doc) => {
-			if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
-		});
-	}
-
-	const documentOrder = await databaseGet<string[]>("documents_tab_order");
-	const currentDocumentIdString = await databaseGet<string>("current_document_id");
-	const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
-	if (!previouslySavedDocuments || !documentOrder) return;
-
-	const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
-
-	if (currentDocumentId !== undefined && String(currentDocumentId) in previouslySavedDocuments) {
-		const doc = previouslySavedDocuments[String(currentDocumentId)];
-		editor.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
-		editor.selectDocument(currentDocumentId);
-	} else {
-		const len = orderedSavedDocuments.length;
-		if (len > 0) {
-			const doc = orderedSavedDocuments[len - 1];
-			editor.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
-			editor.selectDocument(doc.documentId);
-		}
-	}
-}
-
-export async function loadRestDocuments(editor: EditorWrapper) {
-	const previouslySavedDocuments = await databaseGet<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents");
-
-	// TODO: Eventually remove this document upgrade code
-	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
-	if (previouslySavedDocuments) {
-		Object.values(previouslySavedDocuments).forEach((doc) => {
-			if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
-		});
-	}
-
-	const documentOrder = await databaseGet<string[]>("documents_tab_order");
-	const currentDocumentIdString = await databaseGet<string>("current_document_id");
-	const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
-	if (!previouslySavedDocuments || !documentOrder) return;
-
-	const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
-
-	const currentIndex = currentDocumentId !== undefined ? orderedSavedDocuments.findIndex((doc) => doc.documentId === currentDocumentId) : -1;
-
-	// Open documents in order around the current document, placing earlier ones before it and later ones after
-	if (currentIndex !== -1 && currentDocumentId !== undefined) {
-		for (let i = currentIndex - 1; i >= 0; i--) {
-			const { documentId, document, details } = orderedSavedDocuments[i];
-			const { name, isSaved } = details;
-			editor.openAutoSavedDocument(documentId, name, isSaved, document, true);
-		}
-		for (let i = currentIndex + 1; i < orderedSavedDocuments.length; i++) {
-			const { documentId, document, details } = orderedSavedDocuments[i];
-			const { name, isSaved } = details;
-			editor.openAutoSavedDocument(documentId, name, isSaved, document, false);
-		}
-
-		editor.selectDocument(currentDocumentId);
-	}
-	// No valid current document: open all remaining documents and select the last one
-	else {
-		const length = orderedSavedDocuments.length;
-
-		for (let i = length - 2; i >= 0; i--) {
-			const { documentId, document, details } = orderedSavedDocuments[i];
-			const { name, isSaved } = details;
-			editor.openAutoSavedDocument(documentId, name, isSaved, document, true);
-		}
-
-		if (length > 0) editor.selectDocument(orderedSavedDocuments[length - 1].documentId);
-	}
+	editor.selectDocument(current.id);
 }
 
 export async function saveActiveDocument(documentId: bigint) {
-	const previouslySavedDocuments = await databaseGet<Record<string, MessageBody<"TriggerPersistenceWriteDocument">>>("documents");
+	await databaseUpdate<PersistedState>("state", (old) => {
+		const state: PersistedState = old || emptyPersistedState();
 
-	const documentIdString = String(documentId);
+		const exists = state.documents.some((doc) => doc.id === documentId);
+		// eslint-disable-next-line camelcase
+		if (exists) state.current_document = documentId;
 
-	// TODO: Eventually remove this document upgrade code
-	// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
-	if (previouslySavedDocuments) {
-		Object.values(previouslySavedDocuments).forEach((doc) => {
-			if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
-		});
-	}
-
-	if (!previouslySavedDocuments) return;
-	if (documentIdString in previouslySavedDocuments) {
-		await storeCurrentDocumentId(documentIdString);
-	}
+		return state;
+	});
 }
 
 export async function saveEditorPreferences(preferences: unknown) {
@@ -170,11 +163,117 @@ export async function loadWorkspaceLayout(editor: EditorWrapper) {
 	if (layout) editor.loadWorkspaceLayout(layout);
 }
 
+// Remove orphaned entries from the "documents" content store that have no corresponding entry in "state"
+async function garbageCollectDocuments() {
+	const state = await databaseGet<PersistedState>("state");
+	const documentContents = await databaseGet<Record<string, string>>("documents");
+	if (!documentContents) return;
+
+	const validIds = new Set(state ? state.documents.map((doc) => String(doc.id)) : []);
+	let changed = false;
+
+	Object.keys(documentContents).forEach((key) => {
+		if (!validIds.has(key)) {
+			delete documentContents[key];
+			changed = true;
+		}
+	});
+
+	if (changed) await databaseSet("documents", documentContents);
+}
+
 export async function wipeDocuments() {
+	await databaseDelete("state");
+	await databaseDelete("documents");
+
+	await wipeOldFormat();
+}
+
+// =========================
+// Migration from old format
+// =========================
+
+// TODO: Eventually remove this document upgrade code
+async function wipeOldFormat() {
 	await databaseDelete("documents_tab_order");
 	await databaseDelete("current_document_id");
-	await databaseDelete("documents");
 }
+
+// TODO: Eventually remove this document upgrade code
+async function migrateToNewFormat() {
+	// Detect the old format by checking for the existence of the "documents_tab_order" key
+	const oldTabOrder = await databaseGet<string[]>("documents_tab_order");
+	if (oldTabOrder === undefined) return;
+
+	const oldDocuments = await databaseGet<Record<string, unknown>>("documents");
+
+	// Build the new "state" and "documents" from the old format
+	const newDocumentContents: Record<string, string> = {};
+	const newDocumentInfos: PersistedDocumentInfo[] = [];
+
+	if (oldDocuments) {
+		Object.values(oldDocuments).forEach((value) => {
+			const oldEntry: unknown = value;
+			if (typeof oldEntry !== "object" || oldEntry === null) return;
+			if (!("documentId" in oldEntry) || !("document" in oldEntry) || !("details" in oldEntry)) return;
+
+			// Extract the document ID, handling bigint, number, and string formats
+			let id: bigint;
+			if (typeof oldEntry.documentId === "bigint") {
+				id = oldEntry.documentId;
+			} else if (typeof oldEntry.documentId === "number") {
+				id = BigInt(oldEntry.documentId);
+			} else if (typeof oldEntry.documentId === "string") {
+				id = BigInt(oldEntry.documentId);
+			} else {
+				return;
+			}
+
+			// Extract the document content
+			if (typeof oldEntry.document !== "string") return;
+			newDocumentContents[String(id)] = oldEntry.document;
+
+			// Extract document details, handling camelCase from the old shipped format
+			const details: unknown = oldEntry.details;
+			if (typeof details !== "object" || details === null) return;
+
+			let name = "";
+			if ("name" in details && typeof details.name === "string") name = details.name;
+
+			const isSaved = extractIsSavedFromUnknown(details);
+
+			newDocumentInfos.push(createDocumentInfo(id, name, isSaved));
+		});
+	}
+
+	const newState = emptyPersistedState();
+	newState.documents = newDocumentInfos;
+
+	// Write the new format
+	await databaseSet("state", newState);
+	await databaseSet("documents", newDocumentContents);
+
+	// Delete old keys
+	await databaseDelete("documents_tab_order");
+	await databaseDelete("current_document_id");
+}
+
+// TODO: Eventually remove this document upgrade code
+function extractIsSavedFromUnknown(details: unknown): boolean {
+	if (typeof details !== "object" || details === null) return false;
+
+	// Old camelCase format
+	if ("isSaved" in details) return Boolean(details.isSaved);
+
+	// New snake_case format
+	if ("is_saved" in details) return Boolean(details.is_saved);
+
+	return false;
+}
+
+// =================
+// IndexedDB helpers
+// =================
 
 function databaseOpen(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {

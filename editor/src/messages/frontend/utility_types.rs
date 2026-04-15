@@ -15,10 +15,27 @@ pub struct OpenDocument {
 pub struct DocumentDetails {
 	pub name: String,
 	pub path: Option<PathBuf>,
-	#[serde(rename = "isSaved")]
+	#[serde(alias = "isSaved")]
 	pub is_saved: bool,
-	#[serde(rename = "isAutoSaved")]
+	#[serde(alias = "isAutoSaved")]
 	pub is_auto_saved: bool,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PersistedDocumentInfo {
+	pub id: DocumentId,
+	pub name: String,
+	#[serde(default)]
+	pub path: Option<PathBuf>,
+	pub is_saved: bool,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PersistedState {
+	pub documents: Vec<PersistedDocumentInfo>,
+	pub current_document: Option<DocumentId>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

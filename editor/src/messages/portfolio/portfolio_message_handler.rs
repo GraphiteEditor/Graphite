@@ -109,8 +109,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 
-				// Tell frontend to load the current document
-				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
+				// Tell frontend to load persistent auto-saved documents (placed early so IndexedDB reads overlap with subsequent UI setup)
+				responses.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
+
+				// Tell frontend to load documents passed in as launch arguments
+				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 
 				// Display the menu bar at the top of the window
 				responses.add(MenuBarMessage::SendLayout);
@@ -118,11 +121,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Send the initial workspace panel layout to the frontend
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 
-				// Send the information for tooltips and categories for each node/input.
-				responses.add(FrontendMessage::SendUIMetadata {
-					node_descriptions: document_node_definitions::collect_node_descriptions(),
-					node_types: document_node_definitions::collect_node_types(),
-				});
+				// Request status bar info layout
+				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
 				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
 				responses.add(FrontendMessage::SendShortcutFullscreen {
@@ -136,14 +136,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
 				});
 
-				// Request status bar info layout
-				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
-
-				// Tell frontend to finish loading persistent documents
-				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
-
-				// Tell frontend to load documented passed in as launch arguments
-				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
+				// Send the information for tooltips and categories for each node/input.
+				responses.add(FrontendMessage::SendUIMetadata {
+					node_descriptions: document_node_definitions::collect_node_descriptions(),
+					node_types: document_node_definitions::collect_node_types(),
+				});
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
