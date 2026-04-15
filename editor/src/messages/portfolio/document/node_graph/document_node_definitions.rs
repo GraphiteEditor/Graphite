@@ -537,7 +537,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(logic::switch::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::switch::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
 								..Default::default()
 							},
@@ -1491,7 +1491,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
-			category: "Text",
+			category: "Text: Regex",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1548,7 +1548,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						("Pattern", "The regular expression pattern to search for.").into(),
 						(
 							"Match Index",
-							"Which occurrence of the pattern to return (0 for the first). Negative indices count from the last match.",
+							"Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.",
 						)
 							.into(),
 						("Case Insensitive", "Match letters regardless of case.").into(),
@@ -1567,7 +1567,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, -2)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1591,7 +1591,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Finds a regex match in the string. The primary output is the whole match, and the secondary output is the list of capture groups."),
+			description: Cow::Borrowed(
+				r#"Finds a portion of the string matching a regular expression pattern. With "Match Index" at its default 0, it selects the first non-overlapping occurrence, but others may be selected. Capture groups, if any, are produced as a list in the "Captures" output."#,
+			),
 			properties: None,
 		},
 		// Aims for interoperable compatibility with:

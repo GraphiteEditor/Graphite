@@ -4,9 +4,7 @@ use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::table::Table;
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
-use raster_types::{CPU, GPU, Raster};
+use raster_types::{CPU, Raster};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Converts escape sequence representations (`\n`, `\r`, `\t`, `\0`, `\\`) into their corresponding control characters.
@@ -82,30 +80,6 @@ fn to_string(_: impl Ctx, value: String) -> String {
 	value
 }
 
-/// Converts a value to a JSON string representation.
-#[node_macro::node(category("Text"))]
-fn serialize<T: serde::Serialize>(
-	_: impl Ctx,
-	#[implementations(
-		String,
-		bool,
-		f64,
-		u32,
-		u64,
-		DVec2,
-		DAffine2,
-		// Table<Artboard>,
-		// Table<Graphic>,
-		// Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		// Table<GradientStops>,
-	)]
-	value: T,
-) -> String {
-	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
-}
-
 /// Joins two strings together.
 #[node_macro::node(category("Text"))]
 fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, second: TextArea) -> String {
@@ -119,36 +93,66 @@ fn string_replace(_: impl Ctx, string: String, from: TextArea, to: TextArea) -> 
 }
 
 /// Extracts a substring from the input string, starting at "Start" and ending before "End".
-/// Negative indices count from the end of the string.
-/// If the index of "Start" equals or exceeds "End", the result is an empty string.
+///
+/// Negative indices count from the end of the string. If the index of "Start" equals or exceeds "End", the result is an empty string.
 #[node_macro::node(category("Text"))]
 fn string_slice(_: impl Ctx, string: String, start: SignedInteger, end: SignedInteger) -> String {
-	let total_chars = string.chars().count();
+	let total_graphemes = string.graphemes(true).count();
 
 	let start = if start < 0. {
-		total_chars.saturating_sub(start.abs() as usize)
+		total_graphemes.saturating_sub(start.abs() as usize)
 	} else {
-		(start as usize).min(total_chars)
+		(start as usize).min(total_graphemes)
 	};
 	let end = if end <= 0. {
-		total_chars.saturating_sub(end.abs() as usize)
+		total_graphemes.saturating_sub(end.abs() as usize)
 	} else {
-		(end as usize).min(total_chars)
+		(end as usize).min(total_graphemes)
 	};
 
 	if start >= end {
 		return String::new();
 	}
 
-	string.chars().skip(start).take(end - start).collect()
+	string.graphemes(true).skip(start).take(end - start).collect()
+}
+
+/// Clips the string to a maximum character length, optionally appending a suffix (like "…") when truncation occurs. Strings already within the limit are not modified.
+#[node_macro::node(category("Text"))]
+fn string_truncate(
+	_: impl Ctx,
+	/// The string to truncate.
+	string: String,
+	/// The maximum number of characters allowed, including the suffix if one is appended.
+	#[default(80)]
+	#[min(0)]
+	length: u32,
+	/// A suffix appended to indicate truncation occurred, unless empty. Its length counts towards the character budget.
+	#[default("…")]
+	suffix: String,
+) -> String {
+	let max_length = length as usize;
+	let grapheme_count = string.graphemes(true).count();
+
+	if grapheme_count <= max_length {
+		return string;
+	}
+
+	let suffix_length = suffix.graphemes(true).count();
+	let keep = max_length.saturating_sub(suffix_length);
+
+	let mut truncated: String = string.graphemes(true).take(keep).collect();
+	truncated.push_str(&suffix);
+	truncated
 }
 
 /// Formats a number as a string with control over decimal places, decimal separator, and thousands grouping.
 #[node_macro::node(category("Text"), properties("format_number_properties"))]
 fn format_number(
 	_: impl Ctx,
+	/// The number to format as a string.
 	number: f64,
-	/// The number of digits after the decimal point. The value is rounded to fit. Set to 0 to show only whole numbers.
+	/// The amount of digits after the decimal point. The value is rounded to fit. Set to 0 to show only whole numbers.
 	#[default(2)]
 	#[min(0)]
 	decimal_places: u32,
@@ -163,7 +167,7 @@ fn format_number(
 	/// The character(s) inserted between digit groups.
 	#[default(",")]
 	thousands_separator: String,
-	/// Don't group 4-digit numbers (only start grouping at 10,000 and above).
+	/// Don't group 4-digit numbers with a thousands separator (only start grouping at 10,000 and above).
 	#[name("Start at 10,000")]
 	start_at_10000: bool,
 ) -> String {
@@ -237,15 +241,31 @@ fn format_number(
 	}
 }
 
-/// Parses a string into a number. Returns the fallback value if the string is not a valid number.
+/// Parses a string into a number. Falls back to the chosen value if the string is not a valid number.
 #[node_macro::node(category("Text"))]
-fn string_to_number(_: impl Ctx, string: String, fallback: f64) -> f64 {
+fn string_to_number(
+	_: impl Ctx,
+	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, and scientific notation (e.g. "1e-3") is supported.
+	string: String,
+	/// The value of the result if the string cannot be parsed as a valid number.
+	fallback: f64,
+) -> f64 {
 	string.trim().parse::<f64>().unwrap_or(fallback)
 }
 
-/// Removes leading and/or trailing whitespace from a string.
+/// Removes leading and/or trailing whitespace from a string. Common whitespace characters include spaces, tabs, and newlines.
 #[node_macro::node(category("Text"))]
-fn string_trim(_: impl Ctx, string: String, #[default(true)] start: bool, #[default(true)] end: bool) -> String {
+fn string_trim(
+	_: impl Ctx,
+	/// The string that may contain leading and trailing whitespace that should be removed.
+	string: String,
+	/// Whether the start of the string should have its whitespace removed.
+	#[default(true)]
+	start: bool,
+	/// Whether the end of the string should have its whitespace removed.
+	#[default(true)]
+	end: bool,
+) -> String {
 	match (start, end) {
 		(true, true) => string.trim().to_string(),
 		(true, false) => string.trim_start().to_string(),
@@ -256,7 +276,7 @@ fn string_trim(_: impl Ctx, string: String, #[default(true)] start: bool, #[defa
 
 /// Converts between literal escape sequences and their corresponding control characters within a string.
 ///
-/// Unescape: `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash) are converted into the actual characters.
+/// Unescape: `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash) are converted into the actual special characters.
 /// Escape: the actual special characters are converted back into their escape sequence representations.
 #[node_macro::node(category("Text"))]
 fn string_escape(
@@ -270,9 +290,13 @@ fn string_escape(
 	if unescape { unescape_string(string) } else { escape_string(string) }
 }
 
-/// Reverses the order of grapheme clusters (visual characters) in the string.
+/// Reverses the sequence of characters making up the string so it reads back-to-front. ("Backwards text" becomes "txet sdrawkcaB".)
 #[node_macro::node(category("Text"))]
-fn string_reverse(_: impl Ctx, string: String) -> String {
+fn string_reverse(
+	_: impl Ctx,
+	/// The string to be reversed.
+	string: String,
+) -> String {
 	string.graphemes(true).rev().collect()
 }
 
@@ -280,6 +304,7 @@ fn string_reverse(_: impl Ctx, string: String) -> String {
 #[node_macro::node(category("Text"))]
 fn string_repeat(
 	_: impl Ctx,
+	/// The string to be repeated.
 	string: String,
 	/// The number of times the string should appear in the output.
 	#[default(2)]
@@ -307,18 +332,19 @@ fn string_repeat(
 	result
 }
 
-/// Pads the string to a target length by filling with the given string. If the string is already at or exceeds the target length, it is returned unchanged.
+/// Pads the string to a target length by filling with the given repeated substring. If the string already meets or exceeds the target length, it is returned unchanged.
 #[node_macro::node(category("Text"))]
 fn string_pad(
 	_: impl Ctx,
+	/// The string to be padded to a target length.
 	string: String,
-	/// The target character length after padding. When "Up To" is set, this applies to the portion before (or after) that substring.
+	/// The target character length after padding. When "Up To" is set, this length concerns only the portion before (or after) that substring.
 	#[default(10)]
 	length: u32,
-	/// The string used to fill the remaining space. Repeats and trims to fit, if multi-character.
+	/// The repeated substring used to fill the remaining space. A multi-charcter substring may end partway through its final repetition.
 	#[default("#")]
 	padding: String,
-	/// Pad only the length of the string encountered before (or after) this substring, if given and present (otherwise the full string is considered).
+	/// Pad only the length of the string encountered before the start of the first (or after the end of the last) occurrence of this substring, if given and present (otherwise the full string is considered).
 	///
 	/// For example, this can pad numbers with leading zeros to align them before the decimal point.
 	up_to: String,
@@ -340,32 +366,32 @@ fn string_pad(
 		if from_end {
 			// Pad the portion after the substring
 			let after_substring = &after[up_to.len()..];
-			let current_length = after_substring.chars().count();
+			let current_length = after_substring.graphemes(true).count();
 			if current_length >= target_length {
 				return string;
 			}
 			let pad_length = target_length - current_length;
-			let padding: String = padding.chars().cycle().take(pad_length).collect();
+			let padding: String = padding.graphemes(true).cycle().take(pad_length).collect();
 			return format!("{before}{up_to}{after_substring}{padding}");
 		} else {
 			// Pad the portion before the substring
-			let current_length = before.chars().count();
+			let current_length = before.graphemes(true).count();
 			if current_length >= target_length {
 				return string;
 			}
 			let pad_length = target_length - current_length;
-			let padding: String = padding.chars().cycle().take(pad_length).collect();
+			let padding: String = padding.graphemes(true).cycle().take(pad_length).collect();
 			return format!("{padding}{before}{after}");
 		}
 	}
 
-	let current_length = string.chars().count();
+	let current_length = string.graphemes(true).count();
 	if current_length >= target_length {
 		return string;
 	}
 
 	let pad_length = target_length - current_length;
-	let padding: String = padding.chars().cycle().take(pad_length).collect();
+	let padding: String = padding.graphemes(true).cycle().take(pad_length).collect();
 
 	if from_end { string + &padding } else { padding + &string }
 }
@@ -374,7 +400,9 @@ fn string_pad(
 #[node_macro::node(category("Text"))]
 fn string_contains(
 	_: impl Ctx,
+	/// The string to search within.
 	string: String,
+	/// The substring to search for.
 	substring: String,
 	/// Only match if the substring appears at the start of the string.
 	at_start: bool,
@@ -389,7 +417,7 @@ fn string_contains(
 	}
 }
 
-/// Similar to the **String Contains** node, this finds the first (or last) occurrence of a substring within the string and returns its start index, or -1 if not found.
+/// Similar to the **String Contains** node, this searches within the input string for the first (or last) occurrence of a substring and returns the index of where that begins, or -1 if not found.
 #[node_macro::node(category("Text"))]
 fn string_find_index(
 	_: impl Ctx,
@@ -401,25 +429,101 @@ fn string_find_index(
 	from_end: bool,
 ) -> f64 {
 	if substring.is_empty() {
-		return if from_end { string.chars().count() as f64 } else { 0. };
+		return if from_end { string.graphemes(true).count() as f64 } else { 0. };
 	}
 
 	if from_end {
 		// Search backwards by finding all byte-level matches and taking the last one
-		string.rmatch_indices(&*substring).next().map_or(-1., |(byte_index, _)| string[..byte_index].chars().count() as f64)
+		string
+			.rmatch_indices(&*substring)
+			.next()
+			.map_or(-1., |(byte_index, _)| string[..byte_index].graphemes(true).count() as f64)
 	} else {
-		string.match_indices(&*substring).next().map_or(-1., |(byte_index, _)| string[..byte_index].chars().count() as f64)
+		string
+			.match_indices(&*substring)
+			.next()
+			.map_or(-1., |(byte_index, _)| string[..byte_index].graphemes(true).count() as f64)
 	}
 }
 
-/// Converts a string's capitalization style, optionally joining words with a specified separator.
+/// Counts the number of occurrences of a substring within the string.
+#[node_macro::node(category("Text"))]
+fn string_occurrences(
+	_: impl Ctx,
+	/// The string to search within.
+	string: String,
+	/// The substring to count occurrences of.
+	substring: String,
+	/// Whether to count overlapping occurrences, using the substring as a sliding window.
+	///
+	/// For example, "aa" occurs twice in "aaaa" without overlapping but three times with overlapping.
+	overlapping: bool,
+) -> f64 {
+	if substring.is_empty() {
+		return 0.;
+	}
+
+	// NON-OVERLAPPING: Simple linear scan.
+	// O(n), where n = string length
+	if !overlapping {
+		return string.matches(&*substring).count() as f64;
+	}
+
+	// OVERLAPPING: KMP (Knuth-Morris-Pratt) algorithm.
+	// O(n + m), where n = string length, m = substring length
+
+	let pattern: Vec<char> = substring.chars().collect();
+	let text: Vec<char> = string.chars().collect();
+
+	// Build the KMP failure function:
+	// For each position in the pattern, the length of the longest proper prefix that is also a suffix.
+	// This lets us skip ahead on mismatches instead of restarting from scratch.
+	let mut failure = vec![0_usize; pattern.len()];
+	let mut k = 0;
+	for i in 1..pattern.len() {
+		while k > 0 && pattern[k] != pattern[i] {
+			k = failure[k - 1];
+		}
+
+		if pattern[k] == pattern[i] {
+			k += 1;
+		}
+
+		failure[i] = k;
+	}
+
+	// Scan the text, advancing the pattern cursor without ever backtracking in the text
+	let mut count: usize = 0;
+	let mut pattern_cursor = 0;
+	for &text_char in &text {
+		while pattern_cursor > 0 && pattern[pattern_cursor] != text_char {
+			pattern_cursor = failure[pattern_cursor - 1];
+		}
+
+		if pattern[pattern_cursor] == text_char {
+			pattern_cursor += 1;
+		}
+
+		if pattern_cursor == pattern.len() {
+			count += 1;
+
+			// Reset using failure function to allow overlapping matches
+			pattern_cursor = failure[pattern_cursor - 1];
+		}
+	}
+
+	count as f64
+}
+
+/// Converts a string's capitalization style to another of the common upper and lower case patterns, optionally joining words with a chosen separator.
 #[node_macro::node(category("Text"), properties("string_capitalization_properties"))]
 fn string_capitalization(
 	_: impl Ctx,
+	/// The string to have its letter capitalization converted.
 	string: String,
+	/// The capitalization style to apply.
 	capitalization: StringCapitalization,
-	/// Whether to split the string into words and rejoin with the specified joiner.
-	/// When disabled, the existing separators and word structure are preserved.
+	/// Whether to split the string into words and reconnect with the chosen joiner. When disabled, the existing word structure separators are preserved.
 	use_joiner: bool,
 	/// The string placed between each word.
 	joiner: String,
@@ -499,11 +603,12 @@ fn string_capitalization(
 /// Counts the number of characters in a string.
 #[node_macro::node(category("Text"))]
 fn string_length(_: impl Ctx, string: String) -> f64 {
-	string.chars().count() as f64
+	string.graphemes(true).count() as f64
 }
 
-/// Splits a string into a list of substrings based on the specified delimeter.
-/// For example, the delimeter "," will split "a,b,c" into the strings "a", "b", and "c".
+/// Splits a string into a list of substrings based on the specified delimeter. This is the inverse of the **String Join** node.
+///
+/// For example, splitting "a, b, c" with delimeter ", " produces `["a", "b", "c"]`.
 #[node_macro::node(category("Text"))]
 fn string_split(
 	_: impl Ctx,
@@ -522,14 +627,15 @@ fn string_split(
 	string.split(&delimeter).map(str::to_string).collect()
 }
 
-/// Joins a list of strings together with a separator between each pair.
-/// For example, joining ["a", "b", "c"] with separator ", " produces "a, b, c".
+/// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
+///
+/// For example, joining `["a", "b", "c"]` with separator ", " produces "a, b, c".
 #[node_macro::node(category("Text"))]
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
 	strings: Vec<String>,
-	/// The character(s) placed between each pair of strings.
+	/// The text placed between each pair of strings.
 	#[default(", ")]
 	separator: String,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
@@ -542,108 +648,22 @@ fn string_join(
 	strings.join(&separator)
 }
 
-/// Gets a value from either a json object or array given as a string input.
-/// For example, for the input {"name": "ferris"} the key "name" will return "ferris".
-#[node_macro::node(category("Text"))]
-fn json_get(
+/// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.
+#[node_macro::node(category("Text: Regex"))]
+fn regex_contains(
 	_: impl Ctx,
-	/// The json data.
-	data: String,
-	/// The key to index the object with.
-	key: String,
-) -> String {
-	use serde_json::Value;
-	let Ok(value): Result<Value, _> = serde_json::from_str(&data) else {
-		return "Input is not valid json".into();
-	};
-	match value {
-		Value::Array(ref arr) => {
-			let Ok(index): Result<usize, _> = key.parse() else {
-				log::error!("Json input is an array, but key is not a number");
-				return String::new();
-			};
-			let Some(value) = arr.get(index) else {
-				log::error!("Index {} out of bounds for len {}", index, arr.len());
-				return String::new();
-			};
-			value.to_string()
-		}
-		Value::Object(map) => {
-			let Some(value) = map.get(&key) else {
-				log::error!("Key {key} not found in object");
-				return String::new();
-			};
-			match value {
-				Value::String(s) => s.clone(),
-				Value::Number(n) => n.to_string(),
-				complex => complex.to_string(),
-			}
-		}
-		_ => String::new(),
-	}
-}
-
-/// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
-#[node_macro::node(category("Math: Logic"))]
-async fn switch<T, C: Send + 'n + Clone>(
-	#[implementations(Context)] ctx: C,
-	condition: bool,
-	#[expose]
-	#[implementations(
-		Context -> String,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> u32,
-		Context -> u64,
-		Context -> DVec2,
-		Context -> DAffine2,
-		Context -> Table<Artboard>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-	)]
-	if_true: impl Node<C, Output = T>,
-	#[expose]
-	#[implementations(
-		Context -> String,
-		Context -> bool,
-		Context -> f32,
-		Context -> f64,
-		Context -> u32,
-		Context -> u64,
-		Context -> DVec2,
-		Context -> DAffine2,
-		Context -> Table<Artboard>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-	)]
-	if_false: impl Node<C, Output = T>,
-) -> T {
-	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
-}
-
-/// Tests whether a regular expression pattern matches within the string, returning true or false.
-#[node_macro::node(category("Text"))]
-fn regex_match(
-	_: impl Ctx,
-	/// The string to test against.
+	/// The string to search within.
 	string: String,
-	/// The regular expression pattern to match.
+	/// The regular expression pattern to search for.
 	pattern: String,
-	/// Require the pattern to match the entire string, not just any portion.
-	entire_string: bool,
 	/// Match letters regardless of case.
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
+	/// Only match if the pattern appears at the start of the string.
+	at_start: bool,
+	/// Only match if the pattern appears at the end of the string.
+	at_end: bool,
 ) -> bool {
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
@@ -651,9 +671,14 @@ fn regex_match(
 		(false, true) => "(?m)",
 		(true, true) => "(?im)",
 	};
-	let wrapped_pattern = if entire_string { format!("{flags}\\A(?:{pattern})\\z") } else { format!("{flags}{pattern}") };
+	let anchored_pattern = match (at_start, at_end) {
+		(true, true) => format!("{flags}\\A(?:{pattern})\\z"),
+		(true, false) => format!("{flags}\\A(?:{pattern})"),
+		(false, true) => format!("{flags}(?:{pattern})\\z"),
+		(false, false) => format!("{flags}{pattern}"),
+	};
 
-	let Ok(regex) = fancy_regex::Regex::new(&wrapped_pattern) else {
+	let Ok(regex) = fancy_regex::Regex::new(&anchored_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
 		return false;
 	};
@@ -661,14 +686,14 @@ fn regex_match(
 	regex.is_match(&string).unwrap_or(false)
 }
 
-/// Replaces matches of a regular expression pattern in the string. The replacement string supports backreferences: `$0` for the whole match, `$1`, `$2`, etc. for capture groups.
-#[node_macro::node(category("Text"))]
+/// Replaces matches of a regular expression pattern in the string. The replacement string can reference captures: `$0` for the whole match and `$1`, `$2`, etc. for capture groups.
+#[node_macro::node(category("Text: Regex"))]
 fn regex_replace(
 	_: impl Ctx,
 	string: String,
 	/// The regular expression pattern to search for.
 	pattern: String,
-	/// The replacement string. Use `$0` for the whole match, `$1`, `$2`, etc. for capture groups.
+	/// The replacement string. Use `$0` for the whole match and `$1`, `$2`, etc. for capture groups.
 	replacement: String,
 	/// Replace all matches. When disabled, only the first match is replaced.
 	#[default(true)]
@@ -698,9 +723,9 @@ fn regex_replace(
 	}
 }
 
-/// Finds a regex match in the string and returns its components. The result is a list where the first element is the whole match and
-/// subsequent elements are the capture groups (if any). The match index selects which occurrence to return (0 for the first match).
-/// Returns an empty list if no match is found at the given index.
+/// Finds a regex match in the string and returns its components. The result is a list where the first element is the whole match (`$0`) and subsequent elements are the capture groups (`$1`, `$2`, etc., if any).
+///
+/// The match index selects which non-overlapping occurrence to return (0 for the first match). Returns an empty list if no match is found at the given index.
 #[node_macro::node(category(""))]
 fn regex_find(
 	_: impl Ctx,
@@ -708,13 +733,17 @@ fn regex_find(
 	string: String,
 	/// The regular expression pattern to search for.
 	pattern: String,
-	/// Which occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.
+	/// Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.
 	match_index: SignedInteger,
 	/// Match letters regardless of case.
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
 ) -> Vec<String> {
+	if pattern.is_empty() {
+		return Vec::new();
+	}
+
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
 		(true, false) => "(?i)",
@@ -751,7 +780,7 @@ fn regex_find(
 }
 
 /// Finds all non-overlapping matches of a regular expression pattern in the string, returning a list of the matched substrings.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Text: Regex"))]
 fn regex_find_all(
 	_: impl Ctx,
 	/// The string to search within.
@@ -763,6 +792,10 @@ fn regex_find_all(
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
 ) -> Vec<String> {
+	if pattern.is_empty() {
+		return Vec::new();
+	}
+
 	let flags = match (case_insensitive, multiline) {
 		(false, false) => "",
 		(true, false) => "(?i)",
@@ -779,7 +812,42 @@ fn regex_find_all(
 	regex.find_iter(&string).filter_map(|m| m.ok()).map(|m| m.as_str().to_string()).collect()
 }
 
-/// Iterates over a list of strings, evaluating the mapped operation for each one. Use the *Read String* node to access the current string inside the loop.
+/// Splits a string into a list of substrings pulled from between separator characters as matched by a regular expression.
+///
+/// For example, splitting "Three, two, one... LIFTOFF" with pattern `\W+` (non-word characters) produces `["Three", "two", "one", "LIFTOFF"]`.
+#[node_macro::node(category("Text: Regex"))]
+fn regex_split(
+	_: impl Ctx,
+	/// The string to split into substrings.
+	string: String,
+	/// The regular expression pattern to split on. Matches are consumed and not included in the output.
+	pattern: String,
+	/// Match letters regardless of case.
+	case_insensitive: bool,
+	/// Make `^` and `$` match the start and end of each line, not just the whole string.
+	multiline: bool,
+) -> Vec<String> {
+	if pattern.is_empty() {
+		return vec![string];
+	}
+
+	let flags = match (case_insensitive, multiline) {
+		(false, false) => "",
+		(true, false) => "(?i)",
+		(false, true) => "(?m)",
+		(true, true) => "(?im)",
+	};
+	let full_pattern = format!("{flags}{pattern}");
+
+	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
+		log::error!("Invalid regex pattern: {pattern}");
+		return vec![string];
+	};
+
+	regex.split(&string).filter_map(|s| s.ok()).map(|s| s.to_string()).collect()
+}
+
+/// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
 #[node_macro::node(category("Text"))]
 async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
@@ -808,4 +876,61 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
 	let var_arg = var_arg as &dyn std::any::Any;
 
 	var_arg.downcast_ref::<String>().cloned().unwrap_or_default()
+}
+
+/// Converts a value to a JSON string representation.
+#[node_macro::node(category("Debug"))]
+fn serialize<T: serde::Serialize>(
+	_: impl Ctx,
+	#[implementations(
+		String,
+		bool,
+		f64,
+		u32,
+		u64,
+		DVec2,
+		DAffine2,
+		// Table<Artboard>,
+		// Table<Graphic>,
+		// Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		// Table<GradientStops>,
+	)]
+	value: T,
+) -> String {
+	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
+}
+
+#[node_macro::node(name("JSON Get"), category("Debug"))]
+fn json_get(_: impl Ctx, data: String, key: String) -> String {
+	use serde_json::Value;
+	let Ok(value): Result<Value, _> = serde_json::from_str(&data) else {
+		return "Input is not valid json".into();
+	};
+	match value {
+		Value::Array(ref arr) => {
+			let Ok(index): Result<usize, _> = key.parse() else {
+				log::error!("Json input is an array, but key is not a number");
+				return String::new();
+			};
+			let Some(value) = arr.get(index) else {
+				log::error!("Index {} out of bounds for len {}", index, arr.len());
+				return String::new();
+			};
+			value.to_string()
+		}
+		Value::Object(map) => {
+			let Some(value) = map.get(&key) else {
+				log::error!("Key {key} not found in object");
+				return String::new();
+			};
+			match value {
+				Value::String(s) => s.clone(),
+				Value::Number(n) => n.to_string(),
+				complex => complex.to_string(),
+			}
+		}
+		_ => String::new(),
+	}
 }

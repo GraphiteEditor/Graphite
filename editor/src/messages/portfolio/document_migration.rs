@@ -141,7 +141,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::logic::StringSplitNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::logic::switch::IDENTIFIER,
+		node: graphene_std::math_nodes::switch::IDENTIFIER,
 		aliases: &["graphene_core::logic::SwitchNode"],
 	},
 	NodeReplacement {
