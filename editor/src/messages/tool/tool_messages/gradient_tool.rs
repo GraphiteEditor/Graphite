@@ -9,7 +9,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType};
+use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStops, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -21,6 +21,7 @@ pub struct GradientTool {
 #[derive(Default)]
 pub struct GradientOptions {
 	gradient_type: GradientType,
+	spread_method: GradientSpreadMethod,
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
@@ -53,6 +54,7 @@ pub enum GradientOptionsUpdate {
 	Type(GradientType),
 	ReverseStops,
 	ReverseDirection,
+	SetSpreadMethod(GradientSpreadMethod),
 }
 
 impl ToolMetadata for GradientTool {
@@ -83,6 +85,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 				GradientOptionsUpdate::ReverseDirection => {
 					apply_gradient_update(&mut self.data, context, responses, |_| true, |g| std::mem::swap(&mut g.start, &mut g.end));
+				}
+				GradientOptionsUpdate::SetSpreadMethod(spread_method) => {
+					self.options.spread_method = spread_method;
+					apply_gradient_update(&mut self.data, context, responses, |g| g.spread_method != spread_method, |g| g.spread_method = spread_method);
 				}
 			},
 			ToolMessage::Gradient(GradientToolMessage::StartTransactionForColorStop) => {
@@ -123,6 +129,22 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					self.data.has_selected_gradient = has_gradient;
 					responses.add(ToolMessage::RefreshToolOptions);
 				}
+
+				// Sync tool options with the selected layer's gradient
+				if has_gradient && let Some(gradient) = get_gradient_on_selected_layer(&context.document) {
+					let type_differs = self.options.gradient_type != gradient.gradient_type;
+					let spread_method_differs = self.options.spread_method != gradient.spread_method;
+
+					if type_differs {
+						self.options.gradient_type = gradient.gradient_type;
+					}
+					if spread_method_differs {
+						self.options.spread_method = gradient.spread_method;
+					}
+					if type_differs || spread_method_differs {
+						responses.add(ToolMessage::RefreshToolOptions);
+					}
+				};
 			}
 		}
 	}
@@ -168,7 +190,36 @@ impl LayoutHolder for GradientTool {
 			})
 			.widget_instance();
 
-		let mut widgets = vec![gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance(), reverse_stops];
+		let spread_method = RadioInput::new(vec![
+			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
+				}
+				.into()
+			}),
+			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+				}
+				.into()
+			}),
+			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+				}
+				.into()
+			}),
+		])
+		.selected_index(Some(self.options.spread_method as u32))
+		.widget_instance();
+
+		let mut widgets = vec![
+			gradient_type,
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			spread_method,
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			reverse_stops,
+		];
 
 		if self.options.gradient_type == GradientType::Radial {
 			let orientation = self
@@ -1149,7 +1200,14 @@ impl Fsm for GradientToolFsmState {
 							gradient.clone()
 						} else {
 							// Generate a new gradient
-							Gradient::new(DVec2::ZERO, global_tool_data.secondary_color, DVec2::ONE, global_tool_data.primary_color, tool_options.gradient_type)
+							Gradient::new(
+								DVec2::ZERO,
+								global_tool_data.secondary_color,
+								DVec2::ONE,
+								global_tool_data.primary_color,
+								tool_options.gradient_type,
+								tool_options.spread_method,
+							)
 						};
 						let mut selected_gradient = SelectedGradient::new(gradient, layer, document);
 						selected_gradient.dragging = GradientDragTarget::New;
@@ -1501,12 +1559,16 @@ fn apply_gradient_update(
 	responses.add(ToolMessage::RefreshToolOptions);
 }
 
-fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
+fn get_gradient_on_selected_layer(document: &DocumentMessageHandler) -> Option<Gradient> {
 	document
 		.network_interface
 		.selected_nodes()
 		.selected_visible_layers(&document.network_interface)
-		.any(|layer| get_gradient(layer, &document.network_interface).is_some())
+		.find_map(|layer| get_gradient(layer, &document.network_interface))
+}
+
+fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
+	get_gradient_on_selected_layer(document).is_some()
 }
 
 #[inline(always)]
@@ -1940,5 +2002,39 @@ mod test_gradient {
 
 		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");
+	}
+
+	#[tokio::test]
+	async fn change_spread_method() {
+		use graphene_std::vector::style::GradientSpreadMethod;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 10., 10., 90., 90., ModifierKeys::empty()).await;
+
+		// Verify default spread method is Pad
+		let (gradient, _) = get_gradient(&mut editor).await;
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+
+		// Update spread method to Repeat
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient(&mut editor).await;
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Repeat);
+
+		// Update spread method to Reflect
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			})
+			.await;
+
+		let (gradient, _) = get_gradient(&mut editor).await;
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
 	}
 }
