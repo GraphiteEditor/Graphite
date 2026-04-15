@@ -11,7 +11,11 @@ pub(crate) fn ensure_dir_exists(path: &PathBuf) {
 }
 
 fn clear_dir(path: &PathBuf) {
-	for entry in fs::read_dir(path).unwrap_or_else(|_| panic!("Failed to read directory at {path:?}")).flatten() {
+	let Ok(entries) = fs::read_dir(path) else {
+		tracing::error!("Failed to read directory at {path:?}");
+		return;
+	};
+	for entry in entries.flatten() {
 		let entry_path = entry.path();
 		if entry_path.is_dir() {
 			if let Err(e) = fs::remove_dir_all(&entry_path) {
@@ -58,7 +62,7 @@ impl TempDir {
 	}
 
 	pub fn new_with_parent(parent: impl AsRef<Path>) -> io::Result<Self> {
-		let random_suffix: String = (0..32).map(|_| format!("{:x}", rand::random::<u8>() % 16)).collect();
+		let random_suffix = format!("{:032x}", rand::random::<u128>());
 		let name = format!("{}_{}", std::process::id(), random_suffix);
 		let path = parent.as_ref().join(name);
 		fs::create_dir_all(&path)?;

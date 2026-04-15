@@ -98,6 +98,8 @@ impl PersistentData {
 	}
 
 	pub(crate) fn load_from_disk(&mut self) {
+		delete_old_cef_browser_directory();
+
 		let path = Self::state_file_path();
 		let data = match std::fs::read_to_string(&path) {
 			Ok(d) => d,
@@ -120,7 +122,6 @@ impl PersistentData {
 		*self = loaded;
 
 		self.garbage_collect_document_files();
-		delete_old_cef_browser_directory();
 	}
 
 	fn garbage_collect_document_files(&self) {

@@ -57,9 +57,9 @@ impl Drop for MultiThreadedCefContextProxy {
 		let (sync_drop_tx, sync_drop_rx) = std::sync::mpsc::channel();
 		run_on_ui_thread(move || {
 			drop(CONTEXT.take());
-			sync_drop_tx.send(()).unwrap();
+			let _ = sync_drop_tx.send(());
 		});
-		sync_drop_rx.recv().unwrap();
+		let _ = sync_drop_rx.recv();
 	}
 }
 
