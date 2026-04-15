@@ -35,6 +35,7 @@ pub enum ShapeType {
 	Spiral,
 	Grid,
 	Arrow,
+	QrCode,
 	Line,      // KEEP THIS AT THE END
 	Rectangle, // KEEP THIS AT THE END
 	Ellipse,   // KEEP THIS AT THE END
@@ -50,6 +51,7 @@ impl ShapeType {
 			Self::Spiral => "Spiral",
 			Self::Grid => "Grid",
 			Self::Arrow => "Arrow",
+			Self::QrCode => "QR Code",
 			Self::Line => "Line",
 			Self::Rectangle => "Rectangle",
 			Self::Ellipse => "Ellipse",
