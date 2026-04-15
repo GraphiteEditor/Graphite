@@ -1993,20 +1993,15 @@ dependencies = [
 name = "graphene-core"
 version = "0.1.0"
 dependencies = [
- "convert_case 0.8.0",
  "core-types",
  "dyn-any",
- "fancy-regex",
  "glam",
  "graphic-types",
  "log",
  "node-macro",
  "raster-types",
  "serde",
- "serde_json",
- "titlecase",
  "tsify",
- "unicode-segmentation",
  "wasm-bindgen",
 ]
 
@@ -5513,15 +5508,21 @@ dependencies = [
 name = "text-nodes"
 version = "0.1.0"
 dependencies = [
+ "convert_case 0.8.0",
  "core-types",
  "dyn-any",
+ "fancy-regex",
  "glam",
  "log",
  "node-macro",
  "parley",
+ "raster-types",
  "serde",
+ "serde_json",
  "skrifa 0.40.0",
+ "titlecase",
  "tsify",
+ "unicode-segmentation",
  "vector-types",
  "wasm-bindgen",
 ]

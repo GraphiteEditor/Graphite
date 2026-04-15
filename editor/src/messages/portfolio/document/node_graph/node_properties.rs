@@ -16,7 +16,6 @@ use graph_craft::{Type, concrete};
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
-use graphene_std::logic::StringCapitalization;
 use graphene_std::raster::curve::Curve;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -25,6 +24,7 @@ use graphene_std::raster::{
 use graphene_std::raster_types::Image;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
+use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
@@ -1631,7 +1631,7 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 }
 
 pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	use graphene_std::logic::format_number::{DecimalPlacesInput, DecimalSeparatorInput, FixedDecimalsInput, StartAt10000Input, ThousandsSeparatorInput, UseThousandsSeparatorInput};
+	use graphene_std::text_nodes::format_number::{DecimalPlacesInput, DecimalSeparatorInput, FixedDecimalsInput, StartAt10000Input, ThousandsSeparatorInput, UseThousandsSeparatorInput};
 
 	// Read current values before borrowing context mutably for widgets
 	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
@@ -1715,13 +1715,13 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 }
 
 pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	use graphene_std::logic::string_capitalization::*;
+	use graphene_std::text_nodes::string_capitalization::*;
 
 	// Read the current values before borrowing context mutably for widgets
 	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let capitalization_input = document_node.inputs.get(CapitalizationInput::INDEX);
-			let capitalization_exposed = capitalization_input.map_or(false, |input| input.is_exposed());
+			let capitalization_exposed = capitalization_input.is_some_and(|input| input.is_exposed());
 			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
 			let is_simple = !capitalization_exposed
 				&& matches!(

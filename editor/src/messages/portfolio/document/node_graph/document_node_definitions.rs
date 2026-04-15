@@ -1511,7 +1511,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::import(concrete!(bool), 3),
 									NodeInput::import(concrete!(bool), 4),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(logic::regex_find::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex_find::IDENTIFIER),
 								..Default::default()
 							},
 							// Node 1: index_elements at index 0 — extracts the whole match as a String

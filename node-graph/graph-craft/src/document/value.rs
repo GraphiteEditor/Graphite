@@ -234,7 +234,7 @@ tagged_value! {
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),
-	StringCapitalization(graphene_core::logic::StringCapitalization),
+	StringCapitalization(text_nodes::StringCapitalization),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
 	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
