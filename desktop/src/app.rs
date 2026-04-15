@@ -316,7 +316,7 @@ impl App {
 			}
 			DesktopFrontendMessage::PersistenceLoadDocuments => {
 				// Open all documents in persisted tab order, then select the current one
-				for (id, document) in self.persistent_data.all_documents() {
+				for (id, document) in self.persistent_data.documents() {
 					responses.push(DesktopWrapperMessage::LoadDocument {
 						id,
 						document,

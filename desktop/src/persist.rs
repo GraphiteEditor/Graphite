@@ -1,6 +1,5 @@
 use crate::wrapper::messages::{Document, DocumentId, PersistedDocumentInfo};
 
-// Wraps PersistedState (shared with the web frontend) and adds desktop-specific behavior like file I/O
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {
 	documents: Vec<PersistedDocumentInfo>,
@@ -11,7 +10,6 @@ pub(crate) struct PersistentData {
 
 impl PersistentData {
 	pub(crate) fn write_document(&mut self, id: DocumentId, document: Document) {
-		// Update or add the document metadata
 		let info = PersistedDocumentInfo {
 			id,
 			name: document.name.clone(),
@@ -24,14 +22,10 @@ impl PersistentData {
 			self.documents.push(info);
 		}
 
-		// Write the document content to a separate file
 		if let Err(e) = std::fs::write(Self::document_content_path(&id), document.content) {
 			tracing::error!("Failed to write document {id:?} to disk: {e}");
 		}
 
-		if let Some(order) = &self.document_order {
-			self.force_order(&order.clone());
-		}
 		self.flush();
 	}
 
@@ -55,7 +49,7 @@ impl PersistentData {
 		}
 	}
 
-	pub(crate) fn all_documents(&self) -> Vec<(DocumentId, Document)> {
+	pub(crate) fn documents(&self) -> Vec<(DocumentId, Document)> {
 		self.documents.iter().filter_map(|doc| Some((doc.id, self.read_document(&doc.id)?))).collect()
 	}
 
@@ -65,12 +59,20 @@ impl PersistentData {
 	}
 
 	pub(crate) fn force_document_order(&mut self, order: Vec<DocumentId>) {
-		self.force_order(&order);
+		let mut ordered_prefix_length = 0;
+		for id in &order {
+			if let Some(offset) = self.documents[ordered_prefix_length..].iter().position(|doc| doc.id == *id) {
+				let found_index = ordered_prefix_length + offset;
+				if found_index != ordered_prefix_length {
+					self.documents[ordered_prefix_length..=found_index].rotate_right(1);
+				}
+				ordered_prefix_length += 1;
+			}
+		}
 		self.document_order = Some(order);
 		self.flush();
 	}
 
-	// Reads serialized document content from disk and combines it with the stored metadata
 	fn read_document(&self, id: &DocumentId) -> Option<Document> {
 		let info = self.documents.iter().find(|doc| doc.id == *id)?;
 		let content = std::fs::read_to_string(Self::document_content_path(id)).ok()?;
@@ -80,20 +82,6 @@ impl PersistentData {
 			path: info.path.clone(),
 			is_saved: info.is_saved,
 		})
-	}
-
-	// Reorders the documents array to match a desired ordering, keeping unmentioned documents at the end
-	fn force_order(&mut self, desired_order: &[DocumentId]) {
-		let mut ordered_prefix_length = 0;
-		for id in desired_order {
-			if let Some(offset) = self.documents[ordered_prefix_length..].iter().position(|doc| doc.id == *id) {
-				let found_index = ordered_prefix_length + offset;
-				if found_index != ordered_prefix_length {
-					self.documents[ordered_prefix_length..=found_index].rotate_right(1);
-				}
-				ordered_prefix_length += 1;
-			}
-		}
 	}
 
 	fn flush(&self) {
@@ -132,10 +120,8 @@ impl PersistentData {
 		*self = loaded;
 
 		self.garbage_collect_document_files();
-		Self::delete_old_cef_browser_directory();
 	}
 
-	// Remove orphaned document content files that have no corresponding entry in the persisted state
 	fn garbage_collect_document_files(&self) {
 		let valid_paths: std::collections::HashSet<_> = self.documents.iter().map(|doc| Self::document_content_path(&doc.id)).collect();
 
@@ -156,14 +142,6 @@ impl PersistentData {
 					tracing::error!("Failed to remove orphaned document file {path:?}: {e}");
 				}
 			}
-		}
-	}
-
-	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory (renamed to "cef")
-	fn delete_old_cef_browser_directory() {
-		let old_browser_dir = crate::dirs::app_data_dir().join("browser");
-		if old_browser_dir.is_dir() {
-			let _ = std::fs::remove_dir_all(&old_browser_dir);
 		}
 	}
 
