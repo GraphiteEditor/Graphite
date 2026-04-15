@@ -9,9 +9,9 @@ use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// Processes escape sequences in a string, converting `\n`, `\r`, `\t`, `\0`, and `\\` into their corresponding characters.
+/// Converts escape sequence representations (`\n`, `\r`, `\t`, `\0`, `\\`) into their corresponding control characters.
 /// Unrecognized escape sequences (e.g. `\x`) are preserved as-is.
-fn unescape(input: String) -> String {
+fn unescape_string(input: String) -> String {
 	let mut result = String::with_capacity(input.len());
 	let mut chars = input.chars();
 
@@ -28,6 +28,24 @@ fn unescape(input: String) -> String {
 			}
 		} else {
 			result.push(c);
+		}
+	}
+
+	result
+}
+
+/// Converts control characters (newline, carriage return, tab, null, backslash) back into their escape sequence representations.
+fn escape_string(input: String) -> String {
+	let mut result = String::with_capacity(input.len());
+
+	for c in input.chars() {
+		match c {
+			'\n' => result.push_str("\\n"),
+			'\r' => result.push_str("\\r"),
+			'\t' => result.push_str("\\t"),
+			'\0' => result.push_str("\\0"),
+			'\\' => result.push_str("\\\\"),
+			other => result.push(other),
 		}
 	}
 
@@ -236,6 +254,22 @@ fn string_trim(_: impl Ctx, string: String, #[default(true)] start: bool, #[defa
 	}
 }
 
+/// Converts between literal escape sequences and their corresponding control characters within a string.
+///
+/// Unescape: `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash) are converted into the actual characters.
+/// Escape: the actual special characters are converted back into their escape sequence representations.
+#[node_macro::node(category("Text"))]
+fn string_escape(
+	_: impl Ctx,
+	/// The string that contains either literal escape sequences or control characters to be converted to the opposite representation.
+	string: String,
+	/// Convert the control characters back into their escape sequence representations.
+	#[default(true)]
+	unescape: bool,
+) -> String {
+	if unescape { unescape_string(string) } else { escape_string(string) }
+}
+
 /// Reverses the order of grapheme clusters (visual characters) in the string.
 #[node_macro::node(category("Text"))]
 fn string_reverse(_: impl Ctx, string: String) -> String {
@@ -259,7 +293,7 @@ fn string_repeat(
 	#[default(true)]
 	separator_escaping: bool,
 ) -> String {
-	let separator = if separator_escaping { unescape(separator) } else { separator };
+	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
 	let count = count.max(1) as usize;
 
@@ -483,7 +517,7 @@ fn string_split(
 	#[default(true)]
 	delimeter_escaping: bool,
 ) -> Vec<String> {
-	let delimeter = if delimeter_escaping { unescape(delimeter) } else { delimeter };
+	let delimeter = if delimeter_escaping { unescape_string(delimeter) } else { delimeter };
 
 	string.split(&delimeter).map(str::to_string).collect()
 }
@@ -503,7 +537,7 @@ fn string_join(
 	#[default(true)]
 	separator_escaping: bool,
 ) -> String {
-	let separator = if separator_escaping { unescape(separator) } else { separator };
+	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
 	strings.join(&separator)
 }
