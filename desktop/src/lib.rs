@@ -63,6 +63,8 @@ pub fn start() {
 		}
 	};
 
+	dirs::app_tmp_dir_cleanup();
+
 	let prefs = preferences::read();
 
 	// Must be called before event loop initialization or native window integrations will break
