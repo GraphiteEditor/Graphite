@@ -4,15 +4,15 @@ use cef::{
 	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, LogSeverity, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
 	browser_host_create_browser_sync, execute_process,
 };
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::CefContext;
 use super::singlethreaded::SingleThreadedCefContext;
 use crate::cef::CefEventHandler;
 use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
-use crate::cef::dirs::{create_instance_dir, delete_instance_dirs};
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
+use crate::dirs::TempDir;
 
 pub(crate) struct CefContextBuilder<H: CefEventHandler> {
 	pub(crate) args: Args,
@@ -97,8 +97,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	#[cfg(target_os = "macos")]
 	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
-		delete_instance_dirs();
-		let instance_dir = create_instance_dir();
+		let instance_dir = TempDir::new().expect("Failed to create temporary directory for CEF instance");
 
 		let exe = std::env::current_exe().expect("cannot get current exe path");
 		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
@@ -108,7 +107,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 			multi_threaded_message_loop: 0,
 			external_message_pump: 1,
 			no_sandbox: 1, // GPU helper crashes when running with sandbox
-			..Self::common_settings(&instance_dir)
+			..Self::common_settings(instance_dir.as_ref())
 		};
 
 		self.initialize_inner(&event_handler, settings)?;
@@ -118,14 +117,13 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	#[cfg(not(target_os = "macos"))]
 	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
-		delete_instance_dirs();
-		let instance_dir = create_instance_dir();
+		let instance_dir = TempDir::new().expect("Failed to create temporary directory for CEF instance");
 
 		let settings = Settings {
 			multi_threaded_message_loop: 1,
 			#[cfg(target_os = "linux")]
 			no_sandbox: 1,
-			..Self::common_settings(&instance_dir)
+			..Self::common_settings(instance_dir.as_ref())
 		};
 
 		self.initialize_inner(&event_handler, settings)?;
@@ -157,7 +155,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 }
 
-fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf, disable_gpu_acceleration: bool) -> Result<SingleThreadedCefContext, InitError> {
+fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, disable_gpu_acceleration: bool) -> Result<SingleThreadedCefContext, InitError> {
 	let mut client = Client::new(BrowserProcessClientImpl::new(&event_handler));
 
 	#[cfg(feature = "accelerated_paint")]
@@ -211,7 +209,7 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf, d
 			event_handler: Box::new(event_handler),
 			browser,
 			input_state: InputState::default(),
-			instance_dir,
+			_instance_dir: instance_dir,
 		})
 	} else {
 		tracing::error!("Failed to create browser");

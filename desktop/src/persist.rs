@@ -98,6 +98,8 @@ impl PersistentData {
 	}
 
 	pub(crate) fn load_from_disk(&mut self) {
+		delete_old_cef_browser_directory();
+
 		let path = Self::state_file_path();
 		let data = match std::fs::read_to_string(&path) {
 			Ok(d) => d,
@@ -155,5 +157,13 @@ impl PersistentData {
 		let mut path = crate::dirs::app_autosave_documents_dir();
 		path.push(format!("{:x}.{}", id.0, graphite_desktop_wrapper::FILE_EXTENSION));
 		path
+	}
+}
+
+// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
+fn delete_old_cef_browser_directory() {
+	let old_browser_dir = crate::dirs::app_data_dir().join("browser");
+	if old_browser_dir.is_dir() {
+		let _ = std::fs::remove_dir_all(&old_browser_dir);
 	}
 }
