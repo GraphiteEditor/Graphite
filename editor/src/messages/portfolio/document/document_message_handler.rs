@@ -1191,7 +1191,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					// Apply the mask group to the target layers
 					if self.mask_group_id.is_some() {
 						responses.add(DocumentMessage::AddTransaction);
-						responses.add(GraphOperationMessage::ApplyMaskStencil { layers: self.mask_target_layers.clone() });
+						responses.add(GraphOperationMessage::ApplyMaskStencil {
+							layers: self.mask_target_layers.clone(),
+						});
 						responses.add(DocumentMessage::EndTransaction);
 					}
 				}
