@@ -84,3 +84,11 @@ impl AsRef<Path> for TempDir {
 		&self.path
 	}
 }
+
+// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
+pub(crate) fn delete_old_cef_browser_directory() {
+	let old_browser_dir = crate::dirs::app_data_dir().join("browser");
+	if old_browser_dir.is_dir() {
+		let _ = std::fs::remove_dir_all(&old_browser_dir);
+	}
+}

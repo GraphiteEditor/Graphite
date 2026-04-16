@@ -20,7 +20,6 @@ mod persist;
 mod preferences;
 mod render;
 mod window;
-mod workspace_layout;
 
 pub(crate) mod consts;
 
@@ -64,6 +63,9 @@ pub fn start() {
 	};
 
 	dirs::app_tmp_dir_cleanup();
+
+	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
+	dirs::delete_old_cef_browser_directory();
 
 	let prefs = preferences::read();
 

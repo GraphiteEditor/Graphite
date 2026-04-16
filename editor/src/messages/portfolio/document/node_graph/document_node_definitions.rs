@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	NumberInputSettings, Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
@@ -29,7 +29,7 @@ use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a mut NodeNetworkInterface,

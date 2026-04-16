@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -36,6 +37,8 @@ pub struct PersistedDocumentInfo {
 pub struct PersistedState {
 	pub documents: Vec<PersistedDocumentInfo>,
 	pub current_document: Option<DocumentId>,
+	#[serde(default)]
+	pub workspace_layout: Option<WorkspacePanelLayout>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

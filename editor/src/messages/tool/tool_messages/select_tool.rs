@@ -605,7 +605,7 @@ impl Fsm for SelectToolFsmState {
 			document,
 			input,
 			viewport,
-			persistent_data,
+			cached_data,
 			..
 		} = tool_action_data;
 
@@ -632,7 +632,7 @@ impl Fsm for SelectToolFsmState {
 						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &persistent_data.font_cache);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &cached_data.font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}

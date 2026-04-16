@@ -3,12 +3,11 @@ import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import {
 	saveEditorPreferences,
 	loadEditorPreferences,
-	saveWorkspaceLayout,
-	loadWorkspaceLayout,
-	storeDocument,
-	removeDocument,
-	loadDocuments,
-	saveActiveDocument,
+	writePersistedState,
+	readPersistedState,
+	writePersistedDocument,
+	readPersistedDocument,
+	deletePersistedDocument,
 } from "/src/utility-functions/persistence";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -31,32 +30,28 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 		await loadEditorPreferences(editor);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerSaveWorkspaceLayout", async (data) => {
-		await saveWorkspaceLayout(data.workspaceLayout);
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteState", async (data) => {
+		await writePersistedState(data.state);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerLoadWorkspaceLayout", async () => {
-		await loadWorkspaceLayout(editor);
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceReadState", async () => {
+		await readPersistedState(editor);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
-		await storeDocument(data, portfolio);
+		await writePersistedDocument(data);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceRemoveDocument", async (data) => {
-		await removeDocument(String(data.documentId), portfolio);
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceReadDocument", async (data) => {
+		await readPersistedDocument(data.documentId, editor);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerLoadAutoSaveDocuments", async () => {
-		await loadDocuments(editor);
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceDeleteDocument", async (data) => {
+		await deletePersistedDocument(String(data.documentId));
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch
-	});
-
-	subscriptions.subscribeFrontendMessage("TriggerSaveActiveDocument", async (data) => {
-		await saveActiveDocument(data.documentId);
 	});
 }
 
@@ -66,13 +61,12 @@ export function destroyPersistenceManager() {
 
 	subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
 	subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
-	subscriptions.unsubscribeFrontendMessage("TriggerSaveWorkspaceLayout");
-	subscriptions.unsubscribeFrontendMessage("TriggerLoadWorkspaceLayout");
+	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteState");
+	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceReadState");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceRemoveDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerLoadAutoSaveDocuments");
+	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceReadDocument");
+	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceDeleteDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
-	subscriptions.unsubscribeFrontendMessage("TriggerSaveActiveDocument");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code

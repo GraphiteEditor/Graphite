@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::portfolio::utility_types::{FontCatalog, FontCatalogStyle, PersistentData};
+use crate::messages::portfolio::utility_types::{CachedData, FontCatalog, FontCatalogStyle};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
@@ -230,8 +230,8 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 }
 
 impl ToolRefreshOptions for TextTool {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
-		self.send_layout(responses, LayoutTarget::ToolOptions, &persistent_data.font_catalog);
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, cached_data: &CachedData) {
+		self.send_layout(responses, LayoutTarget::ToolOptions, &cached_data.font_catalog);
 	}
 }
 
@@ -302,7 +302,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::ToolOptions, &context.persistent_data.font_catalog);
+		self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -573,11 +573,11 @@ impl Fsm for TextToolFsmState {
 			document,
 			global_tool_data,
 			input,
-			persistent_data,
+			cached_data,
 			viewport,
 			..
 		} = transition_data;
-		let font_cache = &persistent_data.font_cache;
+		let font_cache = &cached_data.font_cache;
 		let fill_color = COLOR_OVERLAY_BLUE_05;
 
 		let ToolMessage::Text(event) = event else { return self };

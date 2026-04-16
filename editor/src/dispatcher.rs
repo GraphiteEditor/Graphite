@@ -295,7 +295,7 @@ impl Dispatcher {
 						document_id,
 						document,
 						input: &self.message_handlers.input_preprocessor_message_handler,
-						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+						cached_data: &self.message_handlers.portfolio_message_handler.cached_data,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
 						viewport: &self.message_handlers.viewport_message_handler,

@@ -37,7 +37,7 @@ impl EditorTestUtils {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let document_id = portfolio.active_document_id.unwrap();
 			let exector = &mut portfolio.executor;
-			let document = portfolio.documents.get_mut(&document_id).unwrap();
+			let document = portfolio.document_mut(document_id).unwrap();
 
 			let instrumented = match exector.update_node_graph_instrumented(document) {
 				Ok(instrumented) => instrumented,

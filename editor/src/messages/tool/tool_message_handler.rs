@@ -4,7 +4,7 @@ use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::*;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
 use crate::messages::tool::utility_types::{HintData, ToolType};
@@ -18,7 +18,7 @@ pub struct ToolMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
@@ -39,7 +39,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			document_id,
 			document,
 			input,
-			persistent_data,
+			cached_data,
 			node_graph,
 			preferences,
 			viewport,
@@ -126,7 +126,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							node_graph,
 							preferences,
 							viewport,
-							persistent_data,
+							cached_data,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -217,7 +217,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
-				tool_data.tools.get(active_tool).unwrap().refresh_options(responses, persistent_data);
+				tool_data.tools.get(active_tool).unwrap().refresh_options(responses, cached_data);
 
 				// Notify the frontend about the initial active tool
 				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
@@ -234,7 +234,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					node_graph,
 					preferences,
 					viewport,
-					persistent_data,
+					cached_data,
 				};
 
 				// Set initial hints and cursor
@@ -258,7 +258,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 
-				tool_data.tools.get(&tool_data.active_tool_type).unwrap().refresh_options(responses, persistent_data);
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().refresh_options(responses, cached_data);
 			}
 			ToolMessage::RefreshToolShelf => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -346,7 +346,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							node_graph,
 							preferences,
 							viewport,
-							persistent_data,
+							cached_data,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if graph_view_overlay_open {
