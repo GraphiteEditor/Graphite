@@ -27,11 +27,9 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 			}
 			PersistentStateMessage::WriteDocument { document_id, document } => {
 				responses.add(FrontendMessage::TriggerPersistenceWriteDocument { document_id, document });
-				responses.add(FrontendMessage::TriggerPersistenceWriteState { state });
 			}
 			PersistentStateMessage::DeleteDocument { document_id } => {
 				responses.add(FrontendMessage::TriggerPersistenceDeleteDocument { document_id });
-				responses.add(FrontendMessage::TriggerPersistenceWriteState { state });
 			}
 		}
 	}

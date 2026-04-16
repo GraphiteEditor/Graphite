@@ -26,8 +26,17 @@ pub(crate) fn read_state() -> PersistedState {
 }
 
 pub(crate) fn write_state(state: PersistedState) {
-	flush(&state);
-	garbage_collect_document_files(&state);
+	let state: &PersistedState = &state;
+	let data = match ron::ser::to_string_pretty(state, Default::default()) {
+		Ok(d) => d,
+		Err(e) => {
+			tracing::error!("Failed to serialize persistent data: {e}");
+			return;
+		}
+	};
+	if let Err(e) = std::fs::write(state_file_path(), data) {
+		tracing::error!("Failed to write persistent data to disk: {e}");
+	}
 }
 
 pub(crate) fn write_document_content(id: DocumentId, document_content: String) {
@@ -43,19 +52,6 @@ pub(crate) fn read_document_content(id: &DocumentId) -> Option<String> {
 pub(crate) fn delete_document(id: &DocumentId) {
 	if let Err(e) = std::fs::remove_file(document_content_path(id)) {
 		tracing::error!("Failed to delete document {id:?} from disk: {e}");
-	}
-}
-
-fn flush(state: &PersistedState) {
-	let data = match ron::ser::to_string_pretty(state, Default::default()) {
-		Ok(d) => d,
-		Err(e) => {
-			tracing::error!("Failed to serialize persistent data: {e}");
-			return;
-		}
-	};
-	if let Err(e) = std::fs::write(state_file_path(), data) {
-		tracing::error!("Failed to write persistent data to disk: {e}");
 	}
 }
 

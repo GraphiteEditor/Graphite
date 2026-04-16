@@ -174,19 +174,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::AutoSaveAllDocuments => {
-				for document_id in self.document_ids.iter().copied().collect::<Vec<_>>() {
-					if let Some(document) = self.documents.get_mut(&document_id)
+				for document_id in self.document_ids.iter() {
+					if let Some(document) = self.documents.get_mut(document_id)
 						&& !document.is_auto_saved()
 					{
 						document.set_auto_save_state(true);
-						responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
 					}
 				}
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let Some(document) = self.document(document_id) else {
-					return;
-				};
+				let Some(document) = self.document(document_id) else { return };
 				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
@@ -367,6 +365,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.document_ids.clear();
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::FontCatalogLoaded { catalog } => {
 				self.cached_data.font_catalog = catalog;
