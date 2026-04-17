@@ -84,6 +84,11 @@ impl TargetTexture {
 		&self.view
 	}
 
+	/// Returns the size of the texture.
+	pub fn size(&self) -> UVec2 {
+		self.size
+	}
+
 	/// Returns a reference to the underlying texture.
 	pub fn texture(&self) -> &wgpu::Texture {
 		&self.texture
