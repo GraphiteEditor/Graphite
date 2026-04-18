@@ -128,5 +128,6 @@ pub enum GraphOperationMessage {
 	},
 	ApplyMaskStencil {
 		layers: Vec<LayerNodeIdentifier>,
+		mask_group: LayerNodeIdentifier,
 	},
 }

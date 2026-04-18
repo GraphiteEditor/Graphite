@@ -439,7 +439,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
 				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
 			}
-			GraphOperationMessage::ApplyMaskStencil { layers } => {
+			GraphOperationMessage::ApplyMaskStencil { layers, mask_group } => {
+				let _ = mask_group;
+
+				// TODO: Rasterize `mask_group` into a stencil image and apply that stencil to each target layer.
 				// For each target layer, toggle clip mode so the existing clip infrastructure is engaged.
 				for layer in layers {
 					responses.add(GraphOperationMessage::ClipModeToggle { layer });
