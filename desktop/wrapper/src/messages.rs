@@ -88,7 +88,7 @@ pub enum DesktopWrapperMessage {
 	PollNodeGraphEvaluation,
 	UpdateMaximized { maximized: bool },
 	UpdateFullscreen { fullscreen: bool },
-	LoadDocumentContent { id: DocumentId, document_serialized_content: String },
+	LoadDocumentContent { id: DocumentId, document: String },
 	LoadPersistedState { state: PersistedState },
 	LoadPreferences { preferences: Preferences },
 	MenuEvent { id: String },

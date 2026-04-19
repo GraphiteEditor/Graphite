@@ -286,8 +286,8 @@ impl App {
 				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
 			}
 			DesktopFrontendMessage::PersistenceReadDocument { id } => {
-				if let Some(document_serialized_content) = persist::read_document_content(&id) {
-					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document_serialized_content });
+				if let Some(document) = persist::read_document_content(&id) {
+					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document });
 				} else {
 					tracing::error!("Failed to read document content for {id:?}");
 				}

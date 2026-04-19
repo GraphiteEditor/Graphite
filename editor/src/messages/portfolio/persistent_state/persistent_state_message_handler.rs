@@ -41,6 +41,12 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 			PersistentStateMessage::DeleteDocument { document_id } => {
 				responses.add(FrontendMessage::TriggerPersistenceDeleteDocument { document_id });
 			}
+			PersistentStateMessage::LoadDocument { document_id, document } => {
+				responses.add(PortfolioMessage::LoadDocumentContent {
+					document_id,
+					document_serialized_content: document,
+				});
+			}
 		}
 	}
 

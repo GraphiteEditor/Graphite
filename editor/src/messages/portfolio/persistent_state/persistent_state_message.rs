@@ -22,4 +22,9 @@ pub enum PersistentStateMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
+	LoadDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+		document: String,
+	},
 }

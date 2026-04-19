@@ -49,11 +49,8 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = FrontendMessage::UpdateFullscreen { fullscreen };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::LoadDocumentContent { id, document_serialized_content } => {
-			let message = PortfolioMessage::LoadDocumentContent {
-				document_id: id,
-				document_serialized_content,
-			};
+		DesktopWrapperMessage::LoadDocumentContent { id, document } => {
+			let message = PersistentStateMessage::LoadDocument { document_id: id, document };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::LoadPersistedState { state } => {

@@ -391,10 +391,10 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = loadDocumentContent)]
-	pub fn load_document_content(&self, document_id: u64, document_serialized_content: String) {
-		let message = PortfolioMessage::LoadDocumentContent {
+	pub fn load_document_content(&self, document_id: u64, document: String) {
+		let message = PersistentStateMessage::LoadDocument {
 			document_id: DocumentId(document_id),
-			document_serialized_content,
+			document: document,
 		};
 		self.dispatch(message);
 	}
