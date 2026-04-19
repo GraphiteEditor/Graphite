@@ -1,5 +1,5 @@
 import type { MessageBody } from "/src/subscriptions-router";
-import type { EditorWrapper, PersistedDocumentInfo, PersistedState } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { DocumentInfo, EditorWrapper, PersistedState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const PERSISTENCE_DB = "graphite";
 const PERSISTENCE_STORE = "store";
@@ -9,15 +9,15 @@ function emptyPersistedState(): PersistedState {
 	return { documents: [], current_document: undefined, workspace_layout: undefined };
 }
 
-function createDocumentInfo(id: bigint, name: string, isSaved: boolean): PersistedDocumentInfo {
+function createDocumentInfo(id: bigint, name: string, isSaved: boolean): DocumentInfo {
 	// eslint-disable-next-line camelcase
 	return { id, name, is_saved: isSaved };
 }
 
 // Reorder document entries to match the given ID ordering, appending any unmentioned entries at the end
-function reorderDocuments(documents: PersistedDocumentInfo[], orderedIds: bigint[]): PersistedDocumentInfo[] {
+function reorderDocuments(documents: DocumentInfo[], orderedIds: bigint[]): DocumentInfo[] {
 	const byId = new Map(documents.map((entry) => [entry.id, entry]));
-	const reordered: PersistedDocumentInfo[] = [];
+	const reordered: DocumentInfo[] = [];
 
 	orderedIds.forEach((id) => {
 		const existing = byId.get(id);
@@ -142,7 +142,7 @@ async function migrateToNewFormat() {
 
 	// Build the new "state" and "documents" from the old format
 	const newDocumentContents: Record<string, string> = {};
-	const newDocumentInfos: PersistedDocumentInfo[] = [];
+	const newDocumentInfos: DocumentInfo[] = [];
 
 	if (oldDocuments) {
 		Object.values(oldDocuments).forEach((value) => {

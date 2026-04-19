@@ -7,7 +7,7 @@ use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION}
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument, PersistedDocumentInfo, PersistedState};
+use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -51,7 +51,7 @@ pub struct PortfolioMessageContext<'a> {
 #[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
-	unloaded_documents: HashMap<DocumentId, PersistedDocumentInfo>,
+	unloaded_documents: HashMap<DocumentId, DocumentInfo>,
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
@@ -1645,33 +1645,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
 				// Send the list of document tab names
-				let open_documents = self
-					.document_ids
-					.iter()
-					.filter_map(|id| {
-						if let Some(document) = self.documents.get(id) {
-							Some(OpenDocument {
-								id: *id,
-								details: DocumentDetails {
-									name: document.name.clone(),
-									path: document.path.clone(),
-									is_saved: document.is_saved(),
-									is_auto_saved: document.is_auto_saved(),
-								},
-							})
-						} else {
-							self.unloaded_documents.get(id).map(|details| OpenDocument {
-								id: *id,
-								details: DocumentDetails {
-									name: details.name.clone(),
-									path: details.path.clone(),
-									is_saved: details.is_saved,
-									is_auto_saved: true,
-								},
-							})
-						}
-					})
-					.collect::<Vec<_>>();
+				let open_documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
 
 				let no_open_documents = open_documents.is_empty();
 
@@ -1881,9 +1855,9 @@ impl PortfolioMessageHandler {
 		result
 	}
 
-	fn document_details(&self, document_id: DocumentId) -> Option<PersistedDocumentInfo> {
+	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {
 		if let Some(document) = self.documents.get(&document_id) {
-			Some(PersistedDocumentInfo {
+			Some(DocumentInfo {
 				id: document_id,
 				name: document.name.clone(),
 				path: document.path.clone(),

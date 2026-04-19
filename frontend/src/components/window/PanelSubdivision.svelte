@@ -4,7 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Panel from "/src/components/window/Panel.svelte";
 	import type { PortfolioStore } from "/src/stores/portfolio";
-	import type { EditorWrapper, OpenDocument, PanelGroupState, PanelLayoutSubdivision } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { DocumentInfo, EditorWrapper, PanelGroupState, PanelLayoutSubdivision } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const MIN_PANEL_SIZE = 100;
 	const DOUBLE_CLICK_MILLISECONDS = 500;
@@ -31,9 +31,9 @@
 	$: if (subdivision) sizeOverrides = {};
 	// Reactive array of resolved sizes (merging backend defaults with local overrides)
 	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
-	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
-		const name = doc.details.name;
-		const unsaved = !doc.details.is_saved;
+	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => {
+		const name = doc.name;
+		const unsaved = !doc.is_saved;
 		if (!editor.inDevelopmentMode()) return { name, unsaved };
 
 		const tooltipDescription = `Document ID: ${doc.id}`;

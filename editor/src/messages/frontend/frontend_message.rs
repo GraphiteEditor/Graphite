@@ -1,7 +1,7 @@
 use super::IconName;
-use super::utility_types::{MouseCursorIcon, OpenDocument, PersistedState};
+use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::EyedropperPreviewImage;
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -288,7 +288,7 @@ pub enum FrontendMessage {
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
-		open_documents: Vec<OpenDocument>,
+		open_documents: Vec<DocumentInfo>,
 	},
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]

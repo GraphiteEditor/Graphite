@@ -247,7 +247,7 @@ export function onModifyInputField(e: CustomEvent) {
 
 export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorWrapper, portfolioStore: PortfolioStore) {
 	const activeDocument = get(portfolioStore).documents[get(portfolioStore).activeDocumentIndex];
-	if (activeDocument && !activeDocument.details.is_auto_saved) editor.triggerAutoSave(activeDocument.id);
+	if (activeDocument) editor.triggerAutoSave(activeDocument.id);
 
 	// Skip the message if the editor crashed, since work is already lost
 	if (await editor.hasCrashed()) return;
@@ -255,7 +255,7 @@ export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorWrapper
 	// Skip the message during development, since it's annoying when testing
 	if (await editor.inDevelopmentMode()) return;
 
-	const allDocumentsSaved = get(portfolioStore).documents.reduce((acc, doc) => acc && doc.details.is_saved, true);
+	const allDocumentsSaved = get(portfolioStore).documents.reduce((acc, doc) => acc && doc.is_saved, true);
 	if (!allDocumentsSaved) {
 		e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 		e.preventDefault();
