@@ -138,7 +138,7 @@ impl RenderExt for List<Gradient> {
 		let gradient_id = generate_uuid();
 
 		match gradient_type {
-			GradientType::Linear => {
+			GradientType::Linear | GradientType::Mesh => {
 				let _ = write!(
 					svg_defs,
 					r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method}{gradient_transform}>{}</linearGradient>"#,

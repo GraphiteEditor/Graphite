@@ -382,7 +382,7 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 pub(crate) fn gradient_placement(transform: DAffine2, gradient_type: GradientType) -> DAffine2 {
 	match gradient_type {
 		GradientType::Radial => transform,
-		GradientType::Linear => {
+		GradientType::Linear | GradientType::Mesh => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
 			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
@@ -414,7 +414,7 @@ fn create_peniko_gradient_brush(gradient_list: &List<Gradient>, multiplied_trans
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
 		kind: match gradient_type {
-			GradientType::Linear => peniko::LinearGradientPosition {
+			GradientType::Linear | GradientType::Mesh => peniko::LinearGradientPosition {
 				start: to_point(start),
 				end: to_point(end),
 			}
@@ -1158,6 +1158,14 @@ impl Render for List<Vector> {
 						render_params,
 					);
 				}
+			}
+
+			let is_mesh_fill = fill_graphic_list.as_ref().is_some_and(|list| {
+				matches!(list.element(0), Some(Graphic::Gradient(gradient)) if gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0) == GradientType::Mesh)
+			});
+			if is_mesh_fill {
+				log::debug!("hoge");
+				return;
 			}
 
 			render.leaf_tag("path", |attributes| {
@@ -2122,7 +2130,7 @@ impl Render for List<Gradient> {
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
 				match gradient_type {
-					GradientType::Linear => {
+					GradientType::Linear | GradientType::Mesh => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
 							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
@@ -2189,7 +2197,7 @@ impl Render for List<Gradient> {
 			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
 			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
 			let kind = match gradient_type {
-				GradientType::Linear => peniko::LinearGradientPosition {
+				GradientType::Linear | GradientType::Mesh => peniko::LinearGradientPosition {
 					start: to_point(DVec2::ZERO),
 					end: to_point(DVec2::X),
 				}

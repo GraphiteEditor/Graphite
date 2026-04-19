@@ -2674,7 +2674,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let mut row = vec![TextLabel::new("").widget_instance()];
 		add_blank_assist(&mut row);
 
-		let entries = [GradientType::Linear, GradientType::Radial]
+		let entries = [GradientType::Linear, GradientType::Radial, GradientType::Mesh]
 			.iter()
 			.map(|&grad_type| {
 				RadioEntryData::new(format!("{:?}", grad_type))
