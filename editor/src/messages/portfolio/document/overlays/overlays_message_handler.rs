@@ -5,6 +5,8 @@ use crate::messages::prelude::*;
 pub struct OverlaysMessageContext<'a> {
 	pub visibility_settings: OverlaysVisibilitySettings,
 	pub viewport: &'a ViewportMessageHandler,
+	/// Current time in milliseconds passed from the input preprocessor, used to drive overlay animations (e.g. marching ants).
+	pub animation_time: f64,
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -19,7 +21,7 @@ pub struct OverlaysMessageHandler {
 #[message_handler_data]
 impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, context: OverlaysMessageContext) {
-		let OverlaysMessageContext { visibility_settings, viewport, .. } = context;
+		let OverlaysMessageContext { visibility_settings, viewport, animation_time } = context;
 
 		match message {
 			#[cfg(target_family = "wasm")]
@@ -55,6 +57,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							render_context: canvas_context.clone(),
 							visibility_settings: visibility_settings.clone(),
 							viewport: *viewport,
+							animation_time,
 						},
 					});
 					for provider in &self.overlay_providers {
@@ -62,6 +65,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							render_context: canvas_context.clone(),
 							visibility_settings: visibility_settings.clone(),
 							viewport: *viewport,
+							animation_time,
 						}));
 					}
 				}
@@ -70,7 +74,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
 
-				let overlay_context = OverlayContext::new(*viewport, visibility_settings);
+				let overlay_context = OverlayContext::new(*viewport, visibility_settings, animation_time);
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
@@ -83,7 +87,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			}
 			#[cfg(all(not(target_family = "wasm"), test))]
 			OverlaysMessage::Draw => {
-				let _ = (responses, visibility_settings, viewport);
+				let _ = (responses, visibility_settings, viewport, animation_time);
 			}
 			OverlaysMessage::AddProvider { provider: message } => {
 				self.overlay_providers.insert(message);
