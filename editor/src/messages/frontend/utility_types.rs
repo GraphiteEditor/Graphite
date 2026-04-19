@@ -1,29 +1,12 @@
 use std::path::PathBuf;
 
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct OpenDocument {
-	pub id: DocumentId,
-	pub details: DocumentDetails,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct DocumentDetails {
-	pub name: String,
-	pub path: Option<PathBuf>,
-	#[serde(alias = "isSaved")]
-	pub is_saved: bool,
-	#[serde(alias = "isAutoSaved")]
-	pub is_auto_saved: bool,
-}
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PersistedDocumentInfo {
+pub struct DocumentInfo {
 	pub id: DocumentId,
 	pub name: String,
 	#[serde(default)]
@@ -34,8 +17,10 @@ pub struct PersistedDocumentInfo {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PersistedState {
-	pub documents: Vec<PersistedDocumentInfo>,
+	pub documents: Vec<DocumentInfo>,
 	pub current_document: Option<DocumentId>,
+	#[serde(default)]
+	pub workspace_layout: Option<WorkspacePanelLayout>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

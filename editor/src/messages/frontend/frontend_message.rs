@@ -1,7 +1,7 @@
 use super::IconName;
-use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
+use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::EyedropperPreviewImage;
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -113,7 +113,15 @@ pub enum FrontendMessage {
 		font: Font,
 		url: String,
 	},
-	TriggerPersistenceRemoveDocument {
+	TriggerPersistenceReadState,
+	TriggerPersistenceReadDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
+	TriggerPersistenceWriteState {
+		state: PersistedState,
+	},
+	TriggerPersistenceDeleteDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
@@ -121,25 +129,14 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 		document: String,
-		details: DocumentDetails,
 	},
-	TriggerLoadAutoSaveDocuments,
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerLoadWorkspaceLayout,
 	TriggerOpen,
 	TriggerImport,
 	TriggerSavePreferences {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
-	},
-	TriggerSaveWorkspaceLayout {
-		#[serde(rename = "workspaceLayout")]
-		workspace_layout: WorkspacePanelLayout,
-	},
-	TriggerSaveActiveDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
 	},
 	TriggerTextCommit,
 	TriggerVisitLink {
@@ -291,7 +288,7 @@ pub enum FrontendMessage {
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
-		open_documents: Vec<OpenDocument>,
+		open_documents: Vec<DocumentInfo>,
 	},
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]

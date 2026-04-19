@@ -17,11 +17,10 @@ use crate::cef;
 use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::persist::PersistentData;
+use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::workspace_layout;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
@@ -46,7 +45,6 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	persistent_data: PersistentData,
 	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
 	cli: Cli,
@@ -93,9 +91,6 @@ impl App {
 			}
 		});
 
-		let mut persistent_data = PersistentData::default();
-		persistent_data.load_from_disk();
-
 		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
 
 		Self {
@@ -119,7 +114,6 @@ impl App {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
-			persistent_data,
 			preferences,
 			cli,
 			startup_time: None,
@@ -285,17 +279,24 @@ impl App {
 					window.request_redraw();
 				}
 			}
-			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
-				self.persistent_data.write_document(id, document);
+			DesktopFrontendMessage::PersistenceWriteState { state } => {
+				persist::write_state(state);
+			}
+			DesktopFrontendMessage::PersistenceReadState => {
+				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
+			}
+			DesktopFrontendMessage::PersistenceReadDocument { id } => {
+				if let Some(document) = persist::read_document_content(&id) {
+					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document });
+				} else {
+					tracing::error!("Failed to read document content for {id:?}");
+				}
+			}
+			DesktopFrontendMessage::PersistenceWriteDocument { id, document_serialized_content } => {
+				persist::write_document_content(id, document_serialized_content);
 			}
 			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
-				self.persistent_data.delete_document(&id);
-			}
-			DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id } => {
-				self.persistent_data.set_current_document(id);
-			}
-			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
-				self.persistent_data.force_document_order(ids);
+				persist::delete_document(&id);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
 				preferences::write(preferences);
@@ -304,30 +305,6 @@ impl App {
 				let preferences = preferences::read();
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
 				responses.push(message);
-			}
-			DesktopFrontendMessage::PersistenceWriteWorkspaceLayout { workspace_layout: layout } => {
-				workspace_layout::write(&layout);
-			}
-			DesktopFrontendMessage::PersistenceLoadWorkspaceLayout => {
-				if let Some(workspace_layout) = workspace_layout::read() {
-					let message = DesktopWrapperMessage::LoadWorkspaceLayout { workspace_layout };
-					responses.push(message);
-				}
-			}
-			DesktopFrontendMessage::PersistenceLoadDocuments => {
-				// Open all documents in persisted tab order, then select the current one
-				for (id, document) in self.persistent_data.documents() {
-					responses.push(DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: false,
-					});
-				}
-
-				if let Some(id) = self.persistent_data.current_document_id() {
-					responses.push(DesktopWrapperMessage::SelectDocument { id });
-				}
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
 				if self.cli.files.is_empty() {

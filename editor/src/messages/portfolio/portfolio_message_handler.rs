@@ -1,12 +1,13 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
-use super::utility_types::{PanelLayoutSubdivision, PanelType, PersistentData, WorkspacePanelLayout};
+use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
+use super::utility_types::{CachedData, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
+use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -50,10 +51,12 @@ pub struct PortfolioMessageContext<'a> {
 #[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
+	unloaded_documents: HashMap<DocumentId, DocumentInfo>,
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
+	persistent_state: PersistentStateMessageHandler,
+	pub cached_data: CachedData,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
-	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -82,7 +85,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						persistent_data: &self.persistent_data,
+						cached_data: &self.cached_data,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
@@ -94,9 +97,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.process_message(message, responses, document_inputs)
 				}
 			}
+			PortfolioMessage::PersistentState(message) => {
+				let context = PersistentStateMessageContext {
+					persisted_state: self.persisted_state_snapshot(),
+				};
+				self.persistent_state.process_message(message, responses, context);
+			}
 
 			// Messages
 			PortfolioMessage::Init => {
+				responses.add(PersistentStateMessage::ReadState);
+
 				// Initialize the frontend with environment information
 				responses.add(FrontendMessage::UpdatePlatform {
 					platform: Editor::environment().into(),
@@ -104,13 +115,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
-				responses.add(FrontendMessage::TriggerLoadWorkspaceLayout);
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
-
-				// Tell frontend to load persistent auto-saved documents (placed early so IndexedDB reads overlap with subsequent UI setup)
-				responses.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
 
 				// Tell frontend to load documents passed in as launch arguments
 				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
@@ -147,7 +154,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						persistent_data: &self.persistent_data,
+						cached_data: &self.cached_data,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
@@ -168,25 +175,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::AutoSaveAllDocuments => {
-				for (document_id, document) in self.documents.iter_mut() {
-					if !document.is_auto_saved() {
+				for document_id in self.document_ids.iter() {
+					if let Some(document) = self.documents.get_mut(document_id)
+						&& !document.is_auto_saved()
+					{
 						document.set_auto_save_state(true);
 						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
 					}
 				}
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let document = self.documents.get(&document_id).unwrap();
-				responses.add(FrontendMessage::TriggerPersistenceWriteDocument {
+				let Some(document) = self.document(document_id) else { return };
+				responses.add(PersistentStateMessage::WriteDocument {
 					document_id,
 					document: document.serialize_document(),
-					details: DocumentDetails {
-						name: document.name.clone(),
-						path: document.path.clone(),
-						is_saved: document.is_saved(),
-						is_auto_saved: document.is_auto_saved(),
-					},
-				})
+				});
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
 				if let Some(document_id) = self.active_document_id {
@@ -206,7 +209,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				for document_id in &self.document_ids {
-					responses.add(FrontendMessage::TriggerPersistenceRemoveDocument { document_id: *document_id });
+					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
 				}
 
 				responses.add(PortfolioMessage::DestroyAllDocuments);
@@ -221,7 +224,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::CloseDocument { document_id } => {
 				// Is this the last document?
-				if self.documents.len() == 1 && self.document_ids[0] == document_id {
+				if self.document_ids.len() == 1 && self.document_ids[0] == document_id {
 					// Clear UI layouts that assume the existence of a document
 					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
@@ -231,13 +234,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
-				responses.add(FrontendMessage::TriggerPersistenceRemoveDocument { document_id });
+				responses.add(PersistentStateMessage::DeleteDocument { document_id });
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			PortfolioMessage::CloseDocumentWithConfirmation { document_id } => {
-				let target_document = self.documents.get(&document_id).unwrap();
+				let Some(target_document) = self.document(document_id) else {
+					responses.add(EventMessage::ToolAbort);
+					responses.add(PortfolioMessage::CloseDocument { document_id });
+					return;
+				};
 				if target_document.is_saved() {
 					responses.add(EventMessage::ToolAbort);
 					responses.add(PortfolioMessage::CloseDocument { document_id });
@@ -335,6 +342,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::DeleteDocument { document_id } => {
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
+				self.unloaded_documents.remove(&document_id);
 				self.document_ids.remove(document_index);
 
 				if self.document_ids.is_empty() {
@@ -354,12 +362,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
+				self.unloaded_documents.clear();
 				self.document_ids.clear();
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::FontCatalogLoaded { catalog } => {
-				self.persistent_data.font_catalog = catalog;
+				self.cached_data.font_catalog = catalog;
 
 				if let Some(document_id) = self.active_document_id {
 					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
@@ -370,23 +380,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::LoadFontData { font });
 			}
 			PortfolioMessage::LoadFontData { font } => {
-				if let Some(style) = self.persistent_data.font_catalog.find_font_style_in_catalog(&font) {
+				if let Some(style) = self.cached_data.font_catalog.find_font_style_in_catalog(&font) {
 					let font = Font::new(font.font_family, style.to_named_style());
 
-					if !self.persistent_data.font_cache.loaded_font(&font) {
+					if !self.cached_data.font_cache.loaded_font(&font) {
 						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
 					}
 				}
 			}
 			PortfolioMessage::FontLoaded { font_family, font_style, data } => {
 				let font = Font::new(font_family, font_style);
-				self.persistent_data.font_cache.insert(font, data);
-				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
+				self.cached_data.font_cache.insert(font, data);
+				self.executor.update_font_cache(self.cached_data.font_cache.clone());
 
 				for document_id in self.document_ids.iter() {
 					let node_to_inspect = self.node_to_inspect();
 
 					let Some(document) = self.documents.get_mut(document_id) else {
+						if self.unloaded_documents.contains_key(document_id) {
+							continue;
+						}
 						log::error!("Tried to render non-existent document");
 						continue;
 					};
@@ -407,16 +420,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
 					});
 
-					if let Ok(message) = self.executor.submit_node_graph_evaluation(
-						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
-						*document_id,
-						physical_resolution,
-						scale,
-						timing_information,
-						node_to_inspect,
-						true,
-						pointer_position,
-					) {
+					if let Ok(message) = self
+						.executor
+						.submit_node_graph_evaluation(document, *document_id, physical_resolution, scale, timing_information, node_to_inspect, true, pointer_position)
+					{
 						responses.add_front(message);
 					}
 				}
@@ -431,7 +438,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::LoadDocumentResources { document_id } => {
-				let catalog = &self.persistent_data.font_catalog;
+				let catalog = &self.cached_data.font_catalog;
 
 				if catalog.0.is_empty() {
 					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
@@ -442,16 +449,52 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.load_layer_resources(responses);
 				}
 			}
-			PortfolioMessage::LoadWorkspaceLayout { layout } => {
-				self.workspace_panel_layout = layout;
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+			PortfolioMessage::LoadPersistedState { state } => {
+				if let Some(layout) = state.workspace_layout {
+					self.workspace_panel_layout = layout;
+					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				}
 
-				// Refresh all visible panels since the layout may have changed
-				for group_id in self.workspace_panel_layout.root.all_group_ids() {
-					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
-						self.refresh_panel_content(panel_type, responses);
+				let PersistedState {
+					documents,
+					current_document,
+					workspace_layout: _,
+				} = state;
+
+				for info in documents {
+					if !self.document_ids.contains(&info.id) {
+						self.document_ids.push_back(info.id);
+					}
+					if !self.documents.contains_key(&info.id) {
+						self.unloaded_documents.insert(info.id, info);
 					}
 				}
+
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+
+				let select_document_id = current_document.filter(|id| self.document_ids.contains(id)).or_else(|| self.document_ids.front().copied());
+				if let Some(document_id) = select_document_id {
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
+			}
+			PortfolioMessage::LoadDocumentContent {
+				document_id,
+				document_serialized_content,
+			} => {
+				let Some(info) = self.unloaded_documents.remove(&document_id) else {
+					log::error!("Tried to load content for non existent document");
+					return;
+				};
+
+				responses.add(PortfolioMessage::LoadDocument {
+					document_id,
+					document_name: Some(info.name),
+					document_path: info.path,
+					document_is_auto_saved: true,
+					document_is_saved: info.is_saved,
+					document_serialized_content,
+				});
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
@@ -465,7 +508,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, responses, false);
+				self.load_document(new_document, document_id, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::MoveAllPanelTabs {
@@ -515,7 +558,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 				// Refresh the new active tab
 				if let Some(panel_type) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
@@ -565,7 +607,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 				// Refresh the moved panel's content in its new location
 				self.refresh_panel_content(panel_type, responses);
@@ -661,30 +702,28 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_path,
 				document_serialized_content,
 			} => {
-				responses.add(PortfolioMessage::OpenDocumentFileWithId {
-					document_id: DocumentId(generate_uuid()),
+				let document_id = DocumentId(generate_uuid());
+				responses.add(PortfolioMessage::LoadDocument {
+					document_id,
 					document_name,
 					document_path,
 					document_is_auto_saved: false,
 					document_is_saved: true,
 					document_serialized_content,
-					to_front: false,
-					select_after_open: true,
 				});
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			PortfolioMessage::OpenDocumentFileWithId {
+			PortfolioMessage::LoadDocument {
 				document_id,
 				document_name,
 				document_path,
 				document_is_auto_saved,
 				document_is_saved,
 				document_serialized_content,
-				to_front,
-				select_after_open,
 			} => {
 				// Upgrade the document being opened to use fresh copies of all nodes
 				let reset_node_definitions_on_open = reset_node_definitions_on_open || document_migration_reset_node_definition(&document_serialized_content);
@@ -777,11 +816,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, responses, to_front);
-
-				if select_after_open {
-					responses.add(PortfolioMessage::SelectDocument { document_id });
-				}
+				self.load_document(document, document_id, responses);
 			}
 			PortfolioMessage::OpenImage { name, image } => {
 				responses.add(PortfolioMessage::NewDocumentWithName {
@@ -1126,7 +1161,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				mouse,
 				parent_and_insert_index,
 			} => {
-				if self.documents.is_empty() {
+				if self.document_ids.is_empty() {
 					responses.add(PortfolioMessage::OpenImage { name, image });
 				} else {
 					responses.add(DocumentMessage::PasteImage {
@@ -1144,7 +1179,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				mouse,
 				parent_and_insert_index,
 			} => {
-				if self.documents.is_empty() {
+				if self.document_ids.is_empty() {
 					responses.add(PortfolioMessage::OpenSvg { name, svg });
 				} else {
 					responses.add(DocumentMessage::PasteSvg {
@@ -1200,7 +1235,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 
 					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-					responses.add(PortfolioMessage::SaveWorkspaceLayout);
 				}
 			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
@@ -1280,7 +1314,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 					// Send the layout update first so the frontend mounts the new panel component before it receives content
 					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-					responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group).and_then(|g| g.active_panel_type()) {
 						self.refresh_panel_content(panel_type, responses);
@@ -1315,7 +1348,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 
 				// Refresh the new panel group's active tab
 				if let Some(panel_type) = self.workspace_panel_layout.panel_group(new_id).and_then(|g| g.active_panel_type()) {
@@ -1340,13 +1372,32 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					node_graph_open = document.is_graph_overlay_open();
 				}
 
+				if self.unloaded_documents.contains_key(&document_id) {
+					let already_selected = self.active_document_id == Some(document_id);
+
+					self.active_document_id = Some(document_id);
+					responses.add(MenuBarMessage::SendLayout);
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+					responses.add(FrontendMessage::UpdateActiveDocument { document_id });
+
+					if !already_selected {
+						responses.add(PersistentStateMessage::ReadDocument { document_id });
+					}
+
+					return;
+				}
+
+				if !self.documents.contains_key(&document_id) {
+					warn!("Tried to read non existent document");
+					return;
+				}
+
 				// Set the new active document ID
 				self.active_document_id = Some(document_id);
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
-				responses.add(FrontendMessage::TriggerSaveActiveDocument { document_id });
 				responses.add(ToolMessage::InitTools);
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
@@ -1382,7 +1433,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				artboard_name,
 				artboard_count,
 			} => {
-				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
+				let document_id = self.active_document_id.expect("Tried to render non-existent document");
+				let document = self.documents.get_mut(&document_id).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
 					name,
 					file_type,
@@ -1392,7 +1444,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					artboard_count,
 					..Default::default()
 				};
-				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
+				let result = self.executor.submit_document_export(document, document_id, export_config);
 
 				if let Err(description) = result {
 					responses.add(DialogMessage::DisplayDialogError {
@@ -1491,7 +1543,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::TogglePropertiesPanelOpen => {
 				if self.workspace_panel_layout.focus_document {
@@ -1536,11 +1587,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					false => self.workspace_panel_layout.clone(),
 				};
 				responses.add(FrontendMessage::UpdateWorkspacePanelLayout { panel_layout });
-			}
-			PortfolioMessage::SaveWorkspaceLayout => {
-				responses.add(FrontendMessage::TriggerSaveWorkspaceLayout {
-					workspace_layout: self.workspace_panel_layout.clone(),
-				});
+				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::ResetWorkspaceLayout => {
 				// Destroy layouts for all currently visible non-document panels
@@ -1562,7 +1609,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 				responses.add(MenuBarMessage::SendLayout);
 			}
 			PortfolioMessage::ResetPanelGroupSizes { split_path } => {
@@ -1578,7 +1624,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				node.recalculate_default_sizes();
 
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
 			}
 			PortfolioMessage::SetPanelGroupSizes { split_path, sizes } => {
 				// Walk the tree to the target split node using the path
@@ -1596,29 +1641,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 
-				responses.add(PortfolioMessage::SaveWorkspaceLayout);
+				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
 				// Send the list of document tab names
-				let open_documents = self
-					.document_ids
-					.iter()
-					.filter_map(|id| {
-						self.documents.get(id).map(|document| OpenDocument {
-							id: *id,
-							details: DocumentDetails {
-								name: document.name.clone(),
-								path: document.path.clone(),
-								is_saved: document.is_saved(),
-								is_auto_saved: document.is_auto_saved(),
-							},
-						})
-					})
-					.collect::<Vec<_>>();
+				let open_documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
 
 				let no_open_documents = open_documents.is_empty();
 
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
+				responses.add(PersistentStateMessage::WriteState);
 
 				if no_open_documents {
 					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -1682,11 +1714,11 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn active_document(&self) -> Option<&DocumentMessageHandler> {
-		self.active_document_id.and_then(|id| self.documents.get(&id))
+		self.active_document_id.and_then(|id| self.document(id))
 	}
 
 	pub fn active_document_mut(&mut self) -> Option<&mut DocumentMessageHandler> {
-		self.active_document_id.and_then(|id| self.documents.get_mut(&id))
+		self.active_document_id.and_then(|id| self.document_mut(id))
 	}
 
 	pub fn active_document_id(&self) -> Option<DocumentId> {
@@ -1694,12 +1726,29 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn unsaved_document_names(&self) -> Vec<String> {
-		self.documents.values().filter(|document| !document.is_saved()).map(|document| document.name.clone()).collect()
+		self.document_ids
+			.iter()
+			.filter_map(|id| self.document_details(*id))
+			.filter(|details| !details.is_saved)
+			.map(|details| details.name)
+			.collect()
+	}
+
+	pub fn persisted_state_snapshot(&self) -> PersistedState {
+		let documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+
+		PersistedState {
+			documents,
+			current_document: self.active_document_id,
+			workspace_layout: Some(self.workspace_panel_layout.clone()),
+		}
 	}
 
 	pub fn generate_new_document_name(&self) -> String {
 		let mut doc_title_numbers = self
-			.ordered_document_iterator()
+			.document_ids
+			.iter()
+			.filter_map(|id| self.document_details(*id))
 			.filter_map(|doc| {
 				doc.name
 					.rsplit_once(DEFAULT_DOCUMENT_NAME)
@@ -1744,12 +1793,12 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
-		if to_front {
-			self.document_ids.push_front(document_id);
-		} else {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		let is_new_document = !self.document_ids.contains(&document_id);
+		if is_new_document {
 			self.document_ids.push_back(document_id);
 		}
+		self.unloaded_documents.remove(&document_id);
 		new_document.update_layers_panel_control_bar_widgets(
 			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 			responses,
@@ -1768,12 +1817,14 @@ impl PortfolioMessageHandler {
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
 		responses.add(DocumentMessage::GraphViewOverlay { open: false });
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		if is_new_document {
+			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		}
 	}
 
 	/// Returns an iterator over the open documents in order.
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
-		self.document_ids.iter().map(|id| self.documents.get(id).expect("Document id was not found in the document hashmap"))
+		self.document_ids.iter().filter_map(|id| self.document(*id))
 	}
 
 	fn document_index(&self, document_id: DocumentId) -> usize {
@@ -1781,7 +1832,10 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
+		let Some(document_id) = self.active_document_id else {
+			return Err("No active document".to_string());
+		};
+		let Some(active_document) = self.documents.get_mut(&document_id) else {
 			return Err("No active document".to_string());
 		};
 
@@ -1801,6 +1855,19 @@ impl PortfolioMessageHandler {
 		result
 	}
 
+	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {
+		if let Some(document) = self.documents.get(&document_id) {
+			Some(DocumentInfo {
+				id: document_id,
+				name: document.name.clone(),
+				path: document.path.clone(),
+				is_saved: document.is_saved(),
+			})
+		} else {
+			self.unloaded_documents.get(&document_id).cloned()
+		}
+	}
+
 	/// Get the ID of the selected node that should be used as the current source for the Data panel.
 	pub fn node_to_inspect(&self) -> Option<NodeId> {
 		// Skip if the Data panel is not open
@@ -1808,7 +1875,7 @@ impl PortfolioMessageHandler {
 			return None;
 		}
 
-		let document = self.documents.get(&self.active_document_id?)?;
+		let document = self.document(self.active_document_id?)?;
 		let selected_nodes = document.network_interface.selected_nodes().0;
 
 		// Skip if there is not exactly one selected node
@@ -1854,7 +1921,6 @@ impl PortfolioMessageHandler {
 
 		responses.add(MenuBarMessage::SendLayout);
 		responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-		responses.add(PortfolioMessage::SaveWorkspaceLayout);
 	}
 
 	/// Destroy the stored layout for a panel that is no longer the active tab.

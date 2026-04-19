@@ -3,7 +3,7 @@ use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarge
 use graphite_editor::messages::prelude::FrontendMessage;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
@@ -67,36 +67,23 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::UpdateUIScale { scale });
 			return Some(FrontendMessage::UpdateUIScale { scale });
 		}
-		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document, details } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
-				id: document_id,
-				document: Document {
-					content: document,
-					name: details.name,
-					path: details.path,
-					is_saved: details.is_saved,
-				},
-			});
+		FrontendMessage::TriggerPersistenceReadState => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceReadState);
 		}
-		FrontendMessage::TriggerPersistenceRemoveDocument { document_id } => {
+		FrontendMessage::TriggerPersistenceWriteState { state } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteState { state });
+		}
+		FrontendMessage::TriggerPersistenceReadDocument { document_id } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceReadDocument { id: document_id });
+		}
+		FrontendMessage::TriggerPersistenceDeleteDocument { document_id } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceDeleteDocument { id: document_id });
 		}
-		FrontendMessage::UpdateActiveDocument { document_id } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id: document_id });
-
-			// Forward this to update the UI
-			return Some(FrontendMessage::UpdateActiveDocument { document_id });
-		}
-		FrontendMessage::UpdateOpenDocumentsList { open_documents } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdateDocumentsList {
-				ids: open_documents.iter().map(|document| document.id).collect(),
+		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
+				id: document_id,
+				document_serialized_content: document,
 			});
-
-			// Forward this to update the UI
-			return Some(FrontendMessage::UpdateOpenDocumentsList { open_documents });
-		}
-		FrontendMessage::TriggerLoadAutoSaveDocuments => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadDocuments);
 		}
 		FrontendMessage::TriggerOpenLaunchDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::OpenLaunchDocuments);
@@ -106,16 +93,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
-		}
-		FrontendMessage::TriggerSaveWorkspaceLayout { workspace_layout } => {
-			let Ok(workspace_layout) = ron::ser::to_string_pretty(&workspace_layout, ron::ser::PrettyConfig::default()) else {
-				tracing::error!("Failed to serialize workspace layout");
-				return None;
-			};
-			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteWorkspaceLayout { workspace_layout });
-		}
-		FrontendMessage::TriggerLoadWorkspaceLayout => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadWorkspaceLayout);
 		}
 		#[cfg(target_os = "macos")]
 		FrontendMessage::UpdateLayout {

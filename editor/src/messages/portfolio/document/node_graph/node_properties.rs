@@ -5,7 +5,7 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
-use crate::messages::portfolio::utility_types::{FontCatalogStyle, PersistentData};
+use crate::messages::portfolio::utility_types::{CachedData, FontCatalogStyle};
 use crate::messages::prelude::*;
 use choice::enum_choice;
 use dyn_any::DynAny;
@@ -793,7 +793,7 @@ pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_p
 
 pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetInstance>, Option<Vec<WidgetInstance>>) {
 	let ParameterWidgetsInfo {
-		persistent_data,
+		cached_data,
 		document_node,
 		node_id,
 		index,
@@ -813,7 +813,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
-				persistent_data
+				cached_data
 					.font_catalog
 					.0
 					.iter()
@@ -866,7 +866,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					})
 					.collect::<Vec<_>>(),
 			])
-			.selected_index(persistent_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.selected_index(cached_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
 			.virtual_scrolling(true)
 			.widget_instance(),
 		]);
@@ -876,7 +876,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		second_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new({
-				persistent_data
+				cached_data
 					.font_catalog
 					.0
 					.iter()
@@ -914,7 +914,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.unwrap_or_default()
 			})
 			.selected_index(
-				persistent_data
+				cached_data
 					.font_catalog
 					.0
 					.iter()
@@ -2208,7 +2208,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
-	persistent_data: &'a PersistentData,
+	cached_data: &'a CachedData,
 	network_interface: &'a NodeNetworkInterface,
 	selection_network_path: &'a [NodeId],
 	document_node: Option<&'a DocumentNode>,
@@ -2231,7 +2231,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
-			persistent_data: context.persistent_data,
+			cached_data: context.cached_data,
 			network_interface: context.network_interface,
 			selection_network_path: context.selection_network_path,
 			document_node,
