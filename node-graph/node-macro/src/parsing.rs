@@ -1,7 +1,7 @@
 use convert_case::{Case, Casing};
 use indoc::{formatdoc, indoc};
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{ToTokens, format_ident};
+use quote::{ToTokens, format_ident, quote};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -123,6 +123,60 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
+/// A numeric bound value accepted by attributes like `#[soft_min]`, `#[hard_min]`, `#[soft_max]`, and `#[hard_max]`.
+/// Accepts both integer literals (e.g. `1`, `-1`) and float literals (e.g. `1.`, `-500.`).
+#[derive(Clone, Debug)]
+pub struct NumberBound {
+	is_negative: bool,
+	literal: NumberBoundLiteral,
+}
+
+#[derive(Clone, Debug)]
+enum NumberBoundLiteral {
+	Float(LitFloat),
+	Int(LitInt),
+}
+
+impl NumberBound {
+	pub fn to_f64(&self) -> f64 {
+		let magnitude = match &self.literal {
+			NumberBoundLiteral::Float(lit) => lit.base10_parse::<f64>().unwrap_or_default(),
+			NumberBoundLiteral::Int(lit) => lit.base10_parse::<u64>().unwrap_or_default() as f64,
+		};
+		if self.is_negative { -magnitude } else { magnitude }
+	}
+}
+
+impl Parse for NumberBound {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		let is_negative = input.peek(syn::Token![-]);
+		if is_negative {
+			let _: syn::Token![-] = input.parse()?;
+		}
+
+		let literal = if input.peek(LitFloat) {
+			NumberBoundLiteral::Float(input.parse()?)
+		} else if input.peek(LitInt) {
+			NumberBoundLiteral::Int(input.parse()?)
+		} else {
+			return Err(input.error("expected a numeric literal (integer or float)"));
+		};
+
+		Ok(NumberBound { is_negative, literal })
+	}
+}
+
+impl ToTokens for NumberBound {
+	fn to_tokens(&self, stream: &mut TokenStream2) {
+		match (&self.literal, self.is_negative) {
+			(NumberBoundLiteral::Float(lit), false) => lit.to_tokens(stream),
+			(NumberBoundLiteral::Float(lit), true) => stream.extend(quote!(-#lit)),
+			(NumberBoundLiteral::Int(lit), false) => stream.extend(quote!(#lit as f64)),
+			(NumberBoundLiteral::Int(lit), true) => stream.extend(quote!(-(#lit as f64))),
+		}
+	}
+}
+
 /// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
 /// `#[implementation(type)]`
 #[derive(Clone, Debug)]
@@ -130,10 +184,10 @@ pub struct RegularParsedField {
 	pub ty: Type,
 	pub exposed: bool,
 	pub value_source: ParsedValueSource,
-	pub number_soft_min: Option<LitFloat>,
-	pub number_soft_max: Option<LitFloat>,
-	pub number_hard_min: Option<LitFloat>,
-	pub number_hard_max: Option<LitFloat>,
+	pub number_soft_min: Option<NumberBound>,
+	pub number_soft_max: Option<NumberBound>,
+	pub number_hard_min: Option<NumberBound>,
+	pub number_hard_max: Option<NumberBound>,
 	pub number_mode_range: Option<ExprTuple>,
 	pub implementations: Punctuated<Type, Comma>,
 	pub gpu_image: bool,
@@ -722,6 +776,29 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.map(|attr| parse_implementations(attr, ident))
 			.transpose()?
 			.unwrap_or_default();
+
+		// Error if a float literal is given for a bound attribute on an integer-typed field
+		if is_integer_type(&ty) {
+			let bound_attrs = [
+				(&number_soft_min, "soft_min"),
+				(&number_hard_min, "hard_min"),
+				(&number_soft_max, "soft_max"),
+				(&number_hard_max, "hard_max"),
+			];
+			for (bound, attr_name) in bound_attrs {
+				if let Some(NumberBound {
+					literal: NumberBoundLiteral::Float(_),
+					..
+				}) = bound
+				{
+					return Err(Error::new_spanned(
+						&pat_ident,
+						format!("Attribute `#[{attr_name}]` on `{ident}` has a float literal, but `{ident}` is an integer type. Use an integer literal without a decimal point."),
+					));
+				}
+			}
+		}
+
 		Ok(ParsedField {
 			pat_ident,
 			ty: ParsedFieldType::Regular(RegularParsedField {
@@ -767,6 +844,15 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 		}
 	}
 	(false, None, None)
+}
+
+fn is_integer_type(ty: &Type) -> bool {
+	let Type::Path(type_path) = ty else { return false };
+	let Some(segment) = type_path.path.segments.last() else { return false };
+	matches!(
+		segment.ident.to_string().as_str(),
+		"u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+	)
 }
 
 fn parse_output(output: &ReturnType) -> syn::Result<Type> {

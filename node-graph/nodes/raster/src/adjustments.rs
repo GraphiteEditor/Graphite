@@ -962,7 +962,7 @@ fn posterize<T: Adjust<Color>>(
 	#[gpu_image]
 	mut input: T,
 	#[default(4)]
-	#[hard_min(2.)]
+	#[hard_min(2)]
 	levels: u32,
 ) -> T {
 	input.adjust(|color| {

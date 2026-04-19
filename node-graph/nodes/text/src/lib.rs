@@ -195,7 +195,6 @@ fn string_truncate(
 	string: String,
 	/// The maximum number of characters allowed, including the suffix if one is appended.
 	#[default(80)]
-	#[min(0)]
 	length: u32,
 	/// A suffix appended to indicate truncation occurred, unless empty. Its length counts towards the character budget.
 	#[default("…")]
@@ -224,7 +223,6 @@ fn format_number(
 	number: f64,
 	/// The amount of digits after the decimal point. The value is rounded to fit. Set to 0 to show only whole numbers.
 	#[default(2)]
-	#[min(0)]
 	decimal_places: u32,
 	/// The character(s) used as the decimal point.
 	#[default(".")]
@@ -378,7 +376,7 @@ fn string_repeat(
 	string: String,
 	/// The number of times the string should appear in the output.
 	#[default(2)]
-	#[min(1)]
+	#[hard_min(1)]
 	count: u32,
 	/// The string placed between each repetition.
 	#[default("\\n")]

@@ -8,7 +8,7 @@ async fn image_color_palette(
 	_: impl Ctx,
 	image: Table<Raster<CPU>>,
 	#[default(4)]
-	#[min(1)]
+	#[hard_min(1)]
 	count: u32,
 ) -> Table<Color> {
 	const GRID: f32 = 3.;
