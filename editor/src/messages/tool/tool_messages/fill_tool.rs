@@ -77,8 +77,9 @@ impl ToolTransition for FillTool {
 	}
 }
 
-pub fn close_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, stroke_width: f64, _zoom: f64, layer_to_viewport_transform: DAffine2) -> bool {
+pub fn close_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, stroke_width: f64, zoom: f64, layer_to_viewport_transform: DAffine2) -> bool {
 	let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
+	// WARN: Zoom multiplied into stroke width gives false positive when zoom in 1000x
 	let max_stroke_distance = stroke_width;
 
 	let subpath_bezpath = subpath.to_bezpath();
