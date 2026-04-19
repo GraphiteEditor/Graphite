@@ -1943,7 +1943,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	if let Fill::Gradient(gradient) = fill.clone() {
 		let mut row = vec![TextLabel::new("").widget_instance()];
 		match gradient.gradient_type {
-			GradientType::Linear => add_blank_assist(&mut row),
+			GradientType::Linear | GradientType::Mesh => add_blank_assist(&mut row),
 			GradientType::Radial => {
 				let orientation = if (gradient.end.x - gradient.start.x).abs() > f64::EPSILON * 1e6 {
 					gradient.end.x > gradient.start.x

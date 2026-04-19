@@ -72,6 +72,7 @@ impl RenderExt for Gradient {
 					gradient_id, start.x, start.y, radius, stop
 				);
 			}
+			_ => (),
 		}
 
 		gradient_id

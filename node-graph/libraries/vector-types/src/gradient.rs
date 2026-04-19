@@ -9,6 +9,7 @@ pub enum GradientType {
 	#[default]
 	Linear,
 	Radial,
+	Mesh,
 }
 
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation

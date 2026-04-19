@@ -14,6 +14,7 @@ use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::vec;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
@@ -26,6 +27,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use wasm_bindgen::UnwrapThrowExt;
 
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
@@ -106,6 +108,51 @@ where
 
 	content
 }
+
+// #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
+// async fn mesh_gradient(
+// 	_: impl Ctx,
+// 	/// The content with vector paths to apply the mesh gradient to.
+// 	mut content: Table<Vector>,
+// 	/// The top-left color of the gradient.
+// 	#[default(Color::BLACK)]
+// 	top_left_color: Table<Color>,
+// 	/// The top-right color of the gradient.
+// 	#[default(Color::BLACK)]
+// 	top_right_color: Table<Color>,
+// 	/// The bottom-left color of the gradient.
+// 	#[default(Color::BLACK)]
+// 	bottom_left_color: Table<Color>,
+// 	/// The bottom-right color of the gradient.
+// 	#[default(Color::BLACK)]
+// 	bottom_right_color: Table<Color>,
+// 	_backup_color: Table<Color>,
+// 	_backup_gradient: Gradient,
+// ) -> Table<Vector> {
+// 	for vector in content.vector_iter_mut() {
+// 		let grid_num = 8;
+// 		let grid_stride_uv = 1. / grid_num as f64;
+
+// 		let segments: Vec<_> = vector.element.segment_iter().collect();
+// 		let points = vector.element.point_domain.positions();
+// 		let top_seg = segments.get(0).unwrap_throw().1;
+// 		let right_seg = segments.get(1).unwrap_throw().1;
+// 		let bottom_seg = segments.get(2).unwrap_throw().1;
+// 		let left_seg = segments.get(3).unwrap_throw().1;
+
+// 		let bilerp = |u: f64, v: f64| points[0] * (1. - u) * (1. - v) + points[1] * u * (1. - v) + points[2] * (1. - u) * v + points[3] * u * v;
+
+// 		for i in 0..=grid_num {
+// 			for j in 0..=grid_num {
+// 				let u = i as f64 * grid_stride_uv;
+// 				let v = j as f64 * grid_stride_uv;
+// 				let pos = point_to_dvec2(top_seg.eval(u)) + point_to_dvec2(bottom_seg.eval(1. - u)) - bilerp(u, v);
+// 			}
+// 		}
+// 	}
+
+// 	content
+// }
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]

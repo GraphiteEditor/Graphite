@@ -24,7 +24,7 @@ use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::{self, GradientSpreadMethod};
 use vello::*;
 
 /// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
@@ -967,6 +967,15 @@ impl Render for Table<Vector> {
 				}
 			}
 
+			let is_mesh_fill = matches!(
+				&row.element.style.fill,
+				Fill::Gradient(g) if g.gradient_type == GradientType::Mesh
+			);
+			if is_mesh_fill {
+				log::debug!("hoge");
+				return;
+			}
+
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
 				let matrix = format_transform_matrix(element_transform);
@@ -1159,6 +1168,12 @@ impl Render for Table<Vector> {
 								}
 								.into()
 							}
+							// TODO!!!!!!!!!!!!!!!!
+							GradientType::Mesh => peniko::LinearGradientPosition {
+								start: to_point(start),
+								end: to_point(end),
+							}
+							.into(),
 						},
 						extend: match gradient.spread_method {
 							GradientSpreadMethod::Pad => peniko::Extend::Pad,
@@ -1750,6 +1765,15 @@ impl Render for Table<GradientStops> {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
 							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="{cx}" cy="{cy}" r="{r}"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+						);
+					}
+					// TODO!!!!!!!!!!!!!!!!!!!!!!
+					GradientType::Mesh => {
+						let (x1, y1) = (start.x, start.y);
+						let (x2, y2) = (end.x, end.y);
+						let _ = write!(
+							&mut attributes.0.svg_defs,
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
 				}
