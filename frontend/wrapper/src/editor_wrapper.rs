@@ -386,7 +386,7 @@ impl EditorWrapper {
 			return;
 		};
 
-		let message = PortfolioMessage::LoadPersistedState { state };
+		let message = PersistentStateMessage::LoadState { state };
 		self.dispatch(message);
 	}
 

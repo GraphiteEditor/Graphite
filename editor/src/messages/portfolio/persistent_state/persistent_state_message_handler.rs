@@ -1,9 +1,11 @@
-use super::persistent_state_message::PersistentStateMessage;
 use crate::messages::frontend::utility_types::PersistedState;
+use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 
 #[derive(Default, Debug, Clone, ExtractField)]
-pub struct PersistentStateMessageHandler {}
+pub struct PersistentStateMessageHandler {
+	loaded: bool,
+}
 
 #[derive(ExtractField)]
 pub struct PersistentStateMessageContext {
@@ -20,7 +22,15 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 				responses.add(FrontendMessage::TriggerPersistenceReadState);
 			}
 			PersistentStateMessage::WriteState => {
+				if !self.loaded && (state.documents.is_empty() && (state.workspace_layout == Some(WorkspacePanelLayout::default()) || state.workspace_layout.is_none())) {
+					return;
+				}
+				self.loaded = true;
 				responses.add(FrontendMessage::TriggerPersistenceWriteState { state });
+			}
+			PersistentStateMessage::LoadState { state } => {
+				self.loaded = true;
+				responses.add(PortfolioMessage::LoadPersistedState { state });
 			}
 			PersistentStateMessage::ReadDocument { document_id } => {
 				responses.add(FrontendMessage::TriggerPersistenceReadDocument { document_id });

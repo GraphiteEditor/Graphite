@@ -106,6 +106,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
+				responses.add(PersistentStateMessage::ReadState);
+
 				// Initialize the frontend with environment information
 				responses.add(FrontendMessage::UpdatePlatform {
 					platform: Editor::environment().into(),
@@ -113,7 +115,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
-				responses.add(PersistentStateMessage::ReadState);
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
