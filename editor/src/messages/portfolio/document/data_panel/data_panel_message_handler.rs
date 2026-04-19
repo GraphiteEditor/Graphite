@@ -584,7 +584,7 @@ impl TableRowLayout for f64 {
 		"Number (f64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
+		let widgets = vec![NumberInput::new(Some(*self)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -597,7 +597,7 @@ impl TableRowLayout for u32 {
 		"Number (u32)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
+		let widgets = vec![NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -610,7 +610,7 @@ impl TableRowLayout for u64 {
 		"Number (u64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
+		let widgets = vec![NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -642,7 +642,7 @@ impl TableRowLayout for String {
 		}
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_instance()];
+		let widgets = vec![TextAreaInput::new(self.to_string()).monospace(true).disabled(true).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }

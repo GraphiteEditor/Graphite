@@ -519,7 +519,7 @@
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
+					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\n*ID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).*` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
@@ -682,7 +682,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
+					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\n*ID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).*` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
