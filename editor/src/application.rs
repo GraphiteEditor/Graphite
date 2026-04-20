@@ -9,7 +9,7 @@ pub struct Editor {
 
 impl Editor {
 	pub fn new(environment: Environment, uuid_random_seed: u64) -> Self {
-		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
+		ENVIRONMENT.set(environment).expect("Editor should only be initialized once");
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
 		Self { dispatcher: Dispatcher::new() }

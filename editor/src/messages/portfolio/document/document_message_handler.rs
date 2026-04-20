@@ -3661,7 +3661,7 @@ mod document_message_handler_tests {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
 
-		// Verifying rectagle is now in folder1
+		// Verifying rectangle is now in folder1
 		let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
 		assert_eq!(rect_parent, folder1, "Rectangle should be inside folder1");
 
@@ -3669,12 +3669,12 @@ mod document_message_handler_tests {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
 
-		// Verifing hirarchy: folder2 > folder1 > rectangle
+// Verifying hierarchy: folder2 > folder1 > rectangle
 		let document = editor.active_document();
 		let folder1_parent = folder1.parent(document.metadata()).unwrap();
 		assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
 
-		// Verifing rectangle moved with its parent
+		// Verifying rectangle moved with its parent
 		let rect_parent = rect_layer.parent(document.metadata()).unwrap();
 		assert_eq!(rect_parent, folder1, "Rectangle should still be inside folder1");
 
@@ -3749,7 +3749,7 @@ mod document_message_handler_tests {
 		let document = editor.active_document();
 		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
 
-		// Verifing the rectangle maintains approximately the same position in viewport space
+		// Verifying the rectangle maintains approximately the same position in viewport space
 		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.; // TODO: Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(100., 25.)
 		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.; // TODO:    Should be: DVec2(0., -25.), regression (#2688) causes it to be: DVec2(200., 75.)
 		let distance = before_center.distance(after_center); // TODO:                    Should be: 0.,               regression (#2688) causes it to be: 111.80339887498948

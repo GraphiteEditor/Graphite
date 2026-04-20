@@ -602,7 +602,7 @@ impl OverlayContext {
 
 	/// Transforms the canvas context to adjust for DPI scaling
 	///
-	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
+	/// Overwrites all existing transforms. This operation can be reversed with [`Self::reset_transform`].
 	fn start_dpi_aware_transform(&self) {
 		let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(self.viewport.scale())).to_cols_array();
 		self.render_context

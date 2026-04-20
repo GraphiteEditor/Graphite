@@ -64,7 +64,7 @@ define_layout_target!(
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphControlBar,
-	/// The body of the Properties panel containing many collapsable sections.
+	/// The body of the Properties panel containing many collapsible sections.
 	PropertiesPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
