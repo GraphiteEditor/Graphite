@@ -1,4 +1,5 @@
 mod font_cache;
+pub mod json;
 mod path_builder;
 mod text_context;
 mod to_path;
@@ -968,37 +969,4 @@ fn serialize<T: serde::Serialize>(
 	value: T,
 ) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
-}
-
-#[node_macro::node(name("JSON Get"), category("Debug"))]
-fn json_get(_: impl Ctx, data: String, key: String) -> String {
-	use serde_json::Value;
-	let Ok(value): Result<Value, _> = serde_json::from_str(&data) else {
-		return "Input is not valid json".into();
-	};
-	match value {
-		Value::Array(ref arr) => {
-			let Ok(index): Result<usize, _> = key.parse() else {
-				log::error!("Json input is an array, but key is not a number");
-				return String::new();
-			};
-			let Some(value) = arr.get(index) else {
-				log::error!("Index {} out of bounds for len {}", index, arr.len());
-				return String::new();
-			};
-			value.to_string()
-		}
-		Value::Object(map) => {
-			let Some(value) = map.get(&key) else {
-				log::error!("Key {key} not found in object");
-				return String::new();
-			};
-			match value {
-				Value::String(s) => s.clone(),
-				Value::Number(n) => n.to_string(),
-				complex => complex.to_string(),
-			}
-		}
-		_ => String::new(),
-	}
 }
