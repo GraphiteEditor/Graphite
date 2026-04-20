@@ -1101,6 +1101,20 @@ impl Color {
 	}
 }
 
+pub fn bilerp_color(c00: Color, c10: Color, c01: Color, c11: Color, u: f64, v: f64) -> Color {
+	let (u, v) = (u as f32, v as f32);
+	let w00 = (1. - u) * (1. - v);
+	let w10 = u * (1. - v);
+	let w01 = (1. - u) * v;
+	let w11 = u * v;
+	Color::from_rgbaf32_unchecked(
+		w00 * c00.r() + w10 * c10.r() + w01 * c01.r() + w11 * c11.r(),
+		w00 * c00.g() + w10 * c10.g() + w01 * c01.g() + w11 * c11.g(),
+		w00 * c00.b() + w10 * c10.b() + w01 * c01.b() + w11 * c11.b(),
+		w00 * c00.a() + w10 * c10.a() + w01 * c01.a() + w11 * c11.a(),
+	)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
