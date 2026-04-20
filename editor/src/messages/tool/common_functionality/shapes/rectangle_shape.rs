@@ -53,3 +53,64 @@ impl Rectangle {
 		}
 	}
 }
+#[cfg(test)]
+mod test_polygon {
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+	use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::value::TaggedValue;
+	struct ResolvedPolygon {
+		vertices: u32,
+		radius: f64,
+	}
+	async fn get_polygons(editor: &mut EditorTestUtils) -> Vec<ResolvedPolygon> {
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		document
+			.metadata()
+			.all_layers()
+			.filter_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, network_interface)
+					.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))?;
+				let Some(&TaggedValue::U32(vertices)) = node_inputs[1].as_value() else {
+					return None;
+				};
+				let Some(&TaggedValue::F64(radius)) = node_inputs[2].as_value() else {
+					return None;
+				};
+				Some(ResolvedPolygon { vertices, radius })
+			})
+			.collect()
+	}
+	#[tokio::test]
+	async fn polygon_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Shape, 0., 0., 60., 60., ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+		let polys = get_polygons(&mut editor).await;
+		assert_eq!(polys.len(), 1);
+		// Default vertices count (6 for Shape tool default)
+		assert!(polys[0].vertices >= 3, "polygon should have at least 3 vertices");
+		// For a 60×60 drag both dimensions equal → radius = smaller_dim / 2 = 30
+		assert!((polys[0].radius - 30.).abs() < 1e-10);
+	}
+	#[tokio::test]
+	async fn polygon_draw_non_square() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Drag a non-square region: 40 wide, 60 tall → smaller dimension is 40 → radius = 20
+		editor.drag_tool(ToolType::Shape, 0., 0., 40., 60., ModifierKeys::empty()).await;
+		let polys = get_polygons(&mut editor).await;
+		assert_eq!(polys.len(), 1);
+		assert!((polys[0].radius - 20.).abs() < 1e-10);
+	}
+	#[tokio::test]
+	async fn polygon_cancel() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool_cancel_rmb(ToolType::Shape).await;
+		let polys = get_polygons(&mut editor).await;
+		assert_eq!(polys.len(), 0);
+	}
+}
