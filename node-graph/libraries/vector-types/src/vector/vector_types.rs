@@ -427,6 +427,38 @@ impl<Upstream> Vector<Upstream> {
 		}
 	}
 
+	pub fn detect_colinear_manipulators(&mut self)
+	where
+		Upstream: 'static,
+	{
+		self.colinear_manipulators.clear();
+		for index in 0..self.point_domain.ids().len() {
+			let point_pos = self.point_domain.positions()[index];
+
+			let mut connected = Vec::new();
+			for seg_id in self.segment_domain.start_connected(index) {
+				connected.push(HandleId::primary(seg_id));
+			}
+			for seg_id in self.segment_domain.end_connected(index) {
+				connected.push(HandleId::end(seg_id));
+			}
+
+			if connected.len() == 2 {
+				let h1 = connected[0];
+				let h2 = connected[1];
+
+				if let (Some(pos1), Some(pos2)) = (h1.to_manipulator_point().get_position(self), h2.to_manipulator_point().get_position(self)) {
+					let vec1 = (pos1 - point_pos).normalize_or_zero();
+					let vec2 = (pos2 - point_pos).normalize_or_zero();
+
+					if vec1.dot(vec2) < -0.99999 {
+						self.colinear_manipulators.push([h1, h2]);
+					}
+				}
+			}
+		}
+	}
+
 	pub fn concat(&mut self, additional: &Self, transform_of_additional: DAffine2, collision_hash_seed: u64) {
 		let point_map = additional
 			.point_domain
