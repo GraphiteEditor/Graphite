@@ -2,10 +2,8 @@ use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
-use core_types::bounds::BoundingBox;
-use core_types::bounds::RenderBoundingBox;
-use core_types::color::Color;
-use core_types::color::SRGBA8;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::color::{Color, SRGBA8, bilerp_color};
 use core_types::consts::DEFAULT_FONT_SIZE;
 use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
@@ -28,7 +26,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, ParamCurve, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -40,6 +38,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
+use vector_types::vector::misc::point_to_dvec2;
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1164,7 +1163,123 @@ impl Render for List<Vector> {
 				matches!(list.element(0), Some(Graphic::Gradient(gradient)) if gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0) == GradientType::Mesh)
 			});
 			if is_mesh_fill {
-				log::debug!("hoge");
+				// Split the mesh into 8 x 8 subgrids
+				let grid_num = 8;
+				let grid_stride_uv = 1. / grid_num as f64;
+
+				let segments: Vec<_> = vector.segment_iter().map(|(_, path_seg, _, _)| path_seg).collect();
+				let points = vector.point_domain.positions();
+
+				let top_seg = segments[0];
+				let right_seg = segments[1];
+				let bottom_seg = segments[2];
+				let left_seg = segments[3];
+
+				let top_left_color = Color::RED;
+				let top_right_color = Color::BLUE;
+				let bottom_left_color = Color::GREEN;
+				let bottom_right_color = Color::YELLOW;
+
+				let bilerp = |u: f64, v: f64| points[3] * (1. - u) * (1. - v) + points[2] * u * (1. - v) + points[0] * (1. - u) * v + points[1] * u * v;
+
+				// Create the position and color info of the grid that is splitted from the original mesh
+				let mut grid_info: Vec<Vec<(DVec2, Color)>> = vec![];
+
+				for i in 0..=grid_num {
+					let u = i as f64 * grid_stride_uv;
+					let mut grid_info_row: Vec<(DVec2, Color)> = vec![];
+
+					for j in 0..=grid_num {
+						let v = j as f64 * grid_stride_uv;
+						let c1_u = point_to_dvec2(bottom_seg.eval(1. - u));
+						let c2_u = point_to_dvec2(top_seg.eval(u));
+						let d1_v = point_to_dvec2(left_seg.eval(v));
+						let d2_v = point_to_dvec2(right_seg.eval(1. - v));
+						let lc = (1. - v) * c1_u + v * c2_u;
+						let ld = (1. - u) * d1_v + u * d2_v;
+
+						let pos = lc + ld - bilerp(u, v);
+						let color = bilerp_color(bottom_left_color, bottom_right_color, top_left_color, top_right_color, u, v);
+						grid_info_row.push((pos, color));
+					}
+					grid_info.push(grid_info_row);
+				}
+
+				// Create poloygons using the vertex position data
+				let mut idx = generate_uuid();
+
+				for i in 0..grid_num {
+					for j in 0..grid_num {
+						let bl = grid_info[i][j];
+						let tl = grid_info[i][j + 1];
+						let br = grid_info[i + 1][j];
+						let tr = grid_info[i + 1][j + 1];
+
+						// linear gradient for the bottom line
+						write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="gb{idx}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							bl.0.x,
+							bl.0.y,
+							br.0.x,
+							br.0.y,
+							SRGBA8::from(bl.1).to_rgb_hex(),
+							SRGBA8::from(br.1).to_rgb_hex(),
+						)
+						.unwrap();
+
+						// linear gradient for the top line
+						write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="gt{idx}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#{}"/><stop offset="1" stop-color="#{}"/></linearGradient>"##,
+							tl.0.x,
+							tl.0.y,
+							tr.0.x,
+							tr.0.y,
+							SRGBA8::from(tl.1).to_rgb_hex(),
+							SRGBA8::from(tr.1).to_rgb_hex(),
+						)
+						.unwrap();
+
+						// top mask gradient
+						write!(
+							&mut render.svg_defs,
+							r##"<linearGradient id="gm{idx}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="black"/><stop offset="1" stop-color="white"/></linearGradient>"##,
+							(bl.0.x + br.0.x) / 2.,
+							(bl.0.y + br.0.y) / 2.,
+							(tl.0.x + tr.0.x) / 2.,
+							(tl.0.y + tr.0.y) / 2.,
+						)
+						.unwrap();
+
+						// mask
+						write!(
+							&mut render.svg_defs,
+							r##"<mask id="m{idx}" maskUnits="userSpaceOnUse"><polygon points="{},{} {},{} {},{} {},{}" fill="url(#gm{idx})"/></mask>"##,
+							bl.0.x, bl.0.y, br.0.x, br.0.y, tr.0.x, tr.0.y, tl.0.x, tl.0.y,
+						)
+						.unwrap();
+
+						render.leaf_tag("polygon", |attributes| {
+							attributes.push("points", format!("{},{} {},{} {},{} {},{}", bl.0.x, bl.0.y, br.0.x, br.0.y, tr.0.x, tr.0.y, tl.0.x, tl.0.y));
+							attributes.push("fill", format!("url(#gb{idx})"));
+						});
+
+						render.leaf_tag("polygon", |attributes| {
+							attributes.push("points", format!("{},{} {},{} {},{} {},{}", bl.0.x, bl.0.y, br.0.x, br.0.y, tr.0.x, tr.0.y, tl.0.x, tl.0.y));
+							attributes.push("fill", format!("url(#gt{idx})"));
+							attributes.push("mask", format!("url(#m{idx})"));
+						});
+
+						idx += 1;
+					}
+				}
+
+				// Create a linear gradients, bottom-left -> bottom-right
+
+				// Create a linear gradient mask from top to bottom
+
+				// Create a linear gradient, top->left -> top->right with applying the mask
 				return;
 			}
 
