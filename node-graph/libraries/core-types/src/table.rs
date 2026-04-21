@@ -5,9 +5,10 @@ use crate::{AlphaBlending, math::quad::Quad};
 use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Table<T> {
-	#[serde(alias = "instances", alias = "instance")]
+	#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 	element: Vec<T>,
 	transform: Vec<DAffine2>,
 	alpha_blending: Vec<AlphaBlending>,
@@ -247,9 +248,10 @@ impl<T> FromIterator<TableRow<T>> for Table<T> {
 	}
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TableRow<T> {
-	#[serde(alias = "instance")]
+	#[cfg_attr(feature = "serde", serde(alias = "instance"))]
 	pub element: T,
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,

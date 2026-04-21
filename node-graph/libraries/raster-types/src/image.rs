@@ -39,15 +39,16 @@ mod base64_serde {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Image<P: Pixel> {
 	pub width: u32,
 	pub height: u32,
-	#[serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub data: Vec<P>,
 	/// Optional: Stores a base64 string representation of the image which can be used to speed up the conversion
 	/// to an svg string. This is used as a cache in order to not have to encode the data on every graph evaluation.
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub base64_string: Option<String>,
 	// TODO: Add an `origin` field to store where in the local space the image is anchored.
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
@@ -60,7 +61,8 @@ impl<P: Pixel + PartialEq> PartialEq for Image<P> {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransformImage(pub DAffine2);
 
 impl core_types::CacheHash for TransformImage {
@@ -238,13 +240,15 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		}
 	}
 
-	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub enum GraphicElement {
 		GraphicGroup(Table<GraphicElement>),
 		RasterFrame(RasterFrame),
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 	}
@@ -272,15 +276,16 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		type Static = ImageFrame<P::Static>;
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
 
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
@@ -293,18 +298,20 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		RasterTable(Table<Raster<CPU>>),
 	}
 
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldTable<T> {
-		#[serde(alias = "instances", alias = "instance")]
+		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 		transform: Vec<DAffine2>,
 		alpha_blending: Vec<AlphaBlending>,
 	}
 
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OlderTable<T> {
 		id: Vec<u64>,
-		#[serde(alias = "instances", alias = "instance")]
+		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 	}
 
@@ -391,14 +398,16 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		}
 	}
 
-	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub enum GraphicElement {
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),
 		RasterFrame(RasterFrame),
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 	}
@@ -426,15 +435,16 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		type Static = ImageFrame<P::Static>;
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
 
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum FormatVersions {
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),

@@ -25,7 +25,8 @@ pub mod migrations {
 	pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Vector>, D::Error> {
 		use serde::Deserialize;
 
-		#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+		#[derive(Clone, Debug, PartialEq, DynAny)]
+		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 		pub struct OldVectorData {
 			pub transform: DAffine2,
 			pub alpha_blending: AlphaBlending,
@@ -41,23 +42,25 @@ pub mod migrations {
 			pub upstream_graphic_group: Option<Table<Graphic>>,
 		}
 
-		#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+		#[derive(Clone, Debug)]
+		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 		pub struct OldTable<T> {
-			#[serde(alias = "instances", alias = "instance")]
+			#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 			element: Vec<T>,
 			transform: Vec<DAffine2>,
 			alpha_blending: Vec<AlphaBlending>,
 		}
 
-		#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+		#[derive(Clone, Debug)]
+		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 		pub struct OlderTable<T> {
 			id: Vec<u64>,
-			#[serde(alias = "instances", alias = "instance")]
+			#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 			element: Vec<T>,
 		}
 
-		#[derive(serde::Serialize, serde::Deserialize)]
-		#[serde(untagged)]
+		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+		#[cfg_attr(feature = "serde", serde(untagged))]
 		#[allow(clippy::large_enum_variant)]
 		enum VectorFormat {
 			Vector(Vector),

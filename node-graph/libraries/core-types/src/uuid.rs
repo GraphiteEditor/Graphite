@@ -2,7 +2,8 @@ use dyn_any::DynAny;
 pub use uuid_generation::*;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Uuid(#[serde(with = "u64_string")] u64);
 
 mod u64_string {
@@ -68,7 +69,8 @@ mod uuid_generation {
 
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeId(pub u64);
 
 impl NodeId {

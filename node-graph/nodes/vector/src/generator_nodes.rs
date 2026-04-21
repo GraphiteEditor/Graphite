@@ -188,7 +188,8 @@ fn star<T: AsU64>(
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum QRCodeErrorCorrectionLevel {
 	/// Allows recovery from up to 7% data loss.

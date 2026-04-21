@@ -14,7 +14,7 @@ macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
 			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, graphene_hash::CacheHash, DynAny)]
-			#[derive(serde::Serialize, serde::Deserialize)]
+			#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 			/// A strongly typed ID
 			pub struct $id(u64);
 
@@ -79,11 +79,12 @@ impl std::hash::BuildHasher for NoHashBuilder {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.
 pub struct PointDomain {
 	id: Vec<PointId>,
-	#[serde(alias = "positions")]
+	#[cfg_attr(feature = "serde", serde(alias = "positions"))]
 	pub(crate) position: Vec<DVec2>,
 }
 
@@ -205,10 +206,11 @@ impl PointDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
-	#[serde(alias = "ids")]
+	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
 	id: Vec<SegmentId>,
 	start_point: Vec<usize>,
 	end_point: Vec<usize>,
@@ -587,11 +589,12 @@ impl SegmentDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
 /// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
-	#[serde(alias = "ids")]
+	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
 	id: Vec<RegionId>,
 	segment_range: Vec<std::ops::RangeInclusive<SegmentId>>,
 	fill: Vec<FillId>,

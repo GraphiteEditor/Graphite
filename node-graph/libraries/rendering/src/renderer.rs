@@ -68,7 +68,8 @@ pub fn checkerboard_brush() -> peniko::Brush {
 	})
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum MaskType {
 	Clip,
 	Mask,
@@ -316,7 +317,8 @@ fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_p
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
 // This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
-#[derive(Debug, Default, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,

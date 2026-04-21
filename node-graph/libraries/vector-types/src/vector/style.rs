@@ -16,7 +16,8 @@ use std::f64::consts::{PI, TAU};
 /// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Fill {
 	#[default]
 	None,
@@ -161,7 +162,8 @@ impl From<Gradient> for Fill {
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FillChoice {
 	#[default]
 	None,
@@ -209,7 +211,8 @@ impl From<Fill> for FillChoice {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, graphene_hash::CacheHash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, DynAny, Hash, graphene_hash::CacheHash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum FillType {
 	#[default]
@@ -220,7 +223,8 @@ pub enum FillType {
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
@@ -241,7 +245,8 @@ impl StrokeCap {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
@@ -262,7 +267,8 @@ impl StrokeJoin {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
@@ -279,7 +285,8 @@ impl StrokeAlign {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
@@ -299,8 +306,9 @@ fn daffine2_identity() -> DAffine2 {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
 	/// Stroke color
 	pub color: Option<Color>,
@@ -308,17 +316,17 @@ pub struct Stroke {
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
 	pub dash_offset: f64,
-	#[serde(alias = "line_cap")]
+	#[cfg_attr(feature = "serde", serde(alias = "line_cap"))]
 	pub cap: StrokeCap,
-	#[serde(alias = "line_join")]
+	#[cfg_attr(feature = "serde", serde(alias = "line_join"))]
 	pub join: StrokeJoin,
-	#[serde(alias = "line_join_miter_limit")]
+	#[cfg_attr(feature = "serde", serde(alias = "line_join_miter_limit"))]
 	pub join_miter_limit: f64,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub align: StrokeAlign,
-	#[serde(default = "daffine2_identity")]
+	#[cfg_attr(feature = "serde", serde(default = "daffine2_identity"))]
 	pub transform: DAffine2,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub paint_order: PaintOrder,
 }
 
@@ -494,7 +502,8 @@ impl Default for Stroke {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, Default, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, Default, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
@@ -655,7 +664,8 @@ impl PathStyle {
 
 /// Ways the user can choose to view the artwork in the viewport.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, graphene_hash::CacheHash, DynAny)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]

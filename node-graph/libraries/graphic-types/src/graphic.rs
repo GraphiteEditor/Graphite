@@ -15,7 +15,8 @@ use vector_types::GradientStops;
 pub type Vector = vector_types::Vector<Option<Table<Graphic>>>;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
-#[derive(Clone, Debug, CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),
@@ -436,35 +437,39 @@ impl<T: Clone> OmitIndex for Table<T> {
 pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldGraphicGroup {
 		elements: Vec<(Graphic, Option<NodeId>)>,
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
-	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct GraphicGroup {
 		elements: Vec<(Graphic, Option<NodeId>)>,
 	}
 
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OlderTable<T> {
 		id: Vec<u64>,
-		#[serde(alias = "instances", alias = "instance")]
+		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 	}
 
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldTable<T> {
 		id: Vec<u64>,
-		#[serde(alias = "instances", alias = "instance")]
+		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 		transform: Vec<DAffine2>,
 		alpha_blending: Vec<AlphaBlending>,
 	}
 
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GraphicFormat {
 		OldGraphicGroup(OldGraphicGroup),
 		OlderTableOldGraphicGroup(OlderTable<OldGraphicGroup>),

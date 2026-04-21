@@ -12,7 +12,8 @@ use glam::{DAffine2, DVec2, IVec2};
 use graphene_hash::CacheHash;
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-#[derive(Clone, Debug, CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
 	pub content: Table<Graphic>,
 	pub label: String,
@@ -76,22 +77,24 @@ impl Transform for Artboard {
 pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Artboard>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Default, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct ArtboardGroup {
 		pub artboards: Vec<(Artboard, Option<NodeId>)>,
 	}
 
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum ArtboardFormat {
 		ArtboardGroup(ArtboardGroup),
 		OldArtboardTable(OldTable<Artboard>),
 		ArtboardTable(Table<Artboard>),
 	}
 
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldTable<T> {
-		#[serde(alias = "instances", alias = "instance")]
+		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 		transform: Vec<DAffine2>,
 		alpha_blending: Vec<AlphaBlending>,

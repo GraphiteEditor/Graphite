@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+serde = ["dep:serde", "core-types/serde", "vector-types/serde"]
 wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 
 [dependencies]

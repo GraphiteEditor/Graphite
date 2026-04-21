@@ -13,7 +13,8 @@ use kurbo::{Affine, BezPath, ParamCurve, PathSeg, Shape};
 
 type BoundingBox = Option<[DVec2; 2]>;
 
-#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FreePoint {
 	pub id: PointId,
 	pub position: DVec2,
@@ -29,7 +30,8 @@ impl FreePoint {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTargetType {
 	Subpath(Subpath<PointId>),
 	FreePoint(FreePoint),
@@ -115,12 +117,13 @@ impl BoundingBoxCache {
 }
 
 /// Represents a clickable target for the layer
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTarget {
 	target_type: ClickTargetType,
 	stroke_width: f64,
 	bounding_box: BoundingBox,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	bounding_box_cache: Arc<RwLock<BoundingBoxCache>>,
 }
 
