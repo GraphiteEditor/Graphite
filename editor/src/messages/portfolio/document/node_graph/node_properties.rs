@@ -24,7 +24,7 @@ use graphene_std::raster::{
 use graphene_std::raster_types::Image;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
-use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::text_nodes::{TextDenomination, StringCapitalization};
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
@@ -248,6 +248,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<StringCapitalization>() => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<TextDenomination>() => enum_choice::<TextDenomination>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),

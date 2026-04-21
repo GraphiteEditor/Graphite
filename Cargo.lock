@@ -2743,6 +2743,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
+name = "ipsum"
+version = "0.1.0"
+
+[[package]]
 name = "iri-string"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5513,9 +5517,11 @@ dependencies = [
  "dyn-any",
  "fancy-regex",
  "glam",
+ "ipsum",
  "log",
  "node-macro",
  "parley",
+ "rand",
  "raster-types",
  "serde",
  "serde_json",
