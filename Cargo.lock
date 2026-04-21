@@ -445,22 +445,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo-gpu"
-version = "0.1.0"
-source = "git+https://github.com/Firestar99/cargo-gpu?rev=3952a22d16edbd38689f3a876e417899f21e1fe7#3952a22d16edbd38689f3a876e417899f21e1fe7"
+name = "cargo-gpu-install"
+version = "0.10.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82bad075de69e455c338955b4a7d58c0ced253185ef7703a3c6a3846e2d5ee66"
 dependencies = [
  "anyhow",
  "cargo_metadata",
- "clap",
- "crossterm",
  "directories",
- "dunce",
- "env_logger",
  "log",
- "relative-path",
- "semver",
  "serde",
- "serde_json",
  "spirv-builder",
 ]
 
@@ -781,15 +775,6 @@ dependencies = [
 
 [[package]]
 name = "convert_case"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb402b8d4c85569410425650ce3eddc7d698ed96d39a73f941b08fb63082f1e7"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "convert_case"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
@@ -1000,33 +985,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
-name = "crossterm"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8b9f2e4c67f833b660cdb0a3523065869fb35570177239812ed4c905aeff87b"
-dependencies = [
- "bitflags 2.11.0",
- "crossterm_winapi",
- "derive_more",
- "document-features",
- "mio",
- "parking_lot",
- "rustix",
- "signal-hook",
- "signal-hook-mio",
- "winapi",
-]
-
-[[package]]
-name = "crossterm_winapi"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acdd7c62a3665c7f6830a51635d9ac9b23ed385797f70a83bb8bafe9c572ab2b"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1136,7 +1094,6 @@ version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bda628edc44c4bb645fbe0f758797143e4e07926f7ebf4e9bdfbd3d2ce621df3"
 dependencies = [
- "convert_case 0.7.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
@@ -1603,15 +1560,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
-name = "fsevent-sys"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "futf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1806,13 +1754,13 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.29.3"
+version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
+checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 dependencies = [
  "bytemuck",
  "libm",
- "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -2676,26 +2624,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inotify"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
-dependencies = [
- "bitflags 2.11.0",
- "inotify-sys",
- "libc",
-]
-
-[[package]]
-name = "inotify-sys"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e05c02b5e89bff3b946cedeca278abc628fe811e604f027c45a8aa3cf793d0eb"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "interpreted-executor"
 version = "0.1.0"
 dependencies = [
@@ -2874,26 +2802,6 @@ name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
-
-[[package]]
-name = "kqueue"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eac30106d7dce88daf4a3fcb4879ea939476d5074a9b7ddd0fb97fa4bed5596a"
-dependencies = [
- "kqueue-sys",
- "libc",
-]
-
-[[package]]
-name = "kqueue-sys"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed9625ffda8729b85e45cf04090035ac368927b8cebc34898e7c120f52e4838b"
-dependencies = [
- "bitflags 1.3.2",
- "libc",
-]
 
 [[package]]
 name = "kurbo"
@@ -3164,7 +3072,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78bed444cc8a2160f01cbcf811ef18cac863ad68ae8ca62092e8db51d51c761c"
 dependencies = [
  "libc",
- "log",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.59.0",
 ]
@@ -3301,7 +3208,7 @@ dependencies = [
 name = "node-docs"
 version = "0.0.0"
 dependencies = [
- "convert_case 0.8.0",
+ "convert_case",
  "graph-craft",
  "graphene-std",
  "indoc",
@@ -3313,7 +3220,7 @@ dependencies = [
 name = "node-macro"
 version = "0.0.0"
 dependencies = [
- "convert_case 0.8.0",
+ "convert_case",
  "core-types",
  "indoc",
  "no-std-types",
@@ -3324,30 +3231,6 @@ dependencies = [
  "strum",
  "syn 2.0.106",
 ]
-
-[[package]]
-name = "notify"
-version = "8.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
-dependencies = [
- "bitflags 2.11.0",
- "fsevent-sys",
- "inotify",
- "kqueue",
- "libc",
- "log",
- "mio",
- "notify-types",
- "walkdir",
- "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "notify-types"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e0826a989adedc2a244799e823aece04662b66609d96af8dff7ac6df9a8925d"
 
 [[package]]
 name = "nu-ansi-term"
@@ -4329,7 +4212,7 @@ dependencies = [
 name = "raster-nodes-shaders"
 version = "0.1.0"
 dependencies = [
- "cargo-gpu",
+ "cargo-gpu-install",
  "env_logger",
  "log",
 ]
@@ -4466,15 +4349,6 @@ name = "regex-syntax"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
-
-[[package]]
-name = "relative-path"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bca40a312222d8ba74837cb474edef44b37f561da5f773981007a10bbaa992b0"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "renderdoc-sys"
@@ -4659,24 +4533,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
-name = "rustc_codegen_spirv-target-specs"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=c12f216121820580731440ee79ebc7403d6ea04f#3f05f5482824e3b1fbb44c9ef90a8795a0204c7c"
-dependencies = [
- "serde",
- "strum",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=c12f216121820580731440ee79ebc7403d6ea04f#3f05f5482824e3b1fbb44c9ef90a8795a0204c7c"
+version = "0.10.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ac3a589ac4bf0931b69299679803063986f280a2b82ace70e7f8b2d0db0dec2"
 dependencies = [
  "rspirv",
+ "semver",
  "serde",
  "serde_json",
  "spirv",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5063,36 +4930,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
-name = "signal-hook"
-version = "0.3.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d881a16cf4426aa584979d30bd82cb33429027e42122b169753d6ef1085ed6e2"
-dependencies = [
- "libc",
- "signal-hook-registry",
-]
-
-[[package]]
-name = "signal-hook-mio"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34db1a06d485c9142248b7a054f034b349b212551f3dfd19c94d45a754a217cd"
-dependencies = [
- "libc",
- "mio",
- "signal-hook",
-]
-
-[[package]]
-name = "signal-hook-registry"
-version = "1.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a4719bff48cee6b39d12c020eeb490953ad2443b7055bd0b21fca26bd8c28b"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "simd-adler32"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5247,16 +5084,14 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu?rev=c12f216121820580731440ee79ebc7403d6ea04f#3f05f5482824e3b1fbb44c9ef90a8795a0204c7c"
+version = "0.10.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b721e6d7d7bc999126e838d16b070c8beada89ff8251c3f8a9e5292102827d86"
 dependencies = [
  "cargo_metadata",
- "clap",
  "log",
  "memchr",
- "notify",
  "raw-string",
- "rustc_codegen_spirv-target-specs",
  "rustc_codegen_spirv-types",
  "semver",
  "serde",
@@ -5266,8 +5101,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.9.0"
-source = "git+https://github.com/Firestar99/rust-gpu-new?rev=c12f216121820580731440ee79ebc7403d6ea04f#c12f216121820580731440ee79ebc7403d6ea04f"
+version = "0.10.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68cdc5ca01151f2627fdf1cff34bf6452f5dc212a6d09f4aa5a9b4f17e9bc8e3"
 dependencies = [
  "bitflags 1.3.2",
  "bytemuck",
@@ -5280,8 +5116,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.9.0"
-source = "git+https://github.com/Firestar99/rust-gpu-new?rev=c12f216121820580731440ee79ebc7403d6ea04f#c12f216121820580731440ee79ebc7403d6ea04f"
+version = "0.10.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b8538ad79b81964125710a912c46f3ea71c4f5732bab5d24d506b86ea8fde0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5291,8 +5128,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.9.0"
-source = "git+https://github.com/Firestar99/rust-gpu-new?rev=c12f216121820580731440ee79ebc7403d6ea04f#c12f216121820580731440ee79ebc7403d6ea04f"
+version = "0.10.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28b7ffce7843c3a9f5d5d2b9c21402d4cd026c26780b2f16a3cd6de3e6436230"
 
 [[package]]
 name = "stable_deref_trait"
