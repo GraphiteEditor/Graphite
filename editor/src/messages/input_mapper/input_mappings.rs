@@ -339,6 +339,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
+		entry!(KeyDown(KeyQ); action_dispatch=DocumentMessage::ToggleDocumentMode),
 		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),

@@ -19,7 +19,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::utility_types::{CachedData, PanelType};
 use crate::messages::prelude::*;
@@ -34,7 +34,7 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Raster;
+use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
@@ -116,6 +116,19 @@ pub struct DocumentMessageHandler {
 	/// The name of the document, which is displayed in the tab and title bar of the editor.
 	#[serde(skip)]
 	pub name: String,
+	/// The current editor-only mode for the active document.
+	#[serde(skip)]
+	pub document_mode: DocumentMode,
+	/// The NodeId of the mask group layer when in MaskMode, or None otherwise.
+	#[serde(skip)]
+	pub mask_group_id: Option<NodeId>,
+	/// The layers that are targets for the current mask operation.
+	/// When entering MaskMode, this stores the selected layers so the mask can be applied to them on exit.
+	#[serde(skip)]
+	pub mask_target_layers: Vec<LayerNodeIdentifier>,
+	/// The rasterized bitmap of the mask group, captured on exit for application to target layers.
+	#[serde(skip)]
+	pub mask_raster_bitmap: Option<Table<Raster<graphene_std::raster_types::CPU>>>,
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
@@ -174,6 +187,10 @@ impl Default for DocumentMessageHandler {
 			// Fields omitted from the saved document format
 			// =============================================
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			document_mode: DocumentMode::default(),
+			mask_group_id: None,
+			mask_target_layers: Vec::new(),
+			mask_raster_bitmap: None,
 			path: None,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
@@ -1115,6 +1132,87 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::ToggleDocumentMode => {
+				self.document_mode = match self.document_mode {
+					DocumentMode::MaskMode => DocumentMode::DesignMode,
+					_ => DocumentMode::MaskMode,
+				};
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::SetDocumentMode { document_mode } => {
+				if self.document_mode != document_mode {
+					self.document_mode = document_mode;
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
+			}
+			DocumentMessage::EnterMaskMode => {
+				if self.document_mode == DocumentMode::MaskMode {
+					return;
+				}
+
+				self.document_mode = DocumentMode::MaskMode;
+
+				// Store the currently selected layers as mask targets
+				self.mask_target_layers = self.network_interface.selected_nodes().selected_layers(self.network_interface.document_metadata()).collect();
+				let layer_parent = self.new_layer_parent(true);
+
+				// Create a new group layer for the mask
+				let mask_group_id = NodeId::new();
+				self.mask_group_id = Some(mask_group_id);
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				// Create the mask group layer as an empty custom layer container
+				graph_modification_utils::new_custom(mask_group_id, Vec::new(), layer_parent, responses);
+
+				// Set the mask group opacity to 50% so the user can see artwork beneath
+				responses.add(GraphOperationMessage::OpacitySet {
+					layer: LayerNodeIdentifier::new_unchecked(mask_group_id),
+					opacity: 0.5,
+				});
+
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::ExitMaskMode { discard } => {
+				if self.document_mode != DocumentMode::MaskMode {
+					return;
+				}
+
+				self.document_mode = DocumentMode::DesignMode;
+
+				if discard {
+					// Delete the mask group without applying it
+					if let Some(mask_group_id) = self.mask_group_id {
+						responses.add(DocumentMessage::AddTransaction);
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![mask_group_id],
+							delete_children: true,
+						});
+						responses.add(DocumentMessage::EndTransaction);
+					}
+				} else {
+					// Apply the mask group to the target layers
+					if let Some(mask_group_id) = self.mask_group_id {
+						responses.add(DocumentMessage::AddTransaction);
+						// Store the mask bitmap placeholder (TODO: render mask group with for_mask=true)
+						self.mask_raster_bitmap = Some(Table::new());
+						responses.add(GraphOperationMessage::ApplyMaskStencil {
+							layers: self.mask_target_layers.clone(),
+							mask_group: LayerNodeIdentifier::new_unchecked(mask_group_id),
+						});
+						responses.add(DocumentMessage::EndTransaction);
+					}
+				}
+
+				// Clear mask state
+				self.mask_group_id = None;
+				self.mask_target_layers.clear();
+				self.mask_raster_bitmap = None;
+
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::DrawMarchingAntsOverlay { context: _ } => {}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
 				responses.add_front(DocumentMessage::CommitTransaction);
@@ -1469,6 +1567,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			SaveDocument,
 			SelectAllLayers,
 			SetSnapping,
+			ToggleDocumentMode,
+			SetDocumentMode,
 			ToggleGridVisibility,
 			ToggleOverlaysVisibility,
 			ToggleSnapping,
@@ -2083,6 +2183,13 @@ impl DocumentMessageHandler {
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
+		// If we're in MaskMode and have a mask group, all new layers should go into the mask group
+		if self.document_mode == DocumentMode::MaskMode
+			&& let Some(mask_group_id) = self.mask_group_id
+		{
+			return LayerNodeIdentifier::new_unchecked(mask_group_id);
+		}
+
 		let Some(selected_nodes) = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
 			warn!("No selected nodes found in new_layer_parent. Defaulting to ROOT_PARENT.");
 			return LayerNodeIdentifier::ROOT_PARENT;

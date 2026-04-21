@@ -446,6 +446,27 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
 				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
 			}
+			GraphOperationMessage::ApplyMaskStencil { layers, mask_group } => {
+				// Use the provided mask source by placing it above the first target and clipping it to that target.
+				if let Some(primary_target) = layers.first().copied() {
+					if primary_target != mask_group {
+						if let Some(parent) = primary_target.parent(network_interface.document_metadata()) {
+							if let Some(insert_index) = parent.children(network_interface.document_metadata()).position(|child| child == primary_target) {
+								network_interface.move_layer_to_stack(mask_group, parent, insert_index, &[]);
+								responses.add(GraphOperationMessage::ClipModeToggle { layer: mask_group });
+							}
+						}
+					}
+				}
+
+				// Remaining targets keep existing fallback behavior until raster stencil wiring is implemented.
+				for layer in layers.into_iter().skip(1) {
+					responses.add(GraphOperationMessage::ClipModeToggle { layer });
+				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 		}
 	}
 

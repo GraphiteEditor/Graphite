@@ -132,4 +132,8 @@ pub enum GraphOperationMessage {
 		/// When true, centers the SVG at the transform origin (clipboard paste / drag-drop). When false, keeps natural SVG coordinates (file-open flow).
 		center: bool,
 	},
+	ApplyMaskStencil {
+		layers: Vec<LayerNodeIdentifier>,
+		mask_group: LayerNodeIdentifier,
+	},
 }
