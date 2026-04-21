@@ -34,7 +34,7 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Raster;
+use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
@@ -126,6 +126,9 @@ pub struct DocumentMessageHandler {
 	/// When entering MaskMode, this stores the selected layers so the mask can be applied to them on exit.
 	#[serde(skip)]
 	pub mask_target_layers: Vec<LayerNodeIdentifier>,
+	/// The rasterized bitmap of the mask group, captured on exit for application to target layers.
+	#[serde(skip)]
+	pub mask_raster_bitmap: Option<Table<Raster<graphene_std::raster_types::CPU>>>,
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
@@ -187,6 +190,7 @@ impl Default for DocumentMessageHandler {
 			document_mode: DocumentMode::default(),
 			mask_group_id: None,
 			mask_target_layers: Vec::new(),
+			mask_raster_bitmap: None,
 			path: None,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
@@ -1191,6 +1195,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					// Apply the mask group to the target layers
 					if let Some(mask_group_id) = self.mask_group_id {
 						responses.add(DocumentMessage::AddTransaction);
+						// Store the mask bitmap placeholder (TODO: render mask group with for_mask=true)
+						self.mask_raster_bitmap = Some(Table::new());
 						responses.add(GraphOperationMessage::ApplyMaskStencil {
 							layers: self.mask_target_layers.clone(),
 							mask_group: LayerNodeIdentifier::new_unchecked(mask_group_id),
@@ -1202,6 +1208,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Clear mask state
 				self.mask_group_id = None;
 				self.mask_target_layers.clear();
+				self.mask_raster_bitmap = None;
 
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}

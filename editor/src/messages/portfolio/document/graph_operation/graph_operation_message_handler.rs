@@ -440,11 +440,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
 			}
 			GraphOperationMessage::ApplyMaskStencil { layers, mask_group } => {
-				let _ = mask_group;
+				// Use the provided mask source by placing it above the first target and clipping it to that target.
+				if let Some(primary_target) = layers.first().copied() {
+					if primary_target != mask_group {
+						if let Some(parent) = primary_target.parent(network_interface.document_metadata()) {
+							if let Some(insert_index) = parent.children(network_interface.document_metadata()).position(|child| child == primary_target) {
+								network_interface.move_layer_to_stack(mask_group, parent, insert_index, &[]);
+								responses.add(GraphOperationMessage::ClipModeToggle { layer: mask_group });
+							}
+						}
+					}
+				}
 
-				// TODO: Rasterize `mask_group` into a stencil image and apply that stencil to each target layer.
-				// For each target layer, toggle clip mode so the existing clip infrastructure is engaged.
-				for layer in layers {
+				// Remaining targets keep existing fallback behavior until raster stencil wiring is implemented.
+				for layer in layers.into_iter().skip(1) {
 					responses.add(GraphOperationMessage::ClipModeToggle { layer });
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
