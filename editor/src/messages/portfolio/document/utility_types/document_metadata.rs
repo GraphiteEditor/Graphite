@@ -10,7 +10,6 @@ use graphene_std::math::quad::Quad;
 use graphene_std::subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, Vector};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;

@@ -1,11 +1,12 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
-use graphene_std::vector::style::Fill;
-use kurbo::ParamCurveNearest;
+use graphene_std::vector::misc::Tangent;
+use graphene_std::vector::style::{Fill, PaintOrder, Stroke, StrokeAlign};
+use kurbo::{ParamCurve, ParamCurveNearest, Shape};
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -77,21 +78,64 @@ impl ToolTransition for FillTool {
 	}
 }
 
-pub fn close_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, stroke_width: f64, zoom: f64, layer_to_viewport_transform: DAffine2) -> bool {
-	let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
-	// WARN: Zoom multiplied into stroke width gives false positive when zoom in 1000x
-	let max_stroke_distance = stroke_width;
+pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on_all: bool, stroke: Option<Stroke>, layer_to_viewport_transform: DAffine2) -> bool {
+	let mut is_near = false;
 
-	let subpath_bezpath = subpath.to_bezpath();
-	let mouse_point = kurbo::Point::new(mouse_pos.x, mouse_pos.y);
-	let mut is_close = false;
-	for seg in subpath_bezpath.segments() {
-		if seg.nearest(mouse_point, 0.01).distance_sq <= max_stroke_distance {
-			is_close = true;
+	if let Some(stroke) = stroke {
+		let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
+		// WARN: Zoom multiplied into stroke width gives false positive when zoom in 1000x
+
+		let subpath_bezpath = subpath.to_bezpath();
+		let mouse_point = kurbo::Point::new(mouse_pos.x, mouse_pos.y);
+		for seg in subpath_bezpath.segments() {
+			let nearest = seg.nearest(mouse_point, 0.01);
+			let is_inside_seg = if is_closed_on_all {
+				// Inside/outside detection for closed bezpaths
+				subpath_bezpath.contains(mouse_point)
+			} else {
+				// Inside/outside detection for open bezpaths
+				let tangent = seg.tangent_at(nearest.t);
+				let normal = kurbo::Vec2::new(-tangent.y, tangent.x);
+				let dir = (seg.eval(nearest.t) - mouse_point).normalize();
+
+				normal.dot(dir) >= 0.0
+			};
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+			let mut max_stroke_distance = stroke.weight();
+			match (stroke_align, stroke.paint_order) {
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+					if is_inside_seg {
+						max_stroke_distance *= 2.0;
+					} else {
+						max_stroke_distance = -1.0;
+					}
+				}
+				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {
+					max_stroke_distance = -1.0;
+				}
+				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {}
+				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+					if is_inside_seg {
+						max_stroke_distance = -1.0;
+					}
+				}
+				// Paint order does not affect this
+				(StrokeAlign::Outside, _) => {
+					if is_inside_seg {
+						max_stroke_distance = -1.0;
+					} else {
+						max_stroke_distance *= 2.0;
+					}
+				}
+			}
+
+			if seg.nearest(mouse_point, 0.01).distance_sq <= max_stroke_distance {
+				is_near = true;
+			}
 		}
 	}
 
-	return is_close;
+	is_near
 }
 
 const STROKE_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
@@ -136,31 +180,31 @@ impl Fsm for FillToolFsmState {
 					return self;
 				}
 				// Get the layer the user is hovering
-				if let Some(layer) = document.click(input, viewport) {
-					if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer) {
-						let mut subpaths = vector_data.stroke_bezier_paths();
-						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+				if let Some(layer) = document.click(input, viewport)
+					&& let Some(vector_data) = document.network_interface.vector_data_from_layer(layer)
+				{
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 
-						// Stroke
-						let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
-						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-						let stroke = vector_data.style.stroke();
+					// Stroke
+					let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
+					let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
+					let stroke = vector_data.style.stroke();
 
-						let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
-						let zoom = document.document_ptz.zoom();
-						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
+					let mut subpaths = vector_data.stroke_bezier_paths();
+					let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
+					subpaths = vector_data.stroke_bezier_paths();
+					let near_to_stroke = subpaths.any(|subpath| near_to_subpath(input.mouse.position, subpath, is_closed_on_all, stroke.clone(), document.metadata().transform_to_viewport(layer)));
 
-						// Fill
-						let fill_node = graph_layer.upstream_node_id_from_name(&FILL_ID);
-						let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
+					// Fill
+					let fill_node = graph_layer.upstream_node_id_from_name(&FILL_ID);
+					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
-						subpaths = vector_data.stroke_bezier_paths();
-						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-						if stroke_exists_and_visible && close_to_stroke {
-							overlay_context.stroke_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
-						} else if fill_exists_and_visible {
-							overlay_context.fill_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
-						}
+					subpaths = vector_data.stroke_bezier_paths();
+					let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+					if stroke_exists_and_visible && near_to_stroke {
+						overlay_context.stroke_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
+					} else if fill_exists_and_visible {
+						overlay_context.fill_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
 					}
 				}
 
@@ -192,22 +236,24 @@ impl Fsm for FillToolFsmState {
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-					let mut subpaths = vector_data.stroke_bezier_paths();
+				if let Some(vector_data) = document.network_interface.vector_data_from_layer(layer) {
 					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 
 					// Stroke
 					let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
 					let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-					let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
-					let zoom = document.document_ptz.zoom();
-					let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
+					let stroke = vector_data.style.stroke();
+
+					let mut subpaths = vector_data.stroke_bezier_paths();
+					let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
+					subpaths = vector_data.stroke_bezier_paths();
+					let near_to_stroke = subpaths.any(|subpath| near_to_subpath(input.mouse.position, subpath, is_closed_on_all, stroke.clone(), document.metadata().transform_to_viewport(layer)));
 
 					// Fill
 					let fill_node = graph_layer.upstream_node_id_from_name(&FILL_ID);
 					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
-					if stroke_exists_and_visible && close_to_stroke {
+					if stroke_exists_and_visible && near_to_stroke {
 						responses.add(GraphOperationMessage::StrokeColorSet { layer, stroke_color });
 					} else if fill_exists_and_visible {
 						responses.add(GraphOperationMessage::FillSet { layer, fill });

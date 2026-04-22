@@ -38,19 +38,32 @@ pub fn empty_provider() -> OverlayProvider {
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
+	// =======
+	// General
+	// =======
 	ArtboardName,
-	CompassRose,
-	QuickMeasurement,
 	TransformMeasurement,
+	// ===========
+	// Select Tool
+	// ===========
+	QuickMeasurement,
 	TransformCage,
+	CompassRose,
+	Pivot,
+	Origin,
 	HoverOutline,
 	SelectionOutline,
 	LayerOriginCross,
-	Pivot,
-	Origin,
+	// ================
+	// Pen & Path Tools
+	// ================
 	Path,
 	Anchors,
 	Handles,
+	// =========
+	// Fill Tool
+	// =========
+	FillableIndicator,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -59,18 +72,19 @@ pub enum OverlaysType {
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
-	pub compass_rose: bool,
-	pub quick_measurement: bool,
 	pub transform_measurement: bool,
+	pub quick_measurement: bool,
 	pub transform_cage: bool,
+	pub compass_rose: bool,
+	pub pivot: bool,
+	pub origin: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub layer_origin_cross: bool,
-	pub pivot: bool,
-	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub fillable_indicator: bool,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -79,18 +93,19 @@ impl Default for OverlaysVisibilitySettings {
 		Self {
 			all: true,
 			artboard_name: true,
-			compass_rose: true,
-			quick_measurement: true,
 			transform_measurement: true,
+			quick_measurement: true,
 			transform_cage: true,
+			compass_rose: true,
+			pivot: true,
+			origin: true,
 			hover_outline: true,
 			selection_outline: true,
 			layer_origin_cross: true,
-			pivot: true,
-			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
+			fillable_indicator: true,
 		}
 	}
 }
@@ -151,6 +166,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn fillable_indicator(&self) -> bool {
+		self.all && self.fillable_indicator
 	}
 }
 
@@ -389,14 +408,20 @@ impl OverlayContext {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
 		self.internal().fill_path(subpaths, transform, color);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		self.internal().fill_path_pattern(subpaths, transform, color);
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		self.internal().fill_overlay(subpaths, transform, color, stroke);
+	}
+
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		self.internal().stroke_overlay(subpaths, transform, color, stroke);
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -1050,26 +1075,31 @@ impl OverlayContextInternal {
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
-	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
 		let path = self.path_from_subpaths(subpaths, transform);
 
-		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
+		let color_str = format!("#{}", color.to_rgba_hex_srgb());
+		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color_str.as_str()), None, &path);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
 		let path = self.path_from_subpaths(subpaths, transform);
 		let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
 	}
 
-	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, overlay_stroke: &Stroke) {
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
 		let path = self.path_from_subpaths(subpaths, transform);
-		let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
 
-		self.scene.stroke(&kurbo::Stroke::new(overlay_stroke.weight), self.get_transform(), &brush, None, &path);
+		if let Some(stroke) = stroke {
+			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(&color));
+			self.scene.stroke(&kurbo::Stroke::new(stroke.weight), self.get_transform(), &brush, None, &path);
+		}
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
