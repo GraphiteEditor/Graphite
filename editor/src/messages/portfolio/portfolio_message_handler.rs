@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::{CachedData, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
+use super::utility_types::{CachedData, FontCatalog, FontCatalogFamily, FontCatalogStyle, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
@@ -34,6 +34,7 @@ use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
+use parley::{FontContext, FontStyle};
 use std::path::PathBuf;
 use std::vec;
 
@@ -441,7 +442,42 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let catalog = &self.cached_data.font_catalog;
 
 				if catalog.0.is_empty() {
-					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+					if Editor::environment().is_desktop() {
+						let system_font_context = FontContext::new(); // create system font context
+						let mut system_font_collection = system_font_context.collection;
+						let mut system_font_collection_again = system_font_collection.clone(); // because parley was not made correctly
+
+						// shove font metadata into cached data catalog
+						// simultaneously?? call font loaded a bunch of times to shove data into font data cache
+						let mut system_font_family_names = Vec::new();
+						system_font_family_names.extend(system_font_collection.family_names());
+						log::error!("fonts are: {:?}", system_font_family_names);
+						let mut families_for_catalog = Vec::new();
+						for name in system_font_family_names {
+							let family = system_font_collection_again.family_by_name(name).unwrap();
+							let mut styles = Vec::new();
+							for font in family.fonts() {
+								let style = FontCatalogStyle {
+									weight: (font.weight().value()) as u32,
+									italic: font.style() == FontStyle::Italic,
+									url: "".to_owned(),
+								};
+								let mut font_data_vec = Vec::new();
+								font_data_vec.extend(font.load(None).unwrap().data());
+								responses.add(PortfolioMessage::FontLoaded {
+									font_family: name.to_owned(),
+									font_style: style.to_named_style(),
+									data: font_data_vec,
+								});
+								styles.push(style);
+							}
+							let family_for_catalog = FontCatalogFamily { name: name.to_owned(), styles };
+							families_for_catalog.push(family_for_catalog);
+						}
+						self.cached_data.font_catalog = FontCatalog(families_for_catalog);
+					} else {
+						responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+					}
 					return;
 				}
 
