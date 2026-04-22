@@ -32,6 +32,28 @@ impl Default for Graphic {
 	}
 }
 
+// Explicit `Send`/`Sync` impls. All fields are themselves `Send`/`Sync`, so these would normally
+// be inferred, but the type participates in two mutually recursive cycles through `Table<Graphic>`
+// and `Table<Vector>` (where `Vector = vector_types::Vector<Option<Table<Graphic>>>`). The second
+// path, wrapped in `Option<_>` and a generic type parameter, produces a distinct auto-trait
+// obligation that the solver cannot recognize as the same cycle node, causing
+// `overflow evaluating the requirement` errors at the workspace's `once_cell::sync::Lazy` statics.
+// Providing these impls explicitly anchors the proof and lets the coinductive cache close both cycles.
+//
+// These can be removed (reverting to auto-derived `Send`/`Sync`) once any of the following holds:
+// - We remove the TaggedValue or its variants that contain tables.
+// - The `Vector` alias no longer references `Graphic` through a generic type parameter, breaking
+//   the second cycle so only the direct `Table<Graphic>` self-cycle remains (which the solver
+//   already handles on its own).
+// - `Graphic` stops containing `Table<Graphic>` directly, e.g. by boxing children through a trait
+//   object or opaque handle so the recursion is no longer structural.
+// - A future rustc release improves the auto-trait solver to recognize cycles across generic-
+//   parameter substitutions. Try deleting these impls and running:
+//   `cargo check --tests -p graphite-editor`
+//   If no `overflow evaluating the requirement` errors appear, they're no longer needed).
+unsafe impl Send for Graphic {}
+unsafe impl Sync for Graphic {}
+
 // Graphic
 impl From<Table<Graphic>> for Graphic {
 	fn from(graphic: Table<Graphic>) -> Self {
