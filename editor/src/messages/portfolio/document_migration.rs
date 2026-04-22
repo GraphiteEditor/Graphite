@@ -10,7 +10,6 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
@@ -1140,10 +1139,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			log::error!("Path node does not exist.");
 			return None;
 		};
-		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
-			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
-		]);
+		let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(&vector));
+		let path_node = path_node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))]);
 
 		// Get the "Spline" node definition and wire it up with the "Path" node as input
 		let Some(spline_node_type) = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER) else {
@@ -1950,6 +1947,29 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// Migrate Path nodes that stored geometry directly in input 0 (as a Table<Vector>) to instead use a VectorModification in input 1
+	if reference == DefinitionIdentifier::Network("Path".into()) {
+		let input_0 = node.inputs.first()?;
+		if let NodeInput::Value { tagged_value, exposed } = input_0
+			&& !exposed
+			&& let TaggedValue::Vector(vector_table) = &**tagged_value
+			&& !vector_table.is_empty()
+		{
+			let vector = vector_table.iter().next()?.element;
+			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
+
+			// Reset input 0 to the default exposed state
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Vector(Default::default()), true), network_path);
+
+			// Store the converted VectorModification in input 1
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+		}
 	}
 
 	// ==================================
