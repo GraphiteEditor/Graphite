@@ -1,3 +1,4 @@
+use core_types::AlphaBlending;
 use core_types::table::{Table, TableRow};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
@@ -51,11 +52,12 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		}
 
 		if per_glyph_instances {
-			self.vector_table.push(TableRow {
-				element: Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
-				transform: DAffine2::from_translation(glyph_offset),
-				..Default::default()
-			});
+			self.vector_table.push(TableRow::new(
+				Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
+				DAffine2::from_translation(glyph_offset),
+				AlphaBlending::default(),
+				None,
+			));
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element

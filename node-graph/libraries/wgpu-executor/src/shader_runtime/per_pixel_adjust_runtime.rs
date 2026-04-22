@@ -233,12 +233,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.set_bind_group(0, Some(&bind_group), &[]);
 				rp.draw(0..3, 0..1);
 
-				TableRow {
-					element: Raster::new(GPU { texture: tex_out }),
-					transform: *instance.transform,
-					alpha_blending: *instance.alpha_blending,
-					source_node_id: *instance.source_node_id,
-				}
+				TableRow::new(Raster::new(GPU { texture: tex_out }), *instance.transform(), *instance.alpha_blending(), *instance.source_node_id())
 			})
 			.collect::<Table<_>>();
 		context.queue.submit([cmd.finish()]);

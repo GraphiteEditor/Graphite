@@ -203,8 +203,8 @@ where
 		..Default::default()
 	};
 
-	for row in data.iter_mut() {
-		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
+	for mut row in data.iter_mut() {
+		*row.transform_mut() = glam::DAffine2::from_translation(-aabb.start) * *row.transform();
 	}
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
@@ -228,9 +228,5 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(TableRow {
-		element: Raster::new_cpu(image),
-		transform: footprint.transform,
-		..Default::default()
-	})
+	Table::new_from_row(TableRow::new(Raster::new_cpu(image), footprint.transform, Default::default(), None))
 }

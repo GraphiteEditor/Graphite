@@ -1175,7 +1175,7 @@ impl OverlayContextInternal {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 
-				self.bezier_to_path(bezier, *row.transform, move_to, &mut path);
+				self.bezier_to_path(bezier, *row.transform(), move_to, &mut path);
 			}
 
 			// Render the path

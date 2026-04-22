@@ -1,7 +1,7 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::registry::types::{Angle, PixelSize};
-use core_types::table::{Table, TableRowRef};
+use core_types::table::Table;
 use core_types::{CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Graphic, Vector};
@@ -80,9 +80,9 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		for row in generated_instance.iter() {
 			let mut row = row.into_cloned();
 
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
+			let local_translation = DAffine2::from_translation(row.transform().translation);
+			let local_matrix = DAffine2::from_mat2(row.transform().matrix2);
+			*row.transform_mut() = local_translation * transform * local_matrix;
 
 			result_table.push(row);
 		}
@@ -125,9 +125,9 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		for row in generated_instance.iter() {
 			let mut row = row.into_cloned();
 
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
+			let local_translation = DAffine2::from_translation(row.transform().translation);
+			let local_matrix = DAffine2::from_mat2(row.transform().matrix2);
+			*row.transform_mut() = local_translation * transform * local_matrix;
 
 			result_table.push(row);
 		}
@@ -152,7 +152,10 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 ) -> Table<T> {
 	let mut result_table = Table::new();
 
-	for TableRowRef { element: points, transform, .. } in points.iter() {
+	for points_row in points.iter() {
+		let points = points_row.element;
+		let transform = points_row.transform();
+
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
@@ -160,7 +163,7 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
 			for mut generated_row in generated_instance.into_iter() {
-				generated_row.transform.translation = transformed_point;
+				generated_row.transform_mut().translation = transformed_point;
 				result_table.push(generated_row);
 			}
 		};
@@ -229,7 +232,7 @@ mod test {
 		let generated = super::repeat_on_points(context, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
 		for (position, generated_row) in positions.into_iter().zip(generated.iter()) {
-			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform).unwrap();
+			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform()).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}

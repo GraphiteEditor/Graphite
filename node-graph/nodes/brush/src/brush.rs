@@ -96,7 +96,7 @@ where
 
 		let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
 
-		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * table_row.transform.inverse();
+		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * table_row.transform().inverse();
 
 		for position in &positions {
 			let start = document_to_target.transform_point2(*position).round();
@@ -274,11 +274,7 @@ async fn brush(
 	let has_erase_or_restore_strokes = strokes.iter().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = TableRow {
-			element: Raster::new_cpu(opaque_image),
-			transform: background_bounds,
-			..Default::default()
-		};
+		let mut erase_restore_mask = TableRow::new(Raster::new_cpu(opaque_image), background_bounds, Default::default(), None);
 
 		for stroke in strokes {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -310,11 +306,15 @@ async fn brush(
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
-	let first_row = image.iter_mut().next().unwrap();
+	let transform = *actual_image.transform();
+	let alpha_blending = *actual_image.alpha_blending();
+	let source_node_id = *actual_image.source_node_id();
+
+	let mut first_row = image.iter_mut().next().unwrap();
 	*first_row.element = actual_image.element;
-	*first_row.transform = actual_image.transform;
-	*first_row.alpha_blending = actual_image.alpha_blending;
-	*first_row.source_node_id = actual_image.source_node_id;
+	*first_row.transform_mut() = transform;
+	*first_row.alpha_blending_mut() = alpha_blending;
+	*first_row.source_node_id_mut() = source_node_id;
 
 	image
 }
@@ -324,10 +324,10 @@ pub fn blend_image_closure(foreground: TableRow<Raster<CPU>>, mut background: Ta
 	let background_size = DVec2::new(background.element.width as f64, background.element.height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let background_to_foreground = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
+	let background_to_foreground = DAffine2::from_scale(foreground_size) * foreground.transform().inverse() * *background.transform() * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
-	let background_aabb = Bbox::unit().affine_transform(background.transform.inverse() * foreground.transform).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform().inverse() * *foreground.transform()).to_axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
 	let start = (background_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
@@ -352,10 +352,10 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 	let background_size = DVec2::new(background.element.width as f64, background.element.height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let background_to_foreground = background.transform * DAffine2::from_scale(1. / background_size);
+	let background_to_foreground = *background.transform() * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
-	let background_aabb = Bbox::unit().affine_transform(background.transform.inverse() * foreground.transform).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
 	let start = (background_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();

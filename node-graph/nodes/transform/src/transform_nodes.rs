@@ -66,24 +66,24 @@ fn reset_transform<T>(
 	reset_rotation: bool,
 	reset_scale: bool,
 ) -> Table<T> {
-	for row in content.iter_mut() {
+	for mut row in content.iter_mut() {
 		// Translation
 		if reset_translation {
-			row.transform.translation = DVec2::ZERO;
+			row.transform_mut().translation = DVec2::ZERO;
 		}
 		// (Rotation, Scale)
 		match (reset_rotation, reset_scale) {
 			(true, true) => {
-				row.transform.matrix2 = DMat2::IDENTITY;
+				row.transform_mut().matrix2 = DMat2::IDENTITY;
 			}
 			(true, false) => {
-				let scale = row.transform.scale_magnitudes();
-				row.transform.matrix2 = DMat2::from_diagonal(scale);
+				let scale = row.transform().scale_magnitudes();
+				row.transform_mut().matrix2 = DMat2::from_diagonal(scale);
 			}
 			(false, true) => {
-				let rotation = row.transform.decompose_rotation();
+				let rotation = row.transform().decompose_rotation();
 				let rotation_matrix = DMat2::from_angle(rotation);
-				row.transform.matrix2 = rotation_matrix;
+				row.transform_mut().matrix2 = rotation_matrix;
 			}
 			(false, false) => {}
 		}
@@ -106,8 +106,8 @@ fn replace_transform<T>(
 	mut content: Table<T>,
 	transform: DAffine2,
 ) -> Table<T> {
-	for row in content.iter_mut() {
-		*row.transform = transform.transform();
+	for mut row in content.iter_mut() {
+		*row.transform_mut() = transform.transform();
 	}
 	content
 }
@@ -127,7 +127,7 @@ async fn extract_transform<T>(
 	)]
 	content: Table<T>,
 ) -> DAffine2 {
-	content.iter().next().map(|row| *row.transform).unwrap_or_default()
+	content.iter().next().map(|row| *row.transform()).unwrap_or_default()
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.

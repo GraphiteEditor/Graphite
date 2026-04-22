@@ -104,12 +104,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		ArtboardFormat::ArtboardGroup(artboard_group) => {
 			let mut table = Table::new();
 			for (artboard, source_node_id) in artboard_group.artboards {
-				table.push(TableRow {
-					element: artboard,
-					transform: DAffine2::IDENTITY,
-					alpha_blending: AlphaBlending::default(),
-					source_node_id,
-				});
+				table.push(TableRow::new(artboard, DAffine2::IDENTITY, AlphaBlending::default(), source_node_id));
 			}
 			table
 		}
@@ -117,12 +112,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 			.element
 			.into_iter()
 			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-			.map(|(element, (transform, alpha_blending))| TableRow {
-				element,
-				transform,
-				alpha_blending,
-				source_node_id: None,
-			})
+			.map(|(element, (transform, alpha_blending))| TableRow::new(element, transform, alpha_blending, None))
 			.collect(),
 		ArtboardFormat::ArtboardTable(artboard_table) => artboard_table,
 	})

@@ -151,10 +151,15 @@ impl<T> Table<T> {
 	}
 
 	pub fn new_from_row(row: TableRow<T>) -> Self {
+		let mut row_attributes = row.attributes;
+		let transform = row_attributes.remove::<DAffine2>("transform").unwrap_or(DAffine2::IDENTITY);
+		let alpha_blending = row_attributes.remove::<AlphaBlending>("alpha_blending").unwrap_or_default();
+		let source_node_id = row_attributes.remove::<Option<NodeId>>("source_node_id").unwrap_or(None);
+
 		let mut attributes = Attributes::new();
-		attributes.insert("transform".to_string(), vec![row.transform]);
-		attributes.insert("alpha_blending".to_string(), vec![row.alpha_blending]);
-		attributes.insert("source_node_id".to_string(), vec![row.source_node_id]);
+		attributes.insert("transform".to_string(), vec![transform]);
+		attributes.insert("alpha_blending".to_string(), vec![alpha_blending]);
+		attributes.insert("source_node_id".to_string(), vec![source_node_id]);
 
 		Self {
 			element: vec![row.element],
@@ -163,10 +168,11 @@ impl<T> Table<T> {
 	}
 
 	pub fn push(&mut self, row: TableRow<T>) {
+		let mut attributes = row.attributes;
 		self.element.push(row.element);
-		self.transforms_mut().push(row.transform);
-		self.alpha_blendings_mut().push(row.alpha_blending);
-		self.source_node_ids_mut().push(row.source_node_id);
+		self.transforms_mut().push(attributes.remove::<DAffine2>("transform").unwrap_or(DAffine2::IDENTITY));
+		self.alpha_blendings_mut().push(attributes.remove::<AlphaBlending>("alpha_blending").unwrap_or_default());
+		self.source_node_ids_mut().push(attributes.remove::<Option<NodeId>>("source_node_id").unwrap_or(None));
 	}
 
 	pub fn extend(&mut self, table: Table<T>) {
@@ -351,7 +357,7 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 		let mut combined_bounds = None;
 
 		for row in self.iter() {
-			match row.element.bounding_box(transform * *row.transform, include_stroke) {
+			match row.element.bounding_box(transform * *row.transform(), include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -401,12 +407,7 @@ impl<T> Iterator for TableRowIter<T> {
 		let alpha_blending = self.alpha_blending.next()?;
 		let source_node_id = self.source_node_id.next()?;
 
-		Some(TableRow {
-			element,
-			transform,
-			alpha_blending,
-			source_node_id,
-		})
+		Some(TableRow::new(element, transform, alpha_blending, source_node_id))
 	}
 }
 
@@ -417,12 +418,7 @@ impl<T> DoubleEndedIterator for TableRowIter<T> {
 		let alpha_blending = self.alpha_blending.next_back()?;
 		let source_node_id = self.source_node_id.next_back()?;
 
-		Some(TableRow {
-			element,
-			transform,
-			alpha_blending,
-			source_node_id,
-		})
+		Some(TableRow::new(element, transform, alpha_blending, source_node_id))
 	}
 }
 
@@ -489,12 +485,22 @@ impl<T> FromIterator<TableRow<T>> for Table<T> {
 
 // TABLE ROW TYPES
 
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct TableRow<T> {
 	pub element: T,
-	pub transform: DAffine2,
-	pub alpha_blending: AlphaBlending,
-	pub source_node_id: Option<NodeId>,
+	attributes: Attributes,
+}
+
+impl<T: Default> Default for TableRow<T> {
+	fn default() -> Self {
+		Self::new_from_element(T::default())
+	}
+}
+
+impl<T: PartialEq> PartialEq for TableRow<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.element == other.element && self.transform() == other.transform() && self.alpha_blending() == other.alpha_blending() && self.source_node_id() == other.source_node_id()
+	}
 }
 
 #[cfg(feature = "serde")]
@@ -510,9 +516,9 @@ impl<T: serde::Serialize> serde::Serialize for TableRow<T> {
 
 		TableRowHelper {
 			element: &self.element,
-			transform: &self.transform,
-			alpha_blending: &self.alpha_blending,
-			source_node_id: &self.source_node_id,
+			transform: self.transform(),
+			alpha_blending: self.alpha_blending(),
+			source_node_id: self.source_node_id(),
 		}
 		.serialize(serializer)
 	}
@@ -538,40 +544,56 @@ impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for TableRow<T> {
 		}
 
 		let helper = TableRowHelper::deserialize(deserializer)?;
-		Ok(TableRow {
-			element: helper.element,
-			transform: helper.transform,
-			alpha_blending: helper.alpha_blending,
-			source_node_id: helper.source_node_id,
-		})
+		Ok(TableRow::new(helper.element, helper.transform, helper.alpha_blending, helper.source_node_id))
 	}
 }
 
 impl<T> TableRow<T> {
+	pub fn new(element: T, transform: DAffine2, alpha_blending: AlphaBlending, source_node_id: Option<NodeId>) -> Self {
+		let mut attributes = Attributes::new();
+		attributes.insert("transform".to_string(), transform);
+		attributes.insert("alpha_blending".to_string(), alpha_blending);
+		attributes.insert("source_node_id".to_string(), source_node_id);
+		Self { element, attributes }
+	}
+
 	pub fn new_from_element(element: T) -> Self {
-		Self {
-			element,
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::default(),
-			source_node_id: None,
-		}
+		Self::new(element, DAffine2::IDENTITY, AlphaBlending::default(), None)
+	}
+
+	pub fn transform(&self) -> &DAffine2 {
+		static DEFAULT: DAffine2 = DAffine2::IDENTITY;
+		self.attributes.get::<DAffine2>("transform").unwrap_or(&DEFAULT)
+	}
+
+	pub fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.attributes.get_or_insert_default_mut::<DAffine2>("transform")
+	}
+
+	pub fn alpha_blending(&self) -> &AlphaBlending {
+		static DEFAULT: AlphaBlending = AlphaBlending::new();
+		self.attributes.get::<AlphaBlending>("alpha_blending").unwrap_or(&DEFAULT)
+	}
+
+	pub fn alpha_blending_mut(&mut self) -> &mut AlphaBlending {
+		self.attributes.get_or_insert_default_mut::<AlphaBlending>("alpha_blending")
+	}
+
+	pub fn source_node_id(&self) -> &Option<NodeId> {
+		static DEFAULT: Option<NodeId> = None;
+		self.attributes.get::<Option<NodeId>>("source_node_id").unwrap_or(&DEFAULT)
+	}
+
+	pub fn source_node_id_mut(&mut self) -> &mut Option<NodeId> {
+		self.attributes.get_or_insert_default_mut::<Option<NodeId>>("source_node_id")
 	}
 
 	pub fn as_ref(&self) -> TableRowRef<'_, T> {
 		TableRowRef {
 			element: &self.element,
-			transform: &self.transform,
-			alpha_blending: &self.alpha_blending,
-			source_node_id: &self.source_node_id,
-		}
-	}
-
-	pub fn as_mut(&mut self) -> TableRowMut<'_, T> {
-		TableRowMut {
-			element: &mut self.element,
-			transform: &mut self.transform,
-			alpha_blending: &mut self.alpha_blending,
-			source_node_id: &mut self.source_node_id,
+			transform: self.transform(),
+			alpha_blending: self.alpha_blending(),
+			source_node_id: self.source_node_id(),
 		}
 	}
 }
@@ -579,31 +601,64 @@ impl<T> TableRow<T> {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TableRowRef<'a, T> {
 	pub element: &'a T,
-	pub transform: &'a DAffine2,
-	pub alpha_blending: &'a AlphaBlending,
-	pub source_node_id: &'a Option<NodeId>,
+	transform: &'a DAffine2,
+	alpha_blending: &'a AlphaBlending,
+	source_node_id: &'a Option<NodeId>,
 }
 
 impl<T> TableRowRef<'_, T> {
+	pub fn transform(&self) -> &DAffine2 {
+		self.transform
+	}
+
+	pub fn alpha_blending(&self) -> &AlphaBlending {
+		self.alpha_blending
+	}
+
+	pub fn source_node_id(&self) -> &Option<NodeId> {
+		self.source_node_id
+	}
+
 	pub fn into_cloned(self) -> TableRow<T>
 	where
 		T: Clone,
 	{
-		TableRow {
-			element: self.element.clone(),
-			transform: *self.transform,
-			alpha_blending: *self.alpha_blending,
-			source_node_id: *self.source_node_id,
-		}
+		TableRow::new(self.element.clone(), *self.transform, *self.alpha_blending, *self.source_node_id)
 	}
 }
 
 #[derive(Debug)]
 pub struct TableRowMut<'a, T> {
 	pub element: &'a mut T,
-	pub transform: &'a mut DAffine2,
-	pub alpha_blending: &'a mut AlphaBlending,
-	pub source_node_id: &'a mut Option<NodeId>,
+	transform: &'a mut DAffine2,
+	alpha_blending: &'a mut AlphaBlending,
+	source_node_id: &'a mut Option<NodeId>,
+}
+
+impl<T> TableRowMut<'_, T> {
+	pub fn transform(&self) -> &DAffine2 {
+		self.transform
+	}
+
+	pub fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform
+	}
+
+	pub fn alpha_blending(&self) -> &AlphaBlending {
+		self.alpha_blending
+	}
+
+	pub fn alpha_blending_mut(&mut self) -> &mut AlphaBlending {
+		self.alpha_blending
+	}
+
+	pub fn source_node_id(&self) -> &Option<NodeId> {
+		self.source_node_id
+	}
+
+	pub fn source_node_id_mut(&mut self) -> &mut Option<NodeId> {
+		self.source_node_id
+	}
 }
 
 // Conversion from Table<Color> to Option<Color> - extracts first element

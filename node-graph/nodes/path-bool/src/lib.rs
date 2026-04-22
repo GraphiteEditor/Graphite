@@ -37,16 +37,16 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&content).iter(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	if let Some(result_vector) = result_vector_table.iter_mut().next() {
-		let transform = *result_vector.transform;
-		*result_vector.transform = DAffine2::IDENTITY;
+	if let Some(mut result_vector) = result_vector_table.iter_mut().next() {
+		let transform = *result_vector.transform();
+		*result_vector.transform_mut() = DAffine2::IDENTITY;
 
 		Vector::transform(result_vector.element, transform);
 		result_vector.element.style.set_stroke_transform(DAffine2::IDENTITY);
 		result_vector.element.upstream_data = Some(content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		result_vector.element.merge_by_distance_spatial(*result_vector.transform, 0.0001);
+		result_vector.element.merge_by_distance_spatial(*result_vector.transform(), 0.0001);
 	}
 
 	result_vector_table
@@ -118,14 +118,14 @@ fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item =
 		vector.clone().next_back()
 	};
 	if let Some(copy_from) = copy_from {
-		row.alpha_blending = *copy_from.alpha_blending;
-		row.source_node_id = *copy_from.source_node_id;
+		*row.alpha_blending_mut() = *copy_from.alpha_blending();
+		*row.source_node_id_mut() = *copy_from.source_node_id();
 		row.element.style = copy_from.element.style.clone();
 		row.element.upstream_data = copy_from.element.upstream_data.clone();
 	}
 
 	for element in vector {
-		paths.push(to_bez_path(element.element, *element.transform));
+		paths.push(to_bez_path(element.element, *element.transform()));
 	}
 
 	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
@@ -153,16 +153,17 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 			match element.element.clone() {
 				Graphic::Vector(vector) => {
 					// Apply the parent graphic's transform to each element of the vector table
+					let parent_transform = *element.transform();
 					vector
 						.into_iter()
 						.map(|mut sub_vector| {
-							sub_vector.transform = *element.transform * sub_vector.transform;
-
+							*sub_vector.transform_mut() = parent_transform * *sub_vector.transform();
 							sub_vector
 						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterCPU(image) => {
+					let parent_transform = *element.transform();
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
@@ -172,13 +173,14 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
-						TableRow { element, ..Default::default() }
+						TableRow::new_from_element(element)
 					};
 
 					// Apply the parent graphic's transform to each raster element
-					image.iter().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
+					image.iter().map(|row| make_row(parent_transform * *row.transform())).collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
+					let parent_transform = *element.transform();
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
@@ -188,16 +190,17 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
-						TableRow { element, ..Default::default() }
+						TableRow::new_from_element(element)
 					};
 
 					// Apply the parent graphic's transform to each raster element
-					image.iter().map(|row| make_row(*element.transform * *row.transform)).collect::<Vec<_>>()
+					image.iter().map(|row| make_row(parent_transform * *row.transform())).collect::<Vec<_>>()
 				}
 				Graphic::Graphic(mut graphic) => {
+					let parent_transform = *element.transform();
 					// Apply the parent graphic's transform to each element of inner table
-					for sub_element in graphic.iter_mut() {
-						*sub_element.transform = *element.transform * *sub_element.transform;
+					for mut sub_element in graphic.iter_mut() {
+						*sub_element.transform_mut() = parent_transform * *sub_element.transform();
 					}
 
 					// Recursively flatten the inner table into the output vector table
@@ -208,21 +211,24 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				Graphic::Color(color) => color
 					.into_iter()
 					.map(|row| {
+						let transform = *row.transform();
+						let alpha_blending = *row.alpha_blending();
+						let source_node_id = *row.source_node_id();
+
 						let mut element = Vector::default();
 						element.style.set_fill(Fill::Solid(row.element));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
-						TableRow {
-							element,
-							transform: row.transform,
-							alpha_blending: row.alpha_blending,
-							source_node_id: row.source_node_id,
-						}
+						TableRow::new(element, transform, alpha_blending, source_node_id)
 					})
 					.collect::<Vec<_>>(),
 				Graphic::Gradient(gradient) => gradient
 					.into_iter()
 					.map(|row| {
+						let transform = *row.transform();
+						let alpha_blending = *row.alpha_blending();
+						let source_node_id = *row.source_node_id();
+
 						let mut element = Vector::default();
 						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient {
 							stops: row.element,
@@ -230,12 +236,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						}));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
-						TableRow {
-							element,
-							transform: row.transform,
-							alpha_blending: row.alpha_blending,
-							source_node_id: row.source_node_id,
-						}
+						TableRow::new(element, transform, alpha_blending, source_node_id)
 					})
 					.collect::<Vec<_>>(),
 			}

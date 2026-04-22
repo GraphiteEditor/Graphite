@@ -265,9 +265,9 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 				vec![
 					TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
 					row.element.element_widget(index),
-					TextLabel::new(format_transform_matrix(row.transform)).narrow(true).widget_instance(),
-					TextLabel::new(format!("{}", row.alpha_blending)).narrow(true).widget_instance(),
-					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0)))
+					TextLabel::new(format_transform_matrix(row.transform())).narrow(true).widget_instance(),
+					TextLabel::new(format!("{}", row.alpha_blending())).narrow(true).widget_instance(),
+					TextLabel::new(row.source_node_id().map_or_else(|| "-".to_string(), |id| format!("{}", id.0)))
 						.narrow(true)
 						.widget_instance(),
 				]

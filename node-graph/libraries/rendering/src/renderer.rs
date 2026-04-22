@@ -411,8 +411,8 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first row
 					if let Some(row) = table.iter().next() {
-						metadata.first_element_source_id.insert(element_id, *row.source_node_id);
-						metadata.local_transforms.insert(element_id, *row.transform);
+						metadata.first_element_source_id.insert(element_id, *row.source_node_id());
+						metadata.local_transforms.insert(element_id, *row.transform());
 					}
 				}
 				Graphic::RasterCPU(table) => {
@@ -420,7 +420,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first row
 					if let Some(row) = table.iter().next() {
-						metadata.local_transforms.insert(element_id, *row.transform);
+						metadata.local_transforms.insert(element_id, *row.transform());
 					}
 				}
 				Graphic::RasterGPU(table) => {
@@ -428,7 +428,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first row
 					if let Some(row) = table.iter().next() {
-						metadata.local_transforms.insert(element_id, *row.transform);
+						metadata.local_transforms.insert(element_id, *row.transform());
 					}
 				}
 				Graphic::Color(table) => {
@@ -436,7 +436,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first row
 					if let Some(row) = table.iter().next() {
-						metadata.local_transforms.insert(element_id, *row.transform);
+						metadata.local_transforms.insert(element_id, *row.transform());
 					}
 				}
 				Graphic::Gradient(table) => {
@@ -444,7 +444,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first row
 					if let Some(row) = table.iter().next() {
-						metadata.local_transforms.insert(element_id, *row.transform);
+						metadata.local_transforms.insert(element_id, *row.transform());
 					}
 				}
 			}
@@ -651,7 +651,7 @@ impl Render for Table<Artboard> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for row in self.iter() {
-			row.element.collect_metadata(metadata, footprint, *row.source_node_id);
+			row.element.collect_metadata(metadata, footprint, *row.source_node_id());
 		}
 	}
 
@@ -675,18 +675,18 @@ impl Render for Table<Graphic> {
 			render.parent_tag(
 				"g",
 				|attributes| {
-					let matrix = format_transform_matrix(*row.transform);
+					let matrix = format_transform_matrix(*row.transform());
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
 					}
 
-					let opacity = row.alpha_blending.opacity(render_params.for_mask);
+					let opacity = row.alpha_blending().opacity(render_params.for_mask);
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
 
-					if row.alpha_blending.blend_mode != BlendMode::default() {
-						attributes.push("style", row.alpha_blending.blend_mode.render());
+					if row.alpha_blending().blend_mode != BlendMode::default() {
+						attributes.push("style", row.alpha_blending().blend_mode.render());
 					}
 
 					let next_clips = iter.peek().is_some_and(|next_row| next_row.element.had_clip_enabled());
@@ -723,8 +723,8 @@ impl Render for Table<Graphic> {
 		let mut mask_element_and_transform = None;
 
 		while let Some(row) = iter.next() {
-			let transform = transform * *row.transform;
-			let alpha_blending = *row.alpha_blending;
+			let transform = transform * *row.transform();
+			let alpha_blending = *row.alpha_blending();
 
 			let mut layer = false;
 
@@ -734,7 +734,7 @@ impl Render for Table<Graphic> {
 			};
 			let mut bounds = RenderBoundingBox::None;
 
-			let opacity = row.alpha_blending.opacity(render_params.for_mask);
+			let opacity = row.alpha_blending().opacity(render_params.for_mask);
 			if opacity < 1. || (render_params.render_mode != RenderMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 				bounds = row.element.bounding_box(transform, true);
 
@@ -796,9 +796,9 @@ impl Render for Table<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for row in self.iter() {
 			let mut footprint = footprint;
-			footprint.transform *= *row.transform;
+			footprint.transform *= *row.transform();
 
-			if let Some(element_id) = row.source_node_id {
+			if let Some(element_id) = row.source_node_id() {
 				row.element.collect_metadata(metadata, footprint, Some(*element_id));
 			} else {
 				// Recurse through anonymous wrapper rows to reach nested content with source_node_ids
@@ -814,7 +814,7 @@ impl Render for Table<Graphic> {
 				row.element.add_upstream_click_targets(&mut new_click_targets);
 
 				for click_target in new_click_targets.iter_mut() {
-					click_target.apply_transform(*row.transform)
+					click_target.apply_transform(*row.transform())
 				}
 
 				all_upstream_click_targets.extend(new_click_targets);
@@ -831,7 +831,7 @@ impl Render for Table<Graphic> {
 			row.element.add_upstream_click_targets(&mut new_click_targets);
 
 			for click_target in new_click_targets.iter_mut() {
-				click_target.apply_transform(*row.transform)
+				click_target.apply_transform(*row.transform())
 			}
 
 			click_targets.extend(new_click_targets);
@@ -844,7 +844,7 @@ impl Render for Table<Graphic> {
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
 		for row in self.iter_mut() {
-			row.element.new_ids_from_hash(*row.source_node_id);
+			row.element.new_ids_from_hash(*row.source_node_id());
 		}
 	}
 }
@@ -852,12 +852,12 @@ impl Render for Table<Graphic> {
 impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
-			let multiplied_transform = *row.transform;
+			let multiplied_transform = *row.transform();
 			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(*row.transform);
+			let applied_stroke_transform = set_stroke_transform.unwrap_or(*row.transform());
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
@@ -915,12 +915,7 @@ impl Render for Table<Vector> {
 				element.style.clear_stroke();
 				element.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_row = Table::new_from_row(TableRow {
-					element,
-					alpha_blending: *row.alpha_blending,
-					transform: *row.transform,
-					source_node_id: None,
-				});
+				let vector_row = Table::new_from_row(TableRow::new(element, *row.transform(), *row.alpha_blending(), None));
 
 				(id, mask_type, vector_row)
 			});
@@ -1005,13 +1000,13 @@ impl Render for Table<Vector> {
 					attributes.push("fill-rule", "evenodd");
 				}
 
-				let opacity = row.alpha_blending.opacity(render_params.for_mask);
+				let opacity = row.alpha_blending().opacity(render_params.for_mask);
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if row.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", row.alpha_blending.blend_mode.render());
+				if row.alpha_blending().blend_mode != BlendMode::default() {
+					attributes.push("style", row.alpha_blending().blend_mode.render());
 				}
 			});
 
@@ -1045,7 +1040,7 @@ impl Render for Table<Vector> {
 		for row in self.iter() {
 			use graphic_types::vector_types::vector;
 
-			let multiplied_transform = parent_transform * *row.transform;
+			let multiplied_transform = parent_transform * *row.transform();
 			let has_real_stroke = row.element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
@@ -1074,12 +1069,12 @@ impl Render for Table<Vector> {
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
-				_ => row.alpha_blending.blend_mode.to_peniko(),
+				_ => row.alpha_blending().blend_mode.to_peniko(),
 			};
 			let mut layer = false;
 
-			let opacity = row.alpha_blending.opacity(render_params.for_mask);
-			if opacity < 1. || row.alpha_blending.blend_mode != BlendMode::default() {
+			let opacity = row.alpha_blending().opacity(render_params.for_mask);
+			if opacity < 1. || row.alpha_blending().blend_mode != BlendMode::default() {
 				layer = true;
 				let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
@@ -1230,12 +1225,7 @@ impl Render for Table<Vector> {
 						element.style.clear_stroke();
 						element.style.set_fill(Fill::solid(Color::BLACK));
 
-						let vector_table = Table::new_from_row(TableRow {
-							element,
-							alpha_blending: *row.alpha_blending,
-							transform: *row.transform,
-							source_node_id: None,
-						});
+						let vector_table = Table::new_from_row(TableRow::new(element, *row.transform(), *row.alpha_blending(), None));
 
 						let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
@@ -1304,10 +1294,10 @@ impl Render for Table<Vector> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		for row in self.iter() {
-			let transform = *row.transform;
+			let transform = *row.transform();
 			let vector = row.element;
 
-			if let Some(element_id) = caller_element_id.or(*row.source_node_id) {
+			if let Some(element_id) = caller_element_id.or(*row.source_node_id()) {
 				// When recovering element_id from the row's source_node_id (because the caller
 				// passed None), also store the transform metadata that Graphic::collect_metadata
 				// normally provides but skipped due to the None element_id.
@@ -1369,7 +1359,7 @@ impl Render for Table<Vector> {
 			};
 			click_targets.extend(row.element.stroke_bezier_paths().map(fill).map(|subpath| {
 				let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
-				click_target.apply_transform(*row.transform);
+				click_target.apply_transform(*row.transform());
 				click_target
 			}));
 
@@ -1383,7 +1373,7 @@ impl Render for Table<Vector> {
 				let point = FreePoint::new(point_id, anchor);
 
 				let mut click_target = ClickTarget::new_with_free_point(point);
-				click_target.apply_transform(*row.transform);
+				click_target.apply_transform(*row.transform());
 				Some(click_target)
 			});
 			click_targets.extend(single_anchors_targets);
@@ -1402,7 +1392,7 @@ impl Render for Table<Raster<CPU>> {
 		for row in self.iter() {
 			let image = row.element;
 
-			let transform = *row.transform;
+			let transform = *row.transform();
 
 			if image.data.is_empty() {
 				continue;
@@ -1429,13 +1419,13 @@ impl Render for Table<Raster<CPU>> {
 						attributes.push("width", size.x.to_string());
 						attributes.push("height", size.y.to_string());
 
-						let opacity = row.alpha_blending.opacity(render_params.for_mask);
+						let opacity = row.alpha_blending().opacity(render_params.for_mask);
 						if opacity < 1. {
 							attributes.push("opacity", opacity.to_string());
 						}
 
-						if row.alpha_blending.blend_mode != BlendMode::default() {
-							attributes.push("style", row.alpha_blending.blend_mode.render());
+						if row.alpha_blending().blend_mode != BlendMode::default() {
+							attributes.push("style", row.alpha_blending().blend_mode.render());
 						}
 					},
 					|render| {
@@ -1469,12 +1459,12 @@ impl Render for Table<Raster<CPU>> {
 						attributes.push("transform", matrix);
 					}
 
-					let opacity = row.alpha_blending.opacity(render_params.for_mask);
+					let opacity = row.alpha_blending().opacity(render_params.for_mask);
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
-					if row.alpha_blending.blend_mode != BlendMode::default() {
-						attributes.push("style", row.alpha_blending.blend_mode.render());
+					if row.alpha_blending().blend_mode != BlendMode::default() {
+						attributes.push("style", row.alpha_blending().blend_mode.render());
 					}
 				});
 			}
@@ -1488,7 +1478,7 @@ impl Render for Table<Raster<CPU>> {
 				continue;
 			}
 
-			let alpha_blending = *row.alpha_blending;
+			let alpha_blending = *row.alpha_blending();
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 
 			let opacity = alpha_blending.opacity(render_params.for_mask);
@@ -1504,7 +1494,7 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if let RenderMode::Outline = render_params.render_mode {
-				let outline_transform = transform * *row.transform;
+				let outline_transform = transform * *row.transform();
 				draw_raster_outline(scene, &outline_transform, render_params);
 
 				if layer {
@@ -1514,7 +1504,7 @@ impl Render for Table<Raster<CPU>> {
 				continue;
 			}
 
-			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+			let image_transform = transform * *row.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
 			let image_brush = peniko::ImageBrush::new(peniko::ImageData {
 				data: image.to_flat_u8().0.into(),
@@ -1541,7 +1531,7 @@ impl Render for Table<Raster<CPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
-			metadata.local_transforms.insert(element_id, *raster.transform);
+			metadata.local_transforms.insert(element_id, *raster.transform());
 		}
 	}
 
@@ -1560,7 +1550,7 @@ impl Render for Table<Raster<GPU>> {
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for row in self.iter() {
-			let alpha_blending = *row.alpha_blending;
+			let alpha_blending = *row.alpha_blending();
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
 				_ => alpha_blending.blend_mode.to_peniko(),
@@ -1578,7 +1568,7 @@ impl Render for Table<Raster<GPU>> {
 			}
 
 			if let RenderMode::Outline = render_params.render_mode {
-				let outline_transform = transform * *row.transform;
+				let outline_transform = transform * *row.transform();
 				draw_raster_outline(scene, &outline_transform, render_params);
 
 				if layer {
@@ -1598,7 +1588,7 @@ impl Render for Table<Raster<GPU>> {
 				alpha_type: peniko::ImageAlphaType::Alpha,
 			})
 			.with_extend(peniko::Extend::Repeat);
-			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
+			let image_transform = transform * *row.transform() * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 			context.resource_overrides.push((image, row.element.data().clone()));
 
@@ -1616,7 +1606,7 @@ impl Render for Table<Raster<GPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
-			metadata.local_transforms.insert(element_id, *raster.transform);
+			metadata.local_transforms.insert(element_id, *raster.transform());
 		}
 	}
 
@@ -1646,13 +1636,13 @@ impl Render for Table<Color> {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}
 
-				let opacity = row.alpha_blending.opacity(render_params.for_mask);
+				let opacity = row.alpha_blending().opacity(render_params.for_mask);
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if row.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", row.alpha_blending.blend_mode.render());
+				if row.alpha_blending().blend_mode != BlendMode::default() {
+					attributes.push("style", row.alpha_blending().blend_mode.render());
 				}
 			});
 		}
@@ -1662,7 +1652,7 @@ impl Render for Table<Color> {
 		use vello::peniko;
 
 		for row in self.iter() {
-			let alpha_blending = *row.alpha_blending;
+			let alpha_blending = *row.alpha_blending();
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
@@ -1708,7 +1698,7 @@ impl Render for Table<GradientStops> {
 					stop_string.push_str(" />");
 				}
 
-				let gradient_transform = render_params.footprint.transform * *row.transform;
+				let gradient_transform = render_params.footprint.transform * *row.transform();
 				let gradient_transform_matrix = format_transform_matrix(gradient_transform);
 				let gradient_transform_attribute = if gradient_transform_matrix.is_empty() {
 					String::new()
@@ -1741,13 +1731,13 @@ impl Render for Table<GradientStops> {
 
 				attributes.push("fill", format!("url('#{gradient_id}')"));
 
-				let opacity = row.alpha_blending.opacity(render_params.for_mask);
+				let opacity = row.alpha_blending().opacity(render_params.for_mask);
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if row.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", row.alpha_blending.blend_mode.render());
+				if row.alpha_blending().blend_mode != BlendMode::default() {
+					attributes.push("style", row.alpha_blending().blend_mode.render());
 				}
 			});
 		}
@@ -1758,7 +1748,7 @@ impl Render for Table<GradientStops> {
 		use vello::peniko;
 
 		for row in self.iter() {
-			let alpha_blending = *row.alpha_blending;
+			let alpha_blending = *row.alpha_blending();
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 

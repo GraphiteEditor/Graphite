@@ -169,7 +169,7 @@ where
 
 	// Create and add mirrored instance
 	for mut row in content.into_iter() {
-		row.transform = reflected_transform * row.transform;
+		*row.transform_mut() = reflected_transform * *row.transform();
 		result_table.push(row);
 	}
 
@@ -199,8 +199,8 @@ pub async fn source_node_id<T: 'n + Send + Clone>(
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	let mut content = content;
-	for row in content.iter_mut() {
-		*row.source_node_id = source_node_id;
+	for mut row in content.iter_mut() {
+		*row.source_node_id_mut() = source_node_id;
 	}
 
 	content
@@ -241,8 +241,9 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	let source_node_id = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();
 
 	let mut base = base;
-	for row in new.into_iter() {
-		base.push(TableRow { source_node_id, ..row });
+	for mut row in new.into_iter() {
+		*row.source_node_id_mut() = source_node_id;
+		base.push(row);
 	}
 
 	base
@@ -292,7 +293,9 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for current_row in current_graphic_table.iter() {
 			let current_element = current_row.element.clone();
-			let reference = *current_row.source_node_id;
+			let reference = *current_row.source_node_id();
+			let current_transform = *current_row.transform();
+			let current_alpha_blending = *current_row.alpha_blending();
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -300,20 +303,15 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					for graphic in current_element.iter_mut() {
-						*graphic.transform = *current_row.transform * *graphic.transform;
+					for mut graphic in current_element.iter_mut() {
+						*graphic.transform_mut() = current_transform * *graphic.transform();
 					}
 
 					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
 				}
 				// Push any leaf Graphic elements we encounter, which can be either Graphic table elements beyond the recursion depth, or table elements other than Graphic tables
 				_ => {
-					output_graphic_table.push(TableRow {
-						element: current_element,
-						transform: *current_row.transform,
-						alpha_blending: *current_row.alpha_blending,
-						source_node_id: reference,
-					});
+					output_graphic_table.push(TableRow::new(current_element, current_transform, current_alpha_blending, reference));
 				}
 			}
 		}

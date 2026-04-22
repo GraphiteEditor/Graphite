@@ -81,21 +81,21 @@ pub mod migrations {
 					region_domain: old.region_domain,
 					upstream_data: old.upstream_graphic_group,
 				});
-				*vector_table.iter_mut().next().unwrap().transform = old.transform;
-				*vector_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
+				let mut row = vector_table.iter_mut().next().unwrap();
+				*row.transform_mut() = old.transform;
+				*row.alpha_blending_mut() = old.alpha_blending;
 				vector_table
 			}
-			VectorFormat::OlderVectorTable(older_table) => older_table.element.into_iter().map(|element| TableRow { element, ..Default::default() }).collect(),
+			VectorFormat::OlderVectorTable(older_table) => older_table
+				.element
+				.into_iter()
+				.map(|element| TableRow::new(element, DAffine2::IDENTITY, AlphaBlending::default(), None))
+				.collect(),
 			VectorFormat::OldVectorTable(old_table) => old_table
 				.element
 				.into_iter()
 				.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-				.map(|(element, (transform, alpha_blending))| TableRow {
-					element,
-					transform,
-					alpha_blending,
-					source_node_id: None,
-				})
+				.map(|(element, (transform, alpha_blending))| TableRow::new(element, transform, alpha_blending, None))
 				.collect(),
 			VectorFormat::VectorTable(vector_table) => vector_table,
 		})
