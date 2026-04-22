@@ -1974,18 +1974,16 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Migrate Image nodes that stored a Table<Raster<CPU>> in input 1 to instead use bare Image<Color> via TaggedValue::ImageData
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) {
-		let input_1 = node.inputs.get(1)?;
-		if let NodeInput::Value { tagged_value, .. } = input_1
-			&& let TaggedValue::Raster(raster_table) = &**tagged_value
-			&& !raster_table.is_empty()
-		{
-			let image = raster_table.iter().next()?.element.data().clone();
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
+		&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(1)
+		&& let TaggedValue::Raster(raster_table) = &**tagged_value
+		&& let Some(row) = raster_table.iter().next()
+	{
+		let image = row.element.data().clone();
 
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
-		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
 	// ==================================
