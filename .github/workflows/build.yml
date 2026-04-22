@@ -157,18 +157,21 @@ jobs:
             REF="master"
             ENVIRONMENT="graphite-dev (Production)"
           else
-            REF="$(git rev-parse HEAD)"
+            REF="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
             ENVIRONMENT="graphite-dev (Preview)"
           fi
-          DEPLOY_ID=$(gh api \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            repos/${{ github.repository }}/deployments \
-            --input - \
-            --jq '.id' <<EOF
-            {"ref":"$REF","environment":"$ENVIRONMENT","auto_merge":false,"required_contexts":[]}
+          create_deployment() {
+            gh api \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              repos/${{ github.repository }}/deployments \
+              --input - \
+              --jq '.id' <<EOF
+              {"ref":"$1","environment":"$ENVIRONMENT","auto_merge":false,"required_contexts":[]}
           EOF
-          )
+          }
+          # Try branch name first (needed for GitHub's PR "View deployment" button), fall back to commit SHA if the branch was deleted
+          DEPLOY_ID=$(create_deployment "$REF" 2>/dev/null) || DEPLOY_ID=$(create_deployment "$(git rev-parse HEAD)")
           gh api \
             -X POST \
             -H "Accept: application/vnd.github+json" \
