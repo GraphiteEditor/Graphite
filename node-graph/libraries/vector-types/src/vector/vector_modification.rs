@@ -325,6 +325,145 @@ pub enum VectorModificationType {
 }
 
 impl VectorModification {
+	/// Returns `(additions, removals, modifications)` counts summarizing all changes.
+	pub fn summary_counts(&self) -> (usize, usize, usize) {
+		let additions = self.points.add.len() + self.segments.add.len() + self.regions.add.len() + self.add_g1_continuous.len();
+		let removals = self.points.remove.len() + self.segments.remove.len() + self.regions.remove.len() + self.remove_g1_continuous.len();
+
+		// Modifications are delta/change entries for items that aren't being added (since add entries use those maps for initial values)
+		let add_points: HashSet<_> = self.points.add.iter().copied().collect();
+		let add_segments: HashSet<_> = self.segments.add.iter().copied().collect();
+		let add_regions: HashSet<_> = self.regions.add.iter().copied().collect();
+
+		let point_modifications = self.points.delta.keys().filter(|id| !add_points.contains(id)).count();
+		let segment_modifications = self
+			.segments
+			.start_point
+			.keys()
+			.chain(self.segments.end_point.keys())
+			.chain(self.segments.handle_primary.keys())
+			.chain(self.segments.handle_end.keys())
+			.chain(self.segments.stroke.keys())
+			.filter(|id| !add_segments.contains(id))
+			.collect::<HashSet<_>>()
+			.len();
+		let region_modifications = self
+			.regions
+			.segment_range
+			.keys()
+			.chain(self.regions.fill.keys())
+			.filter(|id| !add_regions.contains(id))
+			.collect::<HashSet<_>>()
+			.len();
+
+		(additions, removals, point_modifications + segment_modifications + region_modifications)
+	}
+
+	/// Returns a short human-readable summary string like "+12 / \u{2212}3 / \u{0394}2".
+	pub fn summary_label(&self) -> String {
+		let (additions, removals, modifications) = self.summary_counts();
+		let mut parts = Vec::new();
+		if additions > 0 {
+			parts.push(format!("+{additions}"));
+		}
+		if removals > 0 {
+			parts.push(format!("\u{2212}{removals}"));
+		}
+		if modifications > 0 {
+			parts.push(format!("\u{0394}{modifications}"));
+		}
+		if parts.is_empty() { "No Differential Edits".to_string() } else { parts.join(" / ") }
+	}
+
+	/// Returns a detailed multi-line tooltip describing all the changes.
+	pub fn summary_tooltip(&self) -> String {
+		let add_points: HashSet<_> = self.points.add.iter().copied().collect();
+		let add_segments: HashSet<_> = self.segments.add.iter().copied().collect();
+		let add_regions: HashSet<_> = self.regions.add.iter().copied().collect();
+
+		let point_deltas = self.points.delta.keys().filter(|id| !add_points.contains(id)).count();
+		let segment_changes = self
+			.segments
+			.start_point
+			.keys()
+			.chain(self.segments.end_point.keys())
+			.chain(self.segments.handle_primary.keys())
+			.chain(self.segments.handle_end.keys())
+			.chain(self.segments.stroke.keys())
+			.filter(|id| !add_segments.contains(id))
+			.collect::<HashSet<_>>()
+			.len();
+		let region_changes = self
+			.regions
+			.segment_range
+			.keys()
+			.chain(self.regions.fill.keys())
+			.filter(|id| !add_regions.contains(id))
+			.collect::<HashSet<_>>()
+			.len();
+
+		let mut lines = Vec::new();
+
+		// Points
+		let mut point_parts = Vec::new();
+		if !self.points.add.is_empty() {
+			point_parts.push(format!("+{}", self.points.add.len()));
+		}
+		if !self.points.remove.is_empty() {
+			point_parts.push(format!("\u{2212}{}", self.points.remove.len()));
+		}
+		if point_deltas > 0 {
+			point_parts.push(format!("\u{0394}{point_deltas}"));
+		}
+		if !point_parts.is_empty() {
+			lines.push(format!("Points: {}", point_parts.join(" / ")));
+		}
+
+		// Segments
+		let mut segment_parts = Vec::new();
+		if !self.segments.add.is_empty() {
+			segment_parts.push(format!("+{}", self.segments.add.len()));
+		}
+		if !self.segments.remove.is_empty() {
+			segment_parts.push(format!("\u{2212}{}", self.segments.remove.len()));
+		}
+		if segment_changes > 0 {
+			segment_parts.push(format!("\u{0394}{segment_changes}"));
+		}
+		if !segment_parts.is_empty() {
+			lines.push(format!("Segments: {}", segment_parts.join(" / ")));
+		}
+
+		// Regions
+		let mut region_parts = Vec::new();
+		if !self.regions.add.is_empty() {
+			region_parts.push(format!("+{}", self.regions.add.len()));
+		}
+		if !self.regions.remove.is_empty() {
+			region_parts.push(format!("\u{2212}{}", self.regions.remove.len()));
+		}
+		if region_changes > 0 {
+			region_parts.push(format!("\u{0394}{region_changes}"));
+		}
+		if !region_parts.is_empty() {
+			lines.push(format!("Regions: {}", region_parts.join(" / ")));
+		}
+
+		// G1 continuous
+		let mut g1_parts = Vec::new();
+		if !self.add_g1_continuous.is_empty() {
+			g1_parts.push(format!("+{}", self.add_g1_continuous.len()));
+		}
+		if !self.remove_g1_continuous.is_empty() {
+			g1_parts.push(format!("\u{2212}{}", self.remove_g1_continuous.len()));
+		}
+		if !g1_parts.is_empty() {
+			lines.push(format!("Smooth Handles: {}", g1_parts.join(" / ")));
+		}
+
+		if lines.is_empty() { "None".to_string() } else { lines.join("\n") }
+	}
+
 	/// Apply this modification to the specified [`Vector`].
 	pub fn apply<Upstream>(&self, vector: &mut Vector<Upstream>) {
 		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);
