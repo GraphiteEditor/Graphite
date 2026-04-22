@@ -39,7 +39,7 @@ Nodes are implemented by us as part of a built-in library, and by some users who
 
 ### Sandboxing
 
-For security and portability, user-authored nodes are compiled into WebAssembly (WASM) modules and run in a sandbox. Built-in nodes provided with Graphite run natively to avoid the nominal performance penalty of the sandbox. When the entire editor is running in a web browser, all nodes use the browser's WASM executor. When running in a distributed compute cluster on cloud machines, the infrastructure provider may be able to offer sandboxing to sufficiently address the security concerns of running untrusted code natively.
+For security and portability, user-authored nodes are compiled into WebAssembly (Wasm) modules and run in a sandbox. Built-in nodes provided with Graphite run natively to avoid the nominal performance penalty of the sandbox. When the entire editor is running in a web browser, all nodes use the browser's Wasm executor. When running in a distributed compute cluster on cloud machines, the infrastructure provider may be able to offer sandboxing to sufficiently address the security concerns of running untrusted code natively.
 
 ## The Graphene distributed runtime
 

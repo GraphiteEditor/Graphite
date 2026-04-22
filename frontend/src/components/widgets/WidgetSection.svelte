@@ -1,15 +1,12 @@
 <script lang="ts">
 	import { getContext } from "svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
+	import type { EditorWrapper, LayoutTarget, WidgetSection as WidgetSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { Editor } from "@graphite/editor";
-	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
-
-	export let widgetData: WidgetSectionFromJsMessages;
+	export let widgetData: WidgetSectionData;
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";
@@ -18,7 +15,7 @@
 
 	let expanded = true;
 
-	const editor = getContext<Editor>("editor");
+	const editor = getContext<EditorWrapper>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
@@ -31,7 +28,7 @@
 			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
-				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
+				editor.setNodePinned(widgetData.id, !widgetData.pinned);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -41,7 +38,7 @@
 			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
-				editor.handle.deleteNode(widgetData.id);
+				editor.deleteNode(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -52,7 +49,7 @@
 			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
-				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
+				editor.toggleNodeVisibilityLayerPanel(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class={widgetData.visible ? "show-only-on-hover" : ""}
@@ -61,21 +58,24 @@
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.layout as layoutGroup}
-				{#if isWidgetSpanRow(layoutGroup)}
-					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
-				{:else if isWidgetSection(layoutGroup)}
-					<svelte:self widgetData={layoutGroup} {layoutTarget} />
+				{#if "Row" in layoutGroup}
+					<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
+				{:else if "Section" in layoutGroup}
+					<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
 				{/if}
 			{/each}
 		</LayoutCol>
 	{/if}
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.widget-section {
 		flex: 0 0 auto;
 		margin: 0 4px;
-		margin-top: 4px;
+
+		+ .widget-section {
+			margin-top: 4px;
+		}
 
 		.header {
 			text-align: left;

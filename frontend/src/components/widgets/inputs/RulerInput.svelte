@@ -1,7 +1,3 @@
-<script lang="ts" context="module">
-	export type RulerDirection = "Horizontal" | "Vertical";
-</script>
-
 <script lang="ts">
 	import { onMount } from "svelte";
 
@@ -9,6 +5,8 @@
 	const MAJOR_MARK_THICKNESS = 16;
 	const MINOR_MARK_THICKNESS = 6;
 	const MICRO_MARK_THICKNESS = 3;
+
+	type RulerDirection = "Horizontal" | "Vertical";
 
 	export let direction: RulerDirection = "Vertical";
 	export let origin: number;
@@ -113,7 +111,7 @@
 	</svg>
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.ruler-input {
 		flex: 1 1 100%;
 		background: var(--color-2-mildblack);

@@ -8,6 +8,13 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+wasm = [
+	"core-types/wasm",
+	"raster-types/wasm",
+	"graphic-types/wasm",
+	"tsify",
+	"wasm-bindgen",
+]
 
 [dependencies]
 # Local dependencies
@@ -21,7 +28,8 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
 serde_json = { workspace = true }
-specta = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }

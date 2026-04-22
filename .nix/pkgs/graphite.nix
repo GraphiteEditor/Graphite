@@ -1,131 +1,133 @@
 {
   info,
   pkgs,
-  inputs,
+  self,
   deps,
-  libs,
-  tools,
+  system,
+  lib,
   ...
 }:
 
 {
-  embeddedResources ? true,
   dev ? false,
 }:
 
 let
-  brandingTar = pkgs.fetchurl (
-    let
-      lockContent = builtins.readFile "${info.src}/.branding";
-      lines = builtins.filter (s: s != [ ]) (builtins.split "\n" lockContent);
-      url = builtins.elemAt lines 0;
-      hash = builtins.elemAt lines 1;
-    in
-    {
-      url = url;
-      sha256 = hash;
-    }
-  );
-  branding = pkgs.runCommand "${info.pname}-branding" { } ''
-    mkdir -p $out
-    tar -xvf ${brandingTar} -C $out --strip-components 1
-  '';
-  cargoVendorDir =  deps.crane.lib.vendorCargoDeps { inherit (info) src; };
-  resourcesCommon = {
-    pname = "${info.pname}-resources";
-    inherit (info) version src;
-    inherit cargoVendorDir;
-    strictDeps = true;
-    nativeBuildInputs = tools.frontend;
-    env.CARGO_PROFILE = if dev then "dev" else "release";
-    cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm --no-default-features --features native";
-    doCheck = false;
-  };
-  resources = deps.crane.lib.buildPackage (
-    resourcesCommon
-    // {
-      cargoArtifacts = deps.crane.lib.buildDepsOnly resourcesCommon;
+  branding = self.packages.${system}.graphite-branding;
+  libs = [
+    pkgs.wayland
+    pkgs.vulkan-loader
+    pkgs.libGL
+    pkgs.openssl
+    pkgs.libraw
+    # X11 Support
+    pkgs.libxkbcommon
+    pkgs.libXcursor
+    pkgs.libxcb
+    pkgs.libX11
+  ];
 
-      npmDeps = pkgs.importNpmLock {
-        npmRoot = "${info.src}/frontend";
-      };
-
-      npmRoot = "frontend";
-      npmConfigScript = "setup";
-      makeCacheWritable = true;
-
-      nativeBuildInputs = tools.frontend ++ [ pkgs.importNpmLock.npmConfigHook pkgs.removeReferencesTo ];
-
-      prePatch = ''
-        mkdir branding
-        cp -r ${branding}/* branding
-        cp ${info.src}/.branding branding/.branding
-      '';
-
-      buildPhase = ''
-        export HOME="$TMPDIR"
-
-        pushd frontend
-        npm run native:build-${if dev then "dev" else "production"}
-        popd
-      '';
-
-      installPhase = ''
-        mkdir -p $out
-        cp -r frontend/dist/* $out/
-      '';
-
-      postFixup = ''
-        find "$out" -type f -exec remove-references-to -t "${cargoVendorDir}" '{}' +
-      '';
-    }
-  );
   common = {
     inherit (info) pname version src;
-    inherit cargoVendorDir;
+    cargoVendorDir = deps.crane.lib.vendorCargoDepsFlatten (
+      deps.crane.lib.vendorMultipleCargoDeps {
+        inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
+        cargoLockList = [
+          "${info.src}/Cargo.lock"
+          "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
+        ];
+      }
+    );
+    buildInputs = libs;
     strictDeps = true;
-    buildInputs = libs.desktop-all;
-    nativeBuildInputs = tools.desktop ++ [ pkgs.makeWrapper pkgs.removeReferencesTo ];
-    env = deps.cef.env // {
-      CARGO_PROFILE = if dev then "dev" else "release";
-    };
-    cargoExtraArgs = "-p graphite-desktop${
-      if embeddedResources then "" else " --no-default-features --features recommended"
-    }";
     doCheck = false;
   };
+
+  cargoArtifacts = deps.crane.lib.buildDepsOnly (
+    common
+    // {
+      nativeBuildInputs = [
+        pkgs.pkg-config
+        pkgs.lld
+      ];
+      env = deps.cef.env;
+      buildPhase =
+        let
+          profile = if dev then "dev" else "release";
+        in
+        ''
+          cargo check --profile ${profile} --locked -p graphite-desktop-platform-linux
+          cargo build --profile ${profile} --locked -p graphite-desktop-platform-linux
+
+          cargo check --profile ${profile} --target wasm32-unknown-unknown --locked -p graphite-wasm-wrapper --no-default-features --features native
+          cargo build --profile ${profile} --target wasm32-unknown-unknown --locked -p graphite-wasm-wrapper --no-default-features --features native
+
+          cargo check --locked -p third-party-licenses --features desktop
+          cargo build --locked -p third-party-licenses --features desktop
+
+          cargo check --profile ${profile} --locked -p graphite-desktop-bundle
+          cargo build --profile ${profile} --locked -p graphite-desktop-bundle
+        '';
+    }
+  );
 in
 
 deps.crane.lib.buildPackage (
   common
   // {
-    cargoArtifacts = deps.crane.lib.buildDepsOnly common;
+    inherit cargoArtifacts;
 
-    env =
-      common.env
-      // {
-        RASTER_NODES_SHADER_PATH = pkgs.raster-nodes-shaders;
-      }
-      // (
-        if embeddedResources then
-          {
-            EMBEDDED_RESOURCES = resources;
-          }
-        else
-          { }
-      ) // {
-        GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
-        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModified or "unknown";
-      };
+    buildInputs = libs;
+    nativeBuildInputs = [
+      pkgs.pkg-config
+      pkgs.lld
+      pkgs.nodejs
+      pkgs.nodePackages.npm
+      pkgs.binaryen
+      pkgs.wasm-bindgen-cli_0_2_100
+      pkgs.wasm-pack
+      pkgs.cargo-about
+      pkgs.removeReferencesTo
+      pkgs.importNpmLock.npmConfigHook
+    ];
 
-    postUnpack = ''
-      mkdir ./branding
-      cp -r ${branding}/* ./branding
+    npmDeps = pkgs.importNpmLock {
+      npmRoot = "${info.src}/frontend";
+    };
+    npmRoot = "frontend";
+    npmConfigScript = "setup";
+    makeCacheWritable = true;
+
+    env = deps.cef.env // {
+      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
+      GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
+      GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
+    };
+
+    postPatch = ''
+      mkdir branding
+      cp -r ${branding}/* branding
+      cp ${info.src}/.branding branding/.branding
     '';
 
-    preBuild = if inputs.self ? rev then ''
-      export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
-    '' else "";
+    preBuild = ''
+      # Prevent `package-installer.js` from trying to update npm dependencies
+      touch -r frontend/package-lock.json -d '+1 year' frontend/node_modules/.install-timestamp
+
+      export HOME="$TMPDIR"
+    ''
+    + (
+      if self ? rev then
+        ''
+          export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
+        ''
+      else
+        ""
+    );
+
+    buildPhaseCargoCommand = "cargo run build desktop${if dev then " debug" else ""}";
+
+    doNotPostBuildInstallCargoBinaries = true;
 
     installPhase = ''
       mkdir -p $out/bin
@@ -145,12 +147,14 @@ deps.crane.lib.buildPackage (
     '';
 
     postFixup = ''
-      remove-references-to -t "${cargoVendorDir}" $out/bin/graphite
+      remove-references-to -t "${common.cargoVendorDir}" $out/bin/graphite
 
       patchelf \
-        --set-rpath "${pkgs.lib.makeLibraryPath libs.desktop-all}:${deps.cef.env.CEF_PATH}" \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs}:${deps.cef.env.CEF_PATH}" \
         --add-needed libGL.so \
         $out/bin/graphite
     '';
+
+    passthru.deps = cargoArtifacts;
   }
 )

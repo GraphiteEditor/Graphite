@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use wgpu::PresentMode;
 
 use crate::window::Window;
 use crate::wrapper::{TargetTexture, WgpuContext, WgpuExecutor};
@@ -11,13 +12,13 @@ pub(crate) struct RenderState {
 	executor: WgpuExecutor,
 	config: wgpu::SurfaceConfiguration,
 	render_pipeline: wgpu::RenderPipeline,
-	transparent_texture: wgpu::Texture,
+	transparent_texture: std::sync::Arc<wgpu::Texture>,
 	sampler: wgpu::Sampler,
 	desired_width: u32,
 	desired_height: u32,
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
-	viewport_texture: Option<wgpu::Texture>,
+	viewport_texture: Option<std::sync::Arc<wgpu::Texture>>,
 	overlays_texture: Option<TargetTexture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
@@ -27,7 +28,7 @@ pub(crate) struct RenderState {
 }
 
 impl RenderState {
-	pub(crate) fn new(window: &Window, context: WgpuContext) -> Self {
+	pub(crate) fn new(window: &Window, context: WgpuContext, present_mode: Option<PresentMode>) -> Self {
 		let size = window.surface_size();
 		let surface = window.create_surface(context.instance.clone());
 
@@ -39,10 +40,7 @@ impl RenderState {
 			format: surface_format,
 			width: size.width,
 			height: size.height,
-			#[cfg(not(target_os = "macos"))]
-			present_mode: surface_caps.present_modes[0],
-			#[cfg(target_os = "macos")]
-			present_mode: wgpu::PresentMode::Immediate,
+			present_mode: present_mode.unwrap_or(surface_caps.present_modes[0]),
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
 			desired_maximum_frame_latency: 1,
@@ -50,7 +48,7 @@ impl RenderState {
 
 		surface.configure(&context.device, &config);
 
-		let transparent_texture = context.device.create_texture(&wgpu::TextureDescriptor {
+		let transparent_texture = std::sync::Arc::new(context.device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("Transparent Texture"),
 			size: wgpu::Extent3d {
 				width: 1,
@@ -63,7 +61,7 @@ impl RenderState {
 			format: wgpu::TextureFormat::Bgra8UnormSrgb,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 			view_formats: &[],
-		});
+		}));
 
 		// Create shader module
 		let shader = context.device.create_shader_module(wgpu::include_wgsl!("composite_shader.wgsl"));
@@ -207,7 +205,7 @@ impl RenderState {
 		}
 	}
 
-	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
+	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: std::sync::Arc<wgpu::Texture>) {
 		self.viewport_texture = Some(viewport_texture);
 		self.update_bindgroup();
 	}
@@ -238,7 +236,7 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = futures::executor::block_on(self.executor.render_vello_scene_to_target_texture(&scene, size, &Default::default(), None, &mut self.overlays_texture));
+		let result = futures::executor::block_on(self.executor.render_vello_scene_to_target_texture(&scene, size, &Default::default(), &mut self.overlays_texture));
 		if let Err(e) = result {
 			tracing::error!("Error rendering overlays: {:?}", e);
 			return;
@@ -335,7 +333,7 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&overlays_texture_view.as_ref()),
+					resource: wgpu::BindingResource::TextureView(overlays_texture_view.as_ref()),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,

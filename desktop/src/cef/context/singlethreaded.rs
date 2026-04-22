@@ -4,6 +4,7 @@ use winit::event::WindowEvent;
 use crate::cef::input::InputState;
 use crate::cef::ipc::{MessageType, SendMessage};
 use crate::cef::{CefEventHandler, input};
+use crate::dirs::TempDir;
 
 use super::CefContext;
 
@@ -11,7 +12,7 @@ pub(super) struct SingleThreadedCefContext {
 	pub(super) event_handler: Box<dyn CefEventHandler>,
 	pub(super) browser: Browser,
 	pub(super) input_state: InputState,
-	pub(super) instance_dir: std::path::PathBuf,
+	pub(super) _instance_dir: TempDir,
 }
 
 impl CefContext for SingleThreadedCefContext {
@@ -29,9 +30,8 @@ impl CefContext for SingleThreadedCefContext {
 		host.set_zoom_level(view_info.zoom());
 		host.was_resized();
 
-		// Fix for CEF not updating the view after resize on windows and mac
+		// Fix for CEF not updating the view after resize
 		// TODO: remove once https://github.com/chromiumembedded/cef/issues/3822 is fixed
-		#[cfg(any(target_os = "windows", target_os = "macos"))]
 		host.invalidate(cef::PaintElementType::default());
 	}
 
@@ -42,20 +42,11 @@ impl CefContext for SingleThreadedCefContext {
 
 impl Drop for SingleThreadedCefContext {
 	fn drop(&mut self) {
-		cef::shutdown();
+		tracing::debug!("Shutting down CEF");
 
-		// Sometimes some CEF processes still linger at this point and hold file handles to the cache directory.
-		// To mitigate this, we try to remove the directory multiple times with some delay.
-		// TODO: find a better solution if possible.
-		for _ in 0..30 {
-			match std::fs::remove_dir_all(&self.instance_dir) {
-				Ok(_) => break,
-				Err(e) => {
-					tracing::warn!("Failed to remove CEF cache directory, retrying...: {e}");
-					std::thread::sleep(std::time::Duration::from_millis(100));
-				}
-			}
-		}
+		// CEF wants us to close the browser before shutting down, otherwise it may run longer that necessary.
+		self.browser.host().unwrap().close_browser(1);
+		cef::shutdown();
 	}
 }
 
@@ -65,7 +56,6 @@ impl SendMessage for SingleThreadedCefContext {
 			tracing::error!("Main frame is not available, cannot send message");
 			return;
 		};
-
 		frame.send_message(message_type, message);
 	}
 }

@@ -1,6 +1,7 @@
 mod about_graphite_dialog;
 mod close_all_documents_dialog;
 mod close_document_dialog;
+mod confirm_restart_dialog;
 mod demo_artwork_dialog;
 mod error_dialog;
 mod licenses_dialog;
@@ -9,6 +10,7 @@ mod licenses_third_party_dialog;
 pub use about_graphite_dialog::AboutGraphiteDialog;
 pub use close_all_documents_dialog::CloseAllDocumentsDialog;
 pub use close_document_dialog::CloseDocumentDialog;
+pub use confirm_restart_dialog::ConfirmRestartDialog;
 pub use demo_artwork_dialog::ARTWORK;
 pub use demo_artwork_dialog::DemoArtworkDialog;
 pub use error_dialog::ErrorDialog;

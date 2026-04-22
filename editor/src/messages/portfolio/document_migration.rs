@@ -12,6 +12,7 @@ use graphene_std::ProtoNodeIdentifier;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
+use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
@@ -28,6 +29,7 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	),
 	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
 	("\"OptionalF64\":", "\"F64\":"),
+	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -283,12 +285,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::gradient_table_value::IDENTIFIER,
-		aliases: &["graphene_math_nodes::GradientTableValueNode", "graphene_core::ops::GradientTableValueNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
-		aliases: &["graphene_math_nodes::GradientValueNode", "graphene_core::ops::GradientValueNode"],
+		aliases: &[
+			"graphene_math_nodes::GradientValueNode",
+			"graphene_core::ops::GradientValueNode",
+			"graphene_math_nodes::GradientTableValueNode",
+			"graphene_core::ops::GradientTableValueNode",
+			"math_nodes::GradientTableValueNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::greater_than::IDENTIFIER,
@@ -452,10 +456,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	// ================================
-	// path-bool
+	// path bool
 	// ================================
 	NodeReplacement {
-		node: graphene_std::path_bool::boolean_operation::IDENTIFIER,
+		node: graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER,
 		aliases: &["graphene_path_bool::BooleanOperationNode", "graphene_std::vector::BooleanOperationNode"],
 	},
 	// ================================
@@ -470,13 +474,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
+		node: graphene_std::raster_nodes::blending_nodes::mix::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::BlendNode",
 			"raster_nodes::adjustments::BlendNode",
 			"graphene_core::raster::adjustments::BlendNode",
 			"graphene_core::raster::BlendNode",
 			"graphene_raster_nodes::blending_nodes::BlendNode",
+			"raster_nodes::blending_nodes::BlendNode",
 		],
 	},
 	NodeReplacement {
@@ -754,16 +759,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::CentroidNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::circular_repeat::IDENTIFIER,
-		aliases: &["graphene_core::vector::CircularRepeatNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::vector::close_path::IDENTIFIER,
 		aliases: &["graphene_core::vector::ClosePathNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::copy_to_points::IDENTIFIER,
-		aliases: &["graphene_core::vector::CopyToPointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::count_elements::IDENTIFIER,
@@ -834,28 +831,40 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::generator_nodes::StarNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_index::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceIndexNode"],
+		node: graphene_std::context::read_index::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceIndexNode", "core_types::vector::InstanceIndexNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_map::IDENTIFIER,
+		node: graphene_std::graphic::map::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceMapNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_on_points::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceOnPointsNode"],
+		node: graphene_std::context::read_position::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstancePositionNode", "core_types::vector::InstancePositionNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_position::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstancePositionNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::instance_repeat::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceRepeatNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::instance_vector::IDENTIFIER,
+		node: graphene_std::context::read_vector::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceRepeatNode", "core_types::vector::InstanceRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_array::IDENTIFIER,
+		aliases: &["graphene_core::vector::RepeatNode", "core_types::vector::RepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_radial::IDENTIFIER,
+		aliases: &["graphene_core::vector::CircularRepeatNode", "core_types::vector::CircularRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_on_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceOnPointsNode", "core_types::vector::InstanceOnPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::copy_to_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::CopyToPointsNode", "core_types::vector::CopyToPointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::jitter_points::IDENTIFIER,
@@ -866,8 +875,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::MergeByDistanceNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::mirror::IDENTIFIER,
-		aliases: &["graphene_core::vector::MirrorNode"],
+		node: graphene_std::graphic::mirror::IDENTIFIER,
+		aliases: &["graphene_core::vector::MirrorNode", "core_types::vector::MirrorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::morph::IDENTIFIER,
@@ -904,10 +913,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::vector::position_on_path::IDENTIFIER,
 		aliases: &["graphene_core::vector::PositionOnPathNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::repeat::IDENTIFIER,
-		aliases: &["graphene_core::vector::RepeatNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::round_corners::IDENTIFIER,
@@ -1337,7 +1342,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `keep_original` boolean input
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 3 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 3 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1352,7 +1357,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 4 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1404,7 +1409,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_on_points::IDENTIFIER) && inputs_count == 2 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1546,11 +1551,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Add the "Depth" parameter to the "Instance Index" node
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_index::IDENTIFIER) && inputs_count == 0 {
+	// Add the "Depth" parameter to the "Read Index" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_index::IDENTIFIER) && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
+		document.network_interface.set_display_name(node_id, "Read Index".to_string(), network_path);
 
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);
@@ -1646,8 +1651,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
 	}
 
-	// Upgrade the "Instance Position" node to add the "Loop Level" input
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::instance::instance_position::IDENTIFIER) && inputs_count < 2 {
+	// Upgrade the "Read Position" node to add the "Loop Level" input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_position::IDENTIFIER) && inputs_count < 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
@@ -1660,7 +1665,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
 	}
 
-	// Migrate from the old source/target "Morph" node to the new vector table based "Morph" node.
+	// Migrate from the old source/target v1 "Morph" node to the new vector table based v2 "Morph" node.
 	// This doesn't produce exactly equivalent results in cases involving input vector tables with multiple rows.
 	// The old version would zip the source and target table rows, interpoleating each pair together.
 	// The migrated version will instead deeply flatten both merged tables and morph sequentially between all source vectors and all target vector elements.
@@ -1672,7 +1677,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> Table<Vector> { ... }
 		//
-		// New signature:
+		// v2 signature:
 		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }
 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -1708,6 +1713,210 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 0), NodeInput::node(merge_node_id, 0), network_path);
 		// Connect the old 'progression' input to the new 'progression' input of the Morph node
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
+
+		inputs_count = 2;
+	}
+
+	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (5 inputs: content, progression, reverse, distribution, path).
+	// The old progression used integer part for pair selection (range 0..N-1 where N is the number of content objects).
+	// The new progression uses fractional 0..1 for euclidean traversal through all objects.
+	// We insert Count Elements → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
+	// For the common 2-object case (N=2), this divides by 1 which is a no-op, preserving identical behavior.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Reconnect content (input 0) and leave path (input 4) as default
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+
+		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+			log::error!("Could not get position for morph node {node_id}");
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+
+		// Create Count Elements node: counts content table rows → N
+		let Some(count_elements_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
+			log::error!("Could not get count_elements node from definition when upgrading morph");
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+		let count_elements_template = count_elements_def.default_node_template();
+		let count_elements_id = NodeId::new();
+
+		// Create Subtract node: N → N-1
+		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
+			log::error!("Could not get subtract node from definition when upgrading morph");
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+		let mut subtract_template = subtract_def.default_node_template();
+		subtract_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(1.), false);
+		let subtract_id = NodeId::new();
+
+		// Create Divide node: old_progression / (N-1) → new progression
+		let Some(divide_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::divide::IDENTIFIER)) else {
+			log::error!("Could not get divide node from definition when upgrading morph");
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			return None;
+		};
+		let divide_template = divide_def.default_node_template();
+		let divide_id = NodeId::new();
+
+		// Insert and position nodes
+		document.network_interface.insert_node(count_elements_id, count_elements_template, network_path);
+		document
+			.network_interface
+			.shift_absolute_node_position(&count_elements_id, morph_position + IVec2::new(-21, 2), network_path);
+
+		document.network_interface.insert_node(subtract_id, subtract_template, network_path);
+		document.network_interface.shift_absolute_node_position(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
+
+		document.network_interface.insert_node(divide_id, divide_template, network_path);
+		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
+
+		// Wire: content source → Count Elements input 0
+		document.network_interface.set_input(&InputConnector::node(count_elements_id, 0), old_inputs[0].clone(), network_path);
+
+		// Wire: Count Elements output → Subtract input 0 (minuend)
+		document
+			.network_interface
+			.set_input(&InputConnector::node(subtract_id, 0), NodeInput::node(count_elements_id, 0), network_path);
+
+		// Wire: old progression → Divide input 0 (numerator)
+		document.network_interface.set_input(&InputConnector::node(divide_id, 0), old_inputs[1].clone(), network_path);
+
+		// Wire: Subtract output → Divide input 1 (denominator)
+		document.network_interface.set_input(&InputConnector::node(divide_id, 1), NodeInput::node(subtract_id, 0), network_path);
+
+		// Wire: Divide output → Morph progression input
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::node(divide_id, 0), network_path);
+	}
+
+	// Migrate old Arrow node from (start, end, shaft_width, head_width, head_length) to (arrow_to, shaft_width, head_width, head_length) with a Transform node for positioning
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER) && inputs_count == 6 {
+		// Read old start and end values
+		let start = match node.inputs.get(1)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::ZERO
+				}
+			}
+			_ => DVec2::ZERO,
+		};
+		let end = match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::new(100., 0.)
+				}
+			}
+			_ => DVec2::new(100., 0.),
+		};
+
+		// Replace inputs with the new node definition (primary + arrow_to + shaft_width + head_width + head_length)
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Preserve primary input connection
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Set arrow_to = end - start
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+		// Preserve shaft_width, head_width, head_length (shifted from indices 3,4,5 to 2,3,4)
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+
+		// Find downstream connection to insert Transform node
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		if let Some(downstream_input) = downstream {
+			// Create a Transform node with translation = start
+			let Some(transform_node_type) = resolve_network_node_type("Transform") else {
+				log::error!("Transform node definition not found during Arrow migration");
+				return None;
+			};
+			let mut transform_template = transform_node_type.default_node_template();
+			transform_template.document_node.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+
+			let transform_id = NodeId::new();
+
+			// Position the Transform node to the right of the Arrow node
+			let arrow_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+			document.network_interface.insert_node(transform_id, transform_template, network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, arrow_position + IVec2::new(7, 0), network_path);
+			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
+		}
+	}
+
+	// Migrate old Line node from (start, end) to (line_to) with a Transform node for positioning
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER) && inputs_count == 3 {
+		// Read old start and end values
+		let start = match node.inputs.get(1)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::ZERO
+				}
+			}
+			_ => DVec2::ZERO,
+		};
+		let end = match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, .. } => {
+				if let TaggedValue::DVec2(v) = *tagged_value.clone().into_inner() {
+					v
+				} else {
+					DVec2::new(100., 100.)
+				}
+			}
+			_ => DVec2::new(100., 100.),
+		};
+
+		// Replace inputs with the new node definition (primary + line_to)
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Preserve primary input connection
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Set line_to = end - start
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(end - start), false), network_path);
+
+		// Find downstream connection to insert Transform node
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		if let Some(downstream_input) = downstream {
+			// Create a Transform node with translation = start
+			let Some(transform_node_type) = resolve_network_node_type("Transform") else {
+				log::error!("Transform node definition not found during Line migration");
+				return None;
+			};
+			let mut transform_template = transform_node_type.default_node_template();
+			transform_template.document_node.inputs[1] = NodeInput::value(TaggedValue::DVec2(start), false);
+
+			let transform_id = NodeId::new();
+
+			// Position the Transform node to the right of the Line node
+			let line_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+			document.network_interface.insert_node(transform_id, transform_template, network_path);
+			document.network_interface.shift_absolute_node_position(&transform_id, line_position + IVec2::new(7, 0), network_path);
+			document.network_interface.insert_node_between(&transform_id, &downstream_input, 0, network_path);
+		}
 	}
 
 	// Add context features to nodes that don't have them (fine-grained context caching migration)
@@ -1717,6 +1926,30 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	{
 		let context_features = node_definition.node_template.document_node.context_features;
 		document.network_interface.set_context_features(node_id, network_path, context_features);
+	}
+
+	// Add the "Scale Type" parameter to the "Decompose Scale" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::decompose_scale::IDENTIFIER) && inputs_count == 1 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ScaleType(ScaleType::Magnitude), false), network_path);
+	}
+
+	// Add the "Along Normals" parameter to the "Jitter Points" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::jitter_points::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
 	// ==================================

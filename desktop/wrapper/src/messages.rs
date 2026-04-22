@@ -3,12 +3,13 @@ use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
+pub use graphite_editor::messages::frontend::utility_types::{DocumentInfo, PersistedState};
 pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
-pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
-
 pub use graphite_editor::messages::prelude::DocumentId;
+pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
+
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
 	OpenLaunchDocuments,
@@ -41,23 +42,22 @@ pub enum DesktopFrontendMessage {
 	UpdateOverlays(vello::Scene),
 	PersistenceWriteDocument {
 		id: DocumentId,
-		document: Document,
+		document_serialized_content: String,
 	},
 	PersistenceDeleteDocument {
 		id: DocumentId,
-	},
-	PersistenceUpdateCurrentDocument {
-		id: DocumentId,
-	},
-	PersistenceLoadCurrentDocument,
-	PersistenceLoadRemainingDocuments,
-	PersistenceUpdateDocumentsList {
-		ids: Vec<DocumentId>,
 	},
 	PersistenceWritePreferences {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
+	PersistenceWriteState {
+		state: PersistedState,
+	},
+	PersistenceReadState,
+	PersistenceReadDocument {
+		id: DocumentId,
+	},
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
@@ -74,65 +74,27 @@ pub enum DesktopFrontendMessage {
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
+	Restart,
+	LoadThirdPartyLicenses,
 }
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
 	Input(InputMessage),
-	FileDialogResult {
-		path: PathBuf,
-		content: Vec<u8>,
-		context: OpenFileDialogContext,
-	},
-	SaveFileDialogResult {
-		path: PathBuf,
-		context: SaveFileDialogContext,
-	},
-	OpenFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
+	FileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
+	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
+	OpenFile { path: PathBuf, content: Vec<u8> },
+	ImportFile { path: PathBuf, content: Vec<u8> },
 	PollNodeGraphEvaluation,
-	UpdateMaximized {
-		maximized: bool,
-	},
-	UpdateFullscreen {
-		fullscreen: bool,
-	},
-	LoadDocument {
-		id: DocumentId,
-		document: Document,
-		to_front: bool,
-		select_after_open: bool,
-	},
-	SelectDocument {
-		id: DocumentId,
-	},
-	LoadPreferences {
-		preferences: Option<Preferences>,
-	},
-	MenuEvent {
-		id: String,
-	},
-	ClipboardReadResult {
-		content: Option<String>,
-	},
-	PointerLockMove {
-		x: f64,
-		y: f64,
-	},
-}
-
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
-pub struct Document {
-	pub content: String,
-	pub name: String,
-	pub path: Option<PathBuf>,
-	pub is_saved: bool,
+	UpdateMaximized { maximized: bool },
+	UpdateFullscreen { fullscreen: bool },
+	LoadDocumentContent { id: DocumentId, document: String },
+	LoadPersistedState { state: PersistedState },
+	LoadPreferences { preferences: Preferences },
+	MenuEvent { id: String },
+	ClipboardReadResult { content: Option<String> },
+	PointerLockMove { x: f64, y: f64 },
+	LoadThirdPartyLicenses { text: String },
 }
 
 pub struct FileFilter {

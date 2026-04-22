@@ -39,7 +39,8 @@ mod base64_serde {
 	}
 }
 
-#[derive(Clone, Eq, Default, specta::Type, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Image<P: Pixel> {
 	pub width: u32,
 	pub height: u32,
@@ -59,7 +60,8 @@ impl<P: Pixel + PartialEq> PartialEq for Image<P> {
 	}
 }
 
-#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransformImage(pub DAffine2);
 
 impl Hash for TransformImage {
@@ -107,17 +109,11 @@ impl<P: Copy + Pixel> BitmapMut for Image<P> {
 	}
 }
 
-// TODO: Evaluate if this will be a problem for our use case.
-/// Warning: This is an approximation of a hash, and is not guaranteed to not collide.
 impl<P: Hash + Pixel> Hash for Image<P> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		const HASH_SAMPLES: u64 = 1000;
-		let data_length = self.data.len() as u64;
 		self.width.hash(state);
 		self.height.hash(state);
-		for i in 0..HASH_SAMPLES.min(data_length) {
-			self.data[(i * data_length / HASH_SAMPLES) as usize].hash(state);
-		}
+		self.data.hash(state);
 	}
 }
 
@@ -247,7 +243,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		RasterFrame(RasterFrame),
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 	}
@@ -275,7 +271,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		type Static = ImageFrame<P::Static>;
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
@@ -401,7 +397,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		RasterFrame(RasterFrame),
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct ImageFrame<P: Pixel> {
 		pub image: Image<P>,
 	}
@@ -429,7 +425,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		type Static = ImageFrame<P::Static>;
 	}
 
-	#[derive(Clone, Default, Debug, PartialEq, specta::Type, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,

@@ -15,7 +15,6 @@ license = "MIT OR Apache-2.0"
 std = [
 	"dep:dyn-any",
 	"dep:serde",
-	"dep:specta",
 	"dep:log",
 	"glam/debug-glam-assert",
 	"glam/std",
@@ -25,6 +24,7 @@ std = [
 	"num-traits/std",
 	"num_enum/std",
 ]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
@@ -44,8 +44,11 @@ spirv-std = { workspace = true }
 
 # Workspace std dependencies
 serde = { workspace = true, optional = true }
-specta = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
+
+# Workspace wasm dependencies
+tsify = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
 
 [dev-dependencies]
 core-types = { workspace = true }

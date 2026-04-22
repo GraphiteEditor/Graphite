@@ -3,7 +3,7 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
-use graphene_std::path_bool::BooleanOperation;
+use graphene_std::vector::misc::BooleanOperation;
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
@@ -76,7 +76,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 			TextButton::new("Graphite")
 				.label("")
 				.flush(true)
-				.icon(Some("GraphiteLogo".into()))
+				.icon("GraphiteLogo")
 				.on_commit(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.art".into() }.into())
 				.widget_instance(),
 			#[cfg(target_os = "macos")]
@@ -495,6 +495,18 @@ impl LayoutHolder for MenuBarMessageHandler {
 									})
 									.disabled(no_active_document || !has_selected_layers),
 							]]),
+						MenuListEntry::new("Blend")
+							.label("Blend")
+							.icon("InterpolationBlend")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::BlendSelectedLayers))
+							.on_commit(|_| DocumentMessage::BlendSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Morph")
+							.label("Morph")
+							.icon("InterpolationMorph")
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::MorphSelectedLayers))
+							.on_commit(|_| DocumentMessage::MorphSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
 						MenuListEntry::new("Make Path Editable")
@@ -636,6 +648,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
 					],
 					vec![
+						MenuListEntry::new("Reset Workspace")
+							.label("Reset Workspace")
+							.icon("Reset")
+							.on_commit(|_| PortfolioMessage::ResetWorkspaceLayout.into()),
+					],
+					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
@@ -750,6 +768,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets: menu_bar_buttons }])
+		Layout(vec![LayoutGroup::row(menu_bar_buttons)])
 	}
 }

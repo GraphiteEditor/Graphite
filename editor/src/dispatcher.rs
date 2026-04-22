@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
@@ -233,10 +234,11 @@ impl Dispatcher {
 				Message::MenuBar(message) => {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
-					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.focus_document;
-					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
-					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
-					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
+					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace_panel_layout.focus_document;
+					let layout = &self.message_handlers.portfolio_message_handler.workspace_panel_layout;
+					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
+					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
+					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 
@@ -293,7 +295,7 @@ impl Dispatcher {
 						document_id,
 						document,
 						input: &self.message_handlers.input_preprocessor_message_handler,
-						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+						cached_data: &self.message_handlers.portfolio_message_handler.cached_data,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
 						viewport: &self.message_handlers.viewport_message_handler,
@@ -359,10 +361,15 @@ impl Dispatcher {
 	/// with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
-		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
-		let is_empty_batched = if let Message::Batched { messages } = message { messages.is_empty() } else { false };
+		let is_blocked =
+			|discriminant| DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_batch_all_blocked = if let Message::Batched { messages } = message {
+			messages.iter().all(|message| is_blocked(MessageDiscriminant::from(message)))
+		} else {
+			false
+		};
 
-		if !is_blocked && !is_empty_batched {
+		if !is_blocked(discriminant) && !is_batch_all_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
@@ -585,9 +592,13 @@ mod test {
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
+				if let FrontendMessage::UpdateLayout {
+					layout_target: LayoutTarget::DialogColumn1,
+					diff,
+				} = response
+				{
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
-						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
+						if let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0] {
 							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}

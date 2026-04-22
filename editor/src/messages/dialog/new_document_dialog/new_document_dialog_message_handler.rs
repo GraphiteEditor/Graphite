@@ -1,7 +1,9 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use glam::{IVec2, UVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -12,7 +14,7 @@ pub struct NewDocumentDialogMessageHandler {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
+impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
 	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			NewDocumentDialogMessage::Name { name } => self.name = name,
@@ -22,21 +24,39 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessa
 			NewDocumentDialogMessage::Submit => {
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
-				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
-				if create_artboard {
+				if self.infinite {
+					// Infinite canvas: add a locked white background layer
+					let node_id = NodeId::new();
+					responses.add(GraphOperationMessage::NewColorFillLayer {
+						node_id,
+						color: Color::WHITE,
+						parent: LayerNodeIdentifier::ROOT_PARENT,
+						insert_index: 0,
+					});
+					responses.add(NodeGraphMessage::SetDisplayNameImpl {
+						node_id,
+						alias: "Background".to_string(),
+					});
+					responses.add(NodeGraphMessage::SetLocked { node_id, locked: true });
+				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
+					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
 						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
 					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-
-					responses.add(ViewportMessage::RepropagateUpdate);
-
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
-					});
 				}
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(ViewportMessage::RepropagateUpdate);
+
+				responses.add(DeferMessage::AfterNavigationReady {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DocumentMessage::DeselectAllLayers.into(),
+						PortfolioMessage::AutoSaveActiveDocument.into(),
+					],
+				});
 
 				responses.add(DocumentMessage::MarkAsSaved);
 			}
@@ -45,7 +65,8 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessa
 		self.send_dialog_to_frontend(responses);
 	}
 
-	advertise_actions! {NewDocumentDialogUpdate;}
+	advertise_actions!(NewDocumentDialogUpdate;
+	);
 }
 
 impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
@@ -57,16 +78,16 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 			TextButton::new("OK")
 				.emphasized(true)
 				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![NewDocumentDialogMessage::Submit.into()],
 					}
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -117,6 +138,6 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets: name }, LayoutGroup::Row { widgets: infinite }, LayoutGroup::Row { widgets: scale }])
+		Layout(vec![LayoutGroup::row(name), LayoutGroup::row(infinite), LayoutGroup::row(scale)])
 	}
 }

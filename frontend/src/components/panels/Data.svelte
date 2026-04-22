@@ -1,25 +1,24 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy } from "svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { Editor } from "@graphite/editor";
-	import { patchLayout, UpdateDataPanelLayout, type Layout } from "@graphite/messages";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	const editor = getContext<Editor>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
 	let dataPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateDataPanelLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("DataPanel", (data) => {
 			patchLayout(dataPanelLayout, data);
 			dataPanelLayout = dataPanelLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateDataPanelLayout);
+		subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	});
 </script>
 
@@ -29,10 +28,11 @@
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.data-panel {
 		flex-grow: 1;
 		padding: 4px;
+		padding-top: 0;
 
 		table {
 			margin: -4px;
@@ -43,7 +43,7 @@
 			}
 
 			&:not(:first-child) {
-				margin-top: 0;
+				margin-top: -4px;
 			}
 
 			tr:first-child:has(td:first-child label:empty) ~ tr td:first-child {

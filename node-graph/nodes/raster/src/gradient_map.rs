@@ -16,16 +16,17 @@ async fn gradient_map<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	mut image: T,
-	gradient: GradientStops,
+	gradient: Table<GradientStops>,
 	reverse: bool,
 ) -> T {
+	let Some(row) = gradient.get(0) else { return image };
+
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64).to_linear_srgb()
+		row.element.evaluate(intensity as f64).to_linear_srgb()
 	});
 
 	image

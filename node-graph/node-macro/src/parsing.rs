@@ -1271,7 +1271,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> Table<Raster<CPU>> {
+			async fn load_image(api: &PlatformEditorApi, #[expose] path: String) -> Table<Raster<CPU>> {
 				// Implementation details...
 			}
 		);
@@ -1296,7 +1296,7 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("api"),
-				ty: parse_quote!(&WasmEditorApi),
+				ty: parse_quote!(&PlatformEditorApi),
 				implementations: Punctuated::new(),
 				context_features: vec![],
 			},
@@ -1455,11 +1455,9 @@ mod tests {
 					() -> Table<Raster<CPU>>,
 					() -> Table<Color>,
 					() -> Table<GradientStops>,
-					() -> GradientStops,
 					Footprint -> Table<Raster<CPU>>,
 					Footprint -> Table<Color>,
 					Footprint -> Table<GradientStops>,
-					Footprint -> GradientStops,
 				)]
 				image: impl Node<F, Output = T>,
 			) -> T {

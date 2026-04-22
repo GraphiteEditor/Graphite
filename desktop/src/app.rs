@@ -1,6 +1,9 @@
 use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
+use std::io::Read;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,10 +17,11 @@ use crate::cef;
 use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::persist::PersistentData;
+use crate::persist;
+use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -41,9 +45,11 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	persistent_data: PersistentData,
+	#[cfg_attr(not(target_os = "macos"), expect(unused))]
+	preferences: Preferences,
 	cli: Cli,
 	startup_time: Option<Instant>,
+	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
 }
 
@@ -58,6 +64,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
+		preferences: Preferences,
 		cli: Cli,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
@@ -67,19 +74,22 @@ impl App {
 		})
 		.expect("Error setting Ctrl-C handler");
 
+		let exiting = Arc::new(AtomicBool::new(false));
+
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
 			let runtime = tokio::runtime::Runtime::new().unwrap();
 			loop {
 				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
 				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
 				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
+				if exiting_clone.load(Ordering::Relaxed) {
+					break;
+				}
 			}
 		});
-
-		let mut persistent_data = PersistentData::default();
-		persistent_data.load_from_disk();
 
 		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
 
@@ -104,10 +114,11 @@ impl App {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
-			persistent_data,
+			preferences,
 			cli,
-			exit_reason: ExitReason::Shutdown,
 			startup_time: None,
+			exiting,
+			exit_reason: ExitReason::Shutdown,
 		}
 	}
 
@@ -117,6 +128,10 @@ impl App {
 	}
 
 	fn exit(&mut self, reason: Option<ExitReason>) {
+		if self.exiting.swap(true, Ordering::Relaxed) {
+			return;
+		}
+		let _ = self.start_render_sender.send(());
 		if let Some(reason) = reason {
 			self.exit_reason = reason;
 		}
@@ -264,60 +279,32 @@ impl App {
 					window.request_redraw();
 				}
 			}
-			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
-				self.persistent_data.write_document(id, document);
+			DesktopFrontendMessage::PersistenceWriteState { state } => {
+				persist::write_state(state);
+			}
+			DesktopFrontendMessage::PersistenceReadState => {
+				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
+			}
+			DesktopFrontendMessage::PersistenceReadDocument { id } => {
+				if let Some(document) = persist::read_document_content(&id) {
+					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document });
+				} else {
+					tracing::error!("Failed to read document content for {id:?}");
+				}
+			}
+			DesktopFrontendMessage::PersistenceWriteDocument { id, document_serialized_content } => {
+				persist::write_document_content(id, document_serialized_content);
 			}
 			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
-				self.persistent_data.delete_document(&id);
-			}
-			DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id } => {
-				self.persistent_data.set_current_document(id);
-			}
-			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
-				self.persistent_data.set_document_order(ids);
+				persist::delete_document(&id);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
-				self.persistent_data.write_preferences(preferences);
+				preferences::write(preferences);
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				let preferences = self.persistent_data.load_preferences();
+				let preferences = preferences::read();
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
 				responses.push(message);
-			}
-			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
-				if let Some((id, document)) = self.persistent_data.current_document() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: true,
-					};
-					responses.push(message);
-				}
-			}
-			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
-				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: true,
-						select_after_open: false,
-					};
-					responses.push(message);
-				}
-				for (id, document) in self.persistent_data.documents_after_current() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: false,
-					};
-					responses.push(message);
-				}
-				if let Some(id) = self.persistent_data.current_document_id() {
-					let message = DesktopWrapperMessage::SelectDocument { id };
-					responses.push(message);
-				}
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
 				if self.cli.files.is_empty() {
@@ -397,6 +384,21 @@ impl App {
 				if let Some(window) = &self.window {
 					window.show_all();
 				}
+			}
+			DesktopFrontendMessage::Restart => {
+				self.exit(Some(ExitReason::Restart));
+			}
+			DesktopFrontendMessage::LoadThirdPartyLicenses => {
+				let compressed = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/third-party-licenses.txt.xz"));
+				let mut reader = lzma_rust2::XzReader::new(compressed.as_slice(), false);
+				let mut text = String::new();
+				if let Err(e) = reader.read_to_string(&mut text) {
+					tracing::error!("Failed to decompress third-party licenses: {e}");
+					return;
+				}
+
+				let message = DesktopWrapperMessage::LoadThirdPartyLicenses { text };
+				responses.push(message);
 			}
 		}
 	}
@@ -485,7 +487,12 @@ impl ApplicationHandler for App {
 		let window = Window::new(event_loop, self.app_event_scheduler.clone());
 		self.window = Some(window);
 
-		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
+		#[cfg(not(target_os = "macos"))]
+		let present_mode = None;
+		#[cfg(target_os = "macos")]
+		let present_mode = if !self.preferences.vsync { Some(wgpu::PresentMode::Immediate) } else { None };
+
+		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone(), present_mode);
 		self.render_state = Some(render_state);
 
 		if let Some(window) = &self.window.as_ref() {
@@ -663,5 +670,6 @@ impl ApplicationHandler for App {
 
 pub(crate) enum ExitReason {
 	Shutdown,
+	Restart,
 	UiAccelerationFailure,
 }

@@ -1,6 +1,4 @@
 <script lang="ts" context="module">
-	export type MenuType = "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
-
 	/// Prevents the escape key from closing the parent floating menu of the given element.
 	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
 	/// After checking for the Escape key, it checks (in one `setTimeout`) for the attribute and ignores the key if it's present.
@@ -19,12 +17,10 @@
 </script>
 
 <script lang="ts">
-	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
-
-	import type { MenuDirection } from "@graphite/messages";
-	import { browserVersion } from "@graphite/utility-functions/platform";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { browserVersion } from "/src/utility-functions/platform";
+	import type { MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
@@ -38,7 +34,7 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let open: boolean;
-	export let type: MenuType;
+	export let type: "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
 	export let direction: MenuDirection = "Bottom";
 	export let windowEdgeMargin = 6;
 	export let scrollableY = false;
@@ -56,9 +52,11 @@
 	// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
 	// This is the opposite concern of the natural width measurement system, which gets the natural width of the floating menu content in order for the
 	// spawner widget to optionally set its min-size to the floating menu's natural width.
-	let containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
+	const containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
 		resizeObserverCallback(entries);
 	});
+
+	let dialogResizeObserver: ResizeObserver | undefined;
 	let wasOpen = open;
 	let measuringOngoing = false;
 	let measuringOngoingGuard = false;
@@ -81,16 +79,7 @@
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
-		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
-		// The bug is possibly related to <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
-		if (browserVersion().toLowerCase().includes("safari")) {
-			const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
-			if (scrollable instanceof HTMLElement) {
-				// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
-				// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
-				scrollable.style.overflow = isOpen ? "hidden" : "";
-			}
-		}
+		setSafariScrollableOverflow(isOpen);
 
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
@@ -131,12 +120,22 @@
 		wasOpen = isOpen;
 	}
 
+	// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container. The bug is possibly related to
+	// <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
+	// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
+	// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
+	function setSafariScrollableOverflow(hidden: boolean) {
+		if (!browserVersion().toLowerCase().includes("safari")) return;
+		const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
+		if (scrollable instanceof HTMLElement) scrollable.style.overflow = hidden ? "hidden" : "";
+	}
+
 	onMount(() => {
 		// Measure the content and round up its width and height to the nearest even integer.
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
-			const resizeObserver = new ResizeObserver((entries) => {
+			dialogResizeObserver = new ResizeObserver((entries) => {
 				entries.forEach((entry) => {
 					const existingWidth = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-x"));
 					const existingHeight = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-y"));
@@ -155,8 +154,21 @@
 					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-y", `${targetHeight - height}`);
 				});
 			});
-			resizeObserver.observe(floatingMenuContentDiv);
+			dialogResizeObserver.observe(floatingMenuContentDiv);
 		}
+	});
+
+	onDestroy(() => {
+		containerResizeObserver.disconnect();
+		dialogResizeObserver?.disconnect();
+		window.removeEventListener("pointermove", pointerMoveHandler);
+		window.removeEventListener("keydown", keyDownHandler);
+		window.removeEventListener("pointerdown", pointerDownHandler);
+		window.removeEventListener("pointerup", pointerUpHandler);
+		window.removeEventListener("click", clickHandlerCapture, true);
+
+		// Revert Safari overflow workaround if the menu was open when destroyed
+		if (open) setSafariScrollableOverflow(false);
 	});
 
 	afterUpdate(() => {
@@ -199,7 +211,8 @@
 		}
 
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
-		if (!inParentFloatingMenu) {
+		const noPosition = Boolean(floatingMenuContainer.closest("[data-floating-menu-no-position]"));
+		if (!inParentFloatingMenu && !noPosition) {
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			let tailOffset = 0;
@@ -308,7 +321,7 @@
 
 	function pointerMoveHandler(e: PointerEvent) {
 		// This element and the element being hovered over
-		const target = e.target as HTMLElement | undefined;
+		const target = e.target instanceof HTMLElement ? e.target : undefined;
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
@@ -397,9 +410,9 @@
 			else {
 				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
 				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
-				if (foundTarget) {
+				if (foundTarget instanceof HTMLElement) {
 					dispatch("open", false);
-					(foundTarget as HTMLElement).click();
+					foundTarget.click();
 				}
 
 				// In either case, we are done searching
@@ -479,7 +492,7 @@
 		<div class="tail" bind:this={tail}></div>
 	{/if}
 	{#if displayContainer}
-		<div class="floating-menu-container" bind:this={floatingMenuContainer}>
+		<div class="floating-menu-container" bind:this={floatingMenuContainer} on:wheel|stopPropagation>
 			<LayoutCol class="floating-menu-content" styles={{ "min-width": minWidthStyleValue }} {scrollableY} bind:this={floatingMenuContent} data-floating-menu-content>
 				<slot />
 			</LayoutCol>
@@ -487,7 +500,7 @@
 	{/if}
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.floating-menu {
 		position: absolute;
 		width: 0;

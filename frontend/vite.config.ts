@@ -1,430 +1,190 @@
-/* eslint-disable no-console */
-
-import { spawnSync } from "child_process";
-import fs from "fs";
-import os from "os";
+import { execSync } from "child_process";
+import { createHash } from "crypto";
+import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import path from "path";
-
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import rollupPluginLicense, { type Dependency } from "rollup-plugin-license";
-import { sveltePreprocess } from "svelte-preprocess";
 import { defineConfig } from "vite";
-import { DynamicPublicDirectory as viteMultipleAssets } from "vite-multiple-assets";
+import type { PluginOption } from "vite";
 
 const projectRootDir = path.resolve(__dirname);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
 	return {
-		plugins: [
-			svelte({
-				preprocess: [sveltePreprocess()],
-				onwarn(warning, defaultHandler) {
-					const suppressed = [
-						"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"a11y_consider_explicit_label", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"a11y_click_events_have_key_events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-						"a11y_no_noninteractive_element_interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					];
-					if (suppressed.includes(warning.code)) return;
-
-					defaultHandler?.(warning);
-				},
-			}),
-			viteMultipleAssets(
-				// Additional static asset directories besides `public/`
-				[
-					{ input: "../demo-artwork/**", output: "demo-artwork" },
-					{ input: "../branding/favicons/**", output: "" },
-				],
-				// Options where we set custom MIME types
-				{ mimeTypes: { ".graphite": "application/json" } },
-			),
-		],
+		plugins: [svelteGlobalStyles(), svelte(), staticAssets(), mode !== "native" && thirdPartyLicenses(), mode !== "native" && serviceWorker()],
 		resolve: {
-			alias: [
-				{ find: /@branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") },
-				{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
-				{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
-				{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
-			],
+			alias: [{ find: /\/..\/branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") }],
 		},
 		server: {
 			port: 8080,
 			host: "0.0.0.0",
 		},
-		build: {
-			rollupOptions: {
-				plugins:
-					mode !== "dev"
-						? [
-								rollupPluginLicense({
-									thirdParty: {
-										includePrivate: false,
-										multipleVersions: true,
-										allow: {
-											test: `(${getAcceptedLicenses()})`,
-											failOnUnlicensed: true,
-											failOnViolation: true,
-										},
-										output: {
-											file: path.resolve(__dirname, "./dist/third-party-licenses.txt"),
-											template: formatThirdPartyLicenses,
-										},
-									},
-								}),
-							]
-						: [],
-			},
-		},
 	};
 });
 
-type LicenseInfo = {
-	licenseName: string;
-	licenseText: string;
-	noticeText?: string;
-	packages: PackageInfo[];
-};
+// Wraps the content of every `<style lang="scss">...</style>` block in Svelte components with `:global { ... }` to work around Svelte's unwanted scoped styles
+function svelteGlobalStyles(): PluginOption {
+	return {
+		name: "svelte-global-styles",
+		enforce: "pre",
+		transform(code, id) {
+			if (!id.endsWith(".svelte")) return;
 
-type PackageInfo = {
-	name: string;
-	version: string;
-	author: string;
-	repository: string;
-};
-
-function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
-	// Generate the Rust license information.
-	const rustLicenses = generateRustLicenses();
-	const additionalLicenses = generateAdditionalLicenses();
-
-	// Ensure we have the required license information to work with before proceeding.
-	if (rustLicenses.length === 0) {
-		// This is probably caused by `cargo about` not being installed.
-		console.error("Could not run `cargo about`, which is required to generate license information.");
-		console.error("To install cargo-about on your system, you can run `cargo install cargo-about`.");
-		console.error("License information is required in production builds. Aborting.");
-
-		process.exit(1);
-	}
-	if (jsLicenses.length === 0) {
-		console.error("No JavaScript package licenses were found by `rollup-plugin-license`. Please investigate.");
-		console.error("License information is required in production builds. Aborting.");
-
-		process.exit(1);
-	}
-
-	let licenses = rustLicenses.concat(additionalLicenses);
-
-	// SPECIAL CASE: Find then duplicate this license if one of its packages is `path-bool`, adding its notice text.
-	let foundLicensesIndex: number | undefined = undefined;
-	let foundPackagesIndex: number | undefined = undefined;
-	licenses.forEach((license, licenseIndex) => {
-		license.packages.forEach((pkg, pkgIndex) => {
-			if (pkg.name === "path-bool") {
-				foundLicensesIndex = licenseIndex;
-				foundPackagesIndex = pkgIndex;
-			}
-		});
-	});
-	if (foundLicensesIndex !== undefined && foundPackagesIndex !== undefined) {
-		const license = licenses[foundLicensesIndex];
-		const pkg = license.packages[foundPackagesIndex];
-
-		license.packages = license.packages.filter((pkg) => pkg.name !== "path-bool");
-		const noticeText = fs.readFileSync(path.resolve(__dirname, "../libraries/path-bool/NOTICE"), "utf8");
-
-		licenses.push({
-			licenseName: license.licenseName,
-			licenseText: license.licenseText,
-			noticeText,
-			packages: [pkg],
-		});
-	}
-
-	// Extend the license list with the provided JS licenses.
-	jsLicenses.forEach((jsLicense) => {
-		const name = jsLicense.name || "";
-		const version = jsLicense.version || "";
-		const author = jsLicense.author?.text() || "";
-		const licenseName = jsLicense.license || "";
-		const licenseText = trimBlankLines(jsLicense.licenseText || "");
-		const noticeText = trimBlankLines(jsLicense.noticeText || "");
-
-		let repository = jsLicense.repository || "";
-		if (repository && typeof repository === "object") repository = repository.url;
-
-		const matchedLicense = licenses.find(
-			(license) => license.licenseName === licenseName && trimBlankLines(license.licenseText || "") === licenseText && trimBlankLines(license.noticeText || "") === noticeText,
-		);
-
-		const pkg: PackageInfo = { name, version, author, repository };
-		if (matchedLicense) matchedLicense.packages.push(pkg);
-		else licenses.push({ licenseName, licenseText, noticeText, packages: [pkg] });
-	});
-
-	// Combine any license notices into the license text.
-	licenses.forEach((license, index) => {
-		if (license.noticeText) {
-			licenses[index].licenseText += "\n\n";
-			licenses[index].licenseText += " _______________________________________\n";
-			licenses[index].licenseText += "│                                       │\n";
-			licenses[index].licenseText += "│ THE FOLLOWING NOTICE FILE IS INCLUDED │\n";
-			licenses[index].licenseText += "│                                       │\n";
-			licenses[index].licenseText += " ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\n\n";
-			licenses[index].licenseText += `${license.noticeText}\n`;
-			licenses[index].noticeText = undefined;
-		}
-	});
-
-	// De-duplicate any licenses with the same text by merging their lists of packages.
-	const licensesNormalizedWhitespace = licenses.map((license) => license.licenseText.replace(/[\n\s]+/g, " ").trim());
-	licenses.forEach((currentLicense, currentLicenseIndex) => {
-		licenses.slice(0, currentLicenseIndex).forEach((comparisonLicense, comparisonLicenseIndex) => {
-			if (licensesNormalizedWhitespace[currentLicenseIndex] === licensesNormalizedWhitespace[comparisonLicenseIndex]) {
-				currentLicense.packages.push(...comparisonLicense.packages);
-				comparisonLicense.packages = [];
-				// After emptying the packages, the redundant license with no packages will be removed in the next step's `filter()`.
-			}
-		});
-	});
-
-	// Filter out first-party internal Graphite crates.
-	licenses = licenses.filter((license) => {
-		license.packages = license.packages.filter(
-			(packageInfo) =>
-				!(packageInfo.repository && packageInfo.repository.toLowerCase().includes("github.com/GraphiteEditor/Graphite".toLowerCase())) &&
-				!(
-					packageInfo.author &&
-					packageInfo.author.toLowerCase().includes("contact@graphite.art") &&
-					// Exclude a comma which indicates multiple authors, which we need to not filter out
-					!packageInfo.author.toLowerCase().includes(",")
-				),
-		);
-		return license.packages.length > 0;
-	});
-
-	// Sort the licenses by the number of packages using the same license, and then alphabetically by license name.
-	licenses.sort((a, b) => a.licenseText.localeCompare(b.licenseText));
-	licenses.sort((a, b) => a.licenseName.localeCompare(b.licenseName));
-	licenses.sort((a, b) => b.packages.length - a.packages.length);
-	// Sort the individual packages using each license alphabetically.
-	licenses.forEach((license) => {
-		license.packages.sort((a, b) => a.name.localeCompare(b.name));
-	});
-
-	// Prepare a header for the license notice.
-	let formattedLicenseNotice = "";
-	formattedLicenseNotice += "▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐\n";
-	formattedLicenseNotice += "▐▐                                                   ▐▐\n";
-	formattedLicenseNotice += "▐▐   GRAPHITE THIRD-PARTY SOFTWARE LICENSE NOTICES   ▐▐\n";
-	formattedLicenseNotice += "▐▐                                                   ▐▐\n";
-	formattedLicenseNotice += "▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐\n";
-
-	// Append a block for each license shared by multiple packages with identical license text.
-	licenses.forEach((license) => {
-		let packagesWithSameLicense = license.packages.map((packageInfo) => {
-			const { name, version, author, repository } = packageInfo;
-
-			// Remove the `git+` or `git://` prefix and `.git` suffix.
-			let repo = repository;
-			if (repo.startsWith("git+")) repo = repo.slice("git+".length);
-			if (repo.startsWith("git://")) repo = repo.slice("git://".length);
-			if (repo.endsWith(".git")) repo = repo.slice(0, -".git".length);
-			if (repo.endsWith(".git#release")) repo = repo.slice(0, -".git#release".length);
-
-			return `${name} ${version}${author ? ` - ${author}` : ""}${repo ? ` - ${repo}` : ""}`;
-		});
-		const multi = packagesWithSameLicense.length !== 1;
-		const saysLicense = license.licenseName.toLowerCase().includes("license");
-		const header = `The package${multi ? "s" : ""} listed here ${multi ? "are" : "is"} licensed under the terms of the ${license.licenseName}${saysLicense ? "" : " license"} printed beneath`;
-		const packagesLineLength = Math.max(header.length, ...packagesWithSameLicense.map((line) => line.length));
-		packagesWithSameLicense = packagesWithSameLicense.map((line) => `│ ${line}${" ".repeat(packagesLineLength - line.length)} │`);
-
-		formattedLicenseNotice += "\n";
-		formattedLicenseNotice += ` ${"_".repeat(packagesLineLength + 2)}\n`;
-		formattedLicenseNotice += `│ ${" ".repeat(packagesLineLength)} │\n`;
-		formattedLicenseNotice += `│ ${header}${" ".repeat(packagesLineLength - header.length)} │\n`;
-		formattedLicenseNotice += `│${"_".repeat(packagesLineLength + 2)}│\n`;
-		formattedLicenseNotice += `${packagesWithSameLicense.join("\n")}\n`;
-		formattedLicenseNotice += ` ${"‾".repeat(packagesLineLength + 2)}\n`;
-		formattedLicenseNotice += `${license.licenseText}\n`;
-	});
-
-	formattedLicenseNotice += "\n";
-	return formattedLicenseNotice;
+			return code.replace(/<style(?=\s|>)([^>]*)>(.*?)<\/style>/gs, (_, attrs, content) => `<style${attrs}>\n:global {\n${content}\n}\n</style>`);
+		},
+	};
 }
 
-// Include additional licenses that aren't automatically generated by `cargo about` or `rollup-plugin-license`.
-function generateAdditionalLicenses(): LicenseInfo[] {
-	const ADDITIONAL_LICENSES = [
-		{
-			licenseName: "SIL Open Font License 1.1",
-			licenseTextPath: "node_modules/source-sans-pro/LICENSE.txt",
-			manifestPath: "node_modules/source-sans-pro/package.json",
-		},
-		{
-			licenseName: "SIL Open Font License 1.1",
-			licenseTextPath: "node_modules/source-code-pro/LICENSE.md",
-			manifestPath: "node_modules/source-code-pro/package.json",
-		},
+function staticAssets(): PluginOption {
+	const STATIC_ASSET_DIRS: { source: string; urlPrefix: string }[] = [
+		{ source: "../demo-artwork", urlPrefix: "/demo-artwork" },
+		{ source: "../branding/favicons", urlPrefix: "" },
 	];
 
-	return ADDITIONAL_LICENSES.map(({ licenseName, licenseTextPath, manifestPath }) => {
-		const licenseText = (fs.existsSync(licenseTextPath) && fs.readFileSync(licenseTextPath, "utf8")) || "";
-
-		const manifestJSON = (fs.existsSync(manifestPath) && JSON.parse(fs.readFileSync(manifestPath, "utf8"))) || {};
-		const name = manifestJSON.name || "";
-		const version = manifestJSON.version || "";
-		const author = manifestJSON.author.name || manifestJSON.author || "";
-		const repository = manifestJSON.repository?.url || "";
-
-		return {
-			licenseName,
-			licenseText: trimBlankLines(licenseText),
-			packages: [{ name, version, author, repository }],
-		};
-	});
-}
-
-function generateRustLicenses(): LicenseInfo[] {
-	// Log the starting status to the build output.
-	console.info("\n\nGenerating license information for Rust code\n");
-
-	try {
-		// Call `cargo about` in the terminal to generate the license information for Rust crates.
-		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
-		const { licenses, status, stderr } = (() => {
-			// On Windows, we have to write the output to a temporary file because of powershell's handling of stdout.
-			if (os.platform() === "win32") {
-				const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "graphite-licenses-"));
-				const licensesFile = path.join(tmpDir, "licenses.js");
-
-				const { status, stderr } = spawnSync("cargo", ["about", "generate", "about.hbs", "-o", licensesFile], {
-					cwd: path.join(__dirname, ".."),
-					encoding: "utf8",
-					shell: true,
-					windowsHide: true, // Hide the terminal on Windows
-				});
-
-				const licenses = fs.existsSync(licensesFile) ? fs.readFileSync(licensesFile, "utf8") : "";
-
-				return { licenses, status, stderr };
-			} else {
-				const { stdout, status, stderr } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
-					cwd: path.join(__dirname, ".."),
-					encoding: "utf8",
-					shell: true,
-				});
-
-				return { licenses: stdout, status, stderr };
-			}
-		})();
-
-		// If the command failed, print the error message and exit early.
-		if (status !== 0) {
-			// Cargo returns 101 when the subcommand (`about`) wasn't found, so we skip printing the below error message in that case.
-			if (status !== 101) {
-				console.error("cargo-about failed", status, stderr);
-			}
-			return [];
-		}
-
-		// Make sure the output starts with this expected label, which lets us know the file generated with expected output.
-		// We don't want to eval an error message or something else, so we fail early if that happens.
-		if (!licenses.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
-			console.error("Unexpected output from cargo-about", licenses);
-			return [];
-		}
-
-		// Convert the array JS syntax string into an actual JS array in memory.
-		// Security-wise, eval() isn't any worse than require(), but it's able to work without a temporary file.
-		// We call eval indirectly to avoid a warning as explained here: <https://esbuild.github.io/content-types/#direct-eval>.
-		const indirectEval = eval;
-		const licensesArray = indirectEval(licenses) as LicenseInfo[];
-
-		// Remove the HTML character encoding caused by Handlebars.
-		const rustLicenses = (licensesArray || []).map(
-			(rustLicense): LicenseInfo => ({
-				licenseName: htmlDecode(rustLicense.licenseName),
-				licenseText: trimBlankLines(htmlDecode(rustLicense.licenseText)),
-				packages: rustLicense.packages.map(
-					(packageInfo): PackageInfo => ({
-						name: htmlDecode(packageInfo.name),
-						version: htmlDecode(packageInfo.version),
-						author: htmlDecode(packageInfo.author)
-							.replace(/\[(.*), \]/, "$1")
-							.replace("[]", ""),
-						repository: htmlDecode(packageInfo.repository),
-					}),
-				),
-			}),
-		);
-
-		return rustLicenses;
-	} catch (_) {
-		return [];
-	}
-}
-
-function htmlDecode(input: string): string {
-	if (!input) return input;
-
-	const htmlEntities = {
-		nbsp: " ",
-		copy: "©",
-		reg: "®",
-		lt: "<",
-		gt: ">",
-		amp: "&",
-		apos: "'",
-		quot: `"`,
+	// MIME types for all file extensions found in the static asset directories
+	const MIME_TYPES: Record<string, string> = {
+		".graphite": "application/json",
+		".ico": "image/x-icon",
+		".png": "image/png",
+		".svg": "image/svg+xml",
+		".webmanifest": "application/manifest+json",
+		".xml": "application/xml",
 	};
 
-	return input.replace(/&([^;]+);/g, (entity: string, entityCode: string) => {
-		const maybeEntity = Object.entries(htmlEntities).find(([key, _]) => key === entityCode);
-		if (maybeEntity) return maybeEntity[1];
+	return {
+		name: "static-assets",
+		// Dev: serve files from the listed directories via middleware
+		configureServer(server) {
+			server.middlewares.use((req, res, next) => {
+				if (!req.url) return next();
+				const urlPath = decodeURIComponent(req.url.split("?")[0]);
 
-		let match;
-		if ((match = entityCode.match(/^#x([\da-fA-F]+)$/))) {
-			return String.fromCharCode(parseInt(match[1], 16));
-		}
-		if ((match = entityCode.match(/^#(\d+)$/))) {
-			return String.fromCharCode(~~match[1]);
-		}
-		return entity;
-	});
+				const match = STATIC_ASSET_DIRS.find(({ source, urlPrefix }) => {
+					if (urlPrefix && !urlPath.startsWith(urlPrefix + "/") && urlPath !== urlPrefix) return false;
+					if (!urlPrefix && urlPath.startsWith("/@")) return false;
+
+					const relativePath = urlPrefix ? urlPath.slice(urlPrefix.length) : urlPath;
+					const filePath = path.resolve(projectRootDir, source, "." + relativePath);
+
+					const sourceDir = path.resolve(projectRootDir, source) + path.sep;
+					if (!filePath.startsWith(sourceDir)) return false;
+
+					return existsSync(filePath) && !statSync(filePath).isDirectory();
+				});
+				if (!match) return next();
+				const { source, urlPrefix } = match;
+
+				const relativePath = urlPrefix ? urlPath.slice(urlPrefix.length) : urlPath;
+				const filePath = path.resolve(projectRootDir, source, "." + relativePath);
+				const extension = path.extname(filePath).toLowerCase();
+				const contentType = MIME_TYPES[extension] || "application/octet-stream";
+
+				res.setHeader("Content-Type", contentType);
+				res.end(readFileSync(filePath));
+			});
+		},
+		// Build: copy the listed directories into the output
+		writeBundle(options) {
+			STATIC_ASSET_DIRS.forEach(({ source, urlPrefix }) => {
+				const sourceDir = path.resolve(projectRootDir, source);
+				const destinationDir = path.join(options.dir || "dist", urlPrefix);
+
+				if (existsSync(sourceDir)) cpSync(sourceDir, destinationDir, { recursive: true });
+			});
+		},
+	};
 }
 
-function trimBlankLines(input: string): string {
-	let result = input.replace(/\r/g, "");
-
-	while (result.charAt(0) === "\r" || result.charAt(0) === "\n") {
-		result = result.slice(1);
-	}
-	while (result.slice(-1) === "\r" || result.slice(-1) === "\n") {
-		result = result.slice(0, -1);
-	}
-
-	return result;
+function thirdPartyLicenses(): PluginOption {
+	return {
+		name: "third-party-licenses",
+		buildStart() {
+			try {
+				execSync("cargo run -p third-party-licenses", { stdio: "inherit" });
+			} catch (e) {
+				throw new Error("Failed to generate third-party licenses", { cause: e });
+			}
+		},
+		writeBundle(options) {
+			copyFileSync(path.resolve(projectRootDir, "third-party-licenses.txt"), path.join(options.dir || "dist", "third-party-licenses.txt"));
+		},
+	};
 }
 
-function getAcceptedLicenses() {
-	const tomlContent = fs.readFileSync(path.resolve(__dirname, "../about.toml"), "utf8");
+function serviceWorker(): PluginOption {
+	// Files that should never be precached
+	const EXCLUDED_FILES = new Set(["service-worker.js"]);
+	const DEFERRED_PREFIXES = ["demo-artwork/", "third-party-licenses.txt"];
 
-	const licensesBlock = tomlContent?.match(/accepted\s*=\s*\[([^\]]*)\]/)?.[1] || "";
+	function collectFiles(directory: string, prefix: string): string[] {
+		const results: string[] = [];
+		if (!existsSync(directory)) return results;
 
-	return licensesBlock
-		.split("\n")
-		.map((line) => line.replace(/#.*$/, "")) // Remove comments
-		.join("\n")
-		.split(",")
-		.map((license) => license.trim().replace(/"/g, ""))
-		.filter((license) => license.length > 0)
-		.join(" OR ");
+		readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+			const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+			if (entry.isDirectory()) {
+				results.push(...collectFiles(path.join(directory, entry.name), relativePath));
+			} else {
+				results.push(relativePath);
+			}
+		});
+		return results;
+	}
+
+	function contentHash(filePath: string): string {
+		const contents = readFileSync(filePath);
+		return createHash("sha256").update(contents).digest("hex").slice(0, 12);
+	}
+
+	// Vite appends content hashes to filenames in its build output, like "index-BV2NauF8.js"
+	function hasContentHash(fileName: string): boolean {
+		return /\w+-[A-Za-z0-9_-]{6,}\.\w+$/.test(fileName);
+	}
+
+	return {
+		name: "service-worker",
+		async writeBundle(options) {
+			const outputDir = options.dir || "dist";
+			const allFiles = collectFiles(outputDir, "");
+
+			const precacheManifest: { url: string; revision: string | undefined }[] = [];
+			const deferredManifest: { url: string; revision: string | undefined }[] = [];
+
+			allFiles.forEach((relativePath) => {
+				const fileName = path.basename(relativePath);
+				const filePath = path.join(outputDir, relativePath);
+				const url = `/${relativePath.replace(/\\/g, "/")}`;
+
+				// Skip excluded files
+				if (EXCLUDED_FILES.has(fileName)) return;
+
+				// Deferred files are cached in the background after initial load
+				if (DEFERRED_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) {
+					deferredManifest.push({ url, revision: contentHash(filePath) });
+					return;
+				}
+
+				// Hashed filenames don't need a revision (the hash is in the URL)
+				if (hasContentHash(fileName)) {
+					precacheManifest.push({ url, revision: undefined });
+				} else {
+					precacheManifest.push({ url, revision: contentHash(filePath) });
+				}
+			});
+
+			// Compute a content hash from both manifests combined
+			const allManifestJson = JSON.stringify({ precache: precacheManifest, deferred: deferredManifest });
+			const serviceWorkerContentHash = createHash("sha256").update(allManifestJson).digest("hex").slice(0, 12);
+
+			// Read the service worker source and replace placeholder tokens with actual values
+			const serviceWorkerSourcePath = path.resolve(projectRootDir, "src/service-worker.js");
+			const serviceWorkerSource = readFileSync(serviceWorkerSourcePath, "utf-8");
+			const serviceWorkerFinal = serviceWorkerSource
+				.replace("self.__PRECACHE_MANIFEST", JSON.stringify(precacheManifest))
+				.replace("self.__DEFERRED_CACHE_MANIFEST", JSON.stringify(deferredManifest))
+				.replace("self.__SERVICE_WORKER_CONTENT_HASH", JSON.stringify(serviceWorkerContentHash));
+
+			writeFileSync(path.join(outputDir, "service-worker.js"), serviceWorkerFinal);
+		},
+	};
 }

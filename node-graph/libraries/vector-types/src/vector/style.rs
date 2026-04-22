@@ -4,8 +4,10 @@ pub use crate::gradient::*;
 use core_types::Color;
 use core_types::color::Alpha;
 use core_types::table::Table;
+use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::DAffine2;
+use std::f64::consts::{PI, TAU};
 
 /// Describes the fill of a layer.
 ///
@@ -13,7 +15,8 @@ use glam::DAffine2;
 ///
 /// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum Fill {
 	#[default]
 	None,
@@ -51,31 +54,37 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
-			Self::Gradient(Gradient { stops, .. }) => stops.0[0].1,
+			Self::Gradient(Gradient { stops, .. }) => {
+				if stops.is_empty() {
+					Color::BLACK
+				} else {
+					stops.color[0]
+				}
+			}
 		}
 	}
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		let transparent = Self::solid(Color::TRANSPARENT);
-		let a = if *self == Self::None { &transparent } else { self };
-		let b = if *other == Self::None { &transparent } else { other };
+		let a = if *self == Self::None && *other != Self::None { &transparent } else { self };
+		let b = if *other == Self::None && *self != Self::None { &transparent } else { other };
 
 		match (a, b) {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
 			(Self::Solid(a), Self::Gradient(b)) => {
 				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.stops.0.iter_mut().for_each(|(_, color)| *color = *a);
+				solid_to_gradient.stops.color.iter_mut().for_each(|color| *color = *a);
 				let a = &solid_to_gradient;
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Solid(b)) => {
 				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.stops.0.iter_mut().for_each(|(_, color)| *color = *b);
+				gradient_to_solid.stops.color.iter_mut().for_each(|color| *color = *b);
 				let b = &gradient_to_solid;
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Gradient(b)) => Self::Gradient(a.lerp(b, time)),
-			_ => Self::None,
+			(Self::None, _) | (_, Self::None) => Self::None,
 		}
 	}
 
@@ -99,7 +108,7 @@ impl Fill {
 	pub fn is_opaque(&self) -> bool {
 		match self {
 			Fill::Solid(color) => color.is_opaque(),
-			Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
+			Fill::Gradient(gradient) => gradient.stops.color.iter().all(|color| color.is_opaque()),
 			Fill::None => true,
 		}
 	}
@@ -151,7 +160,8 @@ impl From<Gradient> for Fill {
 ///
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
 pub enum FillChoice {
 	#[default]
 	None,
@@ -198,7 +208,8 @@ impl From<Fill> for FillChoice {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum FillType {
 	#[default]
@@ -208,7 +219,8 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
@@ -236,7 +248,8 @@ impl StrokeCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
@@ -264,7 +277,8 @@ impl StrokeJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
@@ -280,7 +294,8 @@ impl StrokeAlign {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
@@ -299,7 +314,8 @@ fn daffine2_identity() -> DAffine2 {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 #[serde(default)]
 pub struct Stroke {
 	/// Stroke color
@@ -319,8 +335,6 @@ pub struct Stroke {
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
-	pub non_scaling: bool,
-	#[serde(default)]
 	pub paint_order: PaintOrder,
 }
 
@@ -338,7 +352,6 @@ impl std::hash::Hash for Stroke {
 		self.join_miter_limit.to_bits().hash(state);
 		self.align.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
 }
@@ -355,7 +368,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
@@ -370,11 +382,30 @@ impl Stroke {
 			join: if time < 0.5 { self.join } else { other.join },
 			join_miter_limit: self.join_miter_limit + (other.join_miter_limit - self.join_miter_limit) * time,
 			align: if time < 0.5 { self.align } else { other.align },
-			transform: DAffine2::from_mat2_translation(
-				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
-				self.transform.translation * time + other.transform.translation * (1. - time),
-			),
-			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
+			transform: {
+				// Decompose into scale/rotation/skew and interpolate each component separately.
+				// We do this instead of linear matrix interpolation because that passes through a zero matrix
+				// (and thus a division by 0 when rendering) when transforms have opposing rotations (e.g. 0° vs 180°).
+
+				let (s_angle, s_scale, s_skew) = self.transform.decompose_rotation_scale_skew();
+				let (t_angle, t_scale, t_skew) = other.transform.decompose_rotation_scale_skew();
+
+				let lerp = |a: f64, b: f64| a + (b - a) * time;
+				let lerped_translation = self.transform.translation * (1. - time) + other.transform.translation * time;
+
+				// Shortest-arc rotation interpolation
+				let mut rotation_diff = t_angle - s_angle;
+				if rotation_diff > PI {
+					rotation_diff -= TAU;
+				} else if rotation_diff < -PI {
+					rotation_diff += TAU;
+				}
+				let lerped_angle = s_angle + rotation_diff * time;
+
+				let trs = DAffine2::from_scale_angle_translation(s_scale.lerp(t_scale, time), lerped_angle, lerped_translation);
+				let skew = DAffine2::from_cols_array(&[1., 0., lerp(s_skew, t_skew), 1., 0., 0.]);
+				trs * skew
+			},
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
@@ -472,11 +503,6 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
-		self.non_scaling = non_scaling;
-		self
-	}
-
 	pub fn has_renderable_stroke(&self) -> bool {
 		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
 	}
@@ -495,14 +521,14 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::default(),
 		}
 	}
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
@@ -669,15 +695,16 @@ impl PathStyle {
 }
 
 /// Ways the user can choose to view the artwork in the viewport.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
 pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]
 	Normal = 0,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
-	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
-	// PixelPreview,
-	// /// Render a preview of how the object would be exported as an SVG.
-	// SvgPreview,
+	/// Render with normal coloration at the document export resolution; at zoom > 100% this shows individual export pixels upscaled with nearest-neighbor filtering
+	PixelPreview,
+	/// Render a preview of how the object would be exported as an SVG.
+	SvgPreview,
 }

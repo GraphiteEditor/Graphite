@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorStyle } from "@graphite/messages";
+	import type { SeparatorDirection, SeparatorStyle } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let direction: SeparatorDirection = "Horizontal";
@@ -12,7 +12,7 @@
 	{/if}
 </div>
 
-<style lang="scss" global>
+<style lang="scss">
 	.separator {
 		&.vertical {
 			flex: 0 0 auto;

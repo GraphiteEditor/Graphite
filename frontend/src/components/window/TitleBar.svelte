@@ -1,39 +1,44 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { getContext, onMount, onDestroy } from "svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import type { AppWindowStore } from "/src/stores/app-window";
+	import { enterFullscreen, exitFullscreen } from "/src/stores/fullscreen";
+	import type { FullscreenStore } from "/src/stores/fullscreen";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { patchLayout } from "/src/utility-functions/widgets";
+	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	import type { Editor } from "@graphite/editor";
-	import type { Layout } from "@graphite/messages";
-	import { patchLayout, UpdateMenuBarLayout } from "@graphite/messages";
-	import type { AppWindowState } from "@graphite/state-providers/app-window";
-	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-	import { isDesktop } from "/src/utility-functions/platform";
-
-	const appWindow = getContext<AppWindowState>("appWindow");
-	const editor = getContext<Editor>("editor");
-	const fullscreen = getContext<FullscreenState>("fullscreen");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const editor = getContext<EditorWrapper>("editor");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
+	const appWindow = getContext<AppWindowStore>("appWindow");
+	const fullscreen = getContext<FullscreenStore>("fullscreen");
+	const tooltip = getContext<TooltipStore>("tooltip");
 
 	let menuBarLayout: Layout = [];
 
-	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (isDesktop() && $appWindow.fullscreen);
-	$: isFullscreen = isDesktop() ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
+	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (import.meta.env.MODE === "native" && $appWindow.fullscreen);
+	$: isFullscreen = import.meta.env.MODE === "native" ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
 	// On Mac, the menu bar height needs to be scaled by the inverse of the UI scale to fit its native window buttons
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (data) => {
+		subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
 			patchLayout(menuBarLayout, data);
 			menuBarLayout = menuBarLayout;
 		});
 	});
+
+	onDestroy(() => {
+		subscriptions.unsubscribeLayoutUpdate("MenuBar");
+	});
 </script>
 
-<LayoutRow class="title-bar" styles={{ height: height + "px" }}>
+<LayoutRow class="title-bar" styles={{ "--title-bar-height": height + "px" }}>
 	<!-- Menu bar -->
 	<LayoutRow class="menu-bar">
 		{#if $appWindow.platform !== "Mac"}
@@ -41,32 +46,32 @@
 		{/if}
 	</LayoutRow>
 	<!-- Window frame -->
-	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.handle.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.handle.appWindowMaximize()} />
+	<LayoutRow class="window-frame" on:mousedown={() => !isFullscreen && editor.appWindowDrag()} on:dblclick={() => !isFullscreen && editor.appWindowMaximize()} />
 	<!-- Window buttons -->
 	<LayoutRow class="window-buttons" classes={{ fullscreen: showFullscreenButton, windows: $appWindow.platform === "Windows", linux: $appWindow.platform === "Linux" }}>
 		{#if $appWindow.platform !== "Mac"}
 			{#if showFullscreenButton}
 				<LayoutRow
 					tooltipLabel={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-					tooltipDescription={$appWindow.platform === "Web" && $fullscreen.keyboardLockApiSupported
+					tooltipDescription={$appWindow.platform === "Web" && keyboardLockApiSupported
 						? "While fullscreen, keyboard shortcuts normally reserved by the browser become available."
 						: undefined}
 					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
-						if (isDesktop()) editor.handle.appWindowFullscreen();
-						else ($fullscreen.windowFullscreen ? fullscreen.exitFullscreen : fullscreen.enterFullscreen)();
+						if (import.meta.env.MODE === "native") editor.appWindowFullscreen();
+						else ($fullscreen.windowFullscreen ? exitFullscreen : enterFullscreen)();
 					}}
 				>
 					<IconLabel icon={isFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
 				</LayoutRow>
 			{:else}
-				<LayoutRow tooltipLabel="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
+				<LayoutRow tooltipLabel="Minimize" on:click={() => editor.appWindowMinimize()}>
 					<IconLabel icon="WindowButtonWinMinimize" />
 				</LayoutRow>
-				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
+				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.appWindowMaximize()}>
 					<IconLabel icon={$appWindow.maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 				</LayoutRow>
-				<LayoutRow tooltipLabel="Close" on:click={() => editor.handle.appWindowClose()}>
+				<LayoutRow tooltipLabel="Close" on:click={() => editor.appWindowClose()}>
 					<IconLabel icon="WindowButtonWinClose" />
 				</LayoutRow>
 			{/if}
@@ -74,18 +79,41 @@
 	</LayoutRow>
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.title-bar {
 		flex: 0 0 auto;
+		height: var(--height);
+		--height: var(--title-bar-height);
+
+		// Frameless PWA drag regions and left/right offsets for window controls, see:
+		// https://web.dev/articles/window-controls-overlay
+		@media not (display-mode: fullscreen) {
+			--height: env(titlebar-area-height, var(--title-bar-height));
+
+			> .layout-row {
+				&.window-frame {
+					-webkit-app-region: drag;
+					// app-region: drag; // TODO: Uncomment this when SCSS doesn't consider it an unknown property, which produces a warning that CI treats as a failure
+				}
+
+				&:first-child {
+					margin-left: env(titlebar-area-x, 0);
+				}
+
+				&:last-child {
+					margin-right: calc(100% - env(titlebar-area-width, 100%) - env(titlebar-area-x, 0px));
+				}
+			}
+		}
 
 		> .layout-row {
 			flex: 0 0 auto;
 
 			> .widget-span {
-				--row-height: 28px;
+				--row-height: var(--height);
 
 				> * {
-					--widget-height: 28px;
+					--widget-height: var(--height);
 				}
 			}
 

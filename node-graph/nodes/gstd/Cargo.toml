@@ -7,15 +7,24 @@ authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["wasm", "wgpu"]
+default = ["wgpu"]
 gpu = []
-wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu"]
+wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu", "graphene-canvas-utils?/wgpu"]
 wasm = [
 	"wasm-bindgen",
 	"wasm-bindgen-futures",
 	"web-sys",
 	"graphene-application-io/wasm",
 	"image/png",
+	"core-types/wasm",
+	"vector-types/wasm",
+	"graphic-types/wasm",
+	"text-nodes/wasm",
+	"raster-nodes/wasm",
+	"vector-nodes/wasm",
+	"graphene-core/wasm",
+	"graph-craft/wasm",
+	"dep:graphene-canvas-utils"
 ]
 image-compare = []
 vello = ["gpu"]
@@ -42,6 +51,7 @@ raster-nodes = { workspace = true }
 brush-nodes = { workspace = true }
 graphene-core = { workspace = true }
 graphic-nodes = { workspace = true }
+repeat-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
@@ -50,6 +60,10 @@ node-macro = { workspace = true }
 reqwest = { workspace = true }
 image = { workspace = true }
 base64 = { workspace = true }
+wgpu = { workspace = true }
+
+# Optional local dependencies
+graphene-canvas-utils = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }

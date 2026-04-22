@@ -22,7 +22,8 @@ pub struct ArtboardTool {
 }
 
 #[impl_message(Message, ToolMessage, Artboard)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ArtboardToolMessage {
 	// Standard messages
 	Abort,
@@ -394,7 +395,7 @@ impl Fsm for ArtboardToolFsmState {
 							location: start.min(end).round().as_ivec2(),
 							dimensions: (start.round() - end.round()).abs().as_ivec2(),
 							background: graphene_std::Color::WHITE,
-							clip: false,
+							clip: true,
 						},
 					})
 				}

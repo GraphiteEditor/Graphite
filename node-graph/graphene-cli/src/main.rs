@@ -3,14 +3,14 @@ mod export;
 use clap::{Args, Parser, Subcommand};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
+use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
-use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
+use graphene_std::application_io::{PlatformEditorApi, WasmApplicationIo};
 use graphene_std::text::FontCache;
-use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -46,12 +46,12 @@ enum Command {
 		/// Path to the .graphite document
 		document: PathBuf,
 	},
-	/// Export a .graphite document to a file (SVG, PNG, or JPG).
+	/// Export a .graphite document to a file (SVG, PNG, JPG, or GIF).
 	Export {
 		/// Path to the .graphite document
 		document: PathBuf,
 
-		/// Output file path (extension determines format: .svg, .png, .jpg)
+		/// Output file path (extension determines format: .svg, .png, .jpg, .gif)
 		#[clap(long, short = 'o')]
 		output: PathBuf,
 
@@ -74,6 +74,18 @@ enum Command {
 		/// Transparent background for PNG exports
 		#[clap(long)]
 		transparent: bool,
+
+		/// Frames per second for GIF animation (default: 30)
+		#[clap(long, default_value = "30")]
+		fps: f64,
+
+		/// Total number of frames for GIF animation
+		#[clap(long)]
+		frames: Option<u32>,
+
+		/// Animation duration in seconds for GIF (takes precedence over --frames)
+		#[clap(long)]
+		duration: Option<f64>,
 	},
 	ListNodeIdentifiers,
 }
@@ -109,7 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
 
 	log::info!("Creating GPU context");
-	let mut application_io = block_on(WasmApplicationIo::new_offscreen());
+	let mut application_io = block_on(WasmApplicationIo::new());
 
 	if let Command::Export { image: Some(ref image_path), .. } = app.command {
 		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
@@ -125,8 +137,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
 	let device = wgpu_executor_ref.context.device.clone();
 
-	let preferences = EditorPreferences { use_vello: true };
-	let editor_api = Arc::new(WasmEditorApi {
+	let preferences = EditorPreferences {
+		max_render_region_size: EditorPreferences::default().max_render_region_size,
+	};
+	let editor_api = Arc::new(PlatformEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io_for_api),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
@@ -147,6 +161,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			width,
 			height,
 			transparent,
+			fps,
+			frames,
+			duration,
 			..
 		} => {
 			// Spawn thread to poll GPU device
@@ -163,8 +180,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Create executor
 			let executor = create_executor(proto_graph)?;
 
-			// Perform export
-			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+			if fps <= 0. {
+				return Err("Fps number must be positive".into());
+			}
+
+			// Perform export based on file type
+			if file_type == export::FileType::Gif {
+				let animation = export::AnimationParams::new(fps, frames, duration);
+				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation).await?;
+			} else {
+				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}
@@ -221,7 +247,7 @@ fn fix_nodes(network: &mut NodeNetwork) {
 		}
 	}
 }
-fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Result<ProtoNetwork, Box<dyn Error>> {
+fn compile_graph(document_string: String, editor_api: Arc<PlatformEditorApi>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 

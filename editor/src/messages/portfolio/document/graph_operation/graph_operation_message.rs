@@ -78,15 +78,32 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
+	NewInterpolationLayer {
+		id: NodeId,
+		control_path_id: NodeId,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		blend_count: Option<usize>,
+	},
+	ConnectInterpolationControlPathToChildren {
+		interpolation_layer_id: NodeId,
+		control_path_id: NodeId,
+	},
 	NewBooleanOperationLayer {
 		id: NodeId,
-		operation: graphene_std::path_bool::BooleanOperation,
+		operation: graphene_std::vector::misc::BooleanOperation,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
 	NewCustomLayer {
 		id: NodeId,
 		nodes: Vec<(NodeId, NodeTemplate)>,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
+	NewColorFillLayer {
+		node_id: NodeId,
+		color: Color,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
@@ -116,5 +133,7 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
+		/// When true, centers the SVG at the transform origin (clipboard paste / drag-drop). When false, keeps natural SVG coordinates (file-open flow).
+		center: bool,
 	},
 }

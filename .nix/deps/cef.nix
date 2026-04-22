@@ -1,4 +1,4 @@
-{ pkgs, inputs, ... }:
+{ pkgs, ... }:
 
 let
   cefPath = pkgs.cef-binary.overrideAttrs (finalAttrs: {
@@ -9,6 +9,8 @@ let
       find "./Resources/locales" -maxdepth 1 -type f ! -name 'en-US.pak' -delete
       mv ./Resources/* $out/
       mv ./include $out/
+
+      cat ./CREDITS.html | ${pkgs.xz}/bin/xz -9 -e -c > $out/CREDITS.html.xz
 
       echo '${
         builtins.toJSON {

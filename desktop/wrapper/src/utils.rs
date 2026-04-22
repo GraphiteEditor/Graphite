@@ -6,7 +6,7 @@ pub(crate) mod menu {
 	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKeyOrMouseMotion, LabeledShortcut};
 	use graphite_editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 	use graphite_editor::messages::layout::LayoutMessage;
-	use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId};
+	use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId, WidgetRow};
 
 	use crate::messages::{EditorMessage, KeyCode, MenuItem, Modifiers, Shortcut};
 
@@ -15,11 +15,11 @@ pub(crate) mod menu {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
 		};
-		let LayoutGroup::Row { widgets } = layout_group else {
+		let LayoutGroup::Row(WidgetRow { widgets }) = layout_group else {
 			panic!("Menu bar layout group is supposed to be a row");
 		};
 		widgets
-			.into_iter()
+			.iter()
 			.map(|widget| {
 				let text_button = match widget.widget.as_ref() {
 					Widget::TextButton(text_button) => text_button,
@@ -79,7 +79,7 @@ pub(crate) mod menu {
 		let enabled = !*disabled;
 
 		if !children.is_empty() {
-			let items = convert_menu_bar_entry_children_to_menu_items(&children, root_widget_id, path.clone());
+			let items = convert_menu_bar_entry_children_to_menu_items(children, root_widget_id, path.clone());
 			return MenuItem::SubMenu { id, text, enabled, items };
 		}
 
@@ -88,8 +88,8 @@ pub(crate) mod menu {
 			_ => None,
 		};
 
-		match icon.as_str() {
-			"CheckboxChecked" => {
+		match icon.as_deref() {
+			Some("CheckboxChecked") => {
 				return MenuItem::Checkbox {
 					id,
 					text,
@@ -98,7 +98,7 @@ pub(crate) mod menu {
 					checked: true,
 				};
 			}
-			"CheckboxUnchecked" => {
+			Some("CheckboxUnchecked") => {
 				return MenuItem::Checkbox {
 					id,
 					text,

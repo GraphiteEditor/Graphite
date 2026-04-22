@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { ActionShortcut } from "@graphite/messages";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-
-	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{
 		value: string;
@@ -122,7 +120,7 @@
 	<slot />
 </LayoutRow>
 
-<style lang="scss" global>
+<style lang="scss">
 	.field-input {
 		min-width: 80px;
 		height: auto;

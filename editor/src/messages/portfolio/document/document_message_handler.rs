@@ -1,11 +1,13 @@
 use super::node_graph::document_node_definitions;
-use super::node_graph::utility_types::Transform;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	VIEWPORT_ROTATE_SNAP_INTERVAL,
+};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -19,7 +21,7 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
+use crate::messages::portfolio::utility_types::{CachedData, PanelType};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -30,16 +32,18 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
-use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
+use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
+use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::RenderMode;
-use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
+use kurbo::{Affine, BezPath, Line, PathSeg};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,7 +52,7 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -82,8 +86,8 @@ pub struct DocumentMessageHandler {
 	//
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
-	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
-	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
+	/// Tracks which layer instances are collapsed in the Layers panel, keyed by instance path.
+	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
@@ -92,7 +96,6 @@ pub struct DocumentMessageHandler {
 	pub document_ptz: PTZ,
 	/// The current mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	#[serde(alias = "view_mode")]
 	pub render_mode: RenderMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
@@ -190,7 +193,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			persistent_data,
+			cached_data,
 			executor,
 			viewport,
 			current_tool,
@@ -228,7 +231,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
-					persistent_data,
+					cached_data,
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
@@ -316,7 +319,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				if layers_panel_open {
-					let layer_structure = Self::default().build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
+					let layer_structure = Self::default().build_layer_structure();
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { layer_structure });
 				}
 
@@ -379,7 +382,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
-					let layer_structure = self.build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
+					let layer_structure = self.build_layer_structure();
 
 					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
 					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
@@ -590,6 +593,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::RenderScrollbars);
 				if opened {
 					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 				}
 				if open {
 					responses.add(ToolMessage::DeactivateTools);
@@ -621,6 +625,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::BlendSelectedLayers => {
+				self.handle_group_selected_layers(GroupFolderType::Blend, responses);
+			}
+			DocumentMessage::MorphSelectedLayers => {
+				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.handle_group_selected_layers(group_folder_type, responses);
@@ -658,29 +668,35 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				image,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
+				let layer_parent = self.new_layer_parent(true);
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
-				// Align the layer with the mouse or center of viewport
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
-				let center_in_viewport_layerspace = center_in_viewport;
-
-				// Make layer the size of the image
-				let fit_image_size = DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.);
-
-				let transform = center_in_viewport_layerspace * fit_image_size;
+				let mut transform = if place_at_origin {
+					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
+					DAffine2::from_scale(image_size)
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					let cursor_in_parent = parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport);
+					cursor_in_parent * DAffine2::from_scale_angle_translation(image_size, 0., image_size / -2.)
+				};
+				transform.translation = transform.translation.round();
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -715,17 +731,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				svg,
 				mouse,
 				parent_and_insert_index,
+				place_at_origin,
 			} => {
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let viewport_location = mouse.map_or(viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_location - viewport.offset().into_dvec2()));
+				let layer_parent = self.new_layer_parent(true);
+				let transform = if place_at_origin {
+					// File-open flow: place at document origin so `WrapContentInArtboard` can wrap it without extra Transform nodes
+					DAffine2::IDENTITY
+				} else {
+					// Clipboard paste or drag-drop: center at cursor or viewport center.
+					// Convert the document-space cursor to the parent's local coordinate space so that
+					// an artboard at a non-zero position does not offset the placement.
+					let parent_to_document = {
+						let metadata = self.metadata();
+						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
+					};
+					parent_to_document.inverse() * self.document_transform_from_mouse(mouse, viewport)
+				};
 
 				let layer_node_id = NodeId::new();
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -835,26 +863,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 			}
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
-				if let DocumentMessage::SaveDocumentAs = message {
-					self.path = None;
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+
+				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
+				if path.is_some() {
+					responses.add(DocumentMessage::MarkAsSaved);
 				}
 
-				self.set_save_state(true);
-				responses.add(PortfolioMessage::AutoSaveActiveDocument);
-				// Update the save status of the just saved document
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
 				responses.add(FrontendMessage::TriggerSaveDocument {
 					document_id,
 					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path: self.path.clone(),
-					content: self.serialize_document().into_bytes(),
-				})
+					path,
+					folder,
+					content: self.serialize_document().into_bytes().into(),
+				});
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
 
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+				responses.add(DocumentMessage::MarkAsSaved);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
@@ -991,8 +1021,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 			}
-			DocumentMessage::SetActivePanel { active_panel: panel } => {
-				match panel {
+			DocumentMessage::SetActivePanel { active_panel } => {
+				match active_panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
 							self.selection_network_path.clone_from(&self.breadcrumb_network_path);
@@ -1146,25 +1176,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
-				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
-				let metadata = self.metadata();
-
-				let is_collapsed = self.collapsed.0.contains(&layer);
+			DocumentMessage::ToggleLayerExpansion { instance_path, recursive } => {
+				let is_collapsed = self.collapsed.0.contains(&instance_path);
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.descendants(metadata).collect();
-						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
+						// Remove this path and all descendant paths (paths that start with this one)
+						self.collapsed.0.retain(|path| !path.starts_with(&instance_path));
 					} else {
-						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
+						self.collapsed.0.retain(|path| *path != instance_path);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
-						self.collapsed.0.extend(children_to_add);
+						// Collapse all expanded descendant instances by collecting their paths from the structure tree
+						let descendant_paths = self.collect_descendant_instance_paths(&instance_path);
+						for path in descendant_paths {
+							if !self.collapsed.0.contains(&path) {
+								self.collapsed.0.push(path);
+							}
+						}
 					}
-					self.collapsed.0.push(layer);
+					self.collapsed.0.push(instance_path);
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1333,11 +1365,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
-						transform: Transform {
-							scale: transform.matrix2.x_axis.x,
-							x: transform.translation.x,
-							y: transform.translation.y,
-						},
+						translation: transform.translation.into(),
+						scale: transform.matrix2.x_axis.x,
 					})
 				}
 			}
@@ -1349,11 +1378,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.selection_step_forward(&self.selection_network_path);
 				responses.add(EventMessage::SelectionChanged);
 			}
-			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
-				// Get bounding box of all layers
+			DocumentMessage::WrapContentInArtboard {
+				place_artboard_at_origin,
+				artboard_canvas,
+			} => {
+				// Get bounding box of all layers (always needed to confirm there is content)
 				let bounds = self.network_interface.document_bounds_document_space(false);
 				let Some(bounds) = bounds else { return };
-				let bounds_rounded_dimensions = (bounds[1] - bounds[0]).round();
+
+				// When artboard_canvas is provided (SVG file-open flow), use the declared canvas origin and dimensions;
+				// no content-shift Transform node needed since the SVG was already placed at its natural coordinates.
+				let (artboard_location, artboard_dimensions, content_shift) = if let Some((origin, dimensions)) = artboard_canvas {
+					(origin, dimensions, DVec2::ZERO)
+				} else {
+					// No declared canvas (image or clipboard paste): derive location and dimensions from the content bounding box.
+					let location = if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() };
+					(location, (bounds[1] - bounds[0]).round().as_ivec2(), -bounds[0].round())
+				};
 
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
@@ -1365,11 +1406,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					node_id,
 					node_template: Box::new(new_artboard_node),
 				});
-				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: 15, y: -3 });
+				let needs_content_transform = !content_shift.abs_diff_eq(DVec2::ZERO, 1e-6);
+				// With a content Transform node: shift by the layer indent plus the node width. Without: use just the layer indent.
+				responses.add(NodeGraphMessage::ShiftNodePosition {
+					node_id,
+					x: if needs_content_transform { LAYER_INDENT_OFFSET + NODE_CHAIN_WIDTH } else { LAYER_INDENT_OFFSET },
+					y: -3,
+				});
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: LayerNodeIdentifier::new_unchecked(node_id),
-					location: if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() },
-					dimensions: bounds_rounded_dimensions.as_ivec2(),
+					location: artboard_location,
+					dimensions: artboard_dimensions,
 				});
 
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
@@ -1379,10 +1426,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					insert_node_input_index: 1,
 				});
 
-				// Shift the content by half its width and height so it gets centered in the artboard
+				// Shift the content to align its top-left to the artboard's origin (no-op when content is already at origin)
 				responses.add(GraphOperationMessage::TransformChange {
 					layer: node_layer_id,
-					transform: DAffine2::from_translation(bounds_rounded_dimensions / 2.),
+					transform: DAffine2::from_translation(content_shift),
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
 				});
@@ -1445,6 +1492,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
 				GroupSelectedLayers,
+				BlendSelectedLayers,
+				MorphSelectedLayers,
 				SelectedLayersLower,
 				SelectedLayersLowerToBack,
 				SelectedLayersRaise,
@@ -1476,6 +1525,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
+	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
+		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+		DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_pos - viewport.offset().into_dvec2()))
+	}
+
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
@@ -1696,22 +1752,218 @@ impl DocumentMessageHandler {
 		Ok(document_message_handler)
 	}
 
-	/// Recursively builds the layer structure tree for a folder.
-	fn build_layer_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructureEntry> {
-		folder
-			.children(self.metadata())
-			.map(|layer_node| {
-				let children = if layer_node.has_children(self.metadata()) && !self.collapsed.0.contains(&layer_node) {
-					self.build_layer_structure(layer_node)
-				} else {
-					Vec::new()
-				};
-				LayerStructureEntry {
-					layer_id: layer_node.to_node(),
-					children,
+	/// Builds the layer structure tree by traversing the node graph directly.
+	/// Unlike the canonical `structure` field of [`DocumentMetadata`] (which stores single-parent relationships), this allows
+	/// the same layer to appear under multiple parents when the graph feeds the same child content into separate parent layers.
+	fn build_layer_structure(&self) -> Vec<LayerStructureEntry> {
+		let network = &self.network_interface;
+
+		let Some(root_node) = network.root_node(&[]) else { return Vec::new() };
+		let Some(first_root_layer_id) = network
+			.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow)
+			.find(|node_id| network.is_layer(node_id, &[]))
+		else {
+			return Vec::new();
+		};
+
+		let selected_layers: HashSet<NodeId> = network.selected_nodes().selected_layers(self.metadata()).map(LayerNodeIdentifier::to_node).collect();
+
+		let ancestors = HashSet::new();
+		let instance_path = Vec::new();
+		let mut root_entries = Vec::new();
+
+		// The first root layer is the topmost entry
+		root_entries.push(self.build_layer_entry(first_root_layer_id, &ancestors, &selected_layers, &instance_path));
+
+		// Layers in the primary flow (input[0] chain) from the first root layer are root-level siblings
+		let mut root_ancestors = HashSet::new();
+		root_ancestors.insert(first_root_layer_id);
+
+		for sibling_id in network.upstream_flow_back_from_nodes(vec![first_root_layer_id], &[], FlowType::PrimaryFlow).skip(1) {
+			if network.is_layer(&sibling_id, &[]) && !root_ancestors.contains(&sibling_id) {
+				root_entries.push(self.build_layer_entry(sibling_id, &root_ancestors, &selected_layers, &instance_path));
+			}
+		}
+
+		root_entries
+	}
+
+	/// Builds a single `LayerStructureEntry` for the given layer, including its `children_present` flag,
+	/// `descendant_selected` flag, and (if expanded) its children collected from the graph.
+	fn build_layer_entry(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, parent_instance_path: &[NodeId]) -> LayerStructureEntry {
+		let mut instance_path = parent_instance_path.to_vec();
+		instance_path.push(layer_id);
+
+		let mut child_ancestors = ancestors.clone();
+		child_ancestors.insert(layer_id);
+
+		let children_present = self.has_layer_children_in_graph(layer_id, &child_ancestors);
+
+		let collapsed = self.collapsed.0.contains(&instance_path);
+
+		let children = if children_present && !collapsed {
+			self.collect_layer_children(layer_id, &child_ancestors, selected_layers, &instance_path)
+		} else {
+			Vec::new()
+		};
+
+		// Compute whether any descendant is selected (checking expanded children and, if collapsed, via graph traversal)
+		let descendant_selected = if !children.is_empty() {
+			children.iter().any(|child| child.descendant_selected || selected_layers.contains(&child.layer_id))
+		} else if children_present {
+			// Layer is collapsed but has children, so check via graph traversal
+			self.has_selected_descendant_in_graph(layer_id, &child_ancestors, selected_layers)
+		} else {
+			false
+		};
+
+		LayerStructureEntry {
+			layer_id,
+			children,
+			children_present,
+			descendant_selected,
+		}
+	}
+
+	/// Checks whether a layer has any child layers reachable via horizontal flow in the graph.
+	fn has_layer_children_in_graph(&self, layer_id: NodeId, child_ancestors: &HashSet<NodeId>) -> bool {
+		let network = &self.network_interface;
+
+		network
+			.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.any(|id| network.is_layer(&id, &[]) && !child_ancestors.contains(&id))
+	}
+
+	/// Checks whether any descendant layer in the graph (via horizontal + primary flow) is selected.
+	/// Used when a layer is collapsed to determine if the ancestor-of-selected indicator should show.
+	fn has_selected_descendant_in_graph(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>) -> bool {
+		let network = &self.network_interface;
+
+		// Find child layers via horizontal flow
+		let mut stack: Vec<NodeId> = network
+			.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.filter(|node_id| network.is_layer(node_id, &[]) && !ancestors.contains(node_id))
+			.collect();
+
+		let mut visited = ancestors.clone();
+
+		// Iteratively explore all descendant layers via a depth-first traversal
+		while let Some(current_id) = stack.pop() {
+			// Skip already-visited layers to avoid infinite loops from graph cycles
+			if !visited.insert(current_id) {
+				continue;
+			}
+
+			// Found a selected descendant, the ancestor indicator should be shown
+			if selected_layers.contains(&current_id) {
+				return true;
+			}
+
+			// Check this layer's children via horizontal flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::HorizontalFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) && !visited.contains(&node_id) {
+					stack.push(node_id);
 				}
-			})
-			.collect()
+			}
+
+			// Check stacked siblings via primary flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::PrimaryFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) && !visited.contains(&node_id) {
+					stack.push(node_id);
+				}
+			}
+		}
+
+		false
+	}
+
+	/// Collects the child entries for a given layer by traversing its horizontal and primary flows.
+	/// The horizontal flow (a layer's secondary input chain) finds nested content layers, and the
+	/// primary flow from those (their stack's top output) finds stacked siblings at the same depth.
+	/// `ancestors` contains layer IDs in the current path from root, used for cycle prevention.
+	fn collect_layer_children(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, instance_path: &[NodeId]) -> Vec<LayerStructureEntry> {
+		let network = &self.network_interface;
+
+		// Find the first nested layer via horizontal flow (content inside this layer)
+		let Some(nested_id) = network
+			.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.find(|id| network.is_layer(id, &[]))
+		else {
+			return Vec::new();
+		};
+
+		// Cycle detected, this layer is already an ancestor in the current branch
+		if ancestors.contains(&nested_id) {
+			return Vec::new();
+		}
+
+		// The nested layer is the first child at this depth level
+		let mut children = vec![self.build_layer_entry(nested_id, ancestors, selected_layers, instance_path)];
+
+		// Primary flow from the nested layer finds stacked siblings (more children of this layer)
+		for sibling_id in network.upstream_flow_back_from_nodes(vec![nested_id], &[], FlowType::PrimaryFlow).skip(1) {
+			if network.is_layer(&sibling_id, &[]) && !ancestors.contains(&sibling_id) {
+				children.push(self.build_layer_entry(sibling_id, ancestors, selected_layers, instance_path));
+			}
+		}
+
+		children
+	}
+
+	/// Collects instance paths for all descendant layers of the given instance path by traversing the graph.
+	/// Used for recursive collapse to find all expandable descendants.
+	fn collect_descendant_instance_paths(&self, instance_path: &[NodeId]) -> Vec<Vec<NodeId>> {
+		let Some(&layer_id) = instance_path.last() else { return Vec::new() };
+		let network = &self.network_interface;
+
+		let mut paths = Vec::new();
+		let mut stack: Vec<(NodeId, Vec<NodeId>)> = Vec::new();
+
+		// Seed with child layers via horizontal flow
+		for node_id in network.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow).skip(1) {
+			if network.is_layer(&node_id, &[]) {
+				let mut child_path = instance_path.to_vec();
+				child_path.push(node_id);
+				stack.push((node_id, child_path));
+			}
+		}
+
+		let mut visited = HashSet::new();
+
+		// Depth-first traversal collecting all unique descendant instance paths
+		while let Some((current_id, current_path)) = stack.pop() {
+			// Skip paths we've already visited to prevent cycles
+			if !visited.insert(current_path.clone()) {
+				continue;
+			}
+
+			// Record this descendant's instance path for collapsing
+			paths.push(current_path.clone());
+
+			// Add nested content layers found via horizontal flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::HorizontalFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) {
+					let mut child_path = current_path.clone();
+					child_path.push(node_id);
+					stack.push((node_id, child_path));
+				}
+			}
+
+			// Add stacked sibling layers found via primary flow
+			for node_id in network.upstream_flow_back_from_nodes(vec![current_id], &[], FlowType::PrimaryFlow).skip(1) {
+				if network.is_layer(&node_id, &[]) {
+					// Siblings share the same parent path (everything up to the last element of current_path)
+					let mut sibling_path = current_path[..current_path.len() - 1].to_vec();
+					sibling_path.push(node_id);
+					stack.push((node_id, sibling_path));
+				}
+			}
+		}
+
+		paths
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1916,6 +2168,57 @@ impl DocumentMessageHandler {
 						insert_index,
 					});
 				}
+			}
+			GroupFolderType::Blend | GroupFolderType::Morph => {
+				let control_path_id = NodeId(generate_uuid());
+				let all_layers_to_group = network_interface.shallowest_unique_layers_sorted(&[]);
+				let blend_count = matches!(group_folder_type, GroupFolderType::Blend).then(|| all_layers_to_group.len() * BLEND_COUNT_PER_LAYER);
+
+				responses.add(GraphOperationMessage::NewInterpolationLayer {
+					id: folder_id,
+					control_path_id,
+					parent,
+					insert_index,
+					blend_count,
+				});
+
+				let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
+
+				// Move selected layers into the group as children
+				for layer_to_group in all_layers_to_group.into_iter().rev() {
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: layer_to_group,
+						parent: new_group_folder,
+						insert_index: 0,
+					});
+				}
+
+				// Connect the child stack to the control path layer as a co-parent
+				responses.add(GraphOperationMessage::ConnectInterpolationControlPathToChildren {
+					interpolation_layer_id: folder_id,
+					control_path_id,
+				});
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				// The control path layer (Blend Path / Morph Path) should start collapsed.
+				let instance_path = {
+					// Build instance path from root down to the control path layer, which is a sibling of the main layer under `parent`.
+					let mut instance_path: Vec<NodeId> = parent
+						.ancestors(network_interface.document_metadata())
+						.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+						.map(LayerNodeIdentifier::to_node)
+						.collect();
+					instance_path.reverse();
+					instance_path.push(control_path_id);
+					instance_path
+				};
+				responses.add(DocumentMessage::ToggleLayerExpansion { instance_path, recursive: false });
+
+				return folder_id;
 			}
 		}
 
@@ -2217,277 +2520,239 @@ impl DocumentMessageHandler {
 				.widget_instance(),
 			PopoverButton::new()
 				.popover_layout(Layout(vec![
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Overlays").bold(true).widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("General").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::ArtboardName),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::TransformMeasurement),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Select Tool").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::QuickMeasurement),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::TransformCage),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::CompassRose),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.origin)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::Pivot),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.pivot)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::Origin),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::HoverOutline),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::SelectionOutline),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.layer_origin_cross)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::LayerOriginCross),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Layer Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Pen & Path Tools").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.path)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::Path),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.anchors)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::Anchors),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.handles)
-									.disabled(!self.overlays_visibility_settings.anchors)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::Handles),
-										}
-										.into()
-									})
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new("Handles".to_string())
-									.disabled(!self.overlays_visibility_settings.anchors)
-									.for_checkbox(checkbox_id)
-									.widget_instance(),
-							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Fill Tool").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(self.overlays_visibility_settings.fillable_indicator)
-									.on_update(|optional_input: &CheckboxInput| {
-										DocumentMessage::SetOverlaysVisibility {
-											visible: optional_input.checked,
-											overlays_type: Some(OverlaysType::FillableIndicator),
-										}
-										.into()
-									})
-									.for_label(checkbox_id.clone())
-									.widget_instance(),
-								TextLabel::new("Fillable Indicator".to_string()).for_checkbox(checkbox_id).widget_instance(),
-							]
-						},
-					},
+					LayoutGroup::row(vec![TextLabel::new("Overlays").bold(true).widget_instance()]),
+					LayoutGroup::row(vec![TextLabel::new("General").widget_instance()]),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::ArtboardName),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::TransformMeasurement),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row(vec![TextLabel::new("Select Tool").widget_instance()]),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::QuickMeasurement),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::TransformCage),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::CompassRose),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.pivot)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Pivot),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.origin)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Origin),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::HoverOutline),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::SelectionOutline),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.layer_origin_cross)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::LayerOriginCross),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Layer Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row(vec![TextLabel::new("Pen & Path Tools").widget_instance()]),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.path)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Path),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.anchors)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Anchors),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.handles)
+								.disabled(!self.overlays_visibility_settings.anchors)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Handles),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Handles".to_string())
+								.disabled(!self.overlays_visibility_settings.anchors)
+								.for_checkbox(checkbox_id)
+								.widget_instance(),
+						]
+					}),
+					LayoutGroup::row(vec![TextLabel::new("Fill Tool").widget_instance()]),
+					LayoutGroup::row({
+						let checkbox_id = CheckboxId::new();
+						vec![
+							CheckboxInput::new(self.overlays_visibility_settings.fillable_indicator)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::FillableIndicator),
+									}
+									.into()
+								})
+								.for_label(checkbox_id)
+								.widget_instance(),
+							TextLabel::new("Fillable Indicator".to_string()).for_checkbox(checkbox_id).widget_instance(),
+						]
+					}),
 				]))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -2506,16 +2771,12 @@ impl DocumentMessageHandler {
 			PopoverButton::new()
 				.popover_layout(Layout(
 					[
-						LayoutGroup::Row {
-							widgets: vec![TextLabel::new("Snapping").bold(true).widget_instance()],
-						},
-						LayoutGroup::Row {
-							widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_instance()],
-						},
+						LayoutGroup::row(vec![TextLabel::new("Snapping").bold(true).widget_instance()]),
+						LayoutGroup::row(vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_instance()]),
 					]
 					.into_iter()
-					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, description)| LayoutGroup::Row {
-						widgets: {
+					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, description)| {
+						LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state))
@@ -2532,13 +2793,11 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
+						})
 					}))
-					.chain([LayoutGroup::Row {
-						widgets: vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_instance()],
-					}])
-					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, description)| LayoutGroup::Row {
-						widgets: {
+					.chain([LayoutGroup::row(vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_instance()])])
+					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, description)| {
+						LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state2))
@@ -2555,7 +2814,7 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
+						})
 					}))
 					.collect(),
 				))
@@ -2572,29 +2831,47 @@ impl DocumentMessageHandler {
 				.popover_min_width(Some(320))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(vec![
-				RadioEntryData::new("Normal")
-					.icon("RenderModeNormal")
-					.tooltip_label("Render Mode: Normal")
-					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
-				RadioEntryData::new("Outline")
-					.icon("RenderModeOutline")
-					.tooltip_label("Render Mode: Outline")
-					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
-				// TODO: See issue #320
-				// RadioEntryData::new("PixelPreview")
-				// 	.icon("RenderModePixels")
-				// 	.tooltip_label("Render Mode: Pixel Preview")
-				// 	.on_update(|_| todo!()),
-				// TODO: See issue #1845
-				// RadioEntryData::new("SvgPreview")
-				// 	.icon("RenderModeSvg")
-				// 	.tooltip_label("Render Mode: SVG Preview")
-				// 	.on_update(|_| todo!()),
-			])
-			.selected_index(Some(self.render_mode as u32))
-			.narrow(true)
-			.widget_instance(),
+			{
+				let disabled = cfg!(target_family = "wasm") && wgpu_available() == Some(false);
+
+				let mut entries = vec![
+					RadioEntryData::new("Normal")
+						.icon("RenderModeNormal")
+						.tooltip_label("Render Mode: Normal")
+						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
+					RadioEntryData::new("Outline")
+						.icon("RenderModeOutline")
+						.tooltip_label("Render Mode: Outline")
+						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
+					RadioEntryData::new("PixelPreview").icon("RenderModePixels").tooltip_label("Render Mode: Pixel Preview").on_update(|_| {
+						DocumentMessage::SetRenderMode {
+							render_mode: RenderMode::PixelPreview,
+						}
+						.into()
+					}),
+					RadioEntryData::new("SvgPreview")
+						.icon("RenderModeSvg")
+						.tooltip_label("Render Mode: SVG Preview")
+						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }.into()),
+				];
+				let mut selected_index = self.render_mode as u32;
+
+				if disabled {
+					for entry in &mut entries {
+						entry.tooltip_description = "
+							*Normal*, *Outline*, and *Pixel Preview* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
+							\n\
+							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
+							"
+						.trim()
+						.into();
+					}
+
+					selected_index = entries.iter().position(|entry| entry.value == "SvgPreview").unwrap() as u32;
+				}
+
+				RadioInput::new(entries).selected_index(Some(selected_index)).disabled(disabled).narrow(true).widget_instance()
+			},
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
 
@@ -2635,8 +2912,8 @@ impl DocumentMessageHandler {
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
-				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
-				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
+				.icon(if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" })
+				.hover_icon(if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" })
 				.tooltip_label(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
@@ -2644,7 +2921,7 @@ impl DocumentMessageHandler {
 		]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout(vec![LayoutGroup::Row { widgets }]),
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
 			layout_target: LayoutTarget::DocumentBar,
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -2782,25 +3059,25 @@ impl DocumentMessageHandler {
 				.tooltip_label("Fill")
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::row(widgets)]);
 
 		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
 				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection)
 				.widget_instance(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::row(widgets)]);
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: layers_panel_control_bar_left,
@@ -2826,7 +3103,7 @@ impl DocumentMessageHandler {
 
 		let widgets = vec![
 			PopoverButton::new()
-				.icon(Some("Node".to_string()))
+				.icon("Node")
 				.menu_direction(Some(MenuDirection::Top))
 				.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
 				.disabled(!has_selection || has_multiple_selection)
@@ -2854,7 +3131,7 @@ impl DocumentMessageHandler {
 							}
 						})
 						.widget_instance();
-					Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
+					Layout(vec![LayoutGroup::row(vec![node_chooser])])
 				})
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -2880,7 +3157,7 @@ impl DocumentMessageHandler {
 				.widget_instance(),
 		];
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout(vec![LayoutGroup::Row { widgets }]),
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
 			layout_target: LayoutTarget::LayersPanelBottomBar,
 		});
 	}
@@ -3029,7 +3306,7 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
-	Path(Vec<path_bool_lib::PathSegment>),
+	Path(BezPath),
 	Polygon(Subpath<PointId>),
 }
 
@@ -3047,17 +3324,12 @@ pub struct ClickXRayIter<'a> {
 	parent_targets: Vec<(LayerNodeIdentifier, XRayTarget)>,
 }
 
-fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
-	quad.all_edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+fn quad_to_kurbo(quad: Quad) -> BezPath {
+	BezPath::from_path_segments(quad.all_edges().into_iter().map(|[start, end]| PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end)))))
 }
 
-fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bezier: PathSeg| match bezier {
-		PathSeg::Line(line) => path_bool_lib::PathSegment::Line(point_to_dvec2(line.p0), point_to_dvec2(line.p1)),
-		PathSeg::Quad(quad_bez) => path_bool_lib::PathSegment::Quadratic(point_to_dvec2(quad_bez.p0), point_to_dvec2(quad_bez.p1), point_to_dvec2(quad_bez.p2)),
-		PathSeg::Cubic(cubic_bez) => path_bool_lib::PathSegment::Cubic(point_to_dvec2(cubic_bez.p0), point_to_dvec2(cubic_bez.p1), point_to_dvec2(cubic_bez.p2), point_to_dvec2(cubic_bez.p3)),
-	};
-	click_targets
+fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
+	let segments = click_targets
 		.filter_map(|target| {
 			if let ClickTargetType::Subpath(subpath) = target.target_type() {
 				Some(subpath.iter())
@@ -3066,8 +3338,8 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 			}
 		})
 		.flatten()
-		.map(|bezier| segment(Affine::new(transform.to_cols_array()) * bezier))
-		.collect()
+		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
+	BezPath::from_path_segments(segments)
 }
 
 impl<'a> ClickXRayIter<'a> {
@@ -3088,22 +3360,8 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(
-		&mut self,
-		click_targets: Option<&[Arc<ClickTarget>]>,
-		clip: bool,
-		layer: LayerNodeIdentifier,
-		path: Vec<path_bool_lib::PathSegment>,
-		transform: DAffine2,
-	) -> XRayResult {
-		// Convert back to Kurbo types for intersections
-		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
-			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
-			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(h2), dvec2_to_point(end))),
-			path_bool_lib::PathSegment::Quadratic(start, h1, end) => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(end))),
-			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
-		};
-		let get_clip = || path.iter().map(segment);
+	fn check_layer_area_target(&mut self, click_targets: Option<&[Arc<ClickTarget>]>, clip: bool, layer: LayerNodeIdentifier, path: BezPath, transform: DAffine2) -> XRayResult {
+		let get_clip = || path.segments();
 
 		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
 		let clicked = intersects;
@@ -3112,8 +3370,9 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
-			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
+			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
+			let intersection = boolean_intersect(&path, &clip_path);
+			let subtracted = BezPath::from_path_segments(intersection.iter().flat_map(|p| p.segments()));
 			if subtracted.is_empty() {
 				use_children = false;
 			} else {
@@ -3146,13 +3405,10 @@ impl<'a> ClickXRayIter<'a> {
 					use_children: !clip || intersects,
 				}
 			}
-			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
+			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 			XRayTarget::Polygon(polygon) => {
-				let polygon = polygon
-					.iter_closed()
-					.map(|line| path_bool_lib::PathSegment::Line(point_to_dvec2(line.start()), point_to_dvec2(line.end())))
-					.collect();
+				let polygon = BezPath::from_path_segments(polygon.iter_closed());
 				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
 			}
 		}
@@ -3239,6 +3495,16 @@ impl Iterator for ClickXRayIter<'_> {
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
 	}
+}
+
+/// Deserializes `CollapsedLayers` with backwards compatibility for the old format
+/// (flat list of layer node IDs) by consuming the entire value first, then attempting
+/// to interpret it as the new format. Falls back to an empty default for old documents.
+fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<CollapsedLayers, D::Error> {
+	use serde::Deserialize;
+	// Buffer the entire value to avoid leaving the deserializer in a bad state on type mismatch
+	let value = serde_json::Value::deserialize(deserializer)?;
+	Ok(serde_json::from_value(value).unwrap_or_default())
 }
 
 #[cfg(test)]

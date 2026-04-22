@@ -1,45 +1,44 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
+use crate::messages::frontend::IconName;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
 
 /// Represents an entry in the layer tree hierarchy, sent to the frontend.
 /// Each entry contains its layer ID and a list of its visible children.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct LayerStructureEntry {
+	/// The node ID of the layer this entry represents.
 	#[serde(rename = "layerId")]
 	pub layer_id: NodeId,
+	/// The expanded child entries nested within this layer. Empty when the layer is collapsed or has no children.
 	pub children: Vec<LayerStructureEntry>,
+	/// Whether this layer has children reachable in the graph, even when they are omitted from `children` because the layer is collapsed.
+	#[serde(rename = "childrenPresent")]
+	pub children_present: bool,
+	/// Whether any descendant layer in the graph is selected, including through collapsed subtrees not listed in `children`.
+	#[serde(rename = "descendantSelected")]
+	pub descendant_selected: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	#[serde(rename = "implementationName")]
 	pub implementation_name: String,
 	#[serde(rename = "iconName")]
-	pub icon_name: Option<String>,
+	pub icon_name: Option<IconName>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
 	#[serde(rename = "childrenAllowed")]
 	pub children_allowed: bool,
-	#[serde(rename = "childrenPresent")]
-	pub children_present: bool,
-	pub expanded: bool,
-	pub depth: usize,
 	pub visible: bool,
-	#[serde(rename = "parentsVisible")]
-	pub parents_visible: bool,
 	pub unlocked: bool,
-	#[serde(rename = "parentsUnlocked")]
-	pub parents_unlocked: bool,
-	#[serde(rename = "parentId")]
-	pub parent_id: Option<NodeId>,
 	pub selected: bool,
-	#[serde(rename = "ancestorOfSelected")]
-	pub ancestor_of_selected: bool,
 	#[serde(rename = "descendantOfSelected")]
 	pub descendant_of_selected: bool,
 	pub clipped: bool,
@@ -47,7 +46,8 @@ pub struct LayerPanelEntry {
 }
 
 /// IMPORTANT: the same node may appear multiple times.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SelectedNodes(pub Vec<NodeId>);
 
 impl SelectedNodes {
@@ -157,5 +157,9 @@ impl SelectedNodes {
 	}
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub struct CollapsedLayers(pub Vec<LayerNodeIdentifier>);
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+/// Tracks which layer instances are collapsed in the Layers panel. Each entry is an "instance path":
+/// the sequence of ancestor node IDs from the root down to the collapsed layer. This allows the same
+/// layer appearing under multiple parents to have independent expand/collapse state per instance.
+pub struct CollapsedLayers(pub Vec<Vec<NodeId>>);

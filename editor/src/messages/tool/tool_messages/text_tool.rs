@@ -1,13 +1,13 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::portfolio::utility_types::{FontCatalog, FontCatalogStyle, PersistentData};
+use crate::messages::portfolio::utility_types::{CachedData, FontCatalog, FontCatalogStyle};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
@@ -55,7 +55,8 @@ impl Default for TextOptions {
 }
 
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TextToolMessage {
 	// Standard messages
 	Abort,
@@ -75,7 +76,8 @@ pub enum TextToolMessage {
 	RefreshEditingFontData,
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TextOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -228,8 +230,8 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 }
 
 impl ToolRefreshOptions for TextTool {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
-		self.send_layout(responses, LayoutTarget::ToolOptions, &persistent_data.font_catalog);
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, cached_data: &CachedData) {
+		self.send_layout(responses, LayoutTarget::ToolOptions, &cached_data.font_catalog);
 	}
 }
 
@@ -271,7 +273,7 @@ impl TextTool {
 			},
 		));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -300,7 +302,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::ToolOptions, &context.persistent_data.font_catalog);
+		self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -412,8 +414,8 @@ impl TextToolData {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
-				color: editing_text.color.unwrap_or(Color::BLACK),
-				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default(),
+				color: editing_text.color.map_or("#000000".to_string(), |color| format!("#{}", color.to_rgba_hex_srgb())),
+				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
@@ -488,25 +490,31 @@ impl TextToolData {
 		});
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
-			fill: if editing_text.color.is_some() {
-				Fill::Solid(editing_text.color.unwrap().to_gamma_srgb())
-			} else {
-				Fill::None
-			},
+			fill: if let Some(color) = editing_text.color { Fill::Solid(color.to_gamma_srgb()) } else { Fill::None },
 		});
-		responses.add(GraphOperationMessage::TransformSet {
-			layer: self.layer,
-			transform: editing_text.transform,
-			transform_in: TransformIn::Viewport,
-			skip_rerender: true,
-		});
+		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
 
 		self.set_editing(true, font_cache, responses);
 
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
+		// Defer TransformSet until after the graph has run so that downstream_transform_to_viewport
+		// has correct metadata for the new layer (needed for proper placement in transformed parents).
+		let layer = self.layer;
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![
+				GraphOperationMessage::TransformSet {
+					layer,
+					transform,
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				}
+				.into(),
+				NodeGraphMessage::RunDocumentGraph.into(),
+			],
+		});
 	}
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
@@ -565,15 +573,12 @@ impl Fsm for TextToolFsmState {
 			document,
 			global_tool_data,
 			input,
-			persistent_data,
+			cached_data,
 			viewport,
 			..
 		} = transition_data;
-		let font_cache = &persistent_data.font_cache;
-		let fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-			.unwrap()
-			.with_alpha(0.05)
-			.to_rgba_hex_srgb();
+		let font_cache = &cached_data.font_cache;
+		let fill_color = COLOR_OVERLAY_BLUE_05;
 
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
@@ -585,7 +590,7 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad, None, Some(&("#".to_string() + &fill_color)));
+						overlay_context.quad(transformed_quad, None, Some(fill_color));
 					}
 				}
 
@@ -598,14 +603,10 @@ impl Fsm for TextToolFsmState {
 
 					// Draw a bounding box on the layers to be selected
 					for layer in document.intersect_quad_no_artboards(quad, viewport) {
-						overlay_context.quad(
-							Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])),
-							None,
-							Some(&("#".to_string() + &fill_color)),
-						);
+						overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
 					}
 
-					overlay_context.quad(quad, None, Some(&("#".to_string() + &fill_color)));
+					overlay_context.quad(quad, None, Some(fill_color));
 				}
 
 				// TODO: implement bounding box for multiple layers
@@ -932,7 +933,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
 				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
 				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
-					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default(),
+					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
 				});
 
 				TextToolFsmState::Editing

@@ -1,8 +1,9 @@
-use super::utility_functions::overlay_canvas_context;
+use super::utility_functions::{hex_to_rgba_u8, overlay_canvas_context};
 use crate::consts::{
-	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS,
+	SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
@@ -29,8 +30,16 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoEmphasis {
+	Regular,
+	Hovered,
+	Active,
+}
+
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysType {
 	// =======
 	// General
@@ -60,7 +69,8 @@ pub enum OverlaysType {
 	FillableIndicator,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
@@ -164,11 +174,11 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip, default = "overlay_canvas_context")]
-	#[specta(skip)]
 	pub render_context: web_sys::CanvasRenderingContext2d,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,
@@ -489,13 +499,18 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
+	pub fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
 		self.start_dpi_aware_transform();
 
 		let position = position.round() - DVec2::splat(0.5);
 
-		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
-		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
+		let radius_offset = match emphasis {
+			GizmoEmphasis::Regular => 0.,
+			GizmoEmphasis::Hovered => 0.5,
+			GizmoEmphasis::Active => 1.,
+		};
+		let stroke_width = radius_offset * 2. + 1.;
+		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset) * if small { 0.5 } else { 1. };
 
 		let draw_circle = |radius: f64, width: Option<f64>, color: &str| {
 			self.render_context.begin_path();
@@ -505,6 +520,7 @@ impl OverlayContext {
 				self.render_context.set_line_width(width);
 				self.render_context.set_stroke_style_str(color);
 				self.render_context.stroke();
+				self.render_context.set_line_width(1.);
 			} else {
 				self.render_context.set_fill_style_str(color);
 				self.render_context.fill();
@@ -516,6 +532,42 @@ impl OverlayContext {
 		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
 		// Stroke (outer)
 		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		// Rotate diamond points by the gradient line angle
+		let (sin, cos) = angle.sin_cos();
+		let rotate = |dx: f64, dy: f64| DVec2::new(dx * cos - dy * sin, dx * sin + dy * cos);
+
+		let top = rotate(0., -GRADIENT_MIDPOINT_DIAMOND_RADIUS);
+		let right = rotate(GRADIENT_MIDPOINT_DIAMOND_RADIUS, 0.);
+		let bottom = rotate(0., GRADIENT_MIDPOINT_DIAMOND_RADIUS);
+		let left = rotate(-GRADIENT_MIDPOINT_DIAMOND_RADIUS, 0.);
+
+		self.render_context.begin_path();
+		self.render_context.move_to(position.x + top.x, position.y + top.y);
+		self.render_context.line_to(position.x + right.x, position.y + right.y);
+		self.render_context.line_to(position.x + bottom.x, position.y + bottom.y);
+		self.render_context.line_to(position.x + left.x, position.y + left.y);
+		self.render_context.close_path();
+
+		let (fill, stroke_width) = match emphasis {
+			GizmoEmphasis::Regular => (COLOR_OVERLAY_WHITE, 1.),
+			GizmoEmphasis::Hovered => (COLOR_OVERLAY_WHITE, 2.),
+			GizmoEmphasis::Active => (COLOR_OVERLAY_BLUE, 1.),
+		};
+		self.render_context.set_fill_style_str(fill);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.fill();
+		self.render_context.set_line_width(stroke_width);
+		self.render_context.stroke();
+		self.render_context.set_line_width(1.);
 
 		self.end_dpi_aware_transform();
 	}
@@ -669,9 +721,7 @@ impl OverlayContext {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
-		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
-		fill_color.insert(0, '#');
-		let fill_color = Some(fill_color.as_str());
+		let fill_color = Some(COLOR_OVERLAY_WHITE_05);
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None, None);
 		self.circle(start, radius, fill_color, None);
 		self.circle(start, radius * scale.abs(), fill_color, None);
@@ -706,13 +756,10 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
-			fill_color.insert(0, '#');
-
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);
 			self.render_context.begin_path();
 			self.render_context.arc(center.x, center.y, HOVER_RING_CENTERLINE_RADIUS, 0., TAU).expect("Failed to draw hover ring");
-			self.render_context.set_stroke_style_str(&fill_color);
+			self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_50);
 			self.render_context.stroke();
 		}
 
@@ -1003,6 +1050,8 @@ impl OverlayContext {
 		// 4x4 pixels, 4 components (RGBA) per pixel
 		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
+		let rgba = hex_to_rgba_u8(color.to_rgba_hex_srgb().as_str());
+
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
 		// ├──┼──┼▄▄┼──┤
@@ -1011,7 +1060,7 @@ impl OverlayContext {
 		let pixels = [(0, 0), (2, 2)];
 		for &(x, y) in &pixels {
 			let index = (x + y * PATTERN_WIDTH) * 4;
-			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
+			data[index..index + 4].copy_from_slice(&rgba);
 		}
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
@@ -1032,11 +1081,10 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.draw_path_from_subpaths(subpaths, transform);
 
-		let color_str = format!("#{}", color.to_rgba_hex_srgb());
-		self.render_context.set_fill_style_str(&color_str);
+		self.render_context.set_fill_style_str(color);
 		self.render_context.fill();
 	}
 
