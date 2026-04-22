@@ -10,7 +10,7 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
@@ -218,14 +218,9 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: Table<Raster<CPU>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image: Image<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
-	responses.add(GraphOperationMessage::NewBitmapLayer {
-		id,
-		image_frame,
-		parent,
-		insert_index,
-	});
+	responses.add(GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index });
 	LayerNodeIdentifier::new_unchecked(id)
 }
 

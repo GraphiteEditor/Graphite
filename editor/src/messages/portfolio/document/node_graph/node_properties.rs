@@ -21,6 +21,7 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
+use graphene_std::raster_types::Image;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
@@ -231,6 +232,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if x == TypeId::of::<Box<VectorModification>>() => vector_modification_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Image<Color>>() => image_data_widget(default_info).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
@@ -415,6 +417,23 @@ pub fn vector_modification_widget(parameter_widgets_info: ParameterWidgetsInfo) 
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextLabel::new(label).tooltip_label("Summary of Differential Edits").tooltip_description(tooltip).widget_instance(),
 		]);
+	}
+
+	widgets
+}
+
+pub fn image_data_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id: _, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return widgets };
+	let Some(input) = document_node.inputs.get(index) else { return widgets };
+
+	if let Some(TaggedValue::ImageData(image)) = input.as_non_exposed_value() {
+		let label = format!("{} x {}", image.width, image.height);
+
+		widgets.extend_from_slice(&[Separator::new(SeparatorStyle::Unrelated).widget_instance(), TextLabel::new(label).widget_instance()]);
 	}
 
 	widgets

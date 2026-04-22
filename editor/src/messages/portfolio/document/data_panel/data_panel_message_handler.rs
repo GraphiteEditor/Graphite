@@ -497,7 +497,7 @@ impl TableRowLayout for Raster<CPU> {
 		"Raster"
 	}
 	fn identifier(&self) -> String {
-		format!("Raster ({}x{})", self.width, self.height)
+		format!("Raster ({} x {})", self.width, self.height)
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let raster = self.data();
@@ -528,7 +528,7 @@ impl TableRowLayout for Raster<GPU> {
 		"Raster"
 	}
 	fn identifier(&self) -> String {
-		format!("Raster ({}x{})", self.data().width(), self.data().height())
+		format!("Raster ({} x {})", self.data().width(), self.data().height())
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new("Raster is a texture on the GPU and cannot currently be displayed here").widget_instance()];
