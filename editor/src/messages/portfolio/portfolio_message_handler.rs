@@ -372,12 +372,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::LoadFontCatalog => {
 				if Editor::environment().is_desktop() && preferences.system_fonts {
-					let mut system_font_collection = Collection::new(CollectionOptions { shared: false, system_fonts: true });
+					self.cached_data.system_font_collection.0 = Collection::new(CollectionOptions { shared: false, system_fonts: true });
 					// shove font metadata into cached data catalog
-					let system_font_family_names: Vec<String> = system_font_collection.family_names().map(|n| n.to_owned()).collect();
+					let system_font_family_names: Vec<String> = self.cached_data.system_font_collection.0.family_names().map(|n| n.to_owned()).collect();
 					let mut families_for_catalog = Vec::new();
 					for name in system_font_family_names {
-						let family = system_font_collection.family_by_name(&name).unwrap();
+						let family = self.cached_data.system_font_collection.0.family_by_name(&name).unwrap();
 						let mut styles = Vec::new();
 						for font in family.fonts() {
 							let style = FontCatalogStyle {
@@ -385,15 +385,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								italic: font.style() == FontStyle::Italic,
 								url: "_SYSTEM".to_owned(),
 							};
-							// simultaneously call font loaded a bunch of times to shove data into font data cache
-							// need to add logic in font loaded to handle system font loading for it to be able to work without this
-							let mut font_data_vec = Vec::new();
-							font_data_vec.extend(font.load(None).unwrap().data());
-							responses.add(PortfolioMessage::FontLoaded {
-								font_family: name.clone(),
-								font_style: style.to_named_style(),
-								data: font_data_vec,
-							});
 							styles.push(style);
 						}
 						families_for_catalog.push(FontCatalogFamily { name: name.to_owned(), styles });
@@ -422,7 +413,28 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let font = Font::new(font.font_family, style.to_named_style());
 
 					if !self.cached_data.font_cache.loaded_font(&font) {
-						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
+						if style.url == "_SYSTEM" {
+							let system_font_family_names: Vec<String> = self.cached_data.system_font_collection.0.family_names().map(|n| n.to_owned()).collect();
+							for name in system_font_family_names {
+								if name == font.font_family {
+									let family = self.cached_data.system_font_collection.0.family_by_name(&name).unwrap();
+									for system_font_style in family.fonts() {
+										if (system_font_style.weight().value() as u32 == style.weight) && ((system_font_style.style() == FontStyle::Italic) == style.italic) {
+											let mut font_data_vec = Vec::new();
+											font_data_vec.extend(system_font_style.load(None).unwrap().data());
+											responses.add(PortfolioMessage::FontLoaded {
+												font_family: name.clone(),
+												font_style: style.to_named_style(),
+												data: font_data_vec,
+											});
+											return;
+										}
+									}
+								}
+							}
+						} else {
+							responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
+						}
 					}
 				}
 			}
