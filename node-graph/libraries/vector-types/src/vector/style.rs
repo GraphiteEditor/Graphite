@@ -304,6 +304,8 @@ fn daffine2_identity() -> DAffine2 {
 pub struct Stroke {
 	/// Stroke color
 	pub color: Option<Color>,
+	/// Optional gradient paint. If set, overrides `color`.
+	pub gradient: Option<Gradient>,
 	/// Line thickness
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
@@ -325,6 +327,7 @@ pub struct Stroke {
 impl std::hash::Hash for Stroke {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.color.hash(state);
+		self.gradient.hash(state);
 		self.weight.to_bits().hash(state);
 		{
 			self.dash_lengths.len().hash(state);
@@ -344,6 +347,7 @@ impl Stroke {
 	pub const fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
 			color,
+			gradient: None,
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
@@ -359,6 +363,12 @@ impl Stroke {
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
 			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
+			gradient: match (&self.gradient, &other.gradient) {
+				(Some(a), Some(b)) => Some(a.lerp(b, time)),
+				(Some(a), None) if time < 0.5 => Some(a.clone()),
+				(None, Some(b)) if time >= 0.5 => Some(b.clone()),
+				_ => None,
+			},
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
@@ -397,6 +407,10 @@ impl Stroke {
 	/// Get the current stroke color.
 	pub fn color(&self) -> Option<Color> {
 		self.color
+	}
+	/// Get the current stroke gradient.
+	pub fn gradient(&self) -> Option<&Gradient> {
+		self.gradient.as_ref()
 	}
 
 	/// Get the current stroke weight.
@@ -440,8 +454,19 @@ impl Stroke {
 
 	pub fn with_color(mut self, color: &Option<Color>) -> Option<Self> {
 		self.color = *color;
+		if color.is_some() {
+			self.gradient = None;
+		}
 
 		Some(self)
+	}
+	/// Set the stroke's gradient, replacing the color if necessary.
+	pub fn with_gradient(mut self, gradient: Option<Gradient>) -> Self {
+		self.gradient = gradient;
+		if self.gradient.is_some() {
+			self.color = None;
+		}
+		self
 	}
 
 	pub fn with_weight(mut self, weight: f64) -> Self {
@@ -488,7 +513,14 @@ impl Stroke {
 	}
 
 	pub fn has_renderable_stroke(&self) -> bool {
-		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
+		if self.weight <= 0. {
+			return false;
+		}
+
+		let has_color_alpha = self.color.is_some_and(|color| color.a() != 0.);
+		let has_gradient_alpha = self.gradient.as_ref().is_some_and(|gradient| gradient.stops.color.iter().any(|color| color.a() != 0.));
+
+		has_color_alpha || has_gradient_alpha
 	}
 }
 
@@ -498,6 +530,7 @@ impl Default for Stroke {
 		Self {
 			weight: 0.,
 			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
+			gradient: None,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			cap: StrokeCap::Butt,
@@ -530,7 +563,14 @@ impl std::fmt::Display for PathStyle {
 		let fill = &self.fill;
 
 		let stroke = match &self.stroke {
-			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| c.to_rgba_hex_srgb()), stroke.weight),
+			Some(stroke) => {
+				let paint = match (&stroke.gradient, stroke.color) {
+					(Some(_), _) => "Gradient".to_string(),
+					(_, Some(color)) => format!("#{}", color.to_rgba_hex_srgb()),
+					_ => "None".to_string(),
+				};
+				format!("{paint} (Weight: {} px)", stroke.weight)
+			}
 			None => "None".to_string(),
 		};
 

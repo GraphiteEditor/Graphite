@@ -738,6 +738,8 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 	if let usvg::Paint::Color(color) = &stroke.paint() {
 		modify_inputs.stroke_set(Stroke {
 			color: Some(usvg_color(*color, stroke.opacity().get())),
+			//Added the gradient field to the Stroke struct
+			gradient: None,
 			weight: stroke.width().get() as f64,
 			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
 			dash_offset: stroke.dashoffset() as f64,
