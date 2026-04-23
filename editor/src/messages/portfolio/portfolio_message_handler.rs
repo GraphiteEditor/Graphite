@@ -369,6 +369,46 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
+			PortfolioMessage::LoadFontCatalog => {
+				if Editor::environment().is_desktop() {
+					let system_font_context = FontContext::new(); // create system font context
+					let mut system_font_collection = system_font_context.collection;
+					let mut system_font_collection_again = system_font_collection.clone(); // because parley was not made correctly
+
+					// shove font metadata into cached data catalog
+					let mut system_font_family_names = Vec::new();
+					system_font_family_names.extend(system_font_collection.family_names());
+					let mut families_for_catalog = Vec::new();
+					for name in system_font_family_names {
+						let family = system_font_collection_again.family_by_name(name).unwrap();
+						let mut styles = Vec::new();
+						for font in family.fonts() {
+							let style = FontCatalogStyle {
+								weight: (font.weight().value()) as u32,
+								italic: font.style() == FontStyle::Italic,
+								url: "_SYSTEM".to_owned(),
+							};
+							// simultaneously call font loaded a bunch of times to shove data into font data cache
+							// need to add logic in font loaded to handle system font loading for it to be able to work without this
+							let mut font_data_vec = Vec::new();
+							font_data_vec.extend(font.load(None).unwrap().data());
+							responses.add(PortfolioMessage::FontLoaded {
+								font_family: name.to_owned(),
+								font_style: style.to_named_style(),
+								data: font_data_vec,
+							});
+							styles.push(style);
+						}
+						families_for_catalog.push(FontCatalogFamily { name: name.to_owned(), styles });
+					}
+					responses.add(PortfolioMessage::FontCatalogLoaded {
+						catalog: FontCatalog(families_for_catalog),
+					});
+				} else {
+					// if not desktop, call to frontend as usual
+					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+				}
+			}
 			PortfolioMessage::FontCatalogLoaded { catalog } => {
 				self.cached_data.font_catalog = catalog;
 
@@ -440,44 +480,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				let catalog = &self.cached_data.font_catalog;
-
+				// add handling for if font catalog preference has changed or maybe if user
+				// has requested font catalog refresh?
 				if catalog.0.is_empty() {
-					if Editor::environment().is_desktop() {
-						let system_font_context = FontContext::new(); // create system font context
-						let mut system_font_collection = system_font_context.collection;
-						let mut system_font_collection_again = system_font_collection.clone(); // because parley was not made correctly
-
-						// shove font metadata into cached data catalog
-						// simultaneously?? call font loaded a bunch of times to shove data into font data cache
-						let mut system_font_family_names = Vec::new();
-						system_font_family_names.extend(system_font_collection.family_names());
-						log::error!("fonts are: {:?}", system_font_family_names);
-						let mut families_for_catalog = Vec::new();
-						for name in system_font_family_names {
-							let family = system_font_collection_again.family_by_name(name).unwrap();
-							let mut styles = Vec::new();
-							for font in family.fonts() {
-								let style = FontCatalogStyle {
-									weight: (font.weight().value()) as u32,
-									italic: font.style() == FontStyle::Italic,
-									url: "".to_owned(),
-								};
-								let mut font_data_vec = Vec::new();
-								font_data_vec.extend(font.load(None).unwrap().data());
-								responses.add(PortfolioMessage::FontLoaded {
-									font_family: name.to_owned(),
-									font_style: style.to_named_style(),
-									data: font_data_vec,
-								});
-								styles.push(style);
-							}
-							let family_for_catalog = FontCatalogFamily { name: name.to_owned(), styles };
-							families_for_catalog.push(family_for_catalog);
-						}
-						self.cached_data.font_catalog = FontCatalog(families_for_catalog);
-					} else {
-						responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
-					}
+					responses.add(PortfolioMessage::LoadFontCatalog);
 					return;
 				}
 
