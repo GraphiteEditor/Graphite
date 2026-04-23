@@ -2355,7 +2355,12 @@ pub mod choice {
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
 							let committer = committer_factory();
-							MenuListEntry::new(metadata.name).label(metadata.label).on_update(move |_| updater(item)).on_commit(committer)
+							MenuListEntry::new(metadata.name)
+								.label(metadata.label)
+								.tooltip_label(metadata.label)
+								.tooltip_description(metadata.description.unwrap_or_default())
+								.on_update(move |_| updater(item))
+								.on_commit(committer)
 						})
 						.collect()
 				})

@@ -11,6 +11,7 @@
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let disabled = false;
+	export let monospace = false;
 
 	let self: FieldInput | undefined;
 	let editing = false;
@@ -57,6 +58,7 @@
 	spellcheck={true}
 	{label}
 	{disabled}
+	{monospace}
 	{tooltipLabel}
 	{tooltipDescription}
 	{tooltipShortcut}
