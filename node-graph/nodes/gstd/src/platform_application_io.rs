@@ -120,7 +120,7 @@ fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 	let Some(image) = image.iter().next() else { return vec![] };
-	image.element.data.iter().flat_map(|color| color.to_rgba8_srgb().into_iter()).collect::<Vec<u8>>()
+	image.element().data.iter().flat_map(|color| color.to_rgba8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
@@ -187,6 +187,7 @@ where
 	Table<T>: Render,
 {
 	use core_types::table::TableRow;
+	use glam::{DAffine2, DVec2};
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
@@ -204,10 +205,11 @@ where
 	};
 
 	for mut row in data.iter_mut() {
-		*row.transform_mut() = glam::DAffine2::from_translation(-aabb.start) * *row.transform();
+		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+		row.set_attribute("transform", DAffine2::from_translation(-aabb.start) * current_transform);
 	}
 	data.render_svg(&mut render, &render_params);
-	render.format_svg(glam::DVec2::ZERO, size);
+	render.format_svg(DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();
 
 	canvas.set_resolution(resolution);
@@ -228,5 +230,5 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(TableRow::new(Raster::new_cpu(image), footprint.transform, Default::default(), None))
+	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute("transform", footprint.transform))
 }

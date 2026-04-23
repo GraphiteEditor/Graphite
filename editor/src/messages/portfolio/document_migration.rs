@@ -1962,7 +1962,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			&& let TaggedValue::Vector(vector_table) = &**tagged_value
 			&& !vector_table.is_empty()
 		{
-			let vector = vector_table.iter().next()?.element;
+			let vector = vector_table.iter().next()?.element();
 			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
 
 			// Reset input 0 to the default exposed state
@@ -1983,7 +1983,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		&& let TaggedValue::Raster(raster_table) = &**tagged_value
 		&& let Some(row) = raster_table.iter().next()
 	{
-		let image = row.element.data().clone();
+		let image = row.element().data().clone();
 
 		document
 			.network_interface

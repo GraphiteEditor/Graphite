@@ -15,7 +15,7 @@ use graphene_std::ops::Convert;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::table::{Table, TableRow};
+use graphene_std::table::Table;
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
@@ -441,9 +441,8 @@ impl NodeRuntime {
 			// Vector table: vector modifications
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 				// Insert the vector modify
-				let default = TableRow::default();
 				self.vector_modify
-					.insert(parent_network_node_id, io.output.iter().next().unwrap_or_else(|| default.as_ref()).element.clone());
+					.insert(parent_network_node_id, io.output.iter().next().map(|row| row.element().clone()).unwrap_or_default());
 			}
 			// Other
 			else {

@@ -261,7 +261,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.iter().next().unwrap().element.clone(),
+					image: image.iter().next().unwrap().element().clone(),
 				},
 				_ => panic!("Expected Image, found {element:?}"),
 			}
@@ -316,7 +316,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	}
 
 	fn from_image_table(table: Table<Image<Color>>) -> Table<Raster<CPU>> {
-		Table::new_from_element(Raster::new_cpu(table.iter().next().unwrap().element.clone()))
+		Table::new_from_element(Raster::new_cpu(table.iter().next().unwrap().element().clone()))
 	}
 
 	fn old_table_to_new_table<T>(old_table: OldTable<T>) -> Table<T> {
@@ -324,7 +324,12 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			.element
 			.into_iter()
 			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-			.map(|(element, (transform, alpha_blending))| TableRow::new(element, transform, alpha_blending, None))
+			.map(|(element, (transform, alpha_blending))| {
+				TableRow::new_from_element(element)
+					.with_attribute("transform", transform)
+					.with_attribute("alpha_blending", alpha_blending)
+					.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
+			})
 			.collect()
 	}
 
@@ -332,7 +337,12 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		old_table
 			.element
 			.into_iter()
-			.map(|element| TableRow::new(element, DAffine2::IDENTITY, AlphaBlending::default(), None))
+			.map(|element| {
+				TableRow::new_from_element(element)
+					.with_attribute("transform", DAffine2::IDENTITY)
+					.with_attribute("alpha_blending", AlphaBlending::default())
+					.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
+			})
 			.collect()
 	}
 
@@ -342,7 +352,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				.iter()
 				.next()
 				.unwrap_or(Table::new_from_element(ImageFrame::default()).iter().next().unwrap())
-				.element
+				.element()
 				.image
 				.clone(),
 		))
@@ -353,8 +363,8 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
 			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
 			let mut row = image_frame_table.iter_mut().next().unwrap();
-			*row.transform_mut() = transform;
-			*row.alpha_blending_mut() = alpha_blending;
+			*row.attribute_mut_or_insert_default("transform") = transform;
+			*row.attribute_mut_or_insert_default("alpha_blending") = alpha_blending;
 			image_frame_table
 		}
 		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),
@@ -411,7 +421,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.iter().next().unwrap().element.clone(),
+					image: image.iter().next().unwrap().element().clone(),
 				},
 				_ => panic!("Expected Image, found {element:?}"),
 			}
@@ -445,19 +455,18 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
-		FormatVersions::Image(image) => TableRow::new(Raster::new_cpu(image), DAffine2::IDENTITY, AlphaBlending::default(), None),
-		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => TableRow::new(
-			Raster::new_cpu(image_frame_with_transform_and_blending.image),
-			image_frame_with_transform_and_blending.transform,
-			image_frame_with_transform_and_blending.alpha_blending,
-			None,
-		),
-		FormatVersions::ImageFrameTable(image_frame) => TableRow::new(
-			Raster::new_cpu(image_frame.iter().next().unwrap().element.image.clone()),
-			DAffine2::IDENTITY,
-			AlphaBlending::default(),
-			None,
-		),
+		FormatVersions::Image(image) => TableRow::new_from_element(Raster::new_cpu(image))
+			.with_attribute("transform", DAffine2::IDENTITY)
+			.with_attribute("alpha_blending", AlphaBlending::default())
+			.with_attribute("source_node_id", None::<core_types::uuid::NodeId>),
+		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => TableRow::new_from_element(Raster::new_cpu(image_frame_with_transform_and_blending.image))
+			.with_attribute("transform", image_frame_with_transform_and_blending.transform)
+			.with_attribute("alpha_blending", image_frame_with_transform_and_blending.alpha_blending)
+			.with_attribute("source_node_id", None::<core_types::uuid::NodeId>),
+		FormatVersions::ImageFrameTable(image_frame) => TableRow::new_from_element(Raster::new_cpu(image_frame.iter().next().unwrap().element().image.clone()))
+			.with_attribute("transform", DAffine2::IDENTITY)
+			.with_attribute("alpha_blending", AlphaBlending::default())
+			.with_attribute("source_node_id", None::<core_types::uuid::NodeId>),
 		FormatVersions::RasterTable(image_frame_table) => image_frame_table.into_iter().next().unwrap_or_default(),
 		FormatVersions::RasterTableRow(image_table_row) => image_table_row,
 	})

@@ -80,9 +80,10 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		for row in generated_instance.iter() {
 			let mut row = row.into_cloned();
 
-			let local_translation = DAffine2::from_translation(row.transform().translation);
-			let local_matrix = DAffine2::from_mat2(row.transform().matrix2);
-			*row.transform_mut() = local_translation * transform * local_matrix;
+			let local_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+			let local_translation = DAffine2::from_translation(local_transform.translation);
+			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
+			*row.attribute_mut_or_insert_default("transform") = local_translation * transform * local_matrix;
 
 			result_table.push(row);
 		}
@@ -125,9 +126,10 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		for row in generated_instance.iter() {
 			let mut row = row.into_cloned();
 
-			let local_translation = DAffine2::from_translation(row.transform().translation);
-			let local_matrix = DAffine2::from_mat2(row.transform().matrix2);
-			*row.transform_mut() = local_translation * transform * local_matrix;
+			let local_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+			let local_translation = DAffine2::from_translation(local_transform.translation);
+			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
+			*row.attribute_mut_or_insert_default("transform") = local_translation * transform * local_matrix;
 
 			result_table.push(row);
 		}
@@ -153,8 +155,8 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	let mut result_table = Table::new();
 
 	for points_row in points.iter() {
-		let points = points_row.element;
-		let transform = points_row.transform();
+		let points = points_row.element();
+		let transform: DAffine2 = points_row.attribute_cloned_or_default("transform");
 
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
@@ -163,7 +165,7 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
 			for mut generated_row in generated_instance.into_iter() {
-				generated_row.transform_mut().translation = transformed_point;
+				generated_row.attribute_mut_or_insert_default::<DAffine2>("transform").translation = transformed_point;
 				result_table.push(generated_row);
 			}
 		};
@@ -232,7 +234,7 @@ mod test {
 		let generated = super::repeat_on_points(context, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
 		for (position, generated_row) in positions.into_iter().zip(generated.iter()) {
-			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform()).unwrap();
+			let bounds = generated_row.element().bounding_box_with_transform(generated_row.attribute_cloned_or_default("transform")).unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}
@@ -252,7 +254,7 @@ mod test {
 		)
 		.await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
+		let vector = vector_table.iter().next().unwrap().element();
 		assert_eq!(vector.region_manipulator_groups().count(), 3);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
@@ -273,7 +275,7 @@ mod test {
 		)
 		.await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
+		let vector = vector_table.iter().next().unwrap().element();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
@@ -285,7 +287,7 @@ mod test {
 		let context = OwnedContextImpl::default().into_context();
 		let repeated = super::repeat_radial(context, &FutureWrapperNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))), 45., 4., 8).await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
+		let vector = vector_table.iter().next().unwrap().element();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {

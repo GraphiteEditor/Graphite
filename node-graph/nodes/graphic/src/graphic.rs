@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{AlphaBlending, AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
@@ -169,7 +169,8 @@ where
 
 	// Create and add mirrored instance
 	for mut row in content.into_iter() {
-		*row.transform_mut() = reflected_transform * *row.transform();
+		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+		row.set_attribute("transform", reflected_transform * current_transform);
 		result_table.push(row);
 	}
 
@@ -200,7 +201,7 @@ pub async fn source_node_id<T: 'n + Send + Clone>(
 
 	let mut content = content;
 	for mut row in content.iter_mut() {
-		*row.source_node_id_mut() = source_node_id;
+		row.set_attribute("source_node_id", source_node_id);
 	}
 
 	content
@@ -242,7 +243,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		*row.source_node_id_mut() = source_node_id;
+		row.set_attribute("source_node_id", source_node_id);
 		base.push(row);
 	}
 
@@ -292,10 +293,10 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for current_row in current_graphic_table.iter() {
-			let current_element = current_row.element.clone();
-			let reference = *current_row.source_node_id();
-			let current_transform = *current_row.transform();
-			let current_alpha_blending = *current_row.alpha_blending();
+			let current_element = current_row.element().clone();
+			let reference: Option<NodeId> = current_row.attribute_cloned_or_default("source_node_id");
+			let current_transform: DAffine2 = current_row.attribute_cloned_or_default("transform");
+			let current_alpha_blending: AlphaBlending = current_row.attribute_cloned_or_default("alpha_blending");
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -304,14 +305,20 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
 					for mut graphic in current_element.iter_mut() {
-						*graphic.transform_mut() = current_transform * *graphic.transform();
+						let graphic_transform: DAffine2 = graphic.attribute_cloned_or_default("transform");
+						graphic.set_attribute("transform", current_transform * graphic_transform);
 					}
 
 					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
 				}
 				// Push any leaf Graphic elements we encounter, which can be either Graphic table elements beyond the recursion depth, or table elements other than Graphic tables
 				_ => {
-					output_graphic_table.push(TableRow::new(current_element, current_transform, current_alpha_blending, reference));
+					output_graphic_table.push(
+						TableRow::new_from_element(current_element)
+							.with_attribute("transform", current_transform)
+							.with_attribute("alpha_blending", current_alpha_blending)
+							.with_attribute("source_node_id", reference),
+					);
 				}
 			}
 		}
@@ -376,12 +383,12 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
-				color: *color.element,
+				color: *color.element(),
 			},
 			GradientStop {
 				position: 1.,
 				midpoint: 0.5,
-				color: *color.element,
+				color: *color.element(),
 			},
 		]));
 	}
@@ -389,7 +396,7 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
 		position: index as f64 / (total_colors - 1) as f64,
 		midpoint: 0.5,
-		color: row.element,
+		color: row.into_element(),
 	});
 	Table::new_from_element(GradientStops::new(colors))
 }

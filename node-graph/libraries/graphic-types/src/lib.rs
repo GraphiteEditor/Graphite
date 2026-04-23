@@ -82,20 +82,30 @@ pub mod migrations {
 					upstream_data: old.upstream_graphic_group,
 				});
 				let mut row = vector_table.iter_mut().next().unwrap();
-				*row.transform_mut() = old.transform;
-				*row.alpha_blending_mut() = old.alpha_blending;
+				*row.attribute_mut_or_insert_default("transform") = old.transform;
+				*row.attribute_mut_or_insert_default("alpha_blending") = old.alpha_blending;
 				vector_table
 			}
 			VectorFormat::OlderVectorTable(older_table) => older_table
 				.element
 				.into_iter()
-				.map(|element| TableRow::new(element, DAffine2::IDENTITY, AlphaBlending::default(), None))
+				.map(|element| {
+					TableRow::new_from_element(element)
+						.with_attribute("transform", DAffine2::IDENTITY)
+						.with_attribute("alpha_blending", AlphaBlending::default())
+						.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
+				})
 				.collect(),
 			VectorFormat::OldVectorTable(old_table) => old_table
 				.element
 				.into_iter()
 				.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-				.map(|(element, (transform, alpha_blending))| TableRow::new(element, transform, alpha_blending, None))
+				.map(|(element, (transform, alpha_blending))| {
+					TableRow::new_from_element(element)
+						.with_attribute("transform", transform)
+						.with_attribute("alpha_blending", alpha_blending)
+						.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
+				})
 				.collect(),
 			VectorFormat::VectorTable(vector_table) => vector_table,
 		})

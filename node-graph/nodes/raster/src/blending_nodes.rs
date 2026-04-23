@@ -30,13 +30,14 @@ mod blend_std {
 	impl Blend<Color> for Table<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter()) {
-				let data = over.element.data.iter().zip(under.element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			for (mut over, under) in result_table.iter_mut().zip(under.iter()) {
+				let data = over.element().data.iter().zip(under.element().data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+				let (width, height) = (over.element().width, over.element().height);
 
-				*over.element = Raster::new_cpu(Image {
+				*over.element_mut() = Raster::new_cpu(Image {
 					data,
-					width: over.element.width,
-					height: over.element.height,
+					width,
+					height,
 					base64_string: None,
 				});
 			}
@@ -46,8 +47,9 @@ mod blend_std {
 	impl Blend<Color> for Table<Color> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter()) {
-				*over.element = blend_fn(*over.element, *under.element);
+			for (mut over, under) in result_table.iter_mut().zip(under.iter()) {
+				let new_val = blend_fn(*over.element(), *under.element());
+				*over.element_mut() = new_val;
 			}
 			result_table
 		}
@@ -55,8 +57,9 @@ mod blend_std {
 	impl Blend<Color> for Table<GradientStops> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter()) {
-				*over.element = over.element.blend(under.element, &blend_fn);
+			for (mut over, under) in result_table.iter_mut().zip(under.iter()) {
+				let new_val = over.element().blend(under.element(), &blend_fn);
+				*over.element_mut() = new_val;
 			}
 			result_table
 		}
@@ -201,7 +204,7 @@ mod test {
 		let opacity = 100.;
 
 		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.iter().next().unwrap().element;
+		let result = result.iter().next().unwrap().element().clone();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

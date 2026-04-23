@@ -869,7 +869,7 @@ fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, po
 	let Some(row) = gradient.get(0) else { return Table::new() };
 
 	let position = position.clamp(0., 1.);
-	let color = row.element.evaluate(position);
+	let color = row.element().evaluate(position);
 	Table::new_from_element(color)
 }
 

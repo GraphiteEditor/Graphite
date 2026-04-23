@@ -649,7 +649,7 @@ mod test_artboard {
 		let artboards = get_artboards(editor)
 			.await
 			.iter()
-			.map(|row| ArtboardLayoutDocument::new(row.element.location, row.element.dimensions))
+			.map(|row| ArtboardLayoutDocument::new(row.element().location, row.element().dimensions))
 			.collect::<Vec<_>>();
 		assert_eq!(artboards.len(), expected.len(), "incorrect len: actual {:?}, expected {:?}", artboards, expected);
 

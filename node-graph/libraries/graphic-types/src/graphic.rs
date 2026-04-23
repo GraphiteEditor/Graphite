@@ -141,16 +141,19 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
 		for current_graphic_row in current_graphic_table.into_iter() {
-			let source_node_id = *current_graphic_row.source_node_id();
-			let current_transform = *current_graphic_row.transform();
-			let current_alpha_blending = *current_graphic_row.alpha_blending();
+			let source_node_id: Option<NodeId> = current_graphic_row.attribute_cloned_or_default("source_node_id");
+			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default("transform");
+			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default("alpha_blending");
 
-			match current_graphic_row.element {
+			match current_graphic_row.into_element() {
 				// Recurse into nested graphic tables, composing the parent's transform onto each child
 				Graphic::Graphic(mut sub_table) => {
 					for mut graphic in sub_table.iter_mut() {
-						*graphic.transform_mut() = current_transform * *graphic.transform();
-						*graphic.alpha_blending_mut() = compose_alpha_blending(current_alpha_blending, *graphic.alpha_blending());
+						let child_transform: DAffine2 = graphic.attribute_cloned_or_default("transform");
+						let child_alpha_blending: AlphaBlending = graphic.attribute_cloned_or_default("alpha_blending");
+
+						*graphic.attribute_mut_or_insert_default("transform") = current_transform * child_transform;
+						*graphic.attribute_mut_or_insert_default("alpha_blending") = compose_alpha_blending(current_alpha_blending, child_alpha_blending);
 					}
 
 					flatten_recursive(output, sub_table, extract_variant);
@@ -159,9 +162,15 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 				other => {
 					if let Some(typed_table) = extract_variant(other) {
 						for row in typed_table.into_iter() {
-							let transform = current_transform * *row.transform();
-							let alpha_blending = compose_alpha_blending(current_alpha_blending, *row.alpha_blending());
-							output.push(TableRow::new(row.element, transform, alpha_blending, source_node_id));
+							let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+							let row_alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
+							let (element, mut attributes) = row.into_parts();
+
+							attributes.insert("transform", current_transform * row_transform);
+							attributes.insert("alpha_blending", compose_alpha_blending(current_alpha_blending, row_alpha_blending));
+							attributes.insert("source_node_id", source_node_id);
+
+							output.push(TableRow::from_parts(element, attributes));
 						}
 					}
 				}
@@ -312,20 +321,20 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector.iter().all(|row| row.alpha_blending().clip),
-			Graphic::Graphic(graphic) => graphic.iter().all(|row| row.alpha_blending().clip),
-			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.alpha_blending().clip),
-			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending().clip),
-			Graphic::Color(color) => color.iter().all(|row| row.alpha_blending().clip),
-			Graphic::Gradient(gradient) => gradient.iter().all(|row| row.alpha_blending().clip),
+			Graphic::Vector(vector) => vector.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
+			Graphic::Graphic(graphic) => graphic.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
+			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
+			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
+			Graphic::Color(color) => color.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
+			Graphic::Gradient(gradient) => gradient.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
 			Graphic::Vector(vector) => vector.iter().all(|row| {
-				let style = &row.element.style;
-				let alpha_blending = row.alpha_blending();
+				let style = &row.element().style;
+				let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
 				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
 			}),
 			_ => false,
@@ -336,12 +345,12 @@ impl Graphic {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
-			Graphic::Vector(vector) => vector.bounding_box(transform, include_stroke),
-			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
-			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
-			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
-			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
-			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
+			Graphic::Vector(table) => table.bounding_box(transform, include_stroke),
+			Graphic::RasterCPU(table) => table.bounding_box(transform, include_stroke),
+			Graphic::RasterGPU(table) => table.bounding_box(transform, include_stroke),
+			Graphic::Graphic(table) => table.bounding_box(transform, include_stroke),
+			Graphic::Color(table) => table.bounding_box(transform, include_stroke),
+			Graphic::Gradient(table) => table.bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -503,7 +512,12 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 		GraphicFormat::OldGraphicGroup(old) => {
 			let mut graphic_table = Table::new();
 			for (graphic, source_node_id) in old.elements {
-				graphic_table.push(TableRow::new(graphic, old.transform, old.alpha_blending, source_node_id));
+				graphic_table.push(
+					TableRow::new_from_element(graphic)
+						.with_attribute("transform", old.transform)
+						.with_attribute("alpha_blending", old.alpha_blending)
+						.with_attribute("source_node_id", source_node_id),
+				);
 			}
 			graphic_table
 		}
@@ -511,30 +525,36 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 			.element
 			.into_iter()
 			.flat_map(|element| {
-				element
-					.elements
-					.into_iter()
-					.map(move |(graphic, source_node_id)| TableRow::new(graphic, element.transform, element.alpha_blending, source_node_id))
+				element.elements.into_iter().map(move |(graphic, source_node_id)| {
+					TableRow::new_from_element(graphic)
+						.with_attribute("transform", element.transform)
+						.with_attribute("alpha_blending", element.alpha_blending)
+						.with_attribute("source_node_id", source_node_id)
+				})
 			})
 			.collect(),
 		GraphicFormat::OldTableOldGraphicGroup(old) => old
 			.element
 			.into_iter()
 			.flat_map(|element| {
-				element
-					.elements
-					.into_iter()
-					.map(move |(graphic, source_node_id)| TableRow::new(graphic, element.transform, element.alpha_blending, source_node_id))
+				element.elements.into_iter().map(move |(graphic, source_node_id)| {
+					TableRow::new_from_element(graphic)
+						.with_attribute("transform", element.transform)
+						.with_attribute("alpha_blending", element.alpha_blending)
+						.with_attribute("source_node_id", source_node_id)
+				})
 			})
 			.collect(),
 		GraphicFormat::OldTableGraphicGroup(old) => old
 			.element
 			.into_iter()
 			.flat_map(|element| {
-				element
-					.elements
-					.into_iter()
-					.map(move |(graphic, source_node_id)| TableRow::new(graphic, Default::default(), Default::default(), source_node_id))
+				element.elements.into_iter().map(move |(graphic, source_node_id)| {
+					TableRow::new_from_element(graphic)
+						.with_attribute("transform", DAffine2::IDENTITY)
+						.with_attribute("alpha_blending", AlphaBlending::default())
+						.with_attribute("source_node_id", source_node_id)
+				})
 			})
 			.collect(),
 		GraphicFormat::Table(value) => {
@@ -542,8 +562,16 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut graphic_table = Table::new();
 				for row in old_table.iter() {
-					for (graphic, source_node_id) in &row.element.elements {
-						graphic_table.push(TableRow::new(graphic.clone(), *row.transform(), *row.alpha_blending(), *source_node_id));
+					let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+					let row_alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
+
+					for (graphic, source_node_id) in &row.element().elements {
+						graphic_table.push(
+							TableRow::new_from_element(graphic.clone())
+								.with_attribute("transform", row_transform)
+								.with_attribute("alpha_blending", row_alpha_blending)
+								.with_attribute("source_node_id", *source_node_id),
+						);
 					}
 				}
 				graphic_table

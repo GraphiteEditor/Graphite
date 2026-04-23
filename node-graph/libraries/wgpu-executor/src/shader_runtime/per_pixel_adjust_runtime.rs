@@ -171,7 +171,7 @@ impl PerPixelAdjustGraphicsPipeline {
 		let out = textures
 			.iter()
 			.map(|instance| {
-				let tex_in = &instance.element.texture;
+				let tex_in = &instance.element().texture;
 				let view_in = tex_in.create_view(&TextureViewDescriptor::default());
 				let format = tex_in.format();
 
@@ -233,7 +233,8 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.set_bind_group(0, Some(&bind_group), &[]);
 				rp.draw(0..3, 0..1);
 
-				TableRow::new(Raster::new(GPU { texture: tex_out }), *instance.transform(), *instance.alpha_blending(), *instance.source_node_id())
+				let (_, attributes) = instance.into_cloned().into_parts();
+				TableRow::from_parts(Raster::new(GPU { texture: tex_out }), attributes)
 			})
 			.collect::<Table<_>>();
 		context.queue.submit([cmd.finish()]);

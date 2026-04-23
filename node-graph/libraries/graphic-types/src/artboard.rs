@@ -50,9 +50,24 @@ impl BoundingBox for Artboard {
 			return RenderBoundingBox::Rectangle(artboard_bounds());
 		}
 
-		match self.content.bounding_box(transform, include_stroke) {
-			RenderBoundingBox::Rectangle(content_bounds) => RenderBoundingBox::Rectangle(Quad::combine_bounds(content_bounds, artboard_bounds())),
-			other => other,
+		let mut combined_bounds = None;
+
+		for row in self.content.iter() {
+			let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+
+			match row.element().bounding_box(transform * row_transform, include_stroke) {
+				RenderBoundingBox::None => continue,
+				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
+				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
+					Some(existing) => combined_bounds = Some(Quad::combine_bounds(existing, bounds)),
+					None => combined_bounds = Some(bounds),
+				},
+			}
+		}
+
+		match combined_bounds {
+			Some(content_bounds) => RenderBoundingBox::Rectangle(Quad::combine_bounds(content_bounds, artboard_bounds())),
+			None => RenderBoundingBox::Rectangle(artboard_bounds()),
 		}
 	}
 }
@@ -104,7 +119,12 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		ArtboardFormat::ArtboardGroup(artboard_group) => {
 			let mut table = Table::new();
 			for (artboard, source_node_id) in artboard_group.artboards {
-				table.push(TableRow::new(artboard, DAffine2::IDENTITY, AlphaBlending::default(), source_node_id));
+				table.push(
+					TableRow::new_from_element(artboard)
+						.with_attribute("transform", DAffine2::IDENTITY)
+						.with_attribute("alpha_blending", AlphaBlending::default())
+						.with_attribute("source_node_id", source_node_id),
+				);
 			}
 			table
 		}
@@ -112,7 +132,12 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 			.element
 			.into_iter()
 			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-			.map(|(element, (transform, alpha_blending))| TableRow::new(element, transform, alpha_blending, None))
+			.map(|(element, (transform, alpha_blending))| {
+				TableRow::new_from_element(element)
+					.with_attribute("transform", transform)
+					.with_attribute("alpha_blending", alpha_blending)
+					.with_attribute("source_node_id", None::<NodeId>)
+			})
 			.collect(),
 		ArtboardFormat::ArtboardTable(artboard_table) => artboard_table,
 	})

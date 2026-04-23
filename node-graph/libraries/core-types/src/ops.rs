@@ -63,10 +63,8 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 		let table: Table<U> = self
 			.into_iter()
 			.map(|row| {
-				let transform = *row.transform();
-				let alpha_blending = *row.alpha_blending();
-				let source_node_id = *row.source_node_id();
-				TableRow::new(row.element.convert_row(), transform, alpha_blending, source_node_id)
+				let (element, attributes) = row.into_parts();
+				TableRow::from_parts(element.convert_row(), attributes)
 			})
 			.collect();
 		table
