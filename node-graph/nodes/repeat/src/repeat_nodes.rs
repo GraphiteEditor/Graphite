@@ -1,6 +1,6 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
-use core_types::registry::types::{Angle, IntegerCount, PixelSize};
+use core_types::registry::types::{Angle, PixelSize};
 use core_types::table::{Table, TableRowRef};
 use core_types::{CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -19,7 +19,9 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<GradientStops>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
-	#[default(1)] count: u64,
+	#[default(1)]
+	#[hard_min(1)]
+	count: u32,
 	reverse: bool,
 ) -> Table<T> {
 	// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
@@ -57,7 +59,9 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
 	angle: Angle,
-	#[default(5)] count: IntegerCount,
+	#[default(5)]
+	#[hard_min(1)]
+	count: u32,
 ) -> Table<T> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
@@ -102,7 +106,9 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
-	#[default(5)] count: IntegerCount,
+	#[default(5)]
+	#[hard_min(1)]
+	count: u32,
 ) -> Table<T> {
 	let count = count.max(1);
 
