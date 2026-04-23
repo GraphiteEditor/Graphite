@@ -371,7 +371,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::LoadFontCatalog => {
-				if Editor::environment().is_desktop() {
+				if Editor::environment().is_desktop() && preferences.system_fonts {
 					let mut system_font_collection = Collection::new(CollectionOptions { shared: false, system_fonts: true });
 					// shove font metadata into cached data catalog
 					let system_font_family_names: Vec<String> = system_font_collection.family_names().map(|n| n.to_owned()).collect();
@@ -402,7 +402,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						catalog: FontCatalog(families_for_catalog),
 					});
 				} else {
-					// if not desktop, call to frontend as usual
+					// if not desktop or not system fonts, call to frontend as usual
 					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
 				}
 			}

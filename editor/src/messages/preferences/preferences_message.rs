@@ -18,6 +18,9 @@ pub enum PreferencesMessage {
 	BrushTool {
 		enabled: bool,
 	},
+	SystemFonts {
+		enabled: bool,
+	},
 	ModifyLayout {
 		zoom_with_scroll: bool,
 	},
