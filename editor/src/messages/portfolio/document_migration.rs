@@ -1673,7 +1673,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
 		//
 		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
-		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> Table<Vector> { ... }
+		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> Table<Vector> { ... }
 		//
 		// v2 signature:
 		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }

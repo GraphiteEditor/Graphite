@@ -1,11 +1,16 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::registry::types::IntegerCount;
 use core_types::table::{Table, TableRow};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
-async fn image_color_palette(_: impl Ctx, image: Table<Raster<CPU>>, #[default(4)] count: IntegerCount) -> Table<Color> {
+async fn image_color_palette(
+	_: impl Ctx,
+	image: Table<Raster<CPU>>,
+	#[default(4)]
+	#[hard_min(1)]
+	count: u32,
+) -> Table<Color> {
 	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
