@@ -761,8 +761,14 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Table<Color>) -> Table<Color> {
-	color
+fn color_value<C: Into<Table<Color>>>(
+	_: impl Ctx,
+	_primary: (),
+	#[default(Color::BLACK)]
+	#[implementations(Option<Color>, Table<Color>)]
+	color: C,
+) -> Table<Color> {
+	color.into()
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
@@ -809,13 +815,14 @@ fn hex_to_color(_: impl Ctx, hex_code: String) -> Table<Color> {
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), gradient: Table<GradientStops>) -> Table<GradientStops> {
-	gradient
+fn gradient_value<G: Into<Table<GradientStops>>>(_: impl Ctx, _primary: (), #[implementations(GradientStops, Table<GradientStops>)] gradient: G) -> Table<GradientStops> {
+	gradient.into()
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, position: Fraction) -> Table<Color> {
+fn sample_gradient<G: Into<Table<GradientStops>>>(_: impl Ctx, _primary: (), #[implementations(GradientStops, Table<GradientStops>)] gradient: G, position: Fraction) -> Table<Color> {
+	let gradient: Table<GradientStops> = gradient.into();
 	let Some(row) = gradient.get(0) else { return Table::new() };
 
 	let position = position.clamp(0., 1.);

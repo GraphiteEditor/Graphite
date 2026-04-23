@@ -489,7 +489,7 @@ impl Gradient {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<core_types::table::Table<GradientStops>, D::Error> {
+pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientStops, D::Error> {
 	use core_types::table::Table;
 	use serde::Deserialize;
 
@@ -501,9 +501,15 @@ pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D)
 	}
 
 	Ok(match GradientStopsFormat::deserialize(deserializer)? {
-		GradientStopsFormat::GradientStops(stops) => Table::new_from_element(stops),
-		GradientStopsFormat::GradientTable(table) => table,
+		GradientStopsFormat::GradientStops(stops) => stops,
+		GradientStopsFormat::GradientTable(table) => table.iter().next().map(|row| row.element.clone()).unwrap_or_default(),
 	})
+}
+
+impl From<GradientStops> for core_types::table::Table<GradientStops> {
+	fn from(stops: GradientStops) -> Self {
+		core_types::table::Table::new_from_element(stops)
+	}
 }
 
 impl core_types::bounds::BoundingBox for GradientStops {

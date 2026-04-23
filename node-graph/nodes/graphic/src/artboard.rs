@@ -28,8 +28,9 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	location: DVec2,
 	/// Width and height of the artboard within the document. Only integers are valid.
 	dimensions: DVec2,
-	/// Color of the artboard background. Only positive integers are valid.
-	background: Table<Color>,
+	/// Color of the artboard background.
+	#[default(Color::WHITE)]
+	background: Color,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: bool,
@@ -49,9 +50,6 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	let location = location.min(location + dimensions);
 
 	let dimensions = dimensions.abs();
-
-	let background: Option<Color> = background.into();
-	let background = background.unwrap_or(Color::WHITE);
 
 	Table::new_from_element(Artboard {
 		content,

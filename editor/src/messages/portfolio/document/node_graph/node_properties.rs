@@ -22,7 +22,6 @@ use graphene_std::raster::{
 	SelectiveColorChoice,
 };
 use graphene_std::raster_types::Image;
-use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
@@ -220,11 +219,12 @@ pub(crate) fn property_from_type(
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
-						// ===========
-						// TABLE TYPES
-						// ===========
-						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						// =========================
+						// COLOR AND GRADIENT TYPES
+						// =========================
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -1180,28 +1180,28 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 
 	// Add the color input
 	match &**tagged_value {
-		TaggedValue::Color(color_table) => widgets.push(
+		TaggedValue::Color(color) => widgets.push(
 			color_button
-				.value(match color_table.iter().next() {
-					Some(color) => FillChoice::Solid(*color.element),
-					None => FillChoice::None,
-				})
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Color(input.value.as_solid().iter().map(|&color| TableRow::new_from_element(color)).collect()),
-					node_id,
-					index,
-				))
+				.value(FillChoice::Solid(*color))
+				.on_update(update_value(|input: &ColorInput| TaggedValue::Color(input.value.as_solid().unwrap_or(Color::BLACK)), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
-		TaggedValue::GradientTable(gradient_table) => widgets.push(
+		TaggedValue::OptionalColor(optional_color) => widgets.push(
 			color_button
-				.value(match gradient_table.iter().next() {
-					Some(row) => FillChoice::Gradient(row.element.clone()),
-					None => FillChoice::Gradient(GradientStops::default()),
+				.value(match optional_color {
+					Some(color) => FillChoice::Solid(*color),
+					None => FillChoice::None,
 				})
+				.on_update(update_value(|input: &ColorInput| TaggedValue::OptionalColor(input.value.as_solid()), node_id, index))
+				.on_commit(commit_value)
+				.widget_instance(),
+		),
+		TaggedValue::GradientStops(gradient_stops) => widgets.push(
+			color_button
+				.value(FillChoice::Gradient(gradient_stops.clone()))
 				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
+					|input: &ColorInput| TaggedValue::GradientStops(input.value.as_gradient().cloned().unwrap_or_default()),
 					node_id,
 					index,
 				))
@@ -1884,7 +1884,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	};
 
-	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
+	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::OptionalColor(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
 		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
 		&document_node.inputs[BackupColorInput::INDEX].as_value(),
 		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
@@ -1894,7 +1894,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		return vec![LayoutGroup::row(widgets_first_row)];
 	};
 	let fill2 = fill.clone();
-	let backup_color_fill: Fill = backup_color.clone().into();
+	let backup_color_fill: Fill = (*backup_color).into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -1907,13 +1907,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						Fill::None => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(Table::new()),
+							value: TaggedValue::OptionalColor(None),
 						}
 						.into(),
 						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(Table::new_from_element(*color)),
+							value: TaggedValue::OptionalColor(Some(*color)),
 						}
 						.into(),
 						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
@@ -2124,7 +2124,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
-		ParameterWidgetsInfo::new(node_id, ColorInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, ColorInput::<Option<Color>>::INDEX, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput::INDEX, true, context), NumberInput::default().unit(" px").min(0.));

@@ -48,10 +48,10 @@ impl VectorTableIterMut for Table<Vector> {
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn assign_colors<T>(
+async fn assign_colors<T, G: Into<Table<GradientStops>>>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill and/or stroke style to.
-	#[implementations(Table<Graphic>, Table<Vector>)]
+	#[implementations(Table<Graphic>, Table<Graphic>, Table<Vector>, Table<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
 	mut content: T,
 	/// Whether to style the fill.
@@ -61,7 +61,8 @@ async fn assign_colors<T>(
 	stroke: bool,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: Table<GradientStops>,
+	#[implementations(GradientStops, Table<GradientStops>, GradientStops, Table<GradientStops>)]
+	gradient: G,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -77,6 +78,7 @@ async fn assign_colors<T>(
 where
 	T: VectorTableIterMut + 'n + Send,
 {
+	let gradient: Table<GradientStops> = gradient.into();
 	let Some(row) = gradient.into_iter().next() else { return content };
 
 	let length = content.vector_iter_mut().count();
@@ -117,6 +119,12 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<Vector>,
 		Table<Vector>,
 		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
 		Table<Graphic>,
 		Table<Graphic>,
 		Table<Graphic>,
@@ -130,13 +138,19 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<Color>,
 		Table<GradientStops>,
 		Gradient,
+		Color,
+		Option<Color>,
+		GradientStops,
 		Fill,
 		Table<Color>,
 		Table<GradientStops>,
 		Gradient,
+		Color,
+		Option<Color>,
+		GradientStops,
 	)]
 	fill: F,
-	_backup_color: Table<Color>,
+	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
 ) -> V {
 	let fill: Fill = fill.into();
@@ -168,14 +182,41 @@ impl IntoF64Vec for String {
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V, L: IntoF64Vec>(
+async fn stroke<V, C: Into<Option<Color>>, L: IntoF64Vec>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Table<Vector>, Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>, Table<Graphic>)]
+	#[implementations(
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Vector>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+		Table<Graphic>,
+	)]
 	mut content: Table<V>,
 	/// The stroke color.
 	#[default(Color::BLACK)]
-	color: Table<Color>,
+	#[implementations(
+		Option<Color>,
+		Option<Color>,
+		Option<Color>,
+		Table<Color>,
+		Table<Color>,
+		Table<Color>,
+		Option<Color>,
+		Option<Color>,
+		Option<Color>,
+		Table<Color>,
+		Table<Color>,
+		Table<Color>,
+	)]
+	color: C,
 	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
@@ -193,7 +234,20 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(Vec<f64>, f64, String, Vec<f64>, f64, String)]
+	#[implementations(
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+		Vec<f64>,
+		f64,
+		String,
+	)]
 	dash_lengths: L,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]

@@ -322,3 +322,18 @@ impl From<Table<crate::Color>> for Option<crate::Color> {
 		table.iter().nth(0).map(|row| row.element).copied()
 	}
 }
+
+impl From<crate::Color> for Table<crate::Color> {
+	fn from(color: crate::Color) -> Self {
+		Table::new_from_element(color)
+	}
+}
+
+impl From<Option<crate::Color>> for Table<crate::Color> {
+	fn from(color: Option<crate::Color>) -> Self {
+		match color {
+			Some(color) => Table::new_from_element(color),
+			None => Table::new(),
+		}
+	}
+}

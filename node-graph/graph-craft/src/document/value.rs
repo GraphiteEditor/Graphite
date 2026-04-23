@@ -118,9 +118,9 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						Some(match concrete_type.id? {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
-							// Table-wrapped types need a single-row default with the element's default, not an empty table
-							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
-							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_element(GradientStops::default())),
+							x if x == TypeId::of::<Table<Color>>() => TaggedValue::OptionalColor(Some(Color::default())),
+							x if x == TypeId::of::<Option<Color>>() => TaggedValue::OptionalColor(None),
+							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientStops(GradientStops::default()),
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
 						})
@@ -202,14 +202,16 @@ tagged_value! {
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
-	Color(Table<Color>),
-	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "GradientPositions", alias = "GradientStops")]
-	GradientTable(Table<GradientStops>),
 	// ============
 	// STRUCT TYPES
 	// ============
+	#[serde(alias = "ColorTable", alias = "ColorNotInTable")]
+	Color(Color),
+	#[serde(deserialize_with = "core_types::misc::migrate_optional_color")] // TODO: Eventually remove this migration document upgrade code
+	OptionalColor(Option<Color>),
+	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "GradientPositions", alias = "GradientTable")]
+	GradientStops(GradientStops),
 	FVec2(Vec2),
 	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
@@ -397,10 +399,9 @@ impl TaggedValue {
 					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					// `Color` (not in a table) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
-					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
+					() if ty == TypeId::of::<Option<Color>>() => TaggedValue::OptionalColor(to_color(string)),
+					() if ty == TypeId::of::<GradientStops>() => to_gradient(string).map(TaggedValue::GradientStops)?,
 					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,

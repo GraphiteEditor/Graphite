@@ -10,17 +10,29 @@ use vector_types::GradientStops;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn gradient_map<T: Adjust<Color>>(
+async fn gradient_map<T: Adjust<Color>, G: Into<Table<GradientStops>>>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Raster<CPU>>,
+		Table<Raster<CPU>>,
 		Table<Color>,
+		Table<Color>,
+		Table<GradientStops>,
 		Table<GradientStops>,
 	)]
 	mut image: T,
-	gradient: Table<GradientStops>,
+	#[implementations(
+		GradientStops,
+		Table<GradientStops>,
+		GradientStops,
+		Table<GradientStops>,
+		GradientStops,
+		Table<GradientStops>,
+	)]
+	gradient: G,
 	reverse: bool,
 ) -> T {
+	let gradient: Table<GradientStops> = gradient.into();
 	let Some(row) = gradient.get(0) else { return image };
 
 	image.adjust(|color| {

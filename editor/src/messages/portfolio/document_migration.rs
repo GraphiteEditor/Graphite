@@ -1986,6 +1986,31 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
+	// Migrate Color Value, Fill backup_color, and Stroke color inputs from Color(Table<Color>) to OptionalColor(Option<Color>)
+	let color_to_optional_cases: &[(_, usize)] = &[
+		(graphene_std::math_nodes::color_value::IDENTIFIER, 1),
+		(graphene_std::vector_nodes::fill::IDENTIFIER, 2),
+		(graphene_std::vector::stroke::IDENTIFIER, 1),
+	];
+	for &(ref identifier, input_index) in color_to_optional_cases {
+		if reference == DefinitionIdentifier::ProtoNode(identifier.clone())
+			&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(input_index)
+			&& let TaggedValue::Color(color) = &**tagged_value
+		{
+			let color = *color;
+
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, input_index),
+				NodeInput::value(TaggedValue::OptionalColor(Some(color)), false),
+				network_path,
+			);
+		}
+	}
+
+	// Migrate Artboard and Empty Image color inputs from Color(Table<Color>) to Color(Color), which is handled by serde migration already (no-op here)
+
+	// Migrate GradientTable(Table<GradientStops>) to GradientStops(GradientStops), which is handled by serde migration via alias (no-op here)
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================

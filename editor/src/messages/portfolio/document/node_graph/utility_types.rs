@@ -34,8 +34,8 @@ impl FrontendGraphDataType {
 			TaggedValue::Graphic(_) => Self::Graphic,
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
-			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::Color(_) | TaggedValue::OptionalColor(_) => Self::Color,
+			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) => Self::Gradient,
 			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
 			_ => Self::General,
 		}

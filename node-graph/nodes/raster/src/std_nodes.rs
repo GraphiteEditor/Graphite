@@ -280,11 +280,12 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Table<Raster<CPU>> {
+pub fn empty_image<C: Into<Table<Color>>>(_: impl Ctx, transform: DAffine2, #[implementations(Color, Table<Color>)] color: C) -> Table<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let color: Option<Color> = color.into();
+	let color_table: Table<Color> = color.into();
+	let color: Option<Color> = color_table.into();
 	let image = Image::new(width, height, color.unwrap_or(Color::WHITE));
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));

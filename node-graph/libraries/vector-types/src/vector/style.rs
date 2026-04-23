@@ -148,6 +148,12 @@ impl From<Table<GradientStops>> for Fill {
 	}
 }
 
+impl From<GradientStops> for Fill {
+	fn from(stops: GradientStops) -> Fill {
+		Fill::Gradient(Gradient { stops, ..Default::default() })
+	}
+}
+
 impl From<Gradient> for Fill {
 	fn from(gradient: Gradient) -> Fill {
 		Fill::Gradient(gradient)
