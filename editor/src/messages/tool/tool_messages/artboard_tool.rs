@@ -37,6 +37,7 @@ pub enum ArtboardToolMessage {
 	PointerMove { constrain_axis_or_aspect: Key, center: Key },
 	PointerOutsideViewport { constrain_axis_or_aspect: Key, center: Key },
 	PointerUp,
+	GS { grab: Key, scale: Key },
 }
 
 impl ToolMetadata for ArtboardTool {
@@ -65,7 +66,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Artb
 		);
 
 		let additional = match self.fsm_state {
-			ArtboardToolFsmState::Ready { .. } => actions!(ArtboardToolMessageDiscriminant; PointerDown),
+			ArtboardToolFsmState::Ready { .. } => actions!(ArtboardToolMessageDiscriminant; PointerDown, GS),
 			_ => actions!(ArtboardToolMessageDiscriminant; PointerUp, Abort),
 		};
 		common.extend(additional);
@@ -293,6 +294,26 @@ impl Fsm for ArtboardToolFsmState {
 				tool_data.draw.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
 				self
+			}
+			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::GS { grab, scale }) => {
+				let to_viewport = document.metadata().document_to_viewport;
+				let to_document = to_viewport.inverse();
+				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
+				tool_data.drag_current = to_document.transform_point2(input.mouse.position);
+
+				if input.keyboard.key(grab) && tool_data.selected_artboard.is_some() {
+					tool_data.get_snap_candidates(document, input);
+
+					responses.add(DocumentMessage::StartTransaction);
+
+					ArtboardToolFsmState::Dragging
+				} else if input.keyboard.key(scale) && tool_data.selected_artboard.is_some() {
+					//tool_data.start_resizing(selected_edges, document, input);
+					tool_data.get_snap_candidates(document, input);
+					ArtboardToolFsmState::ResizingBounds
+				} else {
+					ArtboardToolFsmState::Ready { hovered }
+				}
 			}
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
 				let to_viewport = document.metadata().document_to_viewport;
@@ -586,6 +607,7 @@ impl Fsm for ArtboardToolFsmState {
 			ArtboardToolFsmState::Ready { .. } => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
+				HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
 			ArtboardToolFsmState::Dragging => HintData(vec![

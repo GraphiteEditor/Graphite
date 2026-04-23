@@ -149,6 +149,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: 0., resize: Alt, resize_opposite_corner: Control }),
 		entry!(KeyDown(MouseRight); action_dispatch=ArtboardToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=ArtboardToolMessage::Abort),
+		entry!(KeyDown(KeyG); action_dispatch=ArtboardToolMessage::GS { grab: KeyG, scale: KeyS }),
+		entry!(KeyDown(KeyS); action_dispatch=ArtboardToolMessage::GS { grab: KeyG, scale: KeyS }),
 		//
 		// NavigateToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NavigateToolMessage::ZoomCanvasBegin),
