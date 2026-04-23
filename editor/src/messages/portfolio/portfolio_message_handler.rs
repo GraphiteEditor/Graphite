@@ -34,7 +34,8 @@ use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
-use parley::{FontContext, FontStyle};
+use parley::FontStyle;
+use parley::fontique::{Collection, CollectionOptions};
 use std::path::PathBuf;
 use std::vec;
 
@@ -371,16 +372,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::LoadFontCatalog => {
 				if Editor::environment().is_desktop() {
-					let system_font_context = FontContext::new(); // create system font context
-					let mut system_font_collection = system_font_context.collection;
-					let mut system_font_collection_again = system_font_collection.clone(); // because parley was not made correctly
-
+					let mut system_font_collection = Collection::new(CollectionOptions { shared: false, system_fonts: true });
 					// shove font metadata into cached data catalog
-					let mut system_font_family_names = Vec::new();
-					system_font_family_names.extend(system_font_collection.family_names());
+					let system_font_family_names: Vec<String> = system_font_collection.family_names().map(|n| n.to_owned()).collect();
 					let mut families_for_catalog = Vec::new();
 					for name in system_font_family_names {
-						let family = system_font_collection_again.family_by_name(name).unwrap();
+						let family = system_font_collection.family_by_name(&name).unwrap();
 						let mut styles = Vec::new();
 						for font in family.fonts() {
 							let style = FontCatalogStyle {
@@ -393,7 +390,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							let mut font_data_vec = Vec::new();
 							font_data_vec.extend(font.load(None).unwrap().data());
 							responses.add(PortfolioMessage::FontLoaded {
-								font_family: name.to_owned(),
+								font_family: name.clone(),
 								font_style: style.to_named_style(),
 								data: font_data_vec,
 							});
