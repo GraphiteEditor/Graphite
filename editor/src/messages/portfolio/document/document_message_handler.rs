@@ -221,7 +221,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Send the overlays message to the overlays message handler
 				self.overlays_message_handler
-					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport });
+					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport, animation_time: ipp.time as f64 });
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {

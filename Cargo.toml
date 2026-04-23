@@ -8,6 +8,8 @@ members = [
 	"desktop/platform/mac",
 	"desktop/platform/win",
 	"editor",
+	"frontend/wasm",
+	"libraries/ai-models",
 	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
