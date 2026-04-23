@@ -18,6 +18,16 @@ use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
 use vector_types::GradientStops;
 
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destruct)]
+pub struct SplitChannelsOutput {
+	pub primary: (),
+	pub red: Table<Raster<CPU>>,
+	pub green: Table<Raster<CPU>>,
+	pub blue: Table<Raster<CPU>>,
+	pub alpha: Table<Raster<CPU>>,
+}
+
 // TODO: Implement the following:
 // Color Balance
 // Aims for interoperable compatibility with:
@@ -94,6 +104,7 @@ fn gamma_correction<T: Adjust<Color>>(
 	input
 }
 
+// TODO: Remove `extract_channel` and `RedGreenBlueAlpha` once a migration converts old documents' Split Channels network nodes (which used Extract Channel internally) to the new proto node form
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -116,6 +127,18 @@ fn extract_channel<T: Adjust<Color>>(
 		color.map_rgb(|_| extracted_value).with_alpha(1.)
 	});
 	input
+}
+
+#[cfg(feature = "std")]
+#[node_macro::node(name("Split Channels"), category("Raster: Channels"), deconstruct_output)]
+fn split_channels(_: impl Ctx, input: Table<Raster<CPU>>) -> SplitChannelsOutput {
+	SplitChannelsOutput {
+		primary: (),
+		red: extract_channel((), input.clone(), RedGreenBlueAlpha::Red),
+		green: extract_channel((), input.clone(), RedGreenBlueAlpha::Green),
+		blue: extract_channel((), input.clone(), RedGreenBlueAlpha::Blue),
+		alpha: extract_channel((), input, RedGreenBlueAlpha::Alpha),
+	}
 }
 
 #[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]

@@ -52,6 +52,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
+	pub(crate) deconstruct_output: bool,
 	// Add more attributes as needed
 }
 
@@ -201,6 +202,7 @@ impl Parse for NodeFnAttributes {
 		let mut display_name = None;
 		let mut path = None;
 		let mut skip_impl = false;
+		let mut deconstruct_output = false;
 		let mut properties_string = None;
 		let mut cfg = None;
 		let mut shader_node = None;
@@ -271,6 +273,13 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
+				"deconstruct_output" => {
+					let path = meta.require_path_only()?;
+					if deconstruct_output {
+						return Err(Error::new_spanned(path, "Multiple 'deconstruct_output' attributes are not allowed"));
+					}
+					deconstruct_output = true;
+				}
 				// Override UI layout generator function name defined in `node_properties.rs` that returns a custom Properties panel layout for this node.
 				// This is used to create custom UI for the input parameters of the node in cases where the defaults generated from the type and attributes are insufficient.
 				//
@@ -329,7 +338,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', and 'serialize'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'deconstruct_output', 'properties', 'cfg', 'shader_node', and 'serialize'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -361,6 +370,7 @@ impl Parse for NodeFnAttributes {
 			cfg,
 			shader_node,
 			serialize,
+			deconstruct_output,
 		})
 	}
 }
@@ -934,6 +944,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1002,6 +1013,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1084,6 +1096,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1148,6 +1161,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1224,6 +1238,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1288,6 +1303,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1352,6 +1368,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				deconstruct_output: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
