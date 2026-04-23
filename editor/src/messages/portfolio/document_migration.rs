@@ -10,7 +10,6 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
@@ -585,8 +584,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER,
+		node: graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
 		aliases: &[
+			"raster_nodes::std_nodes::ImageValueNode",
 			"graphene_raster_nodes::std_nodes::ImageValueNode",
 			"graphene_std::raster::ImageValueNode",
 			"graphene_std::raster::ImageNode",
@@ -1140,10 +1140,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			log::error!("Path node does not exist.");
 			return None;
 		};
-		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
-			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
-		]);
+		let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(&vector));
+		let path_node = path_node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))]);
 
 		// Get the "Spline" node definition and wire it up with the "Path" node as input
 		let Some(spline_node_type) = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER) else {
@@ -1387,7 +1385,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER) && inputs_count == 1 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) && inputs_count == 1 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1950,6 +1948,42 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// Migrate Path nodes that stored geometry directly in input 0 (as a Table<Vector>) to instead use a VectorModification in input 1
+	if reference == DefinitionIdentifier::Network("Path".into()) {
+		let input_0 = node.inputs.first()?;
+		if let NodeInput::Value { tagged_value, exposed } = input_0
+			&& !exposed
+			&& let TaggedValue::Vector(vector_table) = &**tagged_value
+			&& !vector_table.is_empty()
+		{
+			let vector = vector_table.iter().next()?.element;
+			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
+
+			// Reset input 0 to the default exposed state
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Vector(Default::default()), true), network_path);
+
+			// Store the converted VectorModification in input 1
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+		}
+	}
+
+	// Migrate Image nodes that stored a Table<Raster<CPU>> in input 1 to instead use bare Image<Color> via TaggedValue::ImageData
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
+		&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(1)
+		&& let TaggedValue::Raster(raster_table) = &**tagged_value
+		&& let Some(row) = raster_table.iter().next()
+	{
+		let image = row.element.data().clone();
+
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
 	// ==================================

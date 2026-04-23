@@ -9,13 +9,13 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
-use graphene_std::vector::{PointId, VectorModificationType};
+use graphene_std::vector::{PointId, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -211,11 +211,13 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
-		let vector = Table::new_from_element(Vector::from_subpaths(subpaths, true));
+		// Build a VectorModification that reproduces the geometry (same format the Pen tool uses)
+		let vector = Vector::from_subpaths(subpaths, true);
+		let modification = Box::new(VectorModification::create_from_vector(&vector));
 
 		let shape = resolve_network_node_type("Path")
 			.expect("Path node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::Vector(vector), false))]);
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))]);
 		let shape_id = NodeId::new();
 		self.network_interface.insert_node(shape_id, shape, &[]);
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[], self.import);
@@ -301,14 +303,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&color_value_id, layer, &[], self.import);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: Table<Raster<CPU>>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) {
 		let transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
-		let image = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER)
-			.expect("ImageValue node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Raster(image_frame), false))]);
+		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
+			.expect("Image node does not exist")
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::ImageData(image), false))]);
 
 		let image_id = NodeId::new();
-		self.network_interface.insert_node(image_id, image, &[]);
+		self.network_interface.insert_node(image_id, image_node, &[]);
 		self.network_interface.move_node_to_chain_start(&image_id, layer, &[], self.import);
 
 		let transform_id = NodeId::new();

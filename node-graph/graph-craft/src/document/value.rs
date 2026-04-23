@@ -225,6 +225,7 @@ tagged_value! {
 	Curve(raster_nodes::curve::Curve),
 	Footprint(core_types::transform::Footprint),
 	VectorModification(Box<vector::VectorModification>),
+	ImageData(Image<Color>),
 	// ==========
 	// ENUM TYPES
 	// ==========
