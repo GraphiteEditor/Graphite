@@ -171,10 +171,11 @@
 		if (open) setSafariScrollableOverflow(false);
 	});
 
-	afterUpdate(() => {
+	afterUpdate(async () => {
 		// Gets the client bounds of the elements and apply relevant styles to them.
 		// TODO: Use DOM attribute bindings more whilst not causing recursive updates. Turning measuring on and off both causes the component to change,
 		// TODO: which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop).
+		await tick();
 		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 

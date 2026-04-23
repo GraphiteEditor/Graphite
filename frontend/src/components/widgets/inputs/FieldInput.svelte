@@ -22,6 +22,7 @@
 	export let label: string | undefined = undefined;
 	export let spellcheck = false;
 	export let disabled = false;
+	export let monospace = false;
 	export let narrow = false;
 	export let textarea = false;
 	export let tooltipLabel: string | undefined = undefined;
@@ -75,7 +76,7 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
+<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, monospace, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{#if !textarea}
 		<input
 			type="text"
@@ -133,6 +134,13 @@
 			--widget-height: 20px;
 		}
 
+		&.monospace {
+			input,
+			textarea {
+				font-family: "Source Code Pro", monospace;
+			}
+		}
+
 		label {
 			flex: 0 0 auto;
 			line-height: calc(var(--widget-height) - 6px);
@@ -163,19 +171,6 @@
 			color: var(--color-e-nearwhite);
 			caret-color: var(--color-e-nearwhite);
 			unicode-bidi: plaintext;
-
-			&::selection {
-				background-color: var(--color-4-dimgray);
-
-				// Target only Safari
-				@supports (background: -webkit-named-image(i)) {
-					& {
-						// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
-						// https://stackoverflow.com/a/71753552/775283
-						background-color: rgba(var(--color-4-dimgray-rgb), calc(254 / 255));
-					}
-				}
-			}
 		}
 
 		input {
@@ -209,11 +204,6 @@
 			input,
 			textarea {
 				color: var(--color-8-uppergray);
-			}
-
-			input {
-				// Disables drag-selecting the text, since `user-select: none` doesn't work for input elements
-				pointer-events: none;
 			}
 		}
 	}
