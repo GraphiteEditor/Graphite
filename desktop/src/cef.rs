@@ -190,8 +190,40 @@ impl CefEventHandler for CefHandler {
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
 		match shared_texture.import_texture(&self.wgpu_context.device) {
-			Ok(texture) => {
-				self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
+			Ok(src) => {
+				let desc = wgpu::TextureDescriptor {
+					label: Some("duplicated_texture"),
+					usage: wgpu::TextureUsages::COPY_DST | src.usage(),
+					size: src.size(),
+					mip_level_count: src.mip_level_count(),
+					sample_count: src.sample_count(),
+					dimension: src.dimension(),
+					format: src.format(),
+					view_formats: &[],
+				};
+
+				let copy = self.wgpu_context.device.create_texture(&desc);
+
+				let mut encoder = self.wgpu_context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+					label: Some("texture_copy_encoder"),
+				});
+
+				encoder.copy_texture_to_texture(
+					src.as_image_copy(),
+					copy.as_image_copy(),
+					desc.size,
+				);
+
+				// Wait for the GPU to finish the copy before allowing the source texture to be released by CEF
+				let submission_index = self.wgpu_context.queue.submit([encoder.finish()]);
+				if let Err(error) = self.wgpu_context.device.poll(wgpu::PollType::Wait {
+					submission_index: Some(submission_index),
+					timeout: None,
+				}) {
+					tracing::error!("Failed while waiting for texture copy completion: {error}");
+				}
+
+				self.app_event_scheduler.schedule(AppEvent::UiUpdate(copy));
 			}
 			Err(e) => {
 				tracing::error!("Failed to import shared texture: {}", e);
