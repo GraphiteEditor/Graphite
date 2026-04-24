@@ -678,7 +678,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
-		aliases: &["graphene_core::logic::JsonGetNode"],
+		aliases: &["graphene_core::logic::JsonGetNode", "graphene_std::text_nodes::JsonGetNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::text_nodes::serialize::IDENTIFIER,

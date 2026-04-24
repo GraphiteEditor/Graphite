@@ -281,29 +281,72 @@ fn parse_json_path(path: &str) -> Option<Vec<JsonPathSegment>> {
 				// Empty brackets: iterate all
 				chars.next();
 				segments.push(JsonPathSegment::IterateAll);
-			} else if chars.peek() == Some(&'"') {
-				// Quoted key: ["my key"]
-				chars.next(); // consume opening quote
+			} else if matches!(chars.peek(), Some(&'"') | Some(&'\'')) {
+				// Quoted key: ["my key"] or ['my key']
+				let closing_quote = chars.next().unwrap(); // consume opening quote
 				let mut key = String::new();
 				while let Some(&c) = chars.peek() {
-					if c == '"' {
+					if c == closing_quote {
 						chars.next(); // consume closing quote
 						break;
 					}
 					if c == '\\' {
 						chars.next();
-						if let Some(&escaped) = chars.peek() {
-							key.push(escaped);
-							chars.next();
+						match chars.next() {
+							Some('"') => key.push('"'),
+							Some('\'') => key.push('\''),
+							Some('\\') => key.push('\\'),
+							Some('/') => key.push('/'),
+							Some('b') => key.push('\x08'),
+							Some('f') => key.push('\x0C'),
+							Some('n') => key.push('\n'),
+							Some('r') => key.push('\r'),
+							Some('t') => key.push('\t'),
+							Some('u') => {
+								// Decode a 4-hex-digit Unicode escape sequence, only consuming verified hex digits
+								let mut hex_digits = [0_u8; 4];
+								let mut count = 0;
+								for digit in &mut hex_digits {
+									match chars.peek() {
+										Some(c) if c.is_ascii_hexdigit() => {
+											*digit = chars.next().unwrap() as u8;
+											count += 1;
+										}
+										_ => break,
+									}
+								}
+
+								let hex = &hex_digits[..count];
+								if count == 4
+									&& let Ok(hex_str) = core::str::from_utf8(hex)
+									&& let Ok(code_point) = u32::from_str_radix(hex_str, 16)
+									&& let Some(byte) = char::from_u32(code_point)
+								{
+									key.push(byte);
+								} else {
+									key.push('\\');
+									key.push('u');
+									for &byte in hex {
+										key.push(byte as char);
+									}
+								}
+							}
+							Some(other) => {
+								key.push('\\');
+								key.push(other);
+							}
+							None => key.push('\\'),
 						}
 					} else {
 						key.push(c);
 						chars.next();
 					}
 				}
-				// Consume the closing ']'
+				// Require the closing ']'
 				if chars.peek() == Some(&']') {
 					chars.next();
+				} else {
+					return None;
 				}
 				segments.push(JsonPathSegment::Key(key));
 			} else {
@@ -353,8 +396,7 @@ fn parse_json_path(path: &str) -> Option<Vec<JsonPathSegment>> {
 /// Strings are quoted by default to produce valid JSON syntax. When `quote_strings` is false, surrounding quotes are stripped.
 fn json_value_to_string(value: &serde_json::Value, quote_strings: bool) -> String {
 	match value {
-		serde_json::Value::String(s) if quote_strings => format!("\"{s}\""),
-		serde_json::Value::String(s) => s.clone(),
+		serde_json::Value::String(s) if !quote_strings => s.clone(),
 		other => other.to_string(),
 	}
 }
