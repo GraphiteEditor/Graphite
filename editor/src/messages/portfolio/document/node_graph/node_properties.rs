@@ -24,6 +24,7 @@ use graphene_std::raster::{
 use graphene_std::raster_types::Image;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
+use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
@@ -246,6 +247,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<StringCapitalization>() => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
@@ -1626,6 +1628,105 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 	);
 
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
+}
+
+pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::text_nodes::string_capitalization::*;
+
+	// Read the current values before borrowing context mutably for widgets
+	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let capitalization_input = document_node.inputs.get(CapitalizationInput::INDEX);
+			let capitalization_exposed = capitalization_input.is_some_and(|input| input.is_exposed());
+			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
+			let is_simple = !capitalization_exposed
+				&& matches!(
+					capitalization_input.and_then(|input| input.as_value()),
+					Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
+				);
+			let use_joiner = match document_node.inputs.get(UseJoinerInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Bool(x)) => x,
+				_ => true,
+			};
+			let joiner = match document_node.inputs.get(JoinerInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			(is_simple, use_joiner, joiner)
+		}
+		Err(err) => {
+			log::error!("Could not get document node in string_capitalization_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	// The joiner controls are disabled when lowercase/UPPERCASE are selected (they don't use word boundaries)
+	let joiner_disabled = is_simple_case || !use_joiner_enabled;
+
+	let capitalization = enum_choice::<StringCapitalization>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput::INDEX, true, context))
+		.property_row();
+
+	// Joiner row: the UseJoiner checkbox is drawn in the assist area, followed by the Joiner text input
+	let mut joiner_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, JoinerInput::INDEX, false, context));
+	if let Some(joiner) = joiner_value {
+		let joiner_is_empty = joiner.is_empty();
+		joiner_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(use_joiner_enabled)
+				.disabled(is_simple_case)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseJoinerInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(joiner)
+				.placeholder(if joiner_is_empty { "Empty" } else { "" })
+				.disabled(joiner_disabled)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, JoinerInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Preset buttons for common joiner values, indented to align with the input field
+	let mut joiner_preset_buttons = vec![TextLabel::new("").widget_instance()];
+	add_blank_assist(&mut joiner_preset_buttons);
+	joiner_preset_buttons.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	for (label, value, tooltip) in [
+		("Empty", "", "Join words without any separator."),
+		("Space", " ", "Join words with a space."),
+		("Kebab", "-", "Join words with a hyphen."),
+		("Snake", "_", "Join words with an underscore."),
+	] {
+		let value = value.to_string();
+		joiner_preset_buttons.push(
+			TextButton::new(label)
+				.tooltip_description(tooltip)
+				.disabled(is_simple_case)
+				.on_update(move |_: &TextButton| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: UseJoinerInput::INDEX,
+							value: TaggedValue::Bool(true),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: JoinerInput::INDEX,
+							value: TaggedValue::String(value.clone()),
+						}
+						.into(),
+					]),
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
+
+	vec![capitalization, LayoutGroup::row(joiner_widgets), LayoutGroup::row(joiner_preset_buttons)]
 }
 
 pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
