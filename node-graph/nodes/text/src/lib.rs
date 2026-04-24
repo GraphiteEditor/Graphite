@@ -1,4 +1,5 @@
 mod font_cache;
+pub mod json;
 mod path_builder;
 mod text_context;
 mod to_path;
@@ -751,47 +752,6 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
 	let var_arg = var_arg as &dyn std::any::Any;
 
 	var_arg.downcast_ref::<String>().cloned().unwrap_or_default()
-}
-
-/// Gets a value from either a json object or array given as a string input.
-/// For example, for the input {"name": "ferris"} the key "name" will return "ferris".
-#[node_macro::node(category("Text"))]
-fn json_get(
-	_: impl Ctx,
-	/// The json data.
-	data: String,
-	/// The key to index the object with.
-	key: String,
-) -> String {
-	use serde_json::Value;
-	let Ok(value): Result<Value, _> = serde_json::from_str(&data) else {
-		return "Input is not valid json".into();
-	};
-	match value {
-		Value::Array(ref arr) => {
-			let Ok(index): Result<usize, _> = key.parse() else {
-				log::error!("Json input is an array, but key is not a number");
-				return String::new();
-			};
-			let Some(value) = arr.get(index) else {
-				log::error!("Index {} out of bounds for len {}", index, arr.len());
-				return String::new();
-			};
-			value.to_string()
-		}
-		Value::Object(map) => {
-			let Some(value) = map.get(&key) else {
-				log::error!("Key {key} not found in object");
-				return String::new();
-			};
-			match value {
-				Value::String(s) => s.clone(),
-				Value::Number(n) => n.to_string(),
-				complex => complex.to_string(),
-			}
-		}
-		_ => String::new(),
-	}
 }
 
 /// Converts a value to a JSON string representation.
