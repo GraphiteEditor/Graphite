@@ -294,6 +294,10 @@ fn format_number(
 
 	// Build the final string
 	let Some(decimal_string) = decimal_string else {
+		if fixed_decimals && requested_places > 0 {
+			let zeros = "0".repeat(requested_places);
+			return format!("{sign}{grouped_whole}{decimal_separator}{zeros}");
+		}
 		return format!("{sign}{grouped_whole}");
 	};
 
