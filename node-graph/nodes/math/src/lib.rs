@@ -1,8 +1,11 @@
-use core_types::registry::types::{Fraction, Percentage, PixelSize, TextArea};
+use core_types::Context;
+use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::table::Table;
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, num_traits};
 use glam::{DAffine2, DVec2};
+use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -735,6 +738,53 @@ fn logical_not(
 	!input
 }
 
+/// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
+#[node_macro::node(category("Math: Logic"))]
+async fn switch<T, C: Send + 'n + Clone>(
+	#[implementations(Context)] ctx: C,
+	condition: bool,
+	#[expose]
+	#[implementations(
+		Context -> String,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> DAffine2,
+		Context -> Table<Artboard>,
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
+	)]
+	if_true: impl Node<C, Output = T>,
+	#[expose]
+	#[implementations(
+		Context -> String,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> DAffine2,
+		Context -> Table<Artboard>,
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
+	)]
+	if_false: impl Node<C, Output = T>,
+) -> T {
+	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+}
+
 /// Constructs a bool value which may be set to true or false.
 #[node_macro::node(category("Value"))]
 fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: bool) -> bool {
@@ -821,12 +871,6 @@ fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, po
 	let position = position.clamp(0., 1.);
 	let color = row.element.evaluate(position);
 	Table::new_from_element(color)
-}
-
-/// Constructs a string value which may be set to any plain text.
-#[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
-	string
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.

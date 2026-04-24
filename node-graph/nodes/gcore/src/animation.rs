@@ -60,7 +60,7 @@ fn animation_time(
 	ctx.try_animation_time().unwrap_or_default() * rate
 }
 
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Debug"))]
 async fn quantize_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -103,7 +103,7 @@ async fn quantize_real_time<T>(
 	value.eval(Some(new_context.into())).await
 }
 
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Debug"))]
 async fn quantize_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
