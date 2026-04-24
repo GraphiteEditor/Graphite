@@ -14,6 +14,7 @@ use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
+use glam::DVec2;
 use graphene_std::raster::color::Color;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
@@ -161,6 +162,45 @@ pub struct EventToMessageMap {
 	pub tool_abort: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
 	pub overlay_provider: Option<OverlayProvider>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DragState {
+	pub start_doc: DVec2,
+	pub current_doc: DVec2,
+	pub pivot_doc: Option<DVec2>,
+}
+
+impl DragState {
+	pub fn new(document: &DocumentMessageHandler, viewport_position: DVec2) -> Self {
+		let position = document.metadata().document_to_viewport.inverse().transform_point2(viewport_position);
+		Self {
+			start_doc: position,
+			current_doc: position,
+			pivot_doc: None,
+		}
+	}
+
+	pub fn with_current_viewport(mut self, document: &DocumentMessageHandler, viewport_position: DVec2) -> Self {
+		self.set_current_viewport(document, viewport_position);
+		self
+	}
+
+	pub fn set_current_viewport(&mut self, document: &DocumentMessageHandler, viewport_position: DVec2) {
+		self.current_doc = document.metadata().document_to_viewport.inverse().transform_point2(viewport_position);
+	}
+
+	pub fn start_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
+		document.metadata().document_to_viewport.transform_point2(self.start_doc)
+	}
+
+	pub fn current_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
+		document.metadata().document_to_viewport.transform_point2(self.current_doc)
+	}
+
+	pub fn viewport_delta(&self, document: &DocumentMessageHandler) -> DVec2 {
+		document.metadata().document_to_viewport.transform_vector2(self.current_doc - self.start_doc)
+	}
 }
 
 pub trait ToolTransition {
