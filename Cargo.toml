@@ -11,6 +11,7 @@ members = [
 	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
+	"libraries/ipsum",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
 	"node-graph/nodes/raster/shaders",
@@ -33,6 +34,7 @@ default-members = [
 	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
+	"libraries/ipsum",
 	"node-graph/graph-craft",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
@@ -91,6 +93,7 @@ wgpu-executor = { path = "node-graph/libraries/wgpu-executor" }
 graphite-proc-macros = { path = "proc-macros" }
 graphite-editor = { path = "editor" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
+ipsum = { path = "libraries/ipsum" }
 
 # Workspace dependencies
 rustc-hash = "2.0"
