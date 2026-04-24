@@ -207,8 +207,8 @@ fn string_truncate(
 		return string;
 	}
 
-	let suffix_length = suffix.graphemes(true).count();
-	let keep = max_length.saturating_sub(suffix_length);
+	let suffix: String = suffix.graphemes(true).take(max_length).collect();
+	let keep = max_length - suffix.graphemes(true).count();
 
 	let mut truncated: String = string.graphemes(true).take(keep).collect();
 	truncated.push_str(&suffix);

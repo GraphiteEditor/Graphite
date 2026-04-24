@@ -134,18 +134,13 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	}
 	widgets.push(TextLabel::new(name).tooltip_description(description).widget_instance());
 
-	let mut blank_assist = blank_assist;
-	if input.is_exposed() {
-		if blank_assist {
-			add_blank_assist(&mut widgets);
-			blank_assist = false;
-		}
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
+	if blank_assist || input.is_exposed() {
+		add_blank_assist(&mut widgets);
 	}
 
-	if blank_assist {
-		add_blank_assist(&mut widgets);
+	if input.is_exposed() {
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
 	}
 
 	widgets
@@ -1648,6 +1643,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 				Some(&TaggedValue::Bool(x)) => x,
 				_ => false,
 			};
+			let use_thousands = use_thousands || document_node.inputs.get(ThousandsSeparatorInput::INDEX).is_some_and(|input| input.is_exposed());
 			let thousands_sep = match document_node.inputs.get(ThousandsSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
 				Some(TaggedValue::String(x)) => Some(x.clone()),
 				_ => None,
@@ -1679,7 +1675,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 		]);
 	}
 
-	// Thousands separator — checkbox in assist area
+	// Thousands separator: checkbox in assist area
 	let mut thousands_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ThousandsSeparatorInput::INDEX, false, context));
 	if let Some(sep) = thousands_sep_value {
 		thousands_sep_widgets.extend_from_slice(&[
@@ -1699,7 +1695,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 		]);
 	}
 
-	// Start at 10,000 — disabled when thousands separator is off
+	// Start at 10,000: disabled when thousands separator is off
 	let start_at_10000 = bool_widget(
 		ParameterWidgetsInfo::new(node_id, StartAt10000Input::INDEX, true, context),
 		CheckboxInput::default().disabled(!use_thousands),
