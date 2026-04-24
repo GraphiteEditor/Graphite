@@ -174,7 +174,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_message_data_fields_large_index() {
+	fn test_message_data_fields_large_value() {
 		let msg = MessageData::new("Big".to_string(), vec![("huge".to_string(), usize::MAX)], "src/lib.rs", 1);
 		assert_eq!(msg.fields()[0].1, usize::MAX);
 	}
@@ -257,9 +257,7 @@ mod tests {
 		tree.add_fields(vec!["first".to_string()]);
 		tree.add_fields(vec!["second".to_string(), "third".to_string()]);
 		let fields = tree.fields().expect("fields should be Some");
-		// Second call overwrites the first
-		assert_eq!(fields.len(), 2);
-		assert_eq!(fields[0], "second");
+		assert_eq!(fields, &vec!["second".to_string(), "third".to_string()]);
 	}
 
 	// set_path() Tests
@@ -406,9 +404,7 @@ mod tests {
 		let mut tree = DebugMessageTree::new("Node");
 		tree.add_message_handler_data_field(MessageData::new("DataMsg".to_string(), vec![("x".to_string(), 3), ("y".to_string(), 7)], "src/data.rs", 20));
 		let data = tree.message_handler_data_fields().unwrap();
-		assert_eq!(data.fields().len(), 2);
-		assert_eq!(data.fields()[0].0, "x");
-		assert_eq!(data.fields()[1].1, 7);
+		assert_eq!(data.fields(), &vec![("x".to_string(), 3), ("y".to_string(), 7)]);
 	}
 
 	//  Debug format Tests
