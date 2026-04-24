@@ -1,0 +1,7 @@
+[package]
+name = "ipsum"
+version = "0.1.0"
+edition = "2024"
+description = "Lorem Ipsum placeholder text generator"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"

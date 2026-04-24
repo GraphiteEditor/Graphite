@@ -28,6 +28,8 @@ convert_case = { workspace = true }
 titlecase = { workspace = true }
 fancy-regex = { workspace = true }
 unicode-segmentation = { workspace = true }
+ipsum = { workspace = true }
+rand = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

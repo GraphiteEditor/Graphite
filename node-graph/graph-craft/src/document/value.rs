@@ -265,6 +265,7 @@ tagged_value! {
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
+	TextDenomination(text_nodes::TextDenomination),
 	ScaleType(core_types::transform::ScaleType),
 }
 
