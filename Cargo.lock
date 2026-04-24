@@ -1990,7 +1990,6 @@ dependencies = [
  "node-macro",
  "raster-types",
  "serde",
- "serde_json",
  "tsify",
  "wasm-bindgen",
 ]
@@ -3082,6 +3081,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "glam",
+ "graphic-types",
  "log",
  "math-parser",
  "node-macro",
@@ -5503,7 +5503,9 @@ dependencies = [
  "log",
  "node-macro",
  "parley",
+ "raster-types",
  "serde",
+ "serde_json",
  "skrifa 0.40.0",
  "tsify",
  "vector-types",

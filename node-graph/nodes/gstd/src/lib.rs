@@ -78,10 +78,6 @@ pub mod math {
 	}
 }
 
-pub mod logic {
-	pub use graphene_core::logic::*;
-}
-
 pub mod context {
 	pub use graphene_core::context::*;
 }

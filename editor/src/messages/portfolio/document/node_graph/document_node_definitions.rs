@@ -537,7 +537,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(logic::switch::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::switch::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
 								..Default::default()
 							},
