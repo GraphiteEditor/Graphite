@@ -117,7 +117,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				label: Some(&format!("PerPixelAdjust {name} BindGroupLayout 0")),
 				entries,
 			})],
-			push_constant_ranges: &[],
+			..Default::default()
 		});
 
 		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -140,6 +140,7 @@ impl PerPixelAdjustGraphicsPipeline {
 			},
 			depth_stencil: None,
 			multisample: Default::default(),
+			multiview_mask: None,
 			fragment: Some(FragmentState {
 				module: &shader_module,
 				entry_point: Some(&fragment_name),
@@ -150,7 +151,6 @@ impl PerPixelAdjustGraphicsPipeline {
 					write_mask: Default::default(),
 				})],
 			}),
-			multiview: None,
 			cache: None,
 		});
 		Self {
@@ -227,9 +227,7 @@ impl PerPixelAdjustGraphicsPipeline {
 						},
 						depth_slice: None,
 					})],
-					depth_stencil_attachment: None,
-					timestamp_writes: None,
-					occlusion_query_set: None,
+					..Default::default()
 				});
 				rp.set_pipeline(&self.pipeline);
 				rp.set_bind_group(0, Some(&bind_group), &[]);

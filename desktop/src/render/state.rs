@@ -73,7 +73,7 @@ impl RenderState {
 			address_mode_w: wgpu::AddressMode::ClampToEdge,
 			mag_filter: wgpu::FilterMode::Linear,
 			min_filter: wgpu::FilterMode::Nearest,
-			mipmap_filter: wgpu::FilterMode::Nearest,
+			mipmap_filter: wgpu::MipmapFilterMode::Nearest,
 			..Default::default()
 		});
 
@@ -122,10 +122,7 @@ impl RenderState {
 		let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Render Pipeline Layout"),
 			bind_group_layouts: &[&texture_bind_group_layout],
-			push_constant_ranges: &[wgpu::PushConstantRange {
-				stages: wgpu::ShaderStages::FRAGMENT,
-				range: 0..size_of::<Constants>() as u32,
-			}],
+			immediate_size: size_of::<Immediates>() as u32,
 		});
 
 		let render_pipeline = context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -162,7 +159,7 @@ impl RenderState {
 				mask: !0,
 				alpha_to_coverage_enabled: false,
 			},
-			multiview: None,
+			multiview_mask: None,
 			cache: None,
 		});
 
@@ -281,13 +278,13 @@ impl RenderState {
 				depth_stencil_attachment: None,
 				occlusion_query_set: None,
 				timestamp_writes: None,
+				multiview_mask: None,
 			});
 
 			render_pass.set_pipeline(&self.render_pipeline);
-			render_pass.set_push_constants(
-				wgpu::ShaderStages::FRAGMENT,
+			render_pass.set_immediates(
 				0,
-				bytemuck::bytes_of(&Constants {
+				bytemuck::bytes_of(&Immediates {
 					viewport_scale: self.viewport_scale,
 					viewport_offset: self.viewport_offset,
 					ui_scale: ui_scale.unwrap_or([1., 1.]),
@@ -358,7 +355,7 @@ pub(crate) enum RenderError {
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct Constants {
+struct Immediates {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	ui_scale: [f32; 2],

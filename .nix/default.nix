@@ -31,7 +31,6 @@ let
 
         deps = {
           crane = lib.call ./deps/crane.nix;
-          cef = lib.call ./deps/cef.nix;
           rustGPU = lib.call ./deps/rust-gpu.nix;
         };
 
@@ -62,13 +61,13 @@ in
       graphite-bundle = (lib.call ./pkgs/graphite-bundle.nix) { };
       graphite-bundle-dev = (lib.call ./pkgs/graphite-bundle.nix) { graphite = graphite-dev; };
       graphite-flatpak-manifest = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { };
-      graphite-flatpak-manifest-dev = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { graphite-bundle = graphite-bundle-dev; };
+      graphite-flatpak-manifest-dev = (lib.call ./pkgs/graphite-flatpak-manifest.nix) {
+        graphite-bundle = graphite-bundle-dev;
+      };
 
       # TODO: graphene-cli = lib.call ./pkgs/graphene-cli.nix;
 
-      tools = {
-        third-party-licenses = lib.call ./pkgs/tools/third-party-licenses.nix;
-      };
+      graphite-cef = lib.call ./pkgs/graphite-cef/package.nix;
     }
   );
 

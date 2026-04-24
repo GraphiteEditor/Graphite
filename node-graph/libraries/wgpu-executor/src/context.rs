@@ -49,7 +49,7 @@ impl ContextBuilder {
 	}
 	pub async fn available_adapters_fmt(&self) -> impl std::fmt::Display {
 		let instance = self.build_instance();
-		fmt::AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends))
+		fmt::AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends).await)
 	}
 }
 #[cfg(target_family = "wasm")]
@@ -102,9 +102,9 @@ impl ContextBuilder {
 		let instance = self.build_instance();
 
 		let selected_adapter = if let Some(select) = select {
-			self.select_adapter(&instance, select)
+			self.select_adapter(&instance, select).await
 		} else if cfg!(target_os = "windows") {
-			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12))
+			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12)).await
 		} else {
 			None
 		};
@@ -119,11 +119,11 @@ impl ContextBuilder {
 			instance: Arc::new(instance),
 		})
 	}
-	fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
+	async fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
 	where
 		S: Fn(&[Adapter]) -> Option<usize>,
 	{
-		let mut adapters = instance.enumerate_adapters(self.backends);
+		let mut adapters = instance.enumerate_adapters(self.backends).await;
 		let selected_index = select(&adapters)?;
 		if selected_index >= adapters.len() {
 			return None;
