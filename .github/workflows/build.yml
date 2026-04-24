@@ -204,9 +204,19 @@ jobs:
             exit 0
           fi
 
+          size_of() { find frontend/dist/assets "$@" -printf '%s\n' | awk '{s+=$1} END {printf "%.2f MB", s/1048576}'; }
+          WASM_SIZE=$(size_of -name '*.wasm')
+          JS_SIZE=$(size_of -name '*.js')
+          CSS_SIZE=$(size_of -name '*.css')
+          FONT_SIZE=$(size_of \( -name '*.woff2' -o -name '*.woff' -o -name '*.ttf' -o -name '*.otf' \))
+          IMAGE_SIZE=$(size_of \( -name '*.png' -o -name '*.jpg' -o -name '*.svg' \))
+          ALL_SIZE=$(size_of -type f)
+
           COMMENT_BODY="| 📦 **Web Build Complete for** $(git rev-parse HEAD) |
           |-|
-          | $CF_URL |"
+          | $CF_URL |
+
+          Wasm: **$WASM_SIZE** — JS: **$JS_SIZE** — CSS: **$CSS_SIZE** — Fonts: **$FONT_SIZE** — Images: **$IMAGE_SIZE** — All Assets: **$ALL_SIZE**"
 
           if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
             # Push tag: skip commenting (commit was already commented on master merge)

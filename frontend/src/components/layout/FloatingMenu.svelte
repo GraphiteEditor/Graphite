@@ -62,8 +62,6 @@
 	let measuringOngoingGuard = false;
 	let minWidthParentWidth = 0;
 	let pointerStillDown = false;
-	let floatingMenuBounds = new DOMRect();
-	let floatingMenuContentBounds = new DOMRect();
 
 	$: watchOpenChange(open);
 
@@ -189,9 +187,9 @@
 		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
 		const windowBounds = document.documentElement.getBoundingClientRect();
-		floatingMenuBounds = self.getBoundingClientRect();
+		const floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
-		floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
+		const floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
 		const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
 		const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
@@ -210,22 +208,30 @@
 			else if (direction === "Right" && overflowingRight) direction = "Left";
 		}
 
+		// These are set imperatively, not through reactive Svelte style bindings, because that would cause `afterUpdate()` to call this function recursively forever.
+		// CSS custom properties on the container are used instead of direct `.style` on the content because Svelte's `set_style` can replace the content's entire
+		// inline style when its managed `style` attribute updates, which would wipe out any manually-set properties like `top` and `left`.
+		floatingMenuContainer.style.removeProperty("--content-top");
+		floatingMenuContainer.style.removeProperty("--content-bottom");
+		floatingMenuContainer.style.removeProperty("--content-left");
+		floatingMenuContainer.style.removeProperty("--content-right");
+		floatingMenuContainer.style.removeProperty("--content-border-top-left-radius");
+		floatingMenuContainer.style.removeProperty("--content-border-top-right-radius");
+		floatingMenuContainer.style.removeProperty("--content-border-bottom-left-radius");
+		floatingMenuContainer.style.removeProperty("--content-border-bottom-right-radius");
+
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 		const noPosition = Boolean(floatingMenuContainer.closest("[data-floating-menu-no-position]"));
 		if (!inParentFloatingMenu && !noPosition) {
-			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			let tailOffset = 0;
 			if (type === "Popover") tailOffset = 10;
 			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
 
-			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
-			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
-			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
-			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
+			if (direction === "Bottom") floatingMenuContainer.style.setProperty("--content-top", `${tailOffset + floatingMenuBounds.y}px`);
+			if (direction === "Top") floatingMenuContainer.style.setProperty("--content-bottom", `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`);
+			if (direction === "Right") floatingMenuContainer.style.setProperty("--content-left", `${tailOffset + floatingMenuBounds.x}px`);
+			if (direction === "Left") floatingMenuContainer.style.setProperty("--content-right", `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`);
 
-			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
 			if (tail && direction === "Top") tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
 			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
@@ -239,45 +245,42 @@
 		if (direction === "Top" || direction === "Bottom") {
 			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
 
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (overflowingLeft) {
-				floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-left", `${windowEdgeMargin}px`);
 				if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
 			if (overflowingRight) {
-				floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-right", `${windowEdgeMargin}px`);
 				if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
 		if (direction === "Left" || direction === "Right") {
 			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (overflowingTop) {
-				floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-top", `${windowEdgeMargin}px`);
 				if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
 			if (overflowingBottom) {
-				floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
+				floatingMenuContainer.style.setProperty("--content-bottom", `${windowEdgeMargin}px`);
 				if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
 
 		// Remove the rounded corner from the content where the tail perfectly meets the corner
 		if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
-					floatingMenuContentDiv.style.borderTopLeftRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-top-left-radius", "0");
 					break;
 				case "TopRight":
-					floatingMenuContentDiv.style.borderTopRightRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-top-right-radius", "0");
 					break;
 				case "BottomLeft":
-					floatingMenuContentDiv.style.borderBottomLeftRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-bottom-left-radius", "0");
 					break;
 				case "BottomRight":
-					floatingMenuContentDiv.style.borderBottomRightRadius = "0";
+					floatingMenuContainer.style.setProperty("--content-border-bottom-right-radius", "0");
 					break;
 				default:
 					break;
@@ -537,12 +540,20 @@
 				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
 				border: 1px solid var(--color-3-darkgray);
 				border-radius: 4px;
+				border-top-left-radius: var(--content-border-top-left-radius, 4px);
+				border-top-right-radius: var(--content-border-top-right-radius, 4px);
+				border-bottom-left-radius: var(--content-border-bottom-left-radius, 4px);
+				border-bottom-right-radius: var(--content-border-bottom-right-radius, 4px);
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
 				padding: 8px;
 				z-index: 0;
 				// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 				position: fixed;
+				top: var(--content-top, auto);
+				bottom: var(--content-bottom, auto);
+				left: var(--content-left, auto);
+				right: var(--content-right, auto);
 				// Counteract the rightward shift caused by the border
 				margin-left: -1px;
 			}

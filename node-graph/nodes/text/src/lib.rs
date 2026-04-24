@@ -682,9 +682,9 @@ fn string_length(_: impl Ctx, string: String) -> f64 {
 	string.graphemes(true).count() as f64
 }
 
-/// Splits a string into a list of substrings based on the specified delimeter. This is the inverse of the **String Join** node.
+/// Splits a string into a list of substrings based on the specified delimiter. This is the inverse of the **String Join** node.
 ///
-/// For example, splitting "a, b, c" with delimeter ", " produces `["a", "b", "c"]`.
+/// For example, splitting "a, b, c" with delimiter ", " produces `["a", "b", "c"]`.
 #[node_macro::node(category("Text"))]
 fn string_split(
 	_: impl Ctx,
@@ -692,15 +692,15 @@ fn string_split(
 	string: String,
 	/// The character(s) that separate the substrings. These are not included in the outputs.
 	#[default("\\n")]
-	delimeter: String,
-	/// Whether to convert escape sequences found in the delimeter into their corresponding characters:
+	delimiter: String,
+	/// Whether to convert escape sequences found in the delimiter into their corresponding characters:
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
-	delimeter_escaping: bool,
+	delimiter_escaping: bool,
 ) -> Vec<String> {
-	let delimeter = if delimeter_escaping { unescape_string(delimeter) } else { delimeter };
+	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
 
-	string.split(&delimeter).map(str::to_string).collect()
+	string.split(&delimiter).map(str::to_string).collect()
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
