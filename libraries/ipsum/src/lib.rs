@@ -336,20 +336,19 @@ fn seed_chain(out: &mut Output, opener_words_used: usize, opener_ended_with_brea
 /// Pick the next successor for this step, applying unit-specific biasing.
 fn pick_next(followers: &[u16], at_final_word: bool, total_unit: Unit, out: &Output, total_length: usize, rand_index: &mut impl FnMut(usize) -> usize) -> u16 {
 	if at_final_word {
-		// For the Words unit's final real word, prefer a successor that ends a sentence
-		let enders: Vec<u16> = followers.iter().copied().filter(|&w| word(w).ends_with(SENTENCE_ENDERS)).collect();
-		if !enders.is_empty() {
-			return enders[rand_index(enders.len())];
+		let mut enders = followers.iter().copied().filter(|&w| word(w).ends_with(SENTENCE_ENDERS));
+		let count = enders.clone().count();
+		if count > 0 {
+			return enders.nth(rand_index(count)).unwrap();
 		}
 	}
 
 	if total_unit == Unit::Characters {
-		// Prefer a successor whose emission fits the remaining character budget so the chain
-		// can land closer to the exact target without needing truncation
 		let remaining = total_length.saturating_sub(out.output.len());
-		let fits: Vec<u16> = followers.iter().copied().filter(|&w| emission_byte_cost(word(w), &out.output) <= remaining).collect();
-		if !fits.is_empty() {
-			return fits[rand_index(fits.len())];
+		let mut fits = followers.iter().copied().filter(|&w| emission_byte_cost(word(w), &out.output) <= remaining);
+		let count = fits.clone().count();
+		if count > 0 {
+			return fits.nth(rand_index(count)).unwrap();
 		}
 	}
 
