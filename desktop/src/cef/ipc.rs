@@ -1,4 +1,4 @@
-use cef::{CefString, Frame, ImplBinaryValue, ImplFrame, ImplListValue, ImplProcessMessage, ImplV8Context, ProcessId, V8Context, sys::cef_process_id_t};
+use cef::{Frame, ImplBinaryValue, ImplFrame, ImplListValue, ImplProcessMessage, ImplV8Context, ProcessId, V8Context, sys::cef_process_id_t};
 
 pub(crate) enum MessageType {
 	Initialized,
@@ -67,7 +67,7 @@ impl SendMessage for Frame {
 	fn send_message(&self, message_type: MessageType, message: &[u8]) {
 		let MessageInfo { name, target } = message_type.into();
 
-		let Some(mut process_message) = cef::process_message_create(Some(&CefString::from(name.as_str()))) else {
+		let Some(mut process_message) = cef::process_message_create(Some(&name.as_str().into())) else {
 			tracing::error!("Failed to create process message: {}", name);
 			return;
 		};

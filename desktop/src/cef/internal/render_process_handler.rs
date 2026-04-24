@@ -1,6 +1,6 @@
 use cef::rc::{ConvertReturnValue, Rc, RcImpl};
 use cef::sys::{_cef_render_process_handler_t, cef_base_ref_counted_t, cef_render_process_handler_t, cef_v8_propertyattribute_t, cef_v8_value_create_array_buffer_with_copy};
-use cef::{CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, V8Value, WrapRenderProcessHandler, v8_value_create_function};
+use cef::{ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8Value, V8Handler, V8Propertyattribute, V8Value, WrapRenderProcessHandler, v8_value_create_function};
 
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
@@ -53,13 +53,13 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 				let function_call = format!("window.{function_name}(window.{property_name})");
 
 				global.set_value_bykey(
-					Some(&CefString::from(property_name)),
+					Some(&property_name.into()),
 					Some(&mut value),
 					cef_v8_propertyattribute_t::V8_PROPERTY_ATTRIBUTE_READONLY.wrap_result(),
 				);
 
-				if global.value_bykey(Some(&CefString::from(function_name))).is_some() {
-					frame.execute_java_script(Some(&CefString::from(function_call.as_str())), None, 0);
+				if global.value_bykey(Some(&function_name.into())).is_some() {
+					frame.execute_java_script(Some(&function_call.as_str().into()), None, 0);
 				}
 
 				if context.exit() == 0 {
@@ -78,7 +78,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
 		let register_js_function = |context: &mut cef::V8Context, name: &'static str| {
 			let mut v8_handler = V8Handler::new(RenderProcessV8HandlerImpl::new());
-			let Some(mut function) = v8_value_create_function(Some(&CefString::from(name)), Some(&mut v8_handler)) else {
+			let Some(mut function) = v8_value_create_function(Some(&name.into()), Some(&mut v8_handler)) else {
 				tracing::error!("Failed to create V8 function {name}");
 				return;
 			};
@@ -87,7 +87,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 				tracing::error!("Global object is not available in V8 context");
 				return;
 			};
-			global.set_value_bykey(Some(&CefString::from(name)), Some(&mut function), V8Propertyattribute::default());
+			global.set_value_bykey(Some(&name.into()), Some(&mut function), V8Propertyattribute::default());
 		};
 
 		let Some(context) = context else {

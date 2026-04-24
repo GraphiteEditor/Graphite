@@ -45,8 +45,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 		let args = Args::new();
 		let cmd = args.as_cmd_line().unwrap();
-		let switch = CefString::from("type");
-		let is_sub_process = cmd.has_switch(Some(&switch)) == 1;
+		let is_sub_process = cmd.has_switch(Some(&"type".into())) == 1;
 
 		Self {
 			args,
@@ -61,8 +60,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	pub(crate) fn execute_sub_process(&self) -> SetupError {
 		let cmd = self.args.as_cmd_line().unwrap();
-		let switch = CefString::from("type");
-		let process_type = CefString::from(&cmd.switch_value(Some(&switch)));
+		let process_type = CefString::from(&cmd.switch_value(Some(&"type".into())));
 		let mut app = RenderProcessAppImpl::<H>::app();
 		let ret = execute_process(Some(self.args.as_main_args()), Some(&mut app), std::ptr::null_mut());
 		if ret >= 0 {
@@ -88,7 +86,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 		Settings {
 			windowless_rendering_enabled: 1,
 			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
-			cache_path: CefString::from(""),
+			cache_path: "".into(),
 			disable_signal_handlers: 1,
 			log_severity,
 			..Default::default()
@@ -103,7 +101,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
 
 		let settings = Settings {
-			main_bundle_path: CefString::from(app_root.to_str().unwrap()),
+			main_bundle_path: app_root.to_str().map(CefString::from).unwrap(),
 			multi_threaded_message_loop: 0,
 			external_message_pump: 1,
 			no_sandbox: 1, // GPU helper crashes when running with sandbox
@@ -181,7 +179,7 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, d
 	let Some(mut incognito_request_context) = cef::request_context_create_context(
 		Some(&RequestContextSettings {
 			persist_session_cookies: 0,
-			cache_path: CefString::from(""),
+			cache_path: "".into(),
 			..Default::default()
 		}),
 		Option::<&mut cef::RequestContextHandler>::None,
@@ -191,14 +189,14 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, d
 
 	let mut scheme_handler_factory = SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(event_handler.duplicate()));
 	incognito_request_context.clear_scheme_handler_factories();
-	incognito_request_context.register_scheme_handler_factory(Some(&CefString::from(RESOURCE_SCHEME)), Some(&CefString::from(RESOURCE_DOMAIN)), Some(&mut scheme_handler_factory));
+	incognito_request_context.register_scheme_handler_factory(Some(&RESOURCE_SCHEME.into()), Some(&RESOURCE_DOMAIN.into()), Some(&mut scheme_handler_factory));
 
-	let url = CefString::from(format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/").as_str());
+	let url = format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/");
 
 	let browser = browser_host_create_browser_sync(
 		Some(&window_info),
 		Some(&mut client),
-		Some(&url),
+		Some(&url.as_str().into()),
 		Some(&settings),
 		Option::<&mut DictionaryValue>::None,
 		Some(&mut incognito_request_context),
