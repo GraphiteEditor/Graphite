@@ -157,7 +157,7 @@ fn string_capitalization(
 	/// The string placed between each word.
 	joiner: String,
 ) -> String {
-	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
+	// When the joiner is enabled, apply word-level casing and optionally reconnect words with the selected joiner
 	if use_joiner {
 		match capitalization {
 			// Simple case mappings that preserve the string's existing structure
@@ -181,7 +181,9 @@ fn string_capitalization(
 				.convert(&string),
 			StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&string),
 		}
-	} else {
+	}
+	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
+	else {
 		match capitalization {
 			StringCapitalization::LowerCase => string.to_lowercase(),
 			StringCapitalization::UpperCase => string.to_uppercase(),
