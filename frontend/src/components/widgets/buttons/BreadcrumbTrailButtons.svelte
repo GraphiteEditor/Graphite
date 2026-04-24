@@ -26,7 +26,7 @@
 			maxLength -= 2;
 		}
 
-		truncated = truncated.slice(0, maxLength) + "…";
+		truncated = truncated.slice(0, maxLength - 1) + "…";
 
 		if (hasQuotes) truncated = `"${truncated}"`;
 

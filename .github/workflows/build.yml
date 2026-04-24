@@ -153,12 +153,18 @@ jobs:
           if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
             REF="latest-stable"
             ENVIRONMENT="graphite-editor (Production)"
+            AUTO_INACTIVE="true"
+            TRANSIENT_ENVIRONMENT="false"
           elif [ "${{ github.event_name }}" = "push" ]; then
             REF="master"
             ENVIRONMENT="graphite-dev (Production)"
+            AUTO_INACTIVE="true"
+            TRANSIENT_ENVIRONMENT="false"
           else
             REF="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
             ENVIRONMENT="graphite-dev (Preview)"
+            AUTO_INACTIVE="false"
+            TRANSIENT_ENVIRONMENT="true"
           fi
           create_deployment() {
             gh api \
@@ -167,7 +173,14 @@ jobs:
               repos/${{ github.repository }}/deployments \
               --input - \
               --jq '.id' <<EOF
-              {"ref":"$1","environment":"$ENVIRONMENT","auto_merge":false,"required_contexts":[]}
+              {
+                "ref": "$1",
+                "environment": "$ENVIRONMENT",
+                "auto_merge": false,
+                "required_contexts": [],
+                "auto_inactive": $AUTO_INACTIVE,
+                "transient_environment": $TRANSIENT_ENVIRONMENT
+              }
           EOF
           }
           # Try branch name first (needed for GitHub's PR "View deployment" button), fall back to commit SHA if the branch was deleted

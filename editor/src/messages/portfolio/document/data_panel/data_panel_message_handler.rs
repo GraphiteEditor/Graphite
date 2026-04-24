@@ -610,6 +610,7 @@ impl TableRowLayout for u64 {
 		"Number (u64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		// TODO: Make this robust for large u64 values that don't fit in f64 (above roughly 2^53). Perhaps using a bigint kind of approach through the widget's data flow.
 		let widgets = vec![NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
