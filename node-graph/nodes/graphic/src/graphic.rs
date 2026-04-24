@@ -46,6 +46,39 @@ where
 	.unwrap_or_default()
 }
 
+/// Returns the collection with the element at the specified index removed.
+/// If no value exists at that index, the collection is returned unchanged.
+#[node_macro::node(category("General"))]
+pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
+	_: impl Ctx,
+	/// The collection of data, such as a list or table.
+	#[implementations(
+		Vec<f64>,
+		Vec<u32>,
+		Vec<u64>,
+		Vec<DVec2>,
+		Vec<String>,
+		Table<Artboard>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	collection: T,
+	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	index: SignedInteger,
+) -> T {
+	let index = index as i32;
+
+	if index < 0 {
+		collection.omit_index_from_end(-index as usize)
+	} else {
+		collection.omit_index(index as usize)
+	}
+}
+
 #[node_macro::node(category("General"))]
 async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
