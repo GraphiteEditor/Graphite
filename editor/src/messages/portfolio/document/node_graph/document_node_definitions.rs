@@ -2035,6 +2035,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("selective_color_properties".to_string(), Box::new(node_properties::selective_color_properties));
 	map.insert("exposure_properties".to_string(), Box::new(node_properties::exposure_properties));
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
+	map.insert("format_number_properties".to_string(), Box::new(node_properties::format_number_properties));
 	map.insert("string_capitalization_properties".to_string(), Box::new(node_properties::string_capitalization_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));

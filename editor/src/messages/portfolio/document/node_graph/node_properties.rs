@@ -134,18 +134,13 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	}
 	widgets.push(TextLabel::new(name).tooltip_description(description).widget_instance());
 
-	let mut blank_assist = blank_assist;
-	if input.is_exposed() {
-		if blank_assist {
-			add_blank_assist(&mut widgets);
-			blank_assist = false;
-		}
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
+	if blank_assist || input.is_exposed() {
+		add_blank_assist(&mut widgets);
 	}
 
-	if blank_assist {
-		add_blank_assist(&mut widgets);
+	if input.is_exposed() {
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
 	}
 
 	widgets
@@ -1628,6 +1623,91 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 	);
 
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
+}
+
+pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::text_nodes::format_number::{DecimalPlacesInput, DecimalSeparatorInput, FixedDecimalsInput, StartAt10000Input, ThousandsSeparatorInput, UseThousandsSeparatorInput};
+
+	// Read current values before borrowing context mutably for widgets
+	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let decimal_places = match document_node.inputs.get(DecimalPlacesInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::U32(x)) => x,
+				_ => 2,
+			};
+			let decimal_sep = match document_node.inputs.get(DecimalSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			let use_thousands = match document_node.inputs.get(UseThousandsSeparatorInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Bool(x)) => x,
+				_ => false,
+			};
+			let use_thousands = use_thousands || document_node.inputs.get(ThousandsSeparatorInput::INDEX).is_some_and(|input| input.is_exposed());
+			let thousands_sep = match document_node.inputs.get(ThousandsSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			(decimal_places == 0, decimal_sep, use_thousands, thousands_sep)
+		}
+		Err(err) => {
+			log::error!("Could not get document node in format_number_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	let decimal_places = number_widget(ParameterWidgetsInfo::new(node_id, DecimalPlacesInput::INDEX, true, context), NumberInput::default().min(0.).int());
+
+	// Fixed decimals and decimal separator are disabled when decimal places is 0
+	let fixed_decimals = bool_widget(
+		ParameterWidgetsInfo::new(node_id, FixedDecimalsInput::INDEX, true, context),
+		CheckboxInput::default().disabled(no_decimals),
+	);
+	let mut decimal_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, DecimalSeparatorInput::INDEX, true, context));
+	if let Some(sep) = decimal_sep_value {
+		decimal_sep_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(sep)
+				.disabled(no_decimals)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, DecimalSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Thousands separator: checkbox in assist area
+	let mut thousands_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ThousandsSeparatorInput::INDEX, false, context));
+	if let Some(sep) = thousands_sep_value {
+		thousands_sep_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(use_thousands)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseThousandsSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(sep)
+				.disabled(!use_thousands)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, ThousandsSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Start at 10,000: disabled when thousands separator is off
+	let start_at_10000 = bool_widget(
+		ParameterWidgetsInfo::new(node_id, StartAt10000Input::INDEX, true, context),
+		CheckboxInput::default().disabled(!use_thousands),
+	);
+
+	vec![
+		LayoutGroup::row(decimal_places),
+		LayoutGroup::row(decimal_sep_widgets),
+		LayoutGroup::row(fixed_decimals),
+		LayoutGroup::row(thousands_sep_widgets),
+		LayoutGroup::row(start_at_10000),
+	]
 }
 
 pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
