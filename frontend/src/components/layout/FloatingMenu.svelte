@@ -208,17 +208,21 @@
 			else if (direction === "Right" && overflowingRight) direction = "Left";
 		}
 
+		// These are set imperatively, not through reactive Svelte style bindings, because that would cause `afterUpdate()` to call this function recursively forever.
+		// CSS custom properties on the container are used instead of direct `.style` on the content because Svelte's `set_style` can replace the content's entire
+		// inline style when its managed `style` attribute updates, which would wipe out any manually-set properties like `top` and `left`.
+		floatingMenuContainer.style.removeProperty("--content-top");
+		floatingMenuContainer.style.removeProperty("--content-bottom");
+		floatingMenuContainer.style.removeProperty("--content-left");
+		floatingMenuContainer.style.removeProperty("--content-right");
+		floatingMenuContainer.style.removeProperty("--content-border-top-left-radius");
+		floatingMenuContainer.style.removeProperty("--content-border-top-right-radius");
+		floatingMenuContainer.style.removeProperty("--content-border-bottom-left-radius");
+		floatingMenuContainer.style.removeProperty("--content-border-bottom-right-radius");
+
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 		const noPosition = Boolean(floatingMenuContainer.closest("[data-floating-menu-no-position]"));
 		if (!inParentFloatingMenu && !noPosition) {
-			// These are set imperatively, not through reactive Svelte style bindings, because that would cause `afterUpdate()` to call this function recursively forever.
-			// CSS custom properties on the container are used instead of direct `.style` on the content because Svelte's `set_style` can replace the content's entire
-			// inline style when its managed `style` attribute updates, which would wipe out any manually-set properties like `top` and `left`.
-			floatingMenuContainer.style.removeProperty("--content-top");
-			floatingMenuContainer.style.removeProperty("--content-bottom");
-			floatingMenuContainer.style.removeProperty("--content-left");
-			floatingMenuContainer.style.removeProperty("--content-right");
-
 			let tailOffset = 0;
 			if (type === "Popover") tailOffset = 10;
 			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
