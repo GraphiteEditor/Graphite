@@ -1,6 +1,7 @@
 mod font_cache;
 pub mod json;
 mod path_builder;
+pub mod regex;
 mod text_context;
 mod to_path;
 
