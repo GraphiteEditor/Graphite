@@ -5,7 +5,6 @@ use core_types::Color;
 use core_types::color::float_to_srgb_u8;
 use core_types::table::{Table, TableRow};
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
-use core::hash::{Hash, Hasher};
 use core_types::color::*;
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
@@ -372,7 +371,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<TableRow<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	#[derive(Clone, Debug, PartialEq, DynAny)]
 	enum RasterFrame {
 		/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 		ImageFrame(Table<Image<Color>>),
@@ -390,7 +389,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		}
 	}
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),

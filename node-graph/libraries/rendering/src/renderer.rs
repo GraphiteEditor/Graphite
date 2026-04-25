@@ -1,5 +1,6 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
+use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color};
@@ -10,6 +11,7 @@ use core_types::transform::{Footprint, Transform};
 use core_types::uuid::{NodeId, generate_uuid};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_hash::CacheHashWrapper;
 use graphic_types::Vector;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -21,8 +23,6 @@ use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use core_types::CacheHash;
-use graphene_hash::CacheHashWrapper;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
@@ -192,7 +192,7 @@ pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::ImageBrush, wgpu::Texture)>,
 }
 
-#[derive(Default, Clone, Copy, Hash)]
+#[derive(Default, Clone, Copy, Hash, graphene_hash::CacheHash)]
 pub enum RenderOutputType {
 	#[default]
 	Svg,

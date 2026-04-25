@@ -1,6 +1,6 @@
-use core_types::Ctx;
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::table::Table;
+use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
@@ -188,7 +188,7 @@ fn star<T: AsU64>(
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum QRCodeErrorCorrectionLevel {
 	/// Allows recovery from up to 7% data loss.

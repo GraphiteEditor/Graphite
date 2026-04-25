@@ -1,7 +1,7 @@
 use core_types::table::Table;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -9,7 +9,7 @@ use raster_types::{CPU, GPU, Raster};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, CacheHash, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 pub enum RealTimeMode {
 	#[label("UTC")]
 	Utc,

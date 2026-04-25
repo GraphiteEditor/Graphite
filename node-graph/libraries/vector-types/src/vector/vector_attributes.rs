@@ -87,7 +87,6 @@ pub struct PointDomain {
 	pub(crate) position: Vec<DVec2>,
 }
 
-
 impl PointDomain {
 	pub const fn new() -> Self {
 		Self { id: Vec::new(), position: Vec::new() }

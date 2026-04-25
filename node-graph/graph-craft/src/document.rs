@@ -1136,6 +1136,12 @@ fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> R
 	})
 }
 
+impl core_types::graphene_hash::CacheHash for DocumentNode {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

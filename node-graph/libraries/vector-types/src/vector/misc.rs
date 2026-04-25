@@ -572,3 +572,16 @@ pub enum InterpolationDistribution {
 	/// All slants (changes in skew angle) between objects are covered at a constant rate, meaning more time is spent skewing through larger changes in slant.
 	Slants,
 }
+
+graphene_hash::impl_via_hash!(
+	BooleanOperation,
+	CentroidType,
+	RowsOrColumns,
+	GridType,
+	ArcType,
+	MergeByDistanceAlgorithm,
+	ExtrudeJoiningAlgorithm,
+	PointSpacingType,
+	SpiralType,
+	InterpolationDistribution
+);

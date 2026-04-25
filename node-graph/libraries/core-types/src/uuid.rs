@@ -68,7 +68,7 @@ mod uuid_generation {
 
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct NodeId(pub u64);
 
 impl NodeId {

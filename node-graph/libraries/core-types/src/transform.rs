@@ -6,7 +6,7 @@ use glam::{DAffine2, DMat2, DVec2, UVec2};
 /// Controls whether the Decompose Scale node returns axis-length magnitudes or pure scale factors.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum ScaleType {
 	/// The visual length of each axis (always positive, includes any skew contribution).
@@ -213,7 +213,6 @@ impl From<()> for Footprint {
 		Footprint::default()
 	}
 }
-
 
 pub trait ApplyTransform {
 	fn apply_transform(&mut self, modification: &DAffine2);

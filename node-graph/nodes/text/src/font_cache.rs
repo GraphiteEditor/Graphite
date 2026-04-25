@@ -1,3 +1,4 @@
+use core_types::graphene_hash::CacheHash;
 use dyn_any::DynAny;
 use parley::fontique::Blob;
 use std::collections::HashMap;
@@ -19,6 +20,14 @@ impl std::hash::Hash for Font {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.font_family.hash(state);
 		self.font_style.hash(state);
+		// Don't consider `font_style_to_restore` in the HashMaps
+	}
+}
+
+impl CacheHash for Font {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.font_family.cache_hash(state);
+		self.font_style.cache_hash(state);
 		// Don't consider `font_style_to_restore` in the HashMaps
 	}
 }

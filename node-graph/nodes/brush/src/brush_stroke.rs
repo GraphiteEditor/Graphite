@@ -1,10 +1,11 @@
+use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::math::bbox::AxisAlignedBbox;
 use dyn_any::DynAny;
 use glam::DVec2;
 /// The style of a brush.
-#[derive(Clone, Debug, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushStyle {
 	pub color: Color,
 	pub diameter: f64,
@@ -26,7 +27,6 @@ impl Default for BrushStyle {
 		}
 	}
 }
-
 
 impl Eq for BrushStyle {}
 

@@ -7,6 +7,7 @@ mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
 use core_types::Color;
+use core_types::graphene_hash::CacheHash;
 use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::table::Table;
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
@@ -25,7 +26,7 @@ pub use vector_types;
 /// Alignment of lines of type within a text block.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]
@@ -116,7 +117,7 @@ fn escape_string(input: String) -> String {
 	result
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum StringCapitalization {
 	/// "on the origin of species" — Converts all letters to lower case.

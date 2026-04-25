@@ -163,6 +163,12 @@ bitflags! {
 	}
 }
 
+impl graphene_hash::CacheHash for ContextFeatures {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
+	}
+}
+
 impl ContextFeatures {
 	pub fn name(&self) -> &'static str {
 		match *self {
@@ -600,9 +606,9 @@ pub trait DynHash {
 	fn dyn_hash(&self, state: &mut dyn Hasher);
 }
 
-impl<H: Hash + ?Sized> DynHash for H {
+impl<H: graphene_hash::CacheHash + ?Sized> DynHash for H {
 	fn dyn_hash(&self, mut state: &mut dyn Hasher) {
-		self.hash(&mut state);
+		graphene_hash::CacheHash::cache_hash(self, &mut state);
 	}
 }
 

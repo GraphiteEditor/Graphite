@@ -20,7 +20,6 @@ pub struct ManipulatorGroup<PointId: Identifier> {
 	pub id: PointId,
 }
 
-
 impl<PointId: Identifier> Debug for ManipulatorGroup<PointId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		f.debug_struct("ManipulatorGroup")
@@ -104,7 +103,7 @@ pub enum AppendType {
 	SmoothJoin(f64),
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, graphene_hash::CacheHash)]
 pub enum ArcType {
 	Open,
 	Closed,
@@ -129,7 +128,6 @@ pub enum BezierHandles {
 		handle_end: DVec2,
 	},
 }
-
 
 impl BezierHandles {
 	pub fn is_cubic(&self) -> bool {

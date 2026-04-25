@@ -60,7 +60,6 @@ impl<'de> serde::Deserialize<'de> for GradientStops {
 	}
 }
 
-
 impl Default for GradientStops {
 	fn default() -> Self {
 		Self {
@@ -371,7 +370,6 @@ impl Default for Gradient {
 		}
 	}
 }
-
 
 impl std::fmt::Display for Gradient {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

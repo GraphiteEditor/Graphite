@@ -39,10 +39,11 @@ impl<T> core::ops::Deref for CacheHashWrapper<T> {
 }
 
 // Bulk impl for types that already implement std::hash::Hash — delegates directly.
+#[macro_export]
 macro_rules! impl_via_hash {
 	($($t:ty),* $(,)?) => {
 		$(
-			impl CacheHash for $t {
+			impl $crate::CacheHash for $t {
 				#[inline]
 				fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 					core::hash::Hash::hash(self, state);

@@ -236,7 +236,6 @@ impl PartialEq for Color {
 
 impl Eq for Color {}
 
-
 impl RGB for Color {
 	type ColorChannel = f32;
 	#[inline(always)]

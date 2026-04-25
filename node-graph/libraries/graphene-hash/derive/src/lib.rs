@@ -51,10 +51,12 @@ pub fn derive_cache_hash(input: TokenStream) -> TokenStream {
 				let (pattern, hash_body) = match &variant.fields {
 					Fields::Unit => (quote! {}, quote! {}),
 					Fields::Unnamed(fields) => {
-						let bindings: Vec<_> = (0..fields.unnamed.len()).map(|i| {
-							let ident = proc_macro2::Ident::new(&format!("f{i}"), proc_macro2::Span::call_site());
-							quote! { #ident }
-						}).collect();
+						let bindings: Vec<_> = (0..fields.unnamed.len())
+							.map(|i| {
+								let ident = proc_macro2::Ident::new(&format!("f{i}"), proc_macro2::Span::call_site());
+								quote! { #ident }
+							})
+							.collect();
 						let hash_stmts = fields.unnamed.iter().enumerate().filter_map(|(i, field)| {
 							if has_skip_attr(&field.attrs) {
 								return None;

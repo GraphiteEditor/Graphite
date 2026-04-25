@@ -322,7 +322,6 @@ pub struct Stroke {
 	pub paint_order: PaintOrder,
 }
 
-
 impl Stroke {
 	pub const fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
@@ -500,7 +499,6 @@ pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
 }
-
 
 impl std::fmt::Display for PathStyle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

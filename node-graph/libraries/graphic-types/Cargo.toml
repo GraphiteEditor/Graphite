@@ -18,6 +18,7 @@ wasm = [
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
+graphene-hash = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 vector-types = { workspace = true }
 node-macro = { workspace = true }

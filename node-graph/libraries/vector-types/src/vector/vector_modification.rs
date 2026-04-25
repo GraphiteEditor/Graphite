@@ -517,6 +517,12 @@ impl Hash for VectorModification {
 	}
 }
 
+impl graphene_hash::CacheHash for VectorModification {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&generate_uuid(), state);
+	}
+}
+
 // Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
 // TODO: Eventually remove this document upgrade code
 use serde::de::{SeqAccess, Visitor};
