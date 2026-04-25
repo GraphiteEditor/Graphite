@@ -354,6 +354,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											DocumentMessage::AlignSelectedLayers {
 												axis: AlignAxis::X,
 												aggregate: AlignAggregate::Min,
+												align_to_artboard: false,
 											}
 											.into()
 										})
@@ -365,6 +366,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											DocumentMessage::AlignSelectedLayers {
 												axis: AlignAxis::X,
 												aggregate: AlignAggregate::Center,
+												align_to_artboard: false,
 											}
 											.into()
 										})
@@ -376,6 +378,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											DocumentMessage::AlignSelectedLayers {
 												axis: AlignAxis::X,
 												aggregate: AlignAggregate::Max,
+												align_to_artboard: false,
 											}
 											.into()
 										})
@@ -389,6 +392,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											DocumentMessage::AlignSelectedLayers {
 												axis: AlignAxis::Y,
 												aggregate: AlignAggregate::Min,
+												align_to_artboard: false,
 											}
 											.into()
 										})
@@ -400,6 +404,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											DocumentMessage::AlignSelectedLayers {
 												axis: AlignAxis::Y,
 												aggregate: AlignAggregate::Center,
+												align_to_artboard: false,
 											}
 											.into()
 										})
@@ -411,6 +416,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											DocumentMessage::AlignSelectedLayers {
 												axis: AlignAxis::Y,
 												aggregate: AlignAggregate::Max,
+												align_to_artboard: false,
 											}
 											.into()
 										})
