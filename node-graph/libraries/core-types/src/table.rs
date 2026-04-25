@@ -609,6 +609,12 @@ impl<T> Table<T> {
 			columns: &mut self.attributes,
 		}
 	}
+
+	// TODO: Add an `iter_element_values` and `iter_element_values_mut`
+	// TODO: Add an `iter_attribute_values(key)` and `iter_attribute_values_mut(key)`
+	// TODO: Remove `iter` and `iter_mut`
+	// TODO: Remove `TableRowIterMut` and probably `TableRowMut`
+	// TODO: Maybe remove `TableRowRef` since it encourages per-row linear search of attributes for their key lookup in the storage Vec
 }
 
 #[cfg(feature = "serde")]
