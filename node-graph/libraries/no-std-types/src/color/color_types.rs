@@ -2,7 +2,6 @@ use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, Luminance
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
-use core::hash::Hash;
 use glam::Vec4;
 use half::f16;
 use node_macro::BufferStruct;
@@ -220,6 +219,7 @@ impl Pixel for Luma {}
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
 #[derive(Debug, Default, Clone, Copy, Pod, Zeroable, BufferStruct)]
 pub struct Color {
 	red: f32,
@@ -236,15 +236,6 @@ impl PartialEq for Color {
 
 impl Eq for Color {}
 
-#[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for Color {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.red.to_bits().hash(state);
-		self.green.to_bits().hash(state);
-		self.blue.to_bits().hash(state);
-		self.alpha.to_bits().hash(state);
-	}
-}
 
 impl RGB for Color {
 	type ColorChannel = f32;

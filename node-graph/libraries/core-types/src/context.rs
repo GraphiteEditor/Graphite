@@ -536,14 +536,14 @@ impl Default for OwnedContextImpl {
 	}
 }
 
-impl Hash for OwnedContextImpl {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.footprint.hash(state);
-		self.real_time.map(|x| x.to_bits()).hash(state);
-		self.animation_time.map(|x| x.to_bits()).hash(state);
-		self.pointer_position.map(|v| (v.x.to_bits(), v.y.to_bits())).hash(state);
-		self.position.iter().flat_map(|x| x.iter()).map(|v| (v.x.to_bits(), v.y.to_bits())).for_each(|v| v.hash(state));
-		self.index.hash(state);
+impl graphene_hash::CacheHash for OwnedContextImpl {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.footprint.cache_hash(state);
+		self.real_time.cache_hash(state);
+		self.animation_time.cache_hash(state);
+		self.pointer_position.cache_hash(state);
+		self.position.cache_hash(state);
+		self.index.cache_hash(state);
 		self.hash_varargs(state);
 	}
 }

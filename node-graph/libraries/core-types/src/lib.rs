@@ -16,6 +16,8 @@ pub mod uuid;
 pub mod value;
 
 pub use crate as core_types;
+pub use graphene_hash;
+pub use graphene_hash::CacheHash;
 pub use blending::*;
 pub use color::Color;
 pub use context::*;

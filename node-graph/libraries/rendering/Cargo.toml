@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 # Local dependencies
 dyn-any = { workspace = true }
 core-types = { workspace = true }
+graphene-hash = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }

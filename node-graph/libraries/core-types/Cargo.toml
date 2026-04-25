@@ -16,6 +16,7 @@ wasm = ["tsify", "wasm-bindgen", "no-std-types/wasm"]
 [dependencies]
 # Local dependencies
 no-std-types = { workspace = true, features = ["std"] }
+graphene-hash = { workspace = true }
 
 # Workspace dependencies
 bitflags = { workspace = true }

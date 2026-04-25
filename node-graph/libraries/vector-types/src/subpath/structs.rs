@@ -6,12 +6,12 @@ use std::fmt::{Debug, Formatter, Result};
 use std::hash::Hash;
 
 /// An id type used for each [ManipulatorGroup].
-pub trait Identifier: Sized + Clone + PartialEq + Hash + 'static {
+pub trait Identifier: Sized + Clone + PartialEq + Hash + graphene_hash::CacheHash + 'static {
 	fn new() -> Self;
 }
 
 /// Structure used to represent a single anchor with up to two optional associated handles along a `Subpath`
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorGroup<PointId: Identifier> {
 	pub anchor: DVec2,
@@ -20,21 +20,6 @@ pub struct ManipulatorGroup<PointId: Identifier> {
 	pub id: PointId,
 }
 
-// TODO: Remove once we no longer need to hash floats in Graphite
-impl<PointId: Identifier> Hash for ManipulatorGroup<PointId> {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.anchor.to_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.in_handle.is_some().hash(state);
-		if let Some(in_handle) = self.in_handle {
-			in_handle.to_array().iter().for_each(|x| x.to_bits().hash(state));
-		}
-		self.out_handle.is_some().hash(state);
-		if let Some(out_handle) = self.out_handle {
-			out_handle.to_array().iter().for_each(|x| x.to_bits().hash(state));
-		}
-		self.id.hash(state);
-	}
-}
 
 impl<PointId: Identifier> Debug for ManipulatorGroup<PointId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -127,7 +112,7 @@ pub enum ArcType {
 }
 
 /// Representation of the handle point(s) in a bezier segment.
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BezierHandles {
 	Linear,
@@ -145,16 +130,6 @@ pub enum BezierHandles {
 	},
 }
 
-impl std::hash::Hash for BezierHandles {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		std::mem::discriminant(self).hash(state);
-		match self {
-			BezierHandles::Linear => {}
-			BezierHandles::Quadratic { handle } => handle.to_array().map(|v| v.to_bits()).hash(state),
-			BezierHandles::Cubic { handle_start, handle_end } => [handle_start, handle_end].map(|handle| handle.to_array().map(|v| v.to_bits())).hash(state),
-		}
-	}
-}
 
 impl BezierHandles {
 	pub fn is_cubic(&self) -> bool {

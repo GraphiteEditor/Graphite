@@ -13,7 +13,7 @@ use std::iter::zip;
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
-			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, DynAny)]
+			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, graphene_hash::CacheHash, DynAny)]
 			#[derive(serde::Serialize, serde::Deserialize)]
 			/// A strongly typed ID
 			pub struct $id(u64);
@@ -79,7 +79,7 @@ impl std::hash::BuildHasher for NoHashBuilder {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Stores data which is per-point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.
 pub struct PointDomain {
 	id: Vec<PointId>,
@@ -87,12 +87,6 @@ pub struct PointDomain {
 	pub(crate) position: Vec<DVec2>,
 }
 
-impl Hash for PointDomain {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.id.hash(state);
-		self.position.iter().for_each(|pos| pos.to_array().map(|v| v.to_bits()).hash(state));
-	}
-}
 
 impl PointDomain {
 	pub const fn new() -> Self {
@@ -212,7 +206,7 @@ impl PointDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
 	#[serde(alias = "ids")]
@@ -594,7 +588,7 @@ impl SegmentDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
 /// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
@@ -849,7 +843,7 @@ struct Faces {
 	face_start: Vec<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FaceIterator<'a, Upstream> {
 	vector: &'a Vector<Upstream>,
 	faces: Faces,

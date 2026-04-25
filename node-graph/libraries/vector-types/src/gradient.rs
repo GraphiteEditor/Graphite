@@ -3,7 +3,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum GradientType {
 	#[default]
@@ -15,7 +15,7 @@ pub enum GradientType {
 // TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, DynAny)]
 pub struct GradientStops {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
@@ -60,16 +60,6 @@ impl<'de> serde::Deserialize<'de> for GradientStops {
 	}
 }
 
-impl std::hash::Hash for GradientStops {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.position.len().hash(state);
-		for i in 0..self.position.len() {
-			self.position[i].to_bits().hash(state);
-			self.midpoint[i].to_bits().hash(state);
-			self.color[i].hash(state);
-		}
-	}
-}
 
 impl Default for GradientStops {
 	fn default() -> Self {
@@ -336,7 +326,7 @@ impl GradientStops {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum GradientSpreadMethod {
 	#[default]
@@ -360,7 +350,7 @@ impl GradientSpreadMethod {
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct Gradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
@@ -382,20 +372,6 @@ impl Default for Gradient {
 	}
 }
 
-impl std::hash::Hash for Gradient {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.stops.len().hash(state);
-		[].iter()
-			.chain(self.start.to_array().iter())
-			.chain(self.end.to_array().iter())
-			.chain(self.stops.position.iter())
-			.chain(self.stops.midpoint.iter())
-			.for_each(|x| x.to_bits().hash(state));
-		self.stops.color.iter().for_each(|color| color.hash(state));
-		self.gradient_type.hash(state);
-		self.spread_method.hash(state);
-	}
-}
 
 impl std::fmt::Display for Gradient {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

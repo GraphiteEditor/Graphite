@@ -368,7 +368,7 @@ impl Tangent for kurbo::PathSeg {
 }
 
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum ManipulatorPointId {
 	/// A control anchor - the start or end point of a bézier.
 	Anchor(PointId),
@@ -479,7 +479,7 @@ impl ManipulatorPointId {
 }
 
 /// The type of handle found on a bézier curve.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, graphene_hash::CacheHash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum HandleType {
 	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
 	Primary,
@@ -488,7 +488,7 @@ pub enum HandleType {
 }
 
 /// Represents a primary or end handle found in a particular segment.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, graphene_hash::CacheHash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,

@@ -873,6 +873,7 @@ dependencies = [
  "ctor",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "image",
  "kurbo",
  "log",
@@ -2003,6 +2004,24 @@ dependencies = [
  "serde",
  "tsify",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "graphene-hash"
+version = "0.0.0"
+dependencies = [
+ "glam",
+ "graphene-hash-derive",
+]
+
+[[package]]
+name = "graphene-hash-derive"
+version = "0.0.0"
+dependencies = [
+ "graphene-hash",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -3296,6 +3315,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "half",
  "log",
  "node-macro",
@@ -4501,6 +4521,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "graphic-types",
  "kurbo",
  "log",
@@ -6182,6 +6203,7 @@ dependencies = [
  "dyn-any",
  "fixedbitset",
  "glam",
+ "graphene-hash",
  "kurbo",
  "log",
  "lyon_geom",

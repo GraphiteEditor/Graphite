@@ -64,8 +64,8 @@ impl<P: Pixel + PartialEq> PartialEq for Image<P> {
 #[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransformImage(pub DAffine2);
 
-impl Hash for TransformImage {
-	fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+impl core_types::CacheHash for TransformImage {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, _: &mut H) {}
 }
 
 impl<P: Pixel + std::fmt::Debug> std::fmt::Debug for Image<P> {
@@ -109,11 +109,11 @@ impl<P: Copy + Pixel> BitmapMut for Image<P> {
 	}
 }
 
-impl<P: Hash + Pixel> Hash for Image<P> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.width.hash(state);
-		self.height.hash(state);
-		self.data.hash(state);
+impl<P: core_types::CacheHash + Pixel> core_types::CacheHash for Image<P> {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		core_types::CacheHash::cache_hash(&self.width, state);
+		core_types::CacheHash::cache_hash(&self.height, state);
+		core_types::CacheHash::cache_hash(&self.data, state);
 	}
 }
 
@@ -220,7 +220,7 @@ impl<P: Pixel> IntoIterator for Image<P> {
 pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny)]
 	enum RasterFrame {
 		ImageFrame(Table<Image<Color>>),
 	}
@@ -237,7 +237,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		}
 	}
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
 		GraphicGroup(Table<GraphicElement>),
 		RasterFrame(RasterFrame),

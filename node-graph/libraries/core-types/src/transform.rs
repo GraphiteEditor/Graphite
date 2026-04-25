@@ -141,7 +141,7 @@ impl TransformMut for Footprint {
 	}
 }
 
-#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize)]
 pub enum RenderQuality {
 	/// Low quality, fast rendering
 	Preview,
@@ -154,7 +154,7 @@ pub enum RenderQuality {
 	/// Render at full quality
 	Full,
 }
-#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize)]
 pub struct Footprint {
 	/// Inverse of the transform which will be applied to the node output during the rendering process
 	pub transform: DAffine2,
@@ -214,12 +214,6 @@ impl From<()> for Footprint {
 	}
 }
 
-impl std::hash::Hash for Footprint {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
-		self.resolution.hash(state)
-	}
-}
 
 pub trait ApplyTransform {
 	fn apply_transform(&mut self, modification: &DAffine2);
