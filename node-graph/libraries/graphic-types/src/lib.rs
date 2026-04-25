@@ -81,9 +81,10 @@ pub mod migrations {
 					region_domain: old.region_domain,
 					upstream_data: old.upstream_graphic_group,
 				});
-				let mut row = vector_table.iter_mut().next().unwrap();
-				*row.attribute_mut_or_insert_default("transform") = old.transform;
-				*row.attribute_mut_or_insert_default("alpha_blending") = old.alpha_blending;
+				let mut iter = vector_table.iter_mut();
+				let mut row = iter.next().unwrap();
+				row.set_attribute("transform", old.transform);
+				row.set_attribute("alpha_blending", old.alpha_blending);
 				vector_table
 			}
 			VectorFormat::OlderVectorTable(older_table) => older_table

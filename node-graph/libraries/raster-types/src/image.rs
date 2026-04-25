@@ -362,9 +362,10 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::Image(image) => Table::new_from_element(Raster::new_cpu(image)),
 		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
 			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
-			let mut row = image_frame_table.iter_mut().next().unwrap();
-			*row.attribute_mut_or_insert_default("transform") = transform;
-			*row.attribute_mut_or_insert_default("alpha_blending") = alpha_blending;
+			let mut iter = image_frame_table.iter_mut();
+			let mut row = iter.next().unwrap();
+			row.set_attribute("transform", transform);
+			row.set_attribute("alpha_blending", alpha_blending);
 			image_frame_table
 		}
 		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),

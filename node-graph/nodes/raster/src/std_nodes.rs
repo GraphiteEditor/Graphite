@@ -119,7 +119,7 @@ pub fn combine_channels(
 			let alpha = alpha.filter(|i| i.element().width > 0 && i.element().height > 0);
 
 			// Get this row's transform and alpha blending mode from the first non-empty channel
-			let (_, attributes) = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| i.clone().into_parts())?;
+			let attributes = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| i.attributes().clone())?;
 
 			// Get the common width and height of the channels, which must have equal dimensions
 			let channel_dimensions = [

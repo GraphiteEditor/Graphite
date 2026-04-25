@@ -29,24 +29,45 @@ use vector_types::vector::misc::{
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 
-/// Implemented for types that can be converted to an iterator of vector rows.
-/// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
+/// Implemented for types that contain vector rows reachable via mutable access.
+/// Used for the fill and stroke nodes so they can apply to either `Table<Graphic>` or `Table<Vector>`.
+///
+/// Uses a callback rather than returning a borrowing iterator so the [`TableRowMut`] borrow
+/// cannot escape the call, keeping multi-row access sound under the lender iterator.
 trait VectorTableIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>>;
+	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut TableRowMut<'_, Vector>));
+
+	fn vector_count(&self) -> usize;
 }
 
 impl VectorTableIterMut for Table<Graphic> {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
+	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut TableRowMut<'_, Vector>)) {
 		// Grab only the direct children
-		self.iter_mut()
-			.filter_map(|element| element.into_element_mut().as_vector_mut())
-			.flat_map(move |vector| vector.iter_mut())
+		let mut outer = self.iter_mut();
+		while let Some(element) = outer.next() {
+			let Some(vector_table) = element.into_element_mut().as_vector_mut() else { continue };
+			let mut inner = vector_table.iter_mut();
+			while let Some(mut vector) = inner.next() {
+				f(&mut vector);
+			}
+		}
+	}
+
+	fn vector_count(&self) -> usize {
+		self.iter().filter_map(|element| element.element().as_vector()).map(|table| table.len()).sum()
 	}
 }
 
 impl VectorTableIterMut for Table<Vector> {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
-		self.iter_mut()
+	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut TableRowMut<'_, Vector>)) {
+		let mut iter = self.iter_mut();
+		while let Some(mut vector) = iter.next() {
+			f(&mut vector);
+		}
+	}
+
+	fn vector_count(&self) -> usize {
+		self.len()
 	}
 }
 
@@ -83,13 +104,14 @@ where
 {
 	let Some(row) = gradient.into_iter().next() else { return content };
 
-	let length = content.vector_iter_mut().count();
+	let length = content.vector_count();
 	let element = row.into_element();
 	let gradient = if reverse { element.reversed() } else { element };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, mut vector) in content.vector_iter_mut().enumerate() {
+	let mut i: usize = 0;
+	content.for_each_vector_mut(|vector| {
 		let factor = match randomize {
 			true => rng.random::<f64>(),
 			false => match repeat_every {
@@ -107,7 +129,9 @@ where
 		if stroke && let Some(stroke) = vector.element_mut().style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
 			vector.element_mut().style.set_stroke(stroke);
 		}
-	}
+
+		i += 1;
+	});
 
 	content
 }
@@ -145,9 +169,9 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_backup_gradient: Gradient,
 ) -> V {
 	let fill: Fill = fill.into();
-	for mut vector in content.vector_iter_mut() {
+	content.for_each_vector_mut(|vector| {
 		vector.element_mut().style.set_fill(fill.clone());
-	}
+	});
 
 	content
 }
@@ -220,11 +244,11 @@ where
 		paint_order,
 	};
 
-	for mut vector in content.vector_iter_mut() {
+	content.for_each_vector_mut(|vector| {
 		let mut stroke = stroke.clone();
 		stroke.transform *= vector.attribute_cloned_or_default("transform");
 		vector.element_mut().style.set_stroke(stroke);
-	}
+	});
 
 	content
 }
@@ -657,7 +681,8 @@ pub mod extrude_algorithms {
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> Table<Vector> {
-	for mut row in source.iter_mut() {
+	let mut iter = source.iter_mut();
+	while let Some(mut row) = iter.next() {
 		extrude_algorithms::extrude(row.element_mut(), direction, joining_algorithm);
 	}
 	source
@@ -1082,7 +1107,8 @@ async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<Vector> {
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
 async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(true)] closed: bool) -> Table<Vector> {
-	for mut row in points.iter_mut() {
+	let mut iter = points.iter_mut();
+	while let Some(mut row) = iter.next() {
 		let mut segment_domain = SegmentDomain::new();
 		let mut next_id = SegmentId::ZERO;
 
@@ -1284,7 +1310,8 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 	let mut content = content;
 	let mut index = 0;
 
-	for mut row in content.iter_mut() {
+	let mut iter = content.iter_mut();
+	while let Some(mut row) = iter.next() {
 		for (_, position) in row.element_mut().point_domain.positions_mut() {
 			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
 			index += 1;
@@ -1301,7 +1328,8 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
-	let Some(mut output) = output_table.iter_mut().next() else { return output_table };
+	let mut output_iter = output_table.iter_mut();
+	let Some(mut output) = output_iter.next() else { return output_table };
 
 	// Concatenate every vector element's subpaths into the single output compound path
 	for (index, row) in content.into_flattened_table().iter().enumerate() {
@@ -1637,7 +1665,8 @@ async fn cut_path(
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
-	for mut row in content.iter_mut() {
+	let mut iter = content.iter_mut();
+	while let Some(mut row) = iter.next() {
 		let points_count = row.element().point_domain.ids().len();
 		let segments_count = row.element().segment_domain.ids().len();
 
@@ -2383,7 +2412,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// in which case we skip pre-compensation to avoid propagating NaN through upstream_data transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
 		let lerped_inverse = lerped_transform.inverse();
-		for mut row in graphic_table_content.iter_mut() {
+		let mut iter = graphic_table_content.iter_mut();
+		while let Some(mut row) = iter.next() {
 			let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 			row.set_attribute("transform", lerped_inverse * row_transform);
 		}
@@ -3085,7 +3115,10 @@ mod test {
 		// Test a rectangular path with non-zero rotation
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = Table::new_from_element(square);
-		*square.get_mut(0).unwrap().attribute_mut_or_insert_default::<DAffine2>("transform") *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4);
+		square
+			.get_mut(0)
+			.unwrap()
+			.with_attribute_mut_or_default("transform", |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = BoundingBoxNode { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.iter().next().unwrap().element();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
@@ -3281,7 +3314,10 @@ mod test {
 		let vector = Vector::from_bezpath(source);
 		let mut vector_table = Table::new_from_element(vector.clone());
 
-		*vector_table.get_mut(0).unwrap().attribute_mut_or_insert_default("transform") = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
+		vector_table
+			.get_mut(0)
+			.unwrap()
+			.set_attribute("transform", DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
 
 		let beveled = super::bevel((), Table::new_from_element(vector), 2_f64.sqrt() * 10.);
 		let beveled = beveled.iter().next().unwrap().element();

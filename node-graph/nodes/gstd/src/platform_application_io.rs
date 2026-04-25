@@ -204,7 +204,8 @@ where
 		..Default::default()
 	};
 
-	for mut row in data.iter_mut() {
+	let mut iter = data.iter_mut();
+	while let Some(mut row) = iter.next() {
 		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 		row.set_attribute("transform", DAffine2::from_translation(-aabb.start) * current_transform);
 	}

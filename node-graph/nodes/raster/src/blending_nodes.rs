@@ -30,7 +30,11 @@ mod blend_std {
 	impl Blend<Color> for Table<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (mut over, under) in result_table.iter_mut().zip(under.iter()) {
+			let pair_count = result_table.len().min(under.len());
+			let mut iter = result_table.iter_mut();
+			for under_index in 0..pair_count {
+				let Some(mut over) = iter.next() else { break };
+				let Some(under) = under.get(under_index) else { break };
 				let data = over.element().data.iter().zip(under.element().data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 				let (width, height) = (over.element().width, over.element().height);
 
@@ -47,7 +51,11 @@ mod blend_std {
 	impl Blend<Color> for Table<Color> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (mut over, under) in result_table.iter_mut().zip(under.iter()) {
+			let pair_count = result_table.len().min(under.len());
+			let mut iter = result_table.iter_mut();
+			for under_index in 0..pair_count {
+				let Some(mut over) = iter.next() else { break };
+				let Some(under) = under.get(under_index) else { break };
 				let new_val = blend_fn(*over.element(), *under.element());
 				*over.element_mut() = new_val;
 			}
@@ -57,7 +65,11 @@ mod blend_std {
 	impl Blend<Color> for Table<GradientStops> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
-			for (mut over, under) in result_table.iter_mut().zip(under.iter()) {
+			let pair_count = result_table.len().min(under.len());
+			let mut iter = result_table.iter_mut();
+			for under_index in 0..pair_count {
+				let Some(mut over) = iter.next() else { break };
+				let Some(under) = under.get(under_index) else { break };
 				let new_val = over.element().blend(under.element(), &blend_fn);
 				*over.element_mut() = new_val;
 			}

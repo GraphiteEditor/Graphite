@@ -66,26 +66,27 @@ fn reset_transform<T>(
 	reset_rotation: bool,
 	reset_scale: bool,
 ) -> Table<T> {
-	for mut row in content.iter_mut() {
+	let mut iter = content.iter_mut();
+	while let Some(mut row) = iter.next() {
 		// Translation
 		if reset_translation {
-			row.attribute_mut_or_insert_default::<DAffine2>("transform").translation = DVec2::ZERO;
+			row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.translation = DVec2::ZERO);
 		}
 		// (Rotation, Scale)
 		match (reset_rotation, reset_scale) {
 			(true, true) => {
-				row.attribute_mut_or_insert_default::<DAffine2>("transform").matrix2 = DMat2::IDENTITY;
+				row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.matrix2 = DMat2::IDENTITY);
 			}
 			(true, false) => {
 				let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
 				let scale = transform_attribute.scale_magnitudes();
-				row.attribute_mut_or_insert_default::<DAffine2>("transform").matrix2 = DMat2::from_diagonal(scale);
+				row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.matrix2 = DMat2::from_diagonal(scale));
 			}
 			(false, true) => {
 				let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
 				let rotation = transform_attribute.decompose_rotation();
 				let rotation_matrix = DMat2::from_angle(rotation);
-				row.attribute_mut_or_insert_default::<DAffine2>("transform").matrix2 = rotation_matrix;
+				row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.matrix2 = rotation_matrix);
 			}
 			(false, false) => {}
 		}
@@ -108,8 +109,9 @@ fn replace_transform<T>(
 	mut content: Table<T>,
 	transform: DAffine2,
 ) -> Table<T> {
-	for mut row in content.iter_mut() {
-		*row.attribute_mut_or_insert_default("transform") = transform.transform();
+	let mut iter = content.iter_mut();
+	while let Some(mut row) = iter.next() {
+		row.set_attribute("transform", transform.transform());
 	}
 	content
 }

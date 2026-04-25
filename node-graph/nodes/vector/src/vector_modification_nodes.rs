@@ -30,7 +30,8 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 /// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
 async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vector> {
-	for mut row in vector.iter_mut() {
+	let mut iter = vector.iter_mut();
+	while let Some(mut row) = iter.next() {
 		let transform: DAffine2 = row.attribute_cloned_or_default("transform");
 
 		for (_, point) in row.element_mut().point_domain.positions_mut() {

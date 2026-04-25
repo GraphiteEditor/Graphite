@@ -90,7 +90,8 @@ where
 		return target;
 	}
 
-	for mut table_row in target.iter_mut() {
+	let mut iter = target.iter_mut();
+	while let Some(mut table_row) = iter.next() {
 		let target_width = table_row.element().width;
 		let target_height = table_row.element().height;
 		let target_size = DVec2::new(target_width as f64, target_height as f64);
@@ -315,7 +316,8 @@ async fn brush(
 	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default("alpha_blending");
 	let source_node_id: Option<NodeId> = actual_image.attribute_cloned_or_default("source_node_id");
 
-	let mut first_row = image.iter_mut().next().unwrap();
+	let mut iter = image.iter_mut();
+	let mut first_row = iter.next().unwrap();
 	*first_row.element_mut() = actual_image.into_element();
 	first_row.set_attribute("transform", transform);
 	first_row.set_attribute("alpha_blending", alpha_blending);

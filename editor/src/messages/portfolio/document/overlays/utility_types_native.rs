@@ -1170,12 +1170,13 @@ impl OverlayContextInternal {
 			// Use the existing bezier_to_path infrastructure to convert Vector to BezPath
 			let mut path = BezPath::new();
 			let mut last_point = None;
+			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
 
 			for (_, bezier, start_id, end_id) in row.element().segment_iter() {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 
-				self.bezier_to_path(bezier, row.attribute_cloned_or_default("transform"), move_to, &mut path);
+				self.bezier_to_path(bezier, transform, move_to, &mut path);
 			}
 
 			// Render the path

@@ -154,7 +154,7 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
 			.map(|row| {
 				let image = row.element();
 				let texture = upload_to_texture(device, queue, image);
-				let (_, attributes) = row.into_cloned().into_parts();
+				let attributes = row.clone_attributes();
 
 				TableRow::from_parts(Raster::new_gpu(texture), attributes)
 			})

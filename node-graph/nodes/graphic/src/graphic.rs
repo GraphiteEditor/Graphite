@@ -200,7 +200,8 @@ pub async fn source_node_id<T: 'n + Send + Clone>(
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	let mut content = content;
-	for mut row in content.iter_mut() {
+	let mut iter = content.iter_mut();
+	while let Some(mut row) = iter.next() {
 		row.set_attribute("source_node_id", source_node_id);
 	}
 
@@ -304,7 +305,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					for mut graphic in current_element.iter_mut() {
+					let mut iter = current_element.iter_mut();
+					while let Some(mut graphic) = iter.next() {
 						let graphic_transform: DAffine2 = graphic.attribute_cloned_or_default("transform");
 						graphic.set_attribute("transform", current_transform * graphic_transform);
 					}

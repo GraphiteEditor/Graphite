@@ -148,12 +148,13 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 			match current_graphic_row.into_element() {
 				// Recurse into nested graphic tables, composing the parent's transform onto each child
 				Graphic::Graphic(mut sub_table) => {
-					for mut graphic in sub_table.iter_mut() {
+					let mut iter = sub_table.iter_mut();
+					while let Some(mut graphic) = iter.next() {
 						let child_transform: DAffine2 = graphic.attribute_cloned_or_default("transform");
 						let child_alpha_blending: AlphaBlending = graphic.attribute_cloned_or_default("alpha_blending");
 
-						*graphic.attribute_mut_or_insert_default("transform") = current_transform * child_transform;
-						*graphic.attribute_mut_or_insert_default("alpha_blending") = compose_alpha_blending(current_alpha_blending, child_alpha_blending);
+						graphic.set_attribute("transform", current_transform * child_transform);
+						graphic.set_attribute("alpha_blending", compose_alpha_blending(current_alpha_blending, child_alpha_blending));
 					}
 
 					flatten_recursive(output, sub_table, extract_variant);

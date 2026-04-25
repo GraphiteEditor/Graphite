@@ -857,7 +857,8 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		for mut row in self.iter_mut() {
+		let mut iter = self.iter_mut();
+		while let Some(mut row) = iter.next() {
 			let source_node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
 			row.element_mut().new_ids_from_hash(source_node_id);
 		}
@@ -1410,7 +1411,8 @@ impl Render for Table<Vector> {
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
-		for mut row in self.iter_mut() {
+		let mut iter = self.iter_mut();
+		while let Some(mut row) = iter.next() {
 			row.element_mut().vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}

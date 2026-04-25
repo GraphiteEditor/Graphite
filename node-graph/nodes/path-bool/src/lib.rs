@@ -38,9 +38,10 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&content).iter(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	if let Some(mut result_vector) = result_vector_table.iter_mut().next() {
+	let mut result_iter = result_vector_table.iter_mut();
+	if let Some(mut result_vector) = result_iter.next() {
 		let transform: DAffine2 = result_vector.attribute_cloned_or_default("transform");
-		*result_vector.attribute_mut_or_insert_default("transform") = DAffine2::IDENTITY;
+		result_vector.set_attribute("transform", DAffine2::IDENTITY);
 
 		Vector::transform(result_vector.element_mut(), transform);
 		result_vector.element_mut().style.set_stroke_transform(DAffine2::IDENTITY);
@@ -208,9 +209,10 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				Graphic::Graphic(mut graphic) => {
 					let parent_transform: DAffine2 = element.attribute_cloned_or_default("transform");
 					// Apply the parent graphic's transform to each element of inner table
-					for mut sub_element in graphic.iter_mut() {
+					let mut iter = graphic.iter_mut();
+					while let Some(mut sub_element) = iter.next() {
 						let current_transform: DAffine2 = sub_element.attribute_cloned_or_default("transform");
-						*sub_element.attribute_mut_or_insert_default("transform") = parent_transform * current_transform;
+						sub_element.set_attribute("transform", parent_transform * current_transform);
 					}
 
 					// Recursively flatten the inner table into the output vector table
