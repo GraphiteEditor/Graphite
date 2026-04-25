@@ -523,6 +523,8 @@ impl Hash for RenderOutputType {
 	}
 }
 
+// Metadata is excluded because it's editor-side auxiliary data (click targets, transforms)
+// that shouldn't affect render cache invalidation, and it contains HashMaps with non-deterministic iteration order
 impl CacheHash for RenderOutput {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.data.cache_hash(state);

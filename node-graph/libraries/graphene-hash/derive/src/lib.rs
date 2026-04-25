@@ -26,22 +26,13 @@ use syn::{Data, DeriveInput, Fields, parse_macro_input};
 pub fn derive_cache_hash(input: TokenStream) -> TokenStream {
 	let ast = parse_macro_input!(input as DeriveInput);
 	let name = &ast.ident;
-	let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-
-	// Build additional `T: CacheHash` bounds for each type parameter.
-	let extra_bounds = ast.generics.type_params().map(|tp| {
-		let ident = &tp.ident;
-		quote! { #ident: graphene_hash::CacheHash }
-	});
-	let where_clause = if ast.generics.type_params().count() > 0 {
-		let existing = where_clause.map(|w| quote! { #w }).unwrap_or_default();
-		quote! {
-			#existing
-			where #(#extra_bounds,)*
+	let mut generics = ast.generics.clone();
+	for param in &mut generics.params {
+		if let syn::GenericParam::Type(type_param) = param {
+			type_param.bounds.push(syn::parse_quote!(graphene_hash::CacheHash));
 		}
-	} else {
-		where_clause.map(|w| quote! { #w }).unwrap_or_default()
-	};
+	}
+	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
 	let body = match &ast.data {
 		Data::Struct(s) => hash_fields(&s.fields, quote! { self }),
@@ -89,7 +80,7 @@ pub fn derive_cache_hash(input: TokenStream) -> TokenStream {
 				}
 			}
 		}
-		Data::Union(_) => panic!("CacheHash cannot be derived for unions"),
+		Data::Union(_) => return syn::Error::new(ast.ident.span(), "CacheHash cannot be derived for unions").to_compile_error().into(),
 	};
 
 	quote! {

@@ -64,7 +64,9 @@ impl<P: Pixel + PartialEq> PartialEq for Image<P> {
 pub struct TransformImage(pub DAffine2);
 
 impl core_types::CacheHash for TransformImage {
-	fn cache_hash<H: ::core::hash::Hasher>(&self, _: &mut H) {}
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		core_types::CacheHash::cache_hash(&self.0, state);
+	}
 }
 
 impl<P: Pixel + std::fmt::Debug> std::fmt::Debug for Image<P> {
