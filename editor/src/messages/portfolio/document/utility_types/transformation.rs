@@ -508,6 +508,7 @@ impl<'a> Selected<'a> {
 		tool_type: &'a ToolType,
 		pen_handle: Option<&'a mut DVec2>,
 	) -> Self {
+		// For Select, Shape, and Artboard tools, switch to layer-based transforms if currently initialized as empty path transforms
 		if (*tool_type == ToolType::Select || *tool_type == ToolType::Shape || *tool_type == ToolType::Artboard) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
@@ -629,6 +630,7 @@ impl<'a> Selected<'a> {
 
 		// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 		for layer in self.network_interface.shallowest_unique_layers(&[]) {
+			// Skip artboard layers when using the Artboard tool to prevent accidental transformations
 			if *self.tool_type == ToolType::Artboard && self.network_interface.is_artboard(&layer.to_node(), &[]) {
 				continue;
 			}

@@ -123,6 +123,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			.filter(|&layer| document.network_interface.is_visible(&layer.to_node(), &[]) && !document.network_interface.is_locked(&layer.to_node(), &[]))
 			.collect::<Vec<_>>();
 
+		// Ensure only artboard layers are transformed when using the Artboard tool
 		if using_artboard_tool {
 			selected_layers.retain(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
 		}
@@ -398,12 +399,14 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				});
 			}
 			TransformLayerMessage::BeginGRS { operation: transform_type } => {
+				// Artboards don't support rotation yet
 				if using_artboard_tool && transform_type == TransformType::Rotate {
 					return;
 				}
 				if using_artboard_tool && selected_layers.is_empty() {
 					return;
 				}
+				// Prepare artboard bounds
 				if using_artboard_tool {
 					self.original_artboard_bounds.clear();
 					for &layer in &selected_layers {
@@ -607,6 +610,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 
 				if using_artboard_tool && !self.original_artboard_bounds.is_empty() && self.transform_operation != TransformOperation::None {
+					// Compute the full transform
 					let inner = match self.transform_operation {
 						TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(&self.state, document)),
 						TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(self.state.is_rounded_to_intervals)),
@@ -619,6 +623,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let document_transform = document_to_viewport.inverse() * viewport_transform * document_to_viewport;
 
+					// Resize artboards based on transformed bounds
 					for (&layer, &original_bounds) in &self.original_artboard_bounds {
 						let new_top_left = document_transform.transform_point2(original_bounds[0]);
 						let new_bottom_right = document_transform.transform_point2(original_bounds[1]);
