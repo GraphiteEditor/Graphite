@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, IVec2};
-use graphene_std::transform::Transform as _;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
@@ -15,6 +14,7 @@ use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAnchor, TypesettingConfig};
+use graphene_std::transform::Transform as _;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
@@ -290,8 +290,18 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 	}
 
-
-	pub fn insert_text_on_path(&mut self, text: String, font: Font, font_size: f64, character_spacing: f64, path_subpaths: Vec<Subpath<PointId>>, start_offset: f64, text_anchor: TextAnchor, transform: DAffine2, layer: LayerNodeIdentifier) {
+	pub fn insert_text_on_path(
+		&mut self,
+		text: String,
+		font: Font,
+		font_size: f64,
+		character_spacing: f64,
+		path_subpaths: Vec<Subpath<PointId>>,
+		start_offset: f64,
+		text_anchor: TextAnchor,
+		transform: DAffine2,
+		layer: LayerNodeIdentifier,
+	) {
 		use graphene_std::text::TextPathSide;
 
 		// Create the path vector object

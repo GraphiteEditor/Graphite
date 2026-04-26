@@ -14,7 +14,7 @@ use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::{convert_tiny_skia_path, convert_usvg_path};
 use graphene_std::table::Table;
-use graphene_std::text::{Font, TextAnchor, TypesettingConfig};
+use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -394,7 +394,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				center,
 			} => {
 				let mut options = usvg::Options::default();
-				options.fontdb_mut().load_font_data(include_bytes!("../../../../font.ttf").to_vec());
+				options.fontdb_mut().load_font_data(include_bytes!("../overlays/source-sans-pro-regular.ttf").to_vec());
 				options.font_family = "Source Sans Pro".to_string();
 
 				let svg = svg.replace("font-family=\"sans-serif\"", "font-family=\"Source Sans Pro\"");
@@ -552,7 +552,6 @@ fn import_usvg_node(
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 ) {
-	log::error!("DIAGNOSTIC: Visiting node root: {:?}", node);
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -597,7 +596,7 @@ fn import_usvg_node(
 			warn!("Skip image");
 		}
 		usvg::Node::Text(text) => {
-			import_usvg_text(modify_inputs, text, node.abs_transform(), layer);
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index);
 		}
 	}
 }
@@ -643,7 +642,7 @@ fn import_usvg_node_inner(
 			0
 		}
 		usvg::Node::Text(text) => {
-			import_usvg_text(modify_inputs, text, node.abs_transform(), layer);
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index);
 			0
 		}
 		usvg::Node::Path(path) => {
@@ -676,23 +675,31 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 }
 
-fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, transform: usvg::Transform, layer: LayerNodeIdentifier) {
+fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, transform: usvg::Transform, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize) {
 	use graphene_std::text::TextAnchor;
-	let font_family = text
-		.chunks()
-		.first()
-		.and_then(|chunk| chunk.spans().first())
-		.and_then(|span| span.font().families().first().map(|f| f.to_string()))
-		.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
-	let font_style = graphene_std::consts::DEFAULT_FONT_STYLE.to_string();
-	let font = Font::new(font_family, font_style);
 
-	let full_text: String = text.chunks().iter().map(|chunk| chunk.text()).collect();
+	for (i, chunk) in text.chunks().iter().enumerate() {
+		let current_layer = if i == 0 {
+			layer
+		} else {
+			let new_id = NodeId::new();
+			let new_layer = modify_inputs.create_layer(new_id);
+			modify_inputs.network_interface.move_layer_to_stack_for_import(new_layer, parent, insert_index, &[]);
+			new_layer
+		};
+		modify_inputs.layer_node = Some(current_layer);
 
-	// Check if any chunk uses text-on-path (TextFlow::Path)
-	let text_path_chunk = text.chunks().iter().find(|chunk| matches!(chunk.text_flow(), usvg::TextFlow::Path(_)));
+		let font_family = chunk
+			.spans()
+			.first()
+			.and_then(|span| span.font().families().first().map(|f| f.to_string()))
+			.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
+		let font_style = graphene_std::consts::DEFAULT_FONT_STYLE.to_string();
+		let font = Font::new(font_family, font_style);
 
-	if let Some(chunk) = text_path_chunk {
+		let font_size = chunk.spans().first().map(|s| s.font_size().get()).unwrap_or(24.0) as f64;
+		let letter_spacing = chunk.spans().first().map(|s| s.letter_spacing()).unwrap_or(0.0) as f64;
+
 		if let usvg::TextFlow::Path(text_path) = chunk.text_flow() {
 			let path_subpaths = convert_tiny_skia_path(text_path.path());
 			let start_offset = text_path.start_offset() as f64;
@@ -701,8 +708,6 @@ fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, 
 				usvg::TextAnchor::Middle => TextAnchor::Middle,
 				usvg::TextAnchor::End => TextAnchor::End,
 			};
-			let font_size = chunk.spans().first().map(|s| s.font_size().get()).unwrap_or(24.0) as f64;
-			let letter_spacing = chunk.spans().first().map(|s| s.letter_spacing()).unwrap_or(0.0) as f64;
 
 			let affine = DAffine2::from_cols_array(&[
 				transform.sx as f64,
@@ -712,15 +717,14 @@ fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, 
 				transform.tx as f64,
 				transform.ty as f64,
 			]);
-			modify_inputs.insert_text_on_path(full_text, font, font_size, letter_spacing, path_subpaths, start_offset, anchor, affine, layer);
+			modify_inputs.insert_text_on_path(chunk.text().to_string(), font, font_size, letter_spacing, path_subpaths, start_offset, anchor, affine, current_layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
-			return;
+		} else {
+			// Regular text fallback
+			modify_inputs.insert_text(chunk.text().to_string(), font, TypesettingConfig { font_size, ..Default::default() }, current_layer);
+			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
 	}
-
-	// Fallback: regular text
-	modify_inputs.insert_text(full_text, font, TypesettingConfig::default(), layer);
-	modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 }
 
 /// Set correct positions for all imported layers in a single top-down O(n) pass.

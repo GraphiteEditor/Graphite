@@ -1,8 +1,9 @@
 use dyn_any::DynAny;
 use parley::fontique::Blob;
-use std::collections::HashMap;
-use std::sync::Arc;
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::Arc;
 
 /// A font type (storing font family and font style and an optional preview URL)
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -37,6 +38,21 @@ impl Font {
 			font_style_to_restore: None,
 		}
 	}
+
+	pub fn named_weight(weight: u32) -> &'static str {
+		match weight {
+			100 => "Thin",
+			200 => "Extra Light",
+			300 => "Light",
+			400 => "Regular",
+			500 => "Medium",
+			600 => "Semi Bold",
+			700 => "Bold",
+			800 => "Extra Bold",
+			900 => "Black",
+			_ => "Weight",
+		}
+	}
 }
 
 impl Default for Font {
@@ -50,10 +66,16 @@ impl Default for Font {
 }
 
 /// A cache of fonts
-#[derive(Debug, Default, Clone, DynAny)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
 pub struct FontCache {
 	/// Mapping of font family name to font style name to font data
 	pub font_file_data: HashMap<Font, Arc<Vec<u8>>>,
+}
+
+impl Hash for FontCache {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.font_file_data.len().hash(state);
+	}
 }
 
 impl FontCache {
@@ -63,8 +85,13 @@ impl FontCache {
 	}
 
 	/// Insert font data for a font
-	pub fn insert(&mut self, font: Font, data: Arc<Vec<u8>>) {
-		self.font_file_data.insert(font, data);
+	pub fn insert(&mut self, font: Font, data: impl Into<Arc<Vec<u8>>>) {
+		self.font_file_data.insert(font, data.into());
+	}
+
+	/// Check if the font data for a font is cached
+	pub fn loaded_font(&self, font: &Font) -> bool {
+		self.font_file_data.contains_key(font)
 	}
 
 	/// Check if the font data for a font is cached
@@ -92,14 +119,14 @@ impl FontCache {
 		if self.font_file_data.contains_key(font) {
 			Some(font)
 		} else {
-			let fallback = self.font_file_data
+			let fallback = self
+				.font_file_data
 				.keys()
 				.find(|font| font.font_family == core_types::consts::DEFAULT_FONT_FAMILY && font.font_style == core_types::consts::DEFAULT_FONT_STYLE)
-				.or_else(|| self.font_file_data.keys().next());			
+				.or_else(|| self.font_file_data.keys().next());
 			fallback
 		}
 	}
-
 
 	/// Try to get the bytes for a font
 	pub fn get<'a>(&'a self, font: &'a Font) -> Option<(&'a Vec<u8>, &'a Font)> {

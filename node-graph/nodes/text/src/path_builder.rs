@@ -1,17 +1,16 @@
 use core_types::table::{Table, TableRow};
 use glam::{DAffine2, DVec2};
-use vector_types::{Subpath, Vector};
+use kurbo::{PathSeg, Point};
 use skrifa::instance::{NormalizedCoord, Size};
-use skrifa::outline::{OutlineGlyph, OutlinePen, DrawSettings};
+use skrifa::outline::{DrawSettings, OutlineGlyph, OutlinePen};
 use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{GlyphId, MetadataProvider};
-use kurbo::{PathSeg, Point};
+use vector_types::{Subpath, Vector};
 
 pub struct PathBuilder<Upstream: Default + 'static> {
 	vector_table: Table<Vector<Upstream>>,
 	current_segments: Vec<PathSeg>,
 	glyph_subpaths: Vec<Subpath<vector_types::vector::PointId>>,
-	origin: DVec2,
 	current_point: Point,
 	is_text_on_path: bool,
 	scale: f64,
@@ -23,18 +22,21 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 			vector_table: Table::new(),
 			current_segments: Vec::new(),
 			glyph_subpaths: Vec::new(),
-			origin: DVec2::ZERO,
 			current_point: Point::ZERO,
 			is_text_on_path,
 			scale,
 		}
 	}
 
+	fn point(&self, x: f32, y: f32) -> Point {
+		Point::new(x as f64, -y as f64)
+	}
+
 	pub fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, final_transform: DAffine2, per_glyph_instances: bool) {
-		self.origin = final_transform.translation;
 		self.glyph_subpaths.clear();
 		self.current_segments.clear();
-		
+		self.current_point = Point::ZERO;
+
 		let settings = DrawSettings::unhinted(Size::new(size), normalized_coords);
 		glyph.draw(settings, self).unwrap();
 
@@ -43,7 +45,11 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 			self.current_segments.clear();
 		}
 
-		let transform = if self.is_text_on_path { final_transform } else { final_transform * DAffine2::from_scale(DVec2::splat(self.scale)) };
+		let transform = if self.is_text_on_path {
+			final_transform
+		} else {
+			final_transform * DAffine2::from_scale(DVec2::splat(self.scale))
+		};
 		let transform = if let Some(skew) = style_skew { transform * skew } else { transform };
 
 		let subpaths = std::mem::take(&mut self.glyph_subpaths);
@@ -67,7 +73,11 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		let run = glyph_run.run();
 		let mut run_x = glyph_run.offset();
 		let run_y = glyph_run.baseline();
-		let style_skew = (tilt != 0.).then(|| DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.]));
+
+		let synthesis = run.synthesis();
+		let style_skew = synthesis.skew().map(|angle| DAffine2::from_cols_array(&[1., 0., -(angle as f64).to_radians().tan(), 1., 0., 0.]));
+		let tilt_skew = (tilt != 0.).then(|| DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.]));
+
 		let font = run.font();
 		let font_size = run.font_size();
 
@@ -82,15 +92,20 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 			run_x += glyph.advance;
 
 			if let Some(glyph_outline) = outlines.get(GlyphId::from(glyph.id)) {
-				let final_transform = DAffine2::from_translation(glyph_offset);
-				if !per_glyph_instances { self.origin = DVec2::ZERO }
+				let mut final_transform = DAffine2::from_translation(glyph_offset);
+				if let Some(tilt_skew) = tilt_skew {
+					final_transform = final_transform * tilt_skew;
+				}
+
 				self.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, per_glyph_instances);
 			}
 		});
 	}
 
 	pub fn finalize(mut self) -> Table<Vector<Upstream>> {
-		if self.vector_table.is_empty() { self.vector_table = Table::new_from_element(Vector::default()) }
+		if self.vector_table.is_empty() {
+			self.vector_table = Table::new_from_element(Vector::default())
+		}
 		self.vector_table
 	}
 }
@@ -101,26 +116,26 @@ impl<Upstream: Default + 'static> OutlinePen for PathBuilder<Upstream> {
 			self.glyph_subpaths.push(Subpath::from_beziers(&self.current_segments, false));
 			self.current_segments.clear();
 		}
-		self.current_point = Point::new(x as f64, y as f64);
+		self.current_point = self.point(x, y);
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
-		let p = Point::new(x as f64, y as f64);
+		let p = self.point(x, y);
 		self.current_segments.push(PathSeg::Line(kurbo::Line::new(self.current_point, p)));
 		self.current_point = p;
 	}
 
 	fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
-		let p1 = Point::new(cx0 as f64, cy0 as f64);
-		let p2 = Point::new(x as f64, y as f64);
+		let p1 = self.point(cx0, cy0);
+		let p2 = self.point(x, y);
 		self.current_segments.push(PathSeg::Quad(kurbo::QuadBez::new(self.current_point, p1, p2)));
 		self.current_point = p2;
 	}
 
 	fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
-		let p1 = Point::new(cx0 as f64, cy0 as f64);
-		let p2 = Point::new(cx1 as f64, cy1 as f64);
-		let p3 = Point::new(x as f64, y as f64);
+		let p1 = self.point(cx0, cy0);
+		let p2 = self.point(cx1, cy1);
+		let p3 = self.point(x, y);
 		self.current_segments.push(PathSeg::Cubic(kurbo::CubicBez::new(self.current_point, p1, p2, p3)));
 		self.current_point = p3;
 	}

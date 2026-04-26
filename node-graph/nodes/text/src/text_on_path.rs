@@ -3,8 +3,8 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg};
 use parley::PositionedLayoutItem;
-use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::MetadataProvider;
+use skrifa::raw::FontRef as ReadFontsRef;
 use vector_types::Vector;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
@@ -90,11 +90,7 @@ impl ArcLengthLut {
 		let (seg_idx1, t1) = self.params[next_idx];
 
 		// Interpolate t within the segment
-		let t = if seg_idx0 == seg_idx1 && (l1 - l0) > 1e-9 {
-			t0 + (t1 - t0) * (s - l0) / (l1 - l0)
-		} else {
-			t0
-		};
+		let t = if seg_idx0 == seg_idx1 && (l1 - l0) > 1e-9 { t0 + (t1 - t0) * (s - l0) / (l1 - l0) } else { t0 };
 
 		let seg = self.segs.get(seg_idx0)?;
 		let point = seg.eval(t);
@@ -127,27 +123,48 @@ fn at_with_extension(lut: &ArcLengthLut, s: f64) -> (kurbo::Point, f64) {
 }
 
 fn reverse_bezpath(path: BezPath) -> BezPath {
-	let segs: Vec<_> = path.segments().collect();
-	if segs.is_empty() {
-		return BezPath::new();
-	}
+	let mut subpaths = Vec::new();
+	let mut current_subpath = Vec::new();
 
-	let mut reversed = BezPath::new();
-	reversed.push(PathEl::MoveTo(segs.last().unwrap().end()));
-
-	for seg in segs.iter().rev() {
-		match seg {
-			PathSeg::Line(l) => reversed.push(PathEl::LineTo(l.p0)),
-			PathSeg::Quad(q) => reversed.push(PathEl::QuadTo(q.p1, q.p0)),
-			PathSeg::Cubic(c) => reversed.push(PathEl::CurveTo(c.p2, c.p1, c.p0)),
+	for el in path.elements() {
+		match el {
+			PathEl::MoveTo(_) => {
+				if !current_subpath.is_empty() {
+					subpaths.push(BezPath::from_vec(std::mem::take(&mut current_subpath)));
+				}
+				current_subpath.push(*el);
+			}
+			_ => current_subpath.push(*el),
 		}
 	}
-
-	if path.elements().last() == Some(&PathEl::ClosePath) {
-		reversed.push(PathEl::ClosePath);
+	if !current_subpath.is_empty() {
+		subpaths.push(BezPath::from_vec(current_subpath));
 	}
 
-	reversed
+	let mut reversed_path = BezPath::new();
+	for subpath in subpaths.into_iter().rev() {
+		let segs: Vec<_> = subpath.segments().collect();
+		if segs.is_empty() {
+			if let Some(PathEl::MoveTo(p)) = subpath.elements().first() {
+				reversed_path.push(PathEl::MoveTo(*p));
+			}
+			continue;
+		}
+
+		reversed_path.push(PathEl::MoveTo(segs.last().unwrap().end()));
+		for seg in segs.iter().rev() {
+			match seg {
+				PathSeg::Line(l) => reversed_path.push(PathEl::LineTo(l.p0)),
+				PathSeg::Quad(q) => reversed_path.push(PathEl::QuadTo(q.p1, q.p0)),
+				PathSeg::Cubic(c) => reversed_path.push(PathEl::CurveTo(c.p2, c.p1, c.p0)),
+			}
+		}
+
+		if subpath.elements().last() == Some(&PathEl::ClosePath) {
+			reversed_path.push(PathEl::ClosePath);
+		}
+	}
+	reversed_path
 }
 
 fn maybe_reverse_path(path: BezPath, side: TextPathSide) -> BezPath {
@@ -208,32 +225,37 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 	let layout = crate::TextContext::with_thread_local(|ctx| ctx.layout_text(text, font, font_cache, typesetting));
 	let Some(layout) = layout else { return Table::new() };
 
-	let total_advance = layout.full_width() as f64;
 	let abs_offset = if start_offset_percent { start_offset * lut.total_length } else { start_offset };
-	let mut cursor = resolve_startpoint(abs_offset, total_advance, text_anchor);
 
 	let mut path_builder = crate::path_builder::PathBuilder::new(true, layout.scale() as f64);
 
 	layout.lines().for_each(|line| {
+		let line_width = line.metrics().advance as f64;
+		let line_start = resolve_startpoint(abs_offset, line_width, text_anchor);
+
 		line.items().for_each(|item| {
 			if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+				let mut run_x = glyph_run.offset();
 				let run = glyph_run.run();
-				let style_skew = run.synthesis().skew().map(|angle| DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.]));
+				let style_skew = run.synthesis().skew().map(|angle| DAffine2::from_cols_array(&[1., 0., -(angle as f64).to_radians().tan(), 1., 0., 0.]));
 				let font = run.font();
 				let font_size = run.font_size();
 				let normalized_coords = run.normalized_coords().iter().map(|coord| skrifa::instance::NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
 				let outlines = ReadFontsRef::from_index(font.data.as_ref(), font.index).unwrap().outline_glyphs();
 
 				glyph_run.glyphs().for_each(|glyph| {
-					let mid = cursor + glyph.advance as f64 / 2.0;
-					cursor += glyph.advance as f64;
+					let glyph_path_pos = line_start + run_x as f64;
+					let mid = glyph_path_pos + glyph.advance as f64 / 2.0;
+					run_x += glyph.advance;
 
 					if !is_glyph_hidden(mid, abs_offset, lut.total_length, lut.is_closed, text_anchor) {
 						let effective_mid = if lut.is_closed { mid.rem_euclid(lut.total_length) } else { mid };
 						let (point, angle) = if lut.is_closed { lut.at_or_zero(effective_mid) } else { at_with_extension(&lut, effective_mid) };
 
 						if let Some(glyph_outline) = outlines.get(skrifa::GlyphId::from(glyph.id)) {
-							let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y)) * DAffine2::from_angle(angle) * DAffine2::from_translation(DVec2::new(glyph.x as f64, -glyph.y as f64));
+							let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y))
+								* DAffine2::from_angle(angle)
+								* DAffine2::from_translation(DVec2::new(glyph.x as f64, -glyph.y as f64));
 							path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, true);
 						}
 					}

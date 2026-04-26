@@ -1,8 +1,8 @@
 use core_types::{Ctx, table::Table};
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphic_types::Vector;
-pub use text_nodes::*;
 pub use text_nodes::text_on_path::{TextAnchor, TextPathSide};
+pub use text_nodes::*;
 
 /// Draws a text string as vector geometry with a choice of font and styling.
 #[node_macro::node(category("Text"))]
@@ -80,8 +80,7 @@ fn text<'i: 'n>(
 #[node_macro::node(category("Text"))]
 fn text_on_path<'i: 'n>(
 	_: impl Ctx,
-	#[scope("editor-api")]
-	editor_resources: &'i WasmEditorApi,
+	#[scope("editor-api")] editor_resources: &'i WasmEditorApi,
 	/// The text content to flow along the path.
 	#[default("Lorem ipsum")]
 	text: String,

@@ -61,7 +61,7 @@ impl TextContext {
 	}
 
 	/// Create a text layout using the specified font and typesetting configuration
-	pub fn layout_text(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig) -> Option<Layout<()>> {
+	pub(crate) fn layout_text(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig) -> Option<Layout<()>> {
 		// Note that the actual_font may not be the desired font if that font is not yet loaded.
 		// It is important not to cache the default font under the name of another font.
 		let (font_data, actual_font) = self.resolve_font_data(font, font_cache)?;
