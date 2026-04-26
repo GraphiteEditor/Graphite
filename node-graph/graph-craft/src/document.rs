@@ -546,29 +546,34 @@ pub struct NodeNetwork {
 	pub generated: bool,
 }
 
-impl Hash for NodeNetwork {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.exports.hash(state);
+impl core_types::CacheHash for NodeNetwork {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		use core_types::CacheHash;
+		self.exports.cache_hash(state);
 		let mut nodes: Vec<_> = self.nodes.iter().collect();
 		nodes.sort_by_key(|(id, _)| *id);
 		for (id, node) in nodes {
-			id.hash(state);
-			node.hash(state);
+			id.cache_hash(state);
+			node.cache_hash(state);
 		}
 	}
 }
 
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports
+		self.exports == other.exports && self.nodes == other.nodes && self.scope_injections == other.scope_injections
 	}
 }
 
 /// Graph modification functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
-		use std::hash::BuildHasher;
-		FxBuildHasher.hash_one(self)
+		use core_types::graphene_hash::CacheHash;
+		use rustc_hash::FxHasher;
+		use std::hash::Hasher;
+		let mut hasher = FxHasher::default();
+		self.cache_hash(&mut hasher);
+		hasher.finish()
 	}
 
 	pub fn value_network(node: DocumentNode) -> Self {

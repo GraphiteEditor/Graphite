@@ -51,9 +51,10 @@ async fn context_modification<T>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::graphene_hash::CacheHash;
 	use core_types::transform::Footprint;
 	use std::collections::hash_map::DefaultHasher;
-	use std::hash::{Hash, Hasher};
+	use std::hash::Hasher;
 
 	/// Test that the hash of a nullified context remains stable even when nullified inputs change
 	#[test]
@@ -77,9 +78,9 @@ mod tests {
 		// Create nullified context - this should only keep features specified in features_to_keep
 		let nullified_ctx = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), features_to_keep);
 
-		// Calculate hash of nullified context
+		// Calculate cache hash of nullified context
 		let mut hasher1 = DefaultHasher::new();
-		nullified_ctx.hash(&mut hasher1);
+		nullified_ctx.cache_hash(&mut hasher1);
 		let hash1 = hasher1.finish();
 
 		// Create a different original context with changed values
@@ -96,7 +97,7 @@ mod tests {
 		let nullified_changed_ctx = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), features_to_keep);
 
 		let mut hasher2 = DefaultHasher::new();
-		nullified_changed_ctx.hash(&mut hasher2);
+		nullified_changed_ctx.cache_hash(&mut hasher2);
 		let hash2 = hasher2.finish();
 
 		// Hash should be the same because all features were nullified
@@ -109,11 +110,11 @@ mod tests {
 		let partial_nullified2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), partial_features);
 
 		let mut hasher3 = DefaultHasher::new();
-		partial_nullified1.hash(&mut hasher3);
+		partial_nullified1.cache_hash(&mut hasher3);
 		let hash3 = hasher3.finish();
 
 		let mut hasher4 = DefaultHasher::new();
-		partial_nullified2.hash(&mut hasher4);
+		partial_nullified2.cache_hash(&mut hasher4);
 		let hash4 = hasher4.finish();
 
 		// These should be the same because both have the same footprint (Footprint::default()) and varargs

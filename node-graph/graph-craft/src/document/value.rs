@@ -517,22 +517,10 @@ impl CacheHash for RenderOutputType {
 	}
 }
 
-impl Hash for RenderOutputType {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		CacheHash::cache_hash(self, state);
-	}
-}
-
 // Metadata is excluded because it's editor-side auxiliary data (click targets, transforms)
 // that shouldn't affect render cache invalidation, and it contains HashMaps with non-deterministic iteration order
 impl CacheHash for RenderOutput {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.data.cache_hash(state);
-	}
-}
-
-impl Hash for RenderOutput {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		CacheHash::cache_hash(self, state);
 	}
 }
