@@ -264,6 +264,8 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
+				Some(NodeInput::value(TaggedValue::Bool(false), false)), // separate_glyph_elements
+				Some(NodeInput::value(TaggedValue::Bool(typesetting.hyphenate), false)),
 			]);
 		let transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let stroke = resolve_proto_node_type(graphene_std::vector_nodes::stroke::IDENTIFIER)

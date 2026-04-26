@@ -904,6 +904,7 @@ impl Fsm for TextToolFsmState {
 						max_height: constraint_size.map(|size| size.y),
 						tilt: tool_options.tilt,
 						align: tool_options.align,
+						hyphenate: false,
 					},
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),

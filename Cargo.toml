@@ -157,6 +157,7 @@ vello_encoding = "0.7"
 resvg = "0.47"
 usvg = "0.47"
 parley = "0.6"
+hyphenation = { version = "0.8.3", features = ["embed_all"] }
 skrifa = "0.40"
 polycool = "0.4"
 # Linebender ecosystem (END)

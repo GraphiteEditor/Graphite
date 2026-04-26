@@ -61,6 +61,7 @@ fn text<'i: 'n>(
 	align: TextAlign,
 	/// Whether to split every letterform into its own vector path element. Otherwise, a single compound path is produced.
 	separate_glyph_elements: bool,
+	hyphenate: bool,
 ) -> Table<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size: size,
@@ -70,6 +71,7 @@ fn text<'i: 'n>(
 		max_height: has_max_height.then_some(max_height),
 		tilt,
 		align,
+		hyphenate,
 	};
 
 	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyph_elements)

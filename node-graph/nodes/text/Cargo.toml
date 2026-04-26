@@ -21,6 +21,7 @@ node-macro = { workspace = true }
 dyn-any = { workspace = true }
 glam = { workspace = true }
 parley = { workspace = true }
+hyphenation = { workspace = true }
 skrifa = { workspace = true }
 log = { workspace = true }
 serde_json = { workspace = true }
