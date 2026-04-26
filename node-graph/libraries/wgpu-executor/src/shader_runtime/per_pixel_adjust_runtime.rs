@@ -70,8 +70,7 @@ impl PerPixelAdjustGraphicsPipeline {
 
 		let fragment_name = &name;
 		let fragment_name = &fragment_name[(fragment_name.find("::").unwrap() + 2)..];
-		// TODO workaround to naga removing `:`
-		let fragment_name = fragment_name.replace(":", "");
+		let fragment_name = fragment_name.replace("::", "_");
 		let shader_module = device.create_shader_module(ShaderModuleDescriptor {
 			label: Some(&format!("PerPixelAdjust {name} wgsl shader")),
 			source: ShaderSource::Wgsl(Cow::Borrowed(info.wgsl_shader)),
