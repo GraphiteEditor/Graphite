@@ -67,6 +67,11 @@
 	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
 
+	// Alt+Drag duplication
+	let altKeyPressedDuringDrag = false;
+	let originalLayersBeforeDuplication: bigint[] | undefined = undefined;
+	let duplicatedLayerIds: bigint[] | undefined = undefined;
+
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
@@ -108,6 +113,8 @@
 		addEventListener("mousedown", draggingMouseDown);
 		addEventListener("keydown", draggingKeyDown);
 		addEventListener("keydown", handleLayerPanelKeyDown);
+		addEventListener("keyup", draggingKeyUp);
+		addEventListener("blur", () => internalDragState?.active && abortDrag());
 
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
@@ -126,6 +133,7 @@
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("keydown", draggingKeyDown);
 		removeEventListener("keydown", handleLayerPanelKeyDown);
+		removeEventListener("keyup", draggingKeyUp);
 
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
@@ -415,11 +423,45 @@
 		abortDrag();
 	}
 
+	async function startDuplicates() {
+		if (!internalDragState?.active) return;
+
+		originalLayersBeforeDuplication = [...$nodeGraph.selected];
+		editor.duplicateSelectedLayers();
+
+		await tick();
+		duplicatedLayerIds = [...$nodeGraph.selected];
+	}
+
+	function stopDuplicates() {
+		if (!originalLayersBeforeDuplication || !duplicatedLayerIds) return;
+
+		duplicatedLayerIds.forEach((layerId) => {
+			editor.deleteNode(layerId);
+		});
+
+		editor.deselectAllLayers();
+		originalLayersBeforeDuplication.forEach((layerId, index) => {
+			const ctrl = index > 0;
+			editor.selectLayer(layerId, ctrl, false);
+		});
+
+		originalLayersBeforeDuplication = undefined;
+		duplicatedLayerIds = undefined;
+	}
+
 	function abortDrag() {
+		if (altKeyPressedDuringDrag && originalLayersBeforeDuplication) {
+			stopDuplicates();
+		}
+
 		internalDragState = undefined;
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		altKeyPressedDuringDrag = false;
+		originalLayersBeforeDuplication = undefined;
+		duplicatedLayerIds = undefined;
 	}
 
 	function draggingMouseDown(e: MouseEvent) {
@@ -434,6 +476,18 @@
 		if (e.key === "Escape" && internalDragState?.active) {
 			justFinishedDrag = true;
 			abortDrag();
+		}
+
+		if (e.key === "Alt" && internalDragState?.active && !altKeyPressedDuringDrag) {
+			altKeyPressedDuringDrag = true;
+			startDuplicates();
+		}
+	}
+
+	function draggingKeyUp(e: KeyboardEvent) {
+		if (e.key === "Alt" && internalDragState?.active && altKeyPressedDuringDrag) {
+			altKeyPressedDuringDrag = false;
+			stopDuplicates();
 		}
 	}
 
