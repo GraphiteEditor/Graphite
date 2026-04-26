@@ -3132,7 +3132,7 @@ impl NodeNetworkInterface {
 			return Some(modified);
 		}
 
-		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+		self.vector_data_from_layer(layer)
 	}
 
 	pub fn vector_data_from_layer(&self, layer: LayerNodeIdentifier) -> Option<Vector> {

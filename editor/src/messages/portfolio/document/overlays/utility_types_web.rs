@@ -1050,7 +1050,7 @@ impl OverlayContext {
 		// 4x4 pixels, 4 components (RGBA) per pixel
 		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-		let rgba = hex_to_rgba_u8(color.to_rgba_hex_srgb().as_str());
+		let rgba = color.to_rgba8_srgb();
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤

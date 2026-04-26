@@ -73,11 +73,10 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let overlay_context = OverlayContext::new(*viewport, visibility_settings);
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
-
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));
 					}
+					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
 				}
 				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}

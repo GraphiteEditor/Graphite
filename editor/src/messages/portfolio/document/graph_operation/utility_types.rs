@@ -501,7 +501,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		let stroke_color = if let Some(color) = color { Table::new_from_element(color) } else { Table::new() };
-		let input_connector = InputConnector::node(stroke_node_id, 1);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(stroke_color), false), false);
 	}
 

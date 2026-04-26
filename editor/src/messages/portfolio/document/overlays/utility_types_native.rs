@@ -17,14 +17,14 @@ use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
-use graphene_std::vector::style::Stroke;
+use graphene_std::vector::style::{PaintOrder, Stroke, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
-use kurbo::{self, BezPath, ParamCurve};
+use kurbo::{self, BezPath, ParamCurve, Shape};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
-use vello::peniko;
+use vello::peniko::{self, BlendMode};
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -1123,20 +1123,116 @@ impl OverlayContextInternal {
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
 	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
-		let path = self.path_from_subpaths(subpaths, transform);
-		let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
+		if let Some(stroke) = stroke {
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
+			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
-		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
+			let path = self.path_from_subpaths(subpaths, applied_stroke_transform);
+			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
+
+			let do_fill = |scene: &mut Scene| {
+				let element_transform = Affine::new(element_transform.to_cols_array());
+				scene.fill(peniko::Fill::NonZero, element_transform, &brush, Some(element_transform.inverse()), &path);
+			};
+			let composite_stroke_out = |scene: &mut Scene, compose_mode: peniko::Compose, stroke_scale: Option<f64>| {
+				let element_transform = Affine::new(element_transform.to_cols_array());
+				let mut stroke = stroke.to_kurbo();
+				if let Some(scale) = stroke_scale {
+					stroke.width *= scale;
+				}
+				let path_bbox = path.bounding_box().inflate(stroke.width, stroke.width);
+
+				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
+				scene.stroke(&stroke, element_transform, &brush, Some(element_transform.inverse()), &path);
+				scene.pop_layer();
+			};
+
+			// For layers with open subpaths, stroke align is ignored and set to default
+			let is_closed_on_all = true;
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+
+			match (stroke_align, stroke.paint_order) {
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+					do_fill(&mut self.scene);
+					composite_stroke_out(&mut self.scene, peniko::Compose::DestOut, Some(2.0));
+				}
+				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {
+					do_fill(&mut self.scene);
+				}
+				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+					do_fill(&mut self.scene);
+					composite_stroke_out(&mut self.scene, peniko::Compose::DestOut, None);
+				}
+				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+					do_fill(&mut self.scene);
+				}
+				// Paint order does not affect this
+				(StrokeAlign::Outside, _) => {
+					do_fill(&mut self.scene);
+				}
+			}
+		} else {
+			let path = self.path_from_subpaths(subpaths, transform);
+			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
+			self.scene.fill(peniko::Fill::NonZero, Affine::IDENTITY, &brush, None, &path);
+		}
 	}
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
 	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
-		let path = self.path_from_subpaths(subpaths, transform);
-
 		if let Some(stroke) = stroke {
-			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(&color));
-			self.scene.stroke(&kurbo::Stroke::new(stroke.weight), self.get_transform(), &brush, None, &path);
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
+			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+
+			let path = self.path_from_subpaths(subpaths, applied_stroke_transform);
+			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
+
+			let do_stroke = |scene: &mut Scene, stroke_scale: Option<f64>| {
+				let element_transform = Affine::new(element_transform.to_cols_array());
+				let mut stroke = stroke.to_kurbo();
+				if let Some(scale) = stroke_scale {
+					stroke.width *= scale;
+				}
+
+				scene.stroke(&stroke, element_transform, &brush, Some(element_transform.inverse()), &path);
+			};
+			let composite_fill_out = |scene: &mut Scene, compose_mode: peniko::Compose, stroke_scale: Option<f64>| {
+				let element_transform = Affine::new(element_transform.to_cols_array());
+				let stroke_width = stroke.weight() * stroke_scale.map_or(1.0, |scale| scale);
+				let path_bbox = path.bounding_box().inflate(stroke_width, stroke_width);
+
+				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
+				scene.fill(peniko::Fill::NonZero, element_transform, &brush, Some(element_transform.inverse()), &path);
+				scene.pop_layer();
+			};
+
+			// For layers with open subpaths, stroke align is ignored and set to default
+			let is_closed_on_all = true;
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+
+			match (stroke_align, stroke.paint_order) {
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+					// TODO: Fix overlay leak outside the stroke region
+					do_stroke(&mut self.scene, Some(2.0));
+					composite_fill_out(&mut self.scene, peniko::Compose::DestIn, Some(2.0));
+				}
+				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
+				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+					do_stroke(&mut self.scene, None);
+				}
+				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+					do_stroke(&mut self.scene, None);
+					composite_fill_out(&mut self.scene, peniko::Compose::DestOut, None);
+				}
+				// Paint order does not affect this
+				(StrokeAlign::Outside, _) => {
+					do_stroke(&mut self.scene, Some(2.0));
+					composite_fill_out(&mut self.scene, peniko::Compose::DestOut, Some(2.0));
+				}
+			}
 		}
 	}
 

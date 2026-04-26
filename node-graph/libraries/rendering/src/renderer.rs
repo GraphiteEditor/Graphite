@@ -885,7 +885,7 @@ impl Render for Table<Vector> {
 			let mut path = String::new();
 
 			for mut bezpath in row.element.stroke_bezpath_iter() {
-				// Only seems to affect upstream-transformed (from stroke node) layers ~~with row.transform~~
+				// Only affects layers with upstream transforms (from stroke node)
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				path.push_str(bezpath.to_svg().as_str());
 			}
@@ -904,7 +904,6 @@ impl Render for Table<Vector> {
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 
 			if needs_separate_alignment_fill && !wants_stroke_below {
-				log::info!("Entering needs_separate_alignment_fill && !wants_stroke_below");
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path.clone());
 					let matrix = format_transform_matrix(element_transform);
@@ -944,7 +943,6 @@ impl Render for Table<Vector> {
 
 			let use_face_fill = vector.use_face_fill();
 			if use_face_fill {
-				log::info!("Entering vector.is_branching()");
 				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 
@@ -972,8 +970,7 @@ impl Render for Table<Vector> {
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
-				// Only seem to affect layers with downstream-transformed layers (from stroke node) with ~~row.transform*stroke_transform.inverse()~~
-				// and affect layers with upstream-transformed (from stroke node) layers ~~with IDENTITY~~
+				// Affects all layers regardless of upstream/downstream transforms (from the stroke node)
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
@@ -981,7 +978,6 @@ impl Render for Table<Vector> {
 
 				let defs = &mut attributes.0.svg_defs;
 				if let Some((ref id, mask_type, ref vector_row)) = push_id {
-					log::info!("Entering Some(p) = push_id");
 					let mut svg = SvgRender::new();
 					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = row.element.style.stroke().unwrap();
@@ -1015,13 +1011,11 @@ impl Render for Table<Vector> {
 				}
 
 				let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
-				// log::info!("file_and_stroke: {:?}", fill_and_stroke);
 
 				if let Some((id, mask_type, _)) = push_id {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
-				// Look here to see how to adjust the stroke
 				attributes.push_val(fill_and_stroke);
 
 				if vector.is_branching() && !use_face_fill {
@@ -1040,7 +1034,6 @@ impl Render for Table<Vector> {
 
 			// When splitting passes and stroke is below, draw the fill after the stroke.
 			if needs_separate_alignment_fill && wants_stroke_below {
-				log::info!("Entering needs_separate_alignment_fill && wants_stroke_below");
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path);
 					let matrix = format_transform_matrix(element_transform);
@@ -1064,7 +1057,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
+		use graphic_types::vector_types::vector::style::GradientType;
 
 		for row in self.iter() {
 			use graphic_types::vector_types::vector;
@@ -1214,23 +1207,13 @@ impl Render for Table<Vector> {
 						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 						None => peniko::Color::TRANSPARENT,
 					};
-					let cap = match stroke.cap {
-						StrokeCap::Butt => Cap::Butt,
-						StrokeCap::Round => Cap::Round,
-						StrokeCap::Square => Cap::Square,
-					};
-					let join = match stroke.join {
-						StrokeJoin::Miter => Join::Miter,
-						StrokeJoin::Bevel => Join::Bevel,
-						StrokeJoin::Round => Join::Round,
-					};
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
-						join,
-						start_cap: cap,
-						end_cap: cap,
+						join: stroke.join.to_kurbo(),
+						start_cap: stroke.cap.to_kurbo(),
+						end_cap: stroke.cap.to_kurbo(),
 						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};
