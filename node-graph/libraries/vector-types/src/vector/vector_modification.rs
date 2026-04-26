@@ -17,12 +17,6 @@ pub struct PointModification {
 	delta: HashMap<PointId, DVec2>,
 }
 
-impl Hash for PointModification {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		generate_uuid().hash(state)
-	}
-}
-
 impl PointModification {
 	/// Apply this modification to the specified [`PointDomain`].
 	pub fn apply(&self, point_domain: &mut PointDomain, segment_domain: &mut SegmentDomain) {
@@ -511,14 +505,10 @@ impl VectorModification {
 	}
 }
 
-impl Hash for VectorModification {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		generate_uuid().hash(state)
-	}
-}
-
 // Intentionally non-deterministic: fields contain HashMaps with non-deterministic iteration order,
-// so we use a UUID to always bust the cache and force re-evaluation when any modification is present
+// so we use a UUID to always bust the cache and force re-evaluation when any modification is present.
+// This will not actually lead to a cache invalidation in most cases due to the
+// graph inputs being wrapped in a `MemoHash` wrapper.
 impl graphene_hash::CacheHash for VectorModification {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		core::hash::Hash::hash(&generate_uuid(), state);
