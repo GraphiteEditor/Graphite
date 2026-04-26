@@ -2,8 +2,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::Subpath;
-use graphene_std::transform::Transform;
+use graphene_std::transform_nodes::transform::*;
 use graphene_std::vector::PointId;
 
 /// Update the inputs of the transform node to match a new transform
@@ -14,10 +15,10 @@ pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &
 	let rotation = rotation.to_degrees();
 	let skew = DVec2::new(skew.atan().to_degrees(), 0.);
 
-	network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::DVec2(skew), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, TranslationInput::INDEX), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, RotationInput::INDEX), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, ScaleInput::INDEX), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, SkewInput::INDEX), NodeInput::value(TaggedValue::DVec2(skew), false), &[]);
 }
 
 // TODO: This should be extracted from the graph at the location of the transform node.
@@ -51,14 +52,26 @@ impl LayerBounds {
 
 /// Get the current affine transform from the transform node's inputs
 pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
-	let translation = if let Some(&TaggedValue::DVec2(translation)) = inputs[1].as_value() {
+	let translation = if let Some(&TaggedValue::DVec2(translation)) = inputs[TranslationInput::INDEX].as_value() {
 		translation
 	} else {
 		DVec2::ZERO
 	};
-	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[2].as_value() { rotation } else { 0. };
-	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[3].as_value() { scale } else { DVec2::ONE };
-	let skew = if let Some(&TaggedValue::DVec2(skew)) = inputs[4].as_value() { skew } else { DVec2::ZERO };
+	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[RotationInput::INDEX].as_value() {
+		rotation
+	} else {
+		0.
+	};
+	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[ScaleInput::INDEX].as_value() {
+		scale
+	} else {
+		DVec2::ONE
+	};
+	let skew = if let Some(&TaggedValue::DVec2(skew)) = inputs[SkewInput::INDEX].as_value() {
+		skew
+	} else {
+		DVec2::ZERO
+	};
 
 	let rotation = rotation.to_radians();
 	let skew = DVec2::new(skew.x.to_radians().tan(), skew.y.to_radians().tan());
@@ -66,9 +79,15 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	DAffine2::from_scale_angle_translation(scale, rotation, translation) * DAffine2::from_cols_array(&[1., skew.y, skew.x, 1., 0., 0.])
 }
 
+const ORIGIN_OFFSET_INDEX: usize = 5;
+
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
-	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() { pivot } else { DVec2::splat(0.5) }
+	if let Some(&TaggedValue::DVec2(pivot)) = inputs[ORIGIN_OFFSET_INDEX].as_value() {
+		pivot
+	} else {
+		DVec2::splat(0.5)
+	}
 }
 
 /// Expand a bounds to avoid div zero errors

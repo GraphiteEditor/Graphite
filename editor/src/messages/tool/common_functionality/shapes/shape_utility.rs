@@ -19,6 +19,8 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
+use graphene_std::vector::generator_nodes::regular_polygon::SidesInput as PolygonSidesInput;
+use graphene_std::vector::generator_nodes::star::SidesInput as StarSidesInput;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
@@ -194,7 +196,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), 1)
+		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER), PolygonSidesInput::<u32>::INDEX)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -204,14 +206,14 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(polygon_node_id, 2),
+			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		return;
 	}
 
 	if new_layer
-		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), 1)
+		.find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER), StarSidesInput::<u32>::INDEX)
 		.unwrap_or(&TaggedValue::U32(0))
 		.to_u32()
 		% 2 == 1
@@ -221,11 +223,11 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 2),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 3),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
 		});
 	}
@@ -287,11 +289,15 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 /// Extract the node input values of Star.
 /// Returns an option of (sides, radius1, radius2).
 pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64, f64)> {
+	use graphene_std::vector::generator_nodes::star::*;
+
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(sides)), Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) =
-		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
-	else {
+	let (Some(&TaggedValue::U32(sides)), Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (
+		node_inputs.get(SidesInput::<u32>::INDEX)?.as_value(),
+		node_inputs.get(Radius1Input::INDEX)?.as_value(),
+		node_inputs.get(Radius2Input::INDEX)?.as_value(),
+	) else {
 		return None;
 	};
 
@@ -301,10 +307,12 @@ pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &Do
 /// Extract the node input values of Polygon.
 /// Returns an option of (sides, radius).
 pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64)> {
+	use graphene_std::vector::generator_nodes::regular_polygon::*;
+
 	let node_inputs =
 		NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
+	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius))) = (node_inputs.get(SidesInput::<u32>::INDEX)?.as_value(), node_inputs.get(RadiusInput::INDEX)?.as_value()) else {
 		return None;
 	};
 
@@ -314,13 +322,15 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 /// Extract the node input values of an arc.
 /// Returns an option of (radius, start angle, sweep angle, arc type).
 pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, ArcType)> {
+	use graphene_std::vector::generator_nodes::arc::*;
+
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::arc::IDENTIFIER))?;
 
 	let (Some(&TaggedValue::F64(radius)), Some(&TaggedValue::F64(start_angle)), Some(&TaggedValue::F64(sweep_angle)), Some(&TaggedValue::ArcType(arc_type))) = (
-		node_inputs.get(1)?.as_value(),
-		node_inputs.get(2)?.as_value(),
-		node_inputs.get(3)?.as_value(),
-		node_inputs.get(4)?.as_value(),
+		node_inputs.get(RadiusInput::INDEX)?.as_value(),
+		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
+		node_inputs.get(SweepAngleInput::INDEX)?.as_value(),
+		node_inputs.get(ArcTypeInput::INDEX)?.as_value(),
 	) else {
 		return None;
 	};
@@ -385,7 +395,7 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
 	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::circle::IDENTIFIER))?;
 
-	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+	let Some(&TaggedValue::F64(radius)) = node_inputs.get(graphene_std::vector::generator_nodes::circle::RadiusInput::INDEX)?.as_value() else {
 		return None;
 	};
 

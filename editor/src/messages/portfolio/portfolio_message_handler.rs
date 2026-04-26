@@ -15,7 +15,7 @@ use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::portfolio::utility_types::FileContent;
@@ -764,7 +764,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let Some((downstream_node, input_index)) = document
 						.network_interface
 						.outward_wires(&[])
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), OutputConnector::PRIMARY_OUTPUT_INDEX)))
 						.and_then(|outward_wires| outward_wires.first())
 						.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
 					else {
@@ -772,7 +772,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					};
 
 					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
-					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
+					if input_index == InputConnector::PRIMARY_INPUT_INDEX && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
 						// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
 						let (Some(layer_position), Some(downstream_position)) =
 							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))

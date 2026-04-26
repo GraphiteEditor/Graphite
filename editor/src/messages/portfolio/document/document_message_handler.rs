@@ -1419,7 +1419,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Connect the current output data to the artboard's input data, and the artboard's output to the document output
 				responses.add(NodeGraphMessage::InsertNodeBetween {
 					node_id,
-					input_connector: network_interface::InputConnector::Export(0),
+					input_connector: network_interface::InputConnector::Export(network_interface::InputConnector::PRIMARY_INPUT_INDEX),
 					insert_node_input_index: 1,
 				});
 
@@ -2149,8 +2149,13 @@ impl DocumentMessageHandler {
 				});
 
 				// If there's already a boolean operation on the selected layer, update it with the new operation
+				const BOOLEAN_OPERATION_INPUT_INDEX: usize = 1;
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
-					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
+					network_interface.set_input(
+						&InputConnector::node(upstream_boolean_op, BOOLEAN_OPERATION_INPUT_INDEX),
+						NodeInput::value(TaggedValue::BooleanOperation(operation), false),
+						&[],
+					);
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -3091,7 +3096,7 @@ impl DocumentMessageHandler {
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
 						self.network_interface
-							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.upstream_output_connector(&InputConnector::node(layer.to_node(), InputConnector::PRIMARY_INPUT_INDEX + 1), &[])
 							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 

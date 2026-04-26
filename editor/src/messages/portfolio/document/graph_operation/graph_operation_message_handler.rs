@@ -17,6 +17,11 @@ use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
+const ARTBOARD_BASE_INDEX: usize = 0;
+const ARTBOARD_CONTENT_INDEX: usize = 1;
+const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+const MERGE_CONTENT_INPUT_INDEX: usize = 1;
+
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -102,7 +107,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[]) else {
+				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[]) else {
 					return;
 				};
 
@@ -146,15 +151,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_BASE_INDEX), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
-						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_BASE_INDEX), &[]);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_CONTENT_INDEX), primary_input, &[]);
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_BASE_INDEX), bottom_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -261,8 +266,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(layer.to_node(), 1),
-						input: NodeInput::node(first_new_node_id, 0),
+							input_connector: InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX),
+						input: NodeInput::node(first_new_node_id, NodeInput::PRIMARY_OUTPUT_INDEX),
 					});
 				}
 				// Move the layer and all nodes to the correct position in the network
@@ -325,13 +330,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						return;
 					};
 
-					artboard_data.insert(
-						artboard.to_node(),
-						ArtboardInfo {
-							input_node: NodeInput::node(document_node.inputs[1].as_node().unwrap_or_default(), 0),
+				artboard_data.insert(
+					artboard.to_node(),
+					ArtboardInfo {
+							input_node: NodeInput::node(document_node.inputs[ARTBOARD_CONTENT_INDEX].as_node().unwrap_or_default(), NodeInput::PRIMARY_OUTPUT_INDEX),
 							output_nodes: network_interface
 								.outward_wires(&[])
-								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), 0)))
+								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), OutputConnector::PRIMARY_OUTPUT_INDEX)))
 								.cloned()
 								.unwrap_or_default(),
 							merge_node: node_id,
@@ -356,13 +361,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				for artboard in &artboard_data {
 					// Modify downstream connections
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(artboard.1.merge_node, 1),
-						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
+						input_connector: InputConnector::node(artboard.1.merge_node, MERGE_CONTENT_INPUT_INDEX),
+						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), NodeInput::PRIMARY_OUTPUT_INDEX),
 					});
 
 					// Modify upstream connections
 					for outward_wire in &artboard.1.output_nodes {
-						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
+						let input = NodeInput::node(artboard_data[artboard.0].merge_node, NodeInput::PRIMARY_OUTPUT_INDEX);
 						let input_connector = match artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
 							Some(artboard_info) => InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
 							_ => *outward_wire,

@@ -584,7 +584,7 @@ impl InspectState {
 		}
 
 		let monitor_node = DocumentNode {
-			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
+			inputs: vec![NodeInput::node(inspect_node, NodeInput::PRIMARY_OUTPUT_INDEX)], // Connect to the primary output of the inspect node
 			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
 			call_argument: graph_craft::generic!(T),
 			skip_deduplication: true,

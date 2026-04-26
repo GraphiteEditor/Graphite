@@ -14,6 +14,9 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::regular_polygon;
+use graphene_std::vector::generator_nodes::star::*;
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
@@ -63,7 +66,7 @@ impl PointRadiusHandle {
 					let viewport = document.metadata().transform_to_viewport(layer);
 
 					for i in 0..2 * sides {
-						let (radius, radius_index) = if i % 2 == 0 { (radius1, 2) } else { (radius2, 3) };
+						let (radius, radius_index) = if i % 2 == 0 { (radius1, Radius1Input::INDEX) } else { (radius2, Radius2Input::INDEX) };
 						let point = star_vertex_position(viewport, i as i32, sides, radius1, radius2);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
@@ -100,7 +103,7 @@ impl PointRadiusHandle {
 						}
 
 						if point.distance(mouse_position) < 5. {
-							self.radius_index = 2;
+							self.radius_index = regular_polygon::RadiusInput::INDEX;
 							self.layer = Some(layer);
 							self.point = i;
 							self.snap_radii.clear();
@@ -337,13 +340,13 @@ impl PointRadiusHandle {
 			return snap_radii;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[Radius1Input::INDEX].as_value(), node_inputs[Radius2Input::INDEX].as_value()) else {
 			return snap_radii;
 		};
 
-		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
+		let other_radius = if radius_index == Radius2Input::INDEX { radius_1 } else { radius_2 };
 
-		let Some(&TaggedValue::U32(sides)) = node_inputs[1].as_value() else {
+		let Some(&TaggedValue::U32(sides)) = node_inputs[SidesInput::<u32>::INDEX].as_value() else {
 			return snap_radii;
 		};
 
@@ -416,13 +419,21 @@ impl PointRadiusHandle {
 	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
 		let Some(layer) = self.layer else { return };
 
-		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface)) else {
+		let radius_index = self.radius_index;
+
+		// Radius2Input (index 3) only exists in star nodes
+		// RadiusInput (index 2) exists in both star (as Radius1Input) and polygon nodes
+		let node_id = if radius_index == Radius2Input::INDEX {
+			graph_modification_utils::get_star_id(layer, &document.network_interface)
+		} else {
+			graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface))
+		};
+		let Some(node_id) = node_id else {
 			return;
 		};
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 		let center = viewport_transform.transform_point2(DVec2::ZERO);
-		let radius_index = self.radius_index;
 
 		let original_radius = self.initial_radius;
 
@@ -456,11 +467,11 @@ impl PointRadiusHandle {
 			return;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (node_inputs[Radius1Input::INDEX].as_value(), node_inputs[Radius2Input::INDEX].as_value()) else {
 			return;
 		};
 
-		let other_radius = if radius_index == 3 { radius_1 } else { radius_2 };
+		let other_radius = if radius_index == Radius2Input::INDEX { radius_1 } else { radius_2 };
 
 		let flipped = (other_radius.is_sign_positive() && original_radius.is_sign_negative() && new_radius.is_sign_positive())
 			|| (other_radius.is_sign_negative() && original_radius.is_sign_positive() && new_radius.is_sign_negative());
