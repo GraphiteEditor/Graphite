@@ -22,7 +22,6 @@ pkgs.mkShell (
 
       pkgs.lld
       pkgs.nodejs
-      pkgs.nodePackages.npm
       pkgs.binaryen
       pkgs.wasm-bindgen-cli_0_2_100
       pkgs.wasm-pack
