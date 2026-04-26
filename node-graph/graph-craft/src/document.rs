@@ -9,7 +9,7 @@ use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifie
 use dyn_any::DynAny;
 use glam::IVec2;
 use log::Metadata;
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -32,7 +32,7 @@ fn return_true() -> bool {
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNode {
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
@@ -172,7 +172,7 @@ impl DocumentNode {
 }
 
 /// Represents the possible inputs to a node.
-#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum NodeInput {
 	/// A reference to another node in the same network from which this node can receive its input.
 	Node { node_id: NodeId, output_index: usize },
@@ -196,7 +196,7 @@ pub enum NodeInput {
 	Inline(InlineRust),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct InlineRust {
 	pub expr: String,
 	pub ty: Type,
@@ -208,7 +208,7 @@ impl InlineRust {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
 }
@@ -292,7 +292,7 @@ pub enum OldDocumentNodeImplementation {
 	Extract,
 }
 
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum DocumentNodeImplementation {
 	/// This describes a (document) node built out of a subgraph of other (document) nodes.
@@ -548,13 +548,21 @@ pub struct NodeNetwork {
 
 impl core_types::CacheHash for NodeNetwork {
 	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
-		use core_types::CacheHash;
 		self.exports.cache_hash(state);
+
 		let mut nodes: Vec<_> = self.nodes.iter().collect();
 		nodes.sort_by_key(|(id, _)| *id);
 		for (id, node) in nodes {
 			id.cache_hash(state);
 			node.cache_hash(state);
+		}
+
+		let mut scope_injections: Vec<_> = self.scope_injections.iter().collect();
+		scope_injections.sort_by_key(|(key, _)| key.as_str());
+		for (key, (node_id, ty)) in scope_injections {
+			key.cache_hash(state);
+			node_id.cache_hash(state);
+			ty.cache_hash(state);
 		}
 	}
 }
@@ -1143,7 +1151,12 @@ fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> R
 
 impl core_types::graphene_hash::CacheHash for DocumentNode {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		core::hash::Hash::hash(self, state);
+		self.inputs.cache_hash(state);
+		self.call_argument.cache_hash(state);
+		self.implementation.cache_hash(state);
+		self.visible.cache_hash(state);
+		self.skip_deduplication.cache_hash(state);
+		self.context_features.cache_hash(state);
 	}
 }
 
@@ -1265,11 +1278,11 @@ mod test {
 		};
 		network.populate_dependants();
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		let flat_network = flat_network();
-		println!("{flat_network:#?}");
+		let expected = flatten_add_expected();
+		println!("{expected:#?}");
 		println!("{network:#?}");
 
-		assert_eq!(flat_network, network);
+		assert_eq!(expected, network);
 	}
 
 	#[test]
@@ -1356,6 +1369,60 @@ mod test {
 		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
 	}
 
+	/// Expected output of `flatten_with_fns` on the outer add network.
+	/// Contains unresolved `Import` inputs (the call argument still flows through as an import)
+	/// and `dependants` populated by the prior `populate_dependants` call.
+	fn flatten_add_expected() -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(11), 0)],
+			nodes: [
+				(
+					NodeId(10),
+					DocumentNode {
+						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
+						original_location: OriginalLocation {
+							inputs_source: [(Source { node: vec![], index: 0 }, 1)].into(),
+							dependants: vec![vec![NodeId(11)]],
+							..Default::default()
+						},
+						..Default::default()
+					},
+				),
+				(
+					NodeId(14),
+					DocumentNode {
+						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(4)]),
+							dependants: vec![vec![NodeId(1), NodeId(10)]],
+							..Default::default()
+						},
+						..Default::default()
+					},
+				),
+				(
+					NodeId(11),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(10), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
+						original_location: OriginalLocation {
+							dependants: vec![vec![]],
+							..Default::default()
+						},
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	/// A fully resolved flat network ready for proto compilation (no `Import` inputs remain).
+	/// Used as input to `into_proto_networks` in `resolve_flatten_add_as_proto_network`.
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(11), 0)],

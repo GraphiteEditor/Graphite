@@ -70,6 +70,13 @@ impl_via_hash! {
 	String,
 }
 
+impl<'a> CacheHash for std::borrow::Cow<'a, str> {
+	#[inline]
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
+	}
+}
+
 impl CacheHash for str {
 	#[inline]
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {

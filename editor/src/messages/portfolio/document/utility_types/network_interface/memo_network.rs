@@ -1,4 +1,5 @@
 use graph_craft::document::NodeNetwork;
+use graphene_hash::CacheHash;
 use std::cell::Cell;
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -25,7 +26,7 @@ impl serde::Serialize for MemoNetwork {
 	}
 }
 
-impl core_types::CacheHash for MemoNetwork {
+impl graphene_hash::CacheHash for MemoNetwork {
 	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
 		self.current_hash().cache_hash(state);
 	}

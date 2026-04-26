@@ -188,7 +188,7 @@ impl ContextFeatures {
 // CONTEXT DEPENDENCIES
 // ====================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
