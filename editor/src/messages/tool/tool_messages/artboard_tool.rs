@@ -587,6 +587,7 @@ impl Fsm for ArtboardToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
+				HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
 			]),
 			ArtboardToolFsmState::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),

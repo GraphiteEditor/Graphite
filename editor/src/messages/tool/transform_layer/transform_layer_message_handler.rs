@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::ManipulatorPointId;
@@ -94,6 +94,8 @@ pub struct TransformLayerMessageHandler {
 
 	// Path tool (ghost outlines showing pre-transform geometry)
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+
+	original_artboard_bounds: HashMap<LayerNodeIdentifier, [DVec2; 2]>,
 }
 
 #[message_handler_data]
@@ -111,14 +113,19 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 		let using_pen_tool = tool_data.active_tool_type == ToolType::Pen;
 		let using_shape_tool = tool_data.active_tool_type == ToolType::Shape;
+		let using_artboard_tool = tool_data.active_tool_type == ToolType::Artboard;
 
 		// TODO: Add support for transforming layer not in the document network
-		let selected_layers = document
+		let mut selected_layers = document
 			.network_interface
 			.selected_nodes()
 			.selected_layers(document.metadata())
 			.filter(|&layer| document.network_interface.is_visible(&layer.to_node(), &[]) && !document.network_interface.is_locked(&layer.to_node(), &[]))
 			.collect::<Vec<_>>();
+
+		if using_artboard_tool {
+			selected_layers.retain(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
+		}
 
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
@@ -312,6 +319,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				if final_transform {
 					self.transform_operation = TransformOperation::None;
 					self.operation_count = 0;
+					self.original_artboard_bounds.clear();
 				}
 
 				if using_pen_tool {
@@ -390,13 +398,30 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				});
 			}
 			TransformLayerMessage::BeginGRS { operation: transform_type } => {
+				if using_artboard_tool && transform_type == TransformType::Rotate {
+					return;
+				}
+				if using_artboard_tool && selected_layers.is_empty() {
+					return;
+				}
+				if using_artboard_tool {
+					self.original_artboard_bounds.clear();
+					for &layer in &selected_layers {
+						if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
+							continue;
+						}
+						if let Some(bounds) = document.metadata().bounding_box_document(layer) {
+							self.original_artboard_bounds.insert(layer, bounds);
+						}
+					}
+				}
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				let selected_segments = shape_editor.selected_segments().collect::<Vec<_>>();
 
 				if using_path_tool {
 					Self::set_ghost_outline(&mut self.ghost_outline, shape_editor, document);
 					if (selected_points.is_empty() && selected_segments.is_empty())
-						|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
+						|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool && !using_artboard_tool)
 						|| selected_layers.is_empty()
 						|| (transform_type.equivalent_to(self.transform_operation) && !self.was_grabbing)
 					{
@@ -497,6 +522,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(ToolMessage::UpdateHints);
 				} else {
 					selected.original_transforms.clear();
+					self.original_artboard_bounds.clear();
 					self.typing.clear();
 					self.transform_operation = TransformOperation::None;
 
@@ -578,6 +604,28 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 					};
+				}
+
+				if using_artboard_tool && !self.original_artboard_bounds.is_empty() && self.transform_operation != TransformOperation::None {
+					let inner = match self.transform_operation {
+						TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(&self.state, document)),
+						TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(self.state.is_rounded_to_intervals)),
+						_ => DAffine2::IDENTITY,
+					};
+					let normalized_transform = self.state.local_to_viewport_transform();
+					let local_viewport_transform = normalized_transform * inner * normalized_transform.inverse();
+					let pivot_translation = DAffine2::from_translation(self.state.pivot_viewport(document));
+					let viewport_transform = pivot_translation * local_viewport_transform * pivot_translation.inverse();
+					let document_to_viewport = document.metadata().document_to_viewport;
+					let document_transform = document_to_viewport.inverse() * viewport_transform * document_to_viewport;
+
+					for (&layer, &original_bounds) in &self.original_artboard_bounds {
+						let new_top_left = document_transform.transform_point2(original_bounds[0]);
+						let new_bottom_right = document_transform.transform_point2(original_bounds[1]);
+						let location = new_top_left.min(new_bottom_right).round().as_ivec2();
+						let dimensions = (new_bottom_right - new_top_left).abs().round().as_ivec2().max(IVec2::ONE);
+						responses.add(GraphOperationMessage::ResizeArtboard { layer, location, dimensions });
+					}
 				}
 
 				self.mouse_position = input.mouse.position;

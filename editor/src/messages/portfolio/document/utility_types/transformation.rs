@@ -508,8 +508,7 @@ impl<'a> Selected<'a> {
 		tool_type: &'a ToolType,
 		pen_handle: Option<&'a mut DVec2>,
 	) -> Self {
-		// If user is using the Select tool or Shape tool then use the original layer transforms
-		if (*tool_type == ToolType::Select || *tool_type == ToolType::Shape) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
+		if (*tool_type == ToolType::Select || *tool_type == ToolType::Shape || *tool_type == ToolType::Artboard) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
 
@@ -630,6 +629,9 @@ impl<'a> Selected<'a> {
 
 		// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 		for layer in self.network_interface.shallowest_unique_layers(&[]) {
+			if *self.tool_type == ToolType::Artboard && self.network_interface.is_artboard(&layer.to_node(), &[]) {
+				continue;
+			}
 			match &mut self.original_transforms {
 				OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses),
 				OriginalTransforms::Path(path_transforms) => {
