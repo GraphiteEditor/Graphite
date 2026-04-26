@@ -30,11 +30,11 @@ let
       cargo = toolchain;
       rustc = toolchain;
     }).buildRustPackage
-      (finalAttrs: rec {
+      (finalAttrs: {
         pname = "rustc_codegen_spirv";
         version = "0.10.0-alpha.1";
         src = pkgs.fetchCrate {
-          inherit pname version;
+          inherit (finalAttrs) pname version;
           sha256 = "sha256-zJEpExkPgYzwo7fR4ge4GxJNj7H5yo4bJ4eTOw36+7c=";
         };
         cargoHash = "sha256-J1rtbfGqrL2NJ7Bu2pYfDwCdUmnECB/kzxrpYluA0kY=";
