@@ -1,158 +1,134 @@
 use core_types::table::{Table, TableRow};
 use glam::{DAffine2, DVec2};
-use parley::GlyphRun;
-use skrifa::GlyphId;
-use skrifa::instance::{LocationRef, NormalizedCoord, Size};
-use skrifa::outline::{DrawSettings, OutlinePen};
+use vector_types::{Subpath, Vector};
+use skrifa::instance::{NormalizedCoord, Size};
+use skrifa::outline::{OutlineGlyph, OutlinePen, DrawSettings};
 use skrifa::raw::FontRef as ReadFontsRef;
-use skrifa::{MetadataProvider, OutlineGlyph};
-use vector_types::subpath::{ManipulatorGroup, Subpath};
-use vector_types::vector::{PointId, Vector};
+use skrifa::{GlyphId, MetadataProvider};
+use kurbo::{PathSeg, Point};
 
-pub struct PathBuilder<Upstream> {
-	current_subpath: Subpath<PointId>,
+pub struct PathBuilder<Upstream: Default + 'static> {
+	vector_table: Table<Vector<Upstream>>,
+	current_segments: Vec<PathSeg>,
+	glyph_subpaths: Vec<Subpath<vector_types::vector::PointId>>,
 	origin: DVec2,
-	glyph_subpaths: Vec<Subpath<PointId>>,
-	pub vector_table: Table<Vector<Upstream>>,
+	current_point: Point,
+	is_text_on_path: bool,
 	scale: f64,
-	id: PointId,
 }
 
 impl<Upstream: Default + 'static> PathBuilder<Upstream> {
-	pub fn new(per_glyph_instances: bool, scale: f64) -> Self {
+	pub fn new(is_text_on_path: bool, scale: f64) -> Self {
 		Self {
-			current_subpath: Subpath::new(Vec::new(), false),
+			vector_table: Table::new(),
+			current_segments: Vec::new(),
 			glyph_subpaths: Vec::new(),
-			vector_table: if per_glyph_instances { Table::new() } else { Table::new_from_element(Vector::default()) },
+			origin: DVec2::ZERO,
+			current_point: Point::ZERO,
+			is_text_on_path,
 			scale,
-			id: PointId::ZERO,
-			origin: DVec2::default(),
 		}
 	}
 
-	fn point(&self, x: f32, y: f32) -> DVec2 {
-		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2, per_glyph_instances: bool) {
-		let location_ref = LocationRef::new(normalized_coords);
-		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
+	pub fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, final_transform: DAffine2, per_glyph_instances: bool) {
+		self.origin = final_transform.translation;
+		self.glyph_subpaths.clear();
+		self.current_segments.clear();
+		
+		let settings = DrawSettings::unhinted(Size::new(size), normalized_coords);
 		glyph.draw(settings, self).unwrap();
 
-		// Apply transforms in correct order: style-based skew first, then user-requested skew
-		// This ensures font synthesis (italic) is applied before user transformations
-		for glyph_subpath in &mut self.glyph_subpaths {
-			if let Some(style_skew) = style_skew {
-				glyph_subpath.apply_transform(style_skew);
-			}
-
-			glyph_subpath.apply_transform(skew);
+		if !self.current_segments.is_empty() {
+			self.glyph_subpaths.push(Subpath::from_beziers(&self.current_segments, false));
+			self.current_segments.clear();
 		}
 
+		let transform = if self.is_text_on_path { final_transform } else { final_transform * DAffine2::from_scale(DVec2::splat(self.scale)) };
+		let transform = if let Some(skew) = style_skew { transform * skew } else { transform };
+
+		let subpaths = std::mem::take(&mut self.glyph_subpaths);
 		if per_glyph_instances {
-			self.vector_table.push(TableRow {
-				element: Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
-				transform: DAffine2::from_translation(glyph_offset),
-				..Default::default()
-			});
+			let mut vector = Vector::from_subpaths(subpaths, false);
+			vector.transform(transform);
+			self.vector_table.push(TableRow::new_from_element(vector));
 		} else {
-			for subpath in self.glyph_subpaths.drain(..) {
-				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element
-				self.vector_table.get_mut(0).unwrap().element.append_subpath(subpath, false);
+			let mut vector = Vector::from_subpaths(subpaths, false);
+			vector.transform(transform);
+			if self.vector_table.is_empty() {
+				self.vector_table = Table::new_from_element(vector);
+			} else {
+				let current_vector = self.vector_table.iter_mut().next().unwrap();
+				current_vector.element.concat(&vector, DAffine2::IDENTITY, 0);
 			}
 		}
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool) {
+	pub fn render_glyph_run(&mut self, glyph_run: &parley::GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool) {
+		let run = glyph_run.run();
 		let mut run_x = glyph_run.offset();
 		let run_y = glyph_run.baseline();
-
-		let run = glyph_run.run();
-
-		// User-requested tilt applied around baseline to avoid vertical displacement
-		// Translation ensures rotation point is at the baseline, not origin
-		let skew = if per_glyph_instances {
-			DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
-		} else {
-			DAffine2::from_translation(DVec2::new(0., run_y as f64))
-				* DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
-				* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
-		};
-
-		let synthesis = run.synthesis();
-
-		// Font synthesis (e.g., synthetic italic) applied separately from user transforms
-		// This preserves the distinction between font styling and user transformations
-		let style_skew = synthesis.skew().map(|angle| {
-			if per_glyph_instances {
-				DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
-			} else {
-				DAffine2::from_translation(DVec2::new(0., run_y as f64))
-					* DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
-					* DAffine2::from_translation(DVec2::new(0., -run_y as f64))
-			}
-		});
-
+		let style_skew = (tilt != 0.).then(|| DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.]));
 		let font = run.font();
 		let font_size = run.font_size();
 
 		let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
 
-		// TODO: This can be cached for better performance
 		let font_collection_ref = font.data.as_ref();
 		let font_ref = ReadFontsRef::from_index(font_collection_ref, font.index).unwrap();
 		let outlines = font_ref.outline_glyphs();
 
-		for glyph in glyph_run.glyphs() {
+		glyph_run.glyphs().for_each(|glyph| {
 			let glyph_offset = DVec2::new((run_x + glyph.x) as f64, (run_y - glyph.y) as f64);
 			run_x += glyph.advance;
 
-			let glyph_id = GlyphId::from(glyph.id);
-			if let Some(glyph_outline) = outlines.get(glyph_id) {
-				if !per_glyph_instances {
-					self.origin = glyph_offset;
-				}
-				self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_instances);
+			if let Some(glyph_outline) = outlines.get(GlyphId::from(glyph.id)) {
+				let final_transform = DAffine2::from_translation(glyph_offset);
+				if !per_glyph_instances { self.origin = DVec2::ZERO }
+				self.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, per_glyph_instances);
 			}
-		}
+		});
 	}
 
 	pub fn finalize(mut self) -> Table<Vector<Upstream>> {
-		if self.vector_table.is_empty() {
-			self.vector_table = Table::new_from_element(Vector::default());
-		}
+		if self.vector_table.is_empty() { self.vector_table = Table::new_from_element(Vector::default()) }
 		self.vector_table
 	}
 }
 
 impl<Upstream: Default + 'static> OutlinePen for PathBuilder<Upstream> {
 	fn move_to(&mut self, x: f32, y: f32) {
-		if !self.current_subpath.is_empty() {
-			self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		if !self.current_segments.is_empty() {
+			self.glyph_subpaths.push(Subpath::from_beziers(&self.current_segments, false));
+			self.current_segments.clear();
 		}
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+		self.current_point = Point::new(x as f64, y as f64);
 	}
 
 	fn line_to(&mut self, x: f32, y: f32) {
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+		let p = Point::new(x as f64, y as f64);
+		self.current_segments.push(PathSeg::Line(kurbo::Line::new(self.current_point, p)));
+		self.current_point = p;
 	}
 
-	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
-		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
-		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, None, None, self.id.next_id()));
+	fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+		let p1 = Point::new(cx0 as f64, cy0 as f64);
+		let p2 = Point::new(x as f64, y as f64);
+		self.current_segments.push(PathSeg::Quad(kurbo::QuadBez::new(self.current_point, p1, p2)));
+		self.current_point = p2;
 	}
 
-	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
-		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
-		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle1);
-		self.current_subpath
-			.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, Some(handle2), None, self.id.next_id()));
+	fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+		let p1 = Point::new(cx0 as f64, cy0 as f64);
+		let p2 = Point::new(cx1 as f64, cy1 as f64);
+		let p3 = Point::new(x as f64, y as f64);
+		self.current_segments.push(PathSeg::Cubic(kurbo::CubicBez::new(self.current_point, p1, p2, p3)));
+		self.current_point = p3;
 	}
 
 	fn close(&mut self) {
-		self.current_subpath.set_closed(true);
-		self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		if !self.current_segments.is_empty() {
+			self.glyph_subpaths.push(Subpath::from_beziers(&self.current_segments, true));
+			self.current_segments.clear();
+		}
 	}
 }

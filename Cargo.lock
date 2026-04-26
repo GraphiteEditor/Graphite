@@ -5796,6 +5796,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "kurbo",
  "log",
  "node-macro",
  "parley",

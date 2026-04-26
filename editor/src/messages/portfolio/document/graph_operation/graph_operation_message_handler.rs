@@ -12,11 +12,10 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
+use graphene_std::renderer::convert_usvg_path::{convert_tiny_skia_path, convert_usvg_path};
 use graphene_std::table::Table;
-use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::text::{Font, TextAnchor, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -394,7 +393,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+				let mut options = usvg::Options::default();
+				options.fontdb_mut().load_font_data(include_bytes!("../../../../font.ttf").to_vec());
+				options.font_family = "Source Sans Pro".to_string();
+
+				let svg = svg.replace("font-family=\"sans-serif\"", "font-family=\"Source Sans Pro\"");
+				let svg = svg.replace("font-family='sans-serif'", "font-family='Source Sans Pro'");
+
+				let tree = match usvg::Tree::from_str(&svg, &options) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DialogMessage::DisplayDialogError {
@@ -546,6 +552,7 @@ fn import_usvg_node(
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 ) {
+	log::error!("DIAGNOSTIC: Visiting node root: {:?}", node);
 	let layer = modify_inputs.create_layer(id);
 
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -590,9 +597,7 @@ fn import_usvg_node(
 			warn!("Skip image");
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer);
 		}
 	}
 }
@@ -633,24 +638,21 @@ fn import_usvg_node_inner(
 			group_extents_map.insert(layer, child_extents);
 			total_extent
 		}
-		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
-			0
-		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
 			0
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer);
+			0
+		}
+		usvg::Node::Path(path) => {
+			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 			0
 		}
 	}
 }
 
-/// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
 fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	let subpaths = convert_usvg_path(path);
 	let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
@@ -672,6 +674,53 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	if let Some(stroke) = path.stroke() {
 		apply_usvg_stroke(stroke, modify_inputs, node_transform);
 	}
+}
+
+fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, transform: usvg::Transform, layer: LayerNodeIdentifier) {
+	use graphene_std::text::TextAnchor;
+	let font_family = text
+		.chunks()
+		.first()
+		.and_then(|chunk| chunk.spans().first())
+		.and_then(|span| span.font().families().first().map(|f| f.to_string()))
+		.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
+	let font_style = graphene_std::consts::DEFAULT_FONT_STYLE.to_string();
+	let font = Font::new(font_family, font_style);
+
+	let full_text: String = text.chunks().iter().map(|chunk| chunk.text()).collect();
+
+	// Check if any chunk uses text-on-path (TextFlow::Path)
+	let text_path_chunk = text.chunks().iter().find(|chunk| matches!(chunk.text_flow(), usvg::TextFlow::Path(_)));
+
+	if let Some(chunk) = text_path_chunk {
+		if let usvg::TextFlow::Path(text_path) = chunk.text_flow() {
+			let path_subpaths = convert_tiny_skia_path(text_path.path());
+			let start_offset = text_path.start_offset() as f64;
+			let anchor = match chunk.anchor() {
+				usvg::TextAnchor::Start => TextAnchor::Start,
+				usvg::TextAnchor::Middle => TextAnchor::Middle,
+				usvg::TextAnchor::End => TextAnchor::End,
+			};
+			let font_size = chunk.spans().first().map(|s| s.font_size().get()).unwrap_or(24.0) as f64;
+			let letter_spacing = chunk.spans().first().map(|s| s.letter_spacing()).unwrap_or(0.0) as f64;
+
+			let affine = DAffine2::from_cols_array(&[
+				transform.sx as f64,
+				transform.ky as f64,
+				transform.kx as f64,
+				transform.sy as f64,
+				transform.tx as f64,
+				transform.ty as f64,
+			]);
+			modify_inputs.insert_text_on_path(full_text, font, font_size, letter_spacing, path_subpaths, start_offset, anchor, affine, layer);
+			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			return;
+		}
+	}
+
+	// Fallback: regular text
+	modify_inputs.insert_text(full_text, font, TypesettingConfig::default(), layer);
+	modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 }
 
 /// Set correct positions for all imported layers in a single top-down O(n) pass.

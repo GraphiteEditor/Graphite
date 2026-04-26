@@ -2,6 +2,7 @@ use core_types::{Ctx, table::Table};
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphic_types::Vector;
 pub use text_nodes::*;
+pub use text_nodes::text_on_path::{TextAnchor, TextPathSide};
 
 /// Draws a text string as vector geometry with a choice of font and styling.
 #[node_macro::node(category("Text"))]
@@ -73,4 +74,50 @@ fn text<'i: 'n>(
 	};
 
 	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyph_elements)
+}
+
+/// Flows text glyphs along a vector path following the SVG 2 text-on-path layout rules (§11.8).
+#[node_macro::node(category("Text"))]
+fn text_on_path<'i: 'n>(
+	_: impl Ctx,
+	#[scope("editor-api")]
+	editor_resources: &'i WasmEditorApi,
+	/// The text content to flow along the path.
+	#[default("Lorem ipsum")]
+	text: String,
+	/// The vector path that glyphs follow.
+	path: Table<Vector>,
+	/// The typeface used to draw the text.
+	font: Font,
+	/// The font size in pixels.
+	#[unit(" px")]
+	#[default(24.)]
+	#[hard_min(1.)]
+	size: f64,
+	/// Additional spacing, in pixels, added between each character.
+	#[unit(" px")]
+	#[step(0.1)]
+	character_spacing: f64,
+	/// Arc-length offset from the path start to the first glyph.
+	#[unit(" px")]
+	start_offset: f64,
+	/// If true, start_offset is treated as a 0–1 fraction of total path length.
+	start_offset_percent: bool,
+	/// Which side of the path direction to place text.
+	side: text_nodes::text_on_path::TextPathSide,
+	/// Text anchor point — affects where along the path the text is anchored.
+	text_anchor: text_nodes::text_on_path::TextAnchor,
+) -> Table<Vector> {
+	text_nodes::text_on_path::place_text_on_path(
+		&text,
+		&path,
+		&font,
+		size,
+		character_spacing,
+		start_offset,
+		start_offset_percent,
+		side,
+		text_anchor,
+		&editor_resources.font_cache,
+	)
 }

@@ -2,6 +2,7 @@ use dyn_any::DynAny;
 use parley::fontique::Blob;
 use std::collections::HashMap;
 use std::sync::Arc;
+use serde::Deserialize;
 
 /// A font type (storing font family and font style and an optional preview URL)
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -19,13 +20,11 @@ impl std::hash::Hash for Font {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.font_family.hash(state);
 		self.font_style.hash(state);
-		// Don't consider `font_style_to_restore` in the HashMaps
 	}
 }
 
 impl PartialEq for Font {
 	fn eq(&self, other: &Self) -> bool {
-		// Don't consider `font_style_to_restore` in the HashMaps
 		self.font_family == other.font_family && self.font_style == other.font_style
 	}
 }
@@ -38,94 +37,83 @@ impl Font {
 			font_style_to_restore: None,
 		}
 	}
-
-	pub fn named_weight(weight: u32) -> &'static str {
-		// From https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight#common_weight_name_mapping
-		match weight {
-			100 => "Thin",
-			200 => "Extra Light",
-			300 => "Light",
-			400 => "Regular",
-			500 => "Medium",
-			600 => "Semi Bold",
-			700 => "Bold",
-			800 => "Extra Bold",
-			900 => "Black",
-			950 => "Extra Black",
-			_ => "Regular",
-		}
-	}
 }
+
 impl Default for Font {
 	fn default() -> Self {
-		Self::new(core_types::consts::DEFAULT_FONT_FAMILY.into(), core_types::consts::DEFAULT_FONT_STYLE.into())
-	}
-}
-
-/// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Clone, serde::Serialize, serde::Deserialize, Default, DynAny)]
-pub struct FontCache {
-	/// Actual font file data used for rendering a font
-	font_file_data: HashMap<Font, Vec<u8>>,
-}
-
-impl std::fmt::Debug for FontCache {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("FontCache").field("font_file_data", &self.font_file_data.keys().collect::<Vec<_>>()).finish()
-	}
-}
-
-impl std::hash::Hash for FontCache {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.font_file_data.len().hash(state);
-		self.font_file_data.keys().for_each(|font| font.hash(state));
-	}
-}
-
-impl PartialEq for FontCache {
-	fn eq(&self, other: &Self) -> bool {
-		if self.font_file_data.len() != other.font_file_data.len() {
-			return false;
+		Self {
+			font_family: core_types::consts::DEFAULT_FONT_FAMILY.into(),
+			font_style: core_types::consts::DEFAULT_FONT_STYLE.into(),
+			font_style_to_restore: None,
 		}
-		self.font_file_data.keys().all(|font| other.font_file_data.contains_key(font))
 	}
+}
+
+/// A cache of fonts
+#[derive(Debug, Default, Clone, DynAny)]
+pub struct FontCache {
+	/// Mapping of font family name to font style name to font data
+	pub font_file_data: HashMap<Font, Arc<Vec<u8>>>,
 }
 
 impl FontCache {
+	/// Get the font data for a font
+	pub fn get_data(&self, font: &Font) -> Option<Arc<Vec<u8>>> {
+		self.font_file_data.get(font).cloned()
+	}
+
+	/// Insert font data for a font
+	pub fn insert(&mut self, font: Font, data: Arc<Vec<u8>>) {
+		self.font_file_data.insert(font, data);
+	}
+
+	/// Check if the font data for a font is cached
+	pub fn has(&self, font: &Font) -> bool {
+		self.font_file_data.contains_key(font)
+	}
+
+	/// Get the number of fonts in the cache
+	pub fn len(&self) -> usize {
+		self.font_file_data.len()
+	}
+
+	/// Check if the cache is empty
+	pub fn is_empty(&self) -> bool {
+		self.font_file_data.is_empty()
+	}
+
+	/// Get an iterator over the fonts in the cache
+	pub fn fonts(&self) -> impl Iterator<Item = &Font> {
+		self.font_file_data.keys()
+	}
+
 	/// Returns the font family name if the font is cached, otherwise returns the fallback font family name if that is cached
 	pub fn resolve_font<'a>(&'a self, font: &'a Font) -> Option<&'a Font> {
 		if self.font_file_data.contains_key(font) {
 			Some(font)
 		} else {
-			self.font_file_data
+			let fallback = self.font_file_data
 				.keys()
 				.find(|font| font.font_family == core_types::consts::DEFAULT_FONT_FAMILY && font.font_style == core_types::consts::DEFAULT_FONT_STYLE)
+				.or_else(|| self.font_file_data.keys().next());			
+			fallback
 		}
 	}
 
+
 	/// Try to get the bytes for a font
 	pub fn get<'a>(&'a self, font: &'a Font) -> Option<(&'a Vec<u8>, &'a Font)> {
-		self.resolve_font(font).and_then(|font| self.font_file_data.get(font).map(|data| (data, font)))
+		let resolved = self.resolve_font(font)?;
+		self.font_file_data.get(resolved).map(|data| (data.as_ref(), resolved))
 	}
 
-	/// Get font data as a Blob for use with parley/skrifa
 	pub fn get_blob<'a>(&'a self, font: &'a Font) -> Option<(Blob<u8>, &'a Font)> {
-		self.get(font).map(|(data, font)| (Blob::new(Arc::new(data.clone())), font))
-	}
-
-	/// Check if the font is already loaded
-	pub fn loaded_font(&self, font: &Font) -> bool {
-		self.font_file_data.contains_key(font)
-	}
-
-	/// Insert a new font into the cache
-	pub fn insert(&mut self, font: Font, data: Vec<u8>) {
-		self.font_file_data.insert(font.clone(), data);
+		let resolved = self.resolve_font(font)?;
+		self.font_file_data.get(resolved).map(|data| (Blob::new(data.clone()), resolved))
 	}
 }
 
 // TODO: Eventually remove this migration document upgrade code
 fn migrate_font_style<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-	use serde::Deserialize;
 	String::deserialize(deserializer).map(|name| if name == "Normal (400)" { "Regular (400)".to_string() } else { name })
 }
