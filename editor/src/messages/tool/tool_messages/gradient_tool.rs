@@ -846,33 +846,32 @@ impl Fsm for GradientToolFsmState {
 							Some(1.),
 						);
 					}
-				}
+					if gradient.gradient_type == GradientType::Radial {
+						let major_vec = end - start;
+						let major_len = major_vec.length();
+						if major_len > f64::EPSILON {
+							let minor_len = major_len * gradient.aspect;
+							let major_dir = major_vec / major_len;
+							let minor_dir = major_dir.perp();
+							let center = start;
 
-				if gradient.gradient_type == GradientType::Radial {
-					let major_vec = end - start;
-					let major_len = major_vec.length();
-					if major_len > f64::EPSILON {
-						let minor_len = major_len * gradient.aspect;
-						let major_dir = major_vec / major_len;
-						let minor_dir = major_dir.perp();
-						let center = start;
+							let minor_pos_vp = center + minor_dir * minor_len;
+							let minor_neg_vp = center - minor_dir * minor_len;
 
-						let minor_pos_vp = center + minor_dir * minor_len;
-						let minor_neg_vp = center - minor_dir * minor_len;
+							let angle = major_dir.y.atan2(major_dir.x);
+							overlay_context.dashed_ellipse(center, major_len, minor_len, Some(angle), None, None, None, None, Some(COLOR_OVERLAY_BLUE), Some(4.), Some(4.), None);
 
-						let angle = major_dir.y.atan2(major_dir.x);
-						overlay_context.dashed_ellipse(center, major_len, minor_len, Some(angle), None, None, None, None, Some(COLOR_OVERLAY_BLUE), Some(4.), Some(4.), None);
+							overlay_context.line(center, minor_pos_vp, Some(COLOR_OVERLAY_BLUE), None);
+							overlay_context.line(center, minor_neg_vp, Some(COLOR_OVERLAY_BLUE), None);
 
-						overlay_context.line(center, minor_pos_vp, Some(COLOR_OVERLAY_BLUE), None);
-						overlay_context.line(center, minor_neg_vp, Some(COLOR_OVERLAY_BLUE), None);
-
-						let minor_tol_sq = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
-						let pos_active = dragging == Some(GradientDragTarget::RadialMinorPos);
-						let neg_active = dragging == Some(GradientDragTarget::RadialMinorNeg);
-						let pos_hovered = !pos_active && !matches!(self, GradientToolFsmState::Drawing { .. }) && minor_pos_vp.distance_squared(mouse) < minor_tol_sq;
-						let neg_hovered = !neg_active && !matches!(self, GradientToolFsmState::Drawing { .. }) && minor_neg_vp.distance_squared(mouse) < minor_tol_sq;
-						overlay_context.manipulator_handle(minor_pos_vp, pos_active || pos_hovered, None);
-						overlay_context.manipulator_handle(minor_neg_vp, neg_active || neg_hovered, None);
+							let minor_tol_sq = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
+							let pos_active = dragging == Some(GradientDragTarget::RadialMinorPos);
+							let neg_active = dragging == Some(GradientDragTarget::RadialMinorNeg);
+							let pos_hovered = !pos_active && !matches!(self, GradientToolFsmState::Drawing { .. }) && minor_pos_vp.distance_squared(mouse) < minor_tol_sq;
+							let neg_hovered = !neg_active && !matches!(self, GradientToolFsmState::Drawing { .. }) && minor_neg_vp.distance_squared(mouse) < minor_tol_sq;
+							overlay_context.manipulator_handle(minor_pos_vp, pos_active || pos_hovered, None);
+							overlay_context.manipulator_handle(minor_neg_vp, neg_active || neg_hovered, None);
+						}
 					}
 				}
 
