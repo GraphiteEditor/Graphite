@@ -798,6 +798,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 				gradient_type,
 				stops,
 				spread_method,
+				aspect: 1.,
 			})
 		}
 		usvg::Paint::RadialGradient(radial) => {
@@ -828,6 +829,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 				gradient_type,
 				stops,
 				spread_method,
+				aspect: 1.,
 			})
 		}
 		usvg::Paint::Pattern(_) => {

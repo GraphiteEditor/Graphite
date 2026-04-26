@@ -1174,7 +1174,22 @@ impl Render for Table<Vector> {
 					} else {
 						Default::default()
 					};
-					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+					let mut brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+
+					if gradient.gradient_type == GradientType::Radial && (gradient.aspect - 1.).abs() > f64::EPSILON {
+						let major_vec = end - start;
+						let angle = major_vec.y.atan2(major_vec.x);
+						let center = kurbo::Vec2::new(start.x, start.y);
+
+						let ellipse_affine = kurbo::Affine::translate(center)
+							* kurbo::Affine::rotate(angle)
+							* kurbo::Affine::scale_non_uniform(1., gradient.aspect)
+							* kurbo::Affine::rotate(-angle)
+							* kurbo::Affine::translate(-center);
+
+						brush_transform = ellipse_affine * brush_transform;
+					}
+
 					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
 				Fill::None => {}
