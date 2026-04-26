@@ -1,6 +1,6 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
 use core_types::uuid::generate_uuid;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
@@ -68,13 +68,14 @@ impl RenderExt for Gradient {
 				let radius = start.distance(end);
 
 				let ellipse_transform = if (self.aspect - 1.).abs() > f64::EPSILON {
-					let angle = (end - start).to_angle();
+					let major_vec = end - start;
+					let angle = major_vec.y.atan2(major_vec.x);
 					let squash = DAffine2::from_translation(start)
 						* DAffine2::from_angle(angle)
 						* DAffine2::from_scale(DVec2::new(1., self.aspect))
 						* DAffine2::from_angle(-angle)
 						* DAffine2::from_translation(-start);
-					
+
 					squash * gradient_transform_raw
 				} else {
 					gradient_transform_raw

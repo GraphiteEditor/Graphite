@@ -344,6 +344,8 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 
 		return Some(projection);
 	}
+	None
+}
 
 /// Compute minor-axis handle positions in document space for a radial gradient.
 fn radial_minor_handles(gradient: &Gradient) -> Option<(DVec2, DVec2)> {
