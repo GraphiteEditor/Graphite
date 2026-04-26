@@ -13,6 +13,7 @@ wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
+raster-types = { workspace = true }
 vector-types = { workspace = true }
 node-macro = { workspace = true }
 
@@ -22,6 +23,11 @@ glam = { workspace = true }
 parley = { workspace = true }
 skrifa = { workspace = true }
 log = { workspace = true }
+serde_json = { workspace = true }
+convert_case = { workspace = true }
+titlecase = { workspace = true }
+fancy-regex = { workspace = true }
+unicode-segmentation = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

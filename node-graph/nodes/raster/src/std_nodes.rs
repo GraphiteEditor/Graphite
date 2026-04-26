@@ -297,8 +297,8 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 }
 
 #[node_macro::node(category(""))]
-pub fn image_value(_: impl Ctx, _primary: (), image: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
-	image
+pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> Table<Raster<CPU>> {
+	Table::new_from_element(Raster::new_cpu(image))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]

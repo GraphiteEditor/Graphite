@@ -362,6 +362,7 @@ pub struct TextAreaInput {
 	pub value: String,
 	pub label: Option<String>,
 	pub disabled: bool,
+	pub monospace: bool,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

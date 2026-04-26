@@ -27,7 +27,6 @@ use crate::wrapper::{WgpuContext, deserialize_editor_message};
 
 mod consts;
 mod context;
-mod dirs;
 mod input;
 mod internal;
 mod ipc;

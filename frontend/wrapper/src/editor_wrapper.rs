@@ -379,13 +379,23 @@ impl EditorWrapper {
 		}
 	}
 
-	#[wasm_bindgen(js_name = loadWorkspaceLayout)]
-	pub fn load_workspace_layout(&self, layout: JsValue) {
-		let Ok(layout) = serde_wasm_bindgen::from_value(layout) else {
-			log::error!("Failed to deserialize workspace layout");
+	#[wasm_bindgen(js_name = loadPersistedState)]
+	pub fn load_persisted_state(&self, state: JsValue) {
+		let Ok(state) = serde_wasm_bindgen::from_value(state) else {
+			log::error!("Failed to deserialize persisted state");
 			return;
 		};
-		let message = PortfolioMessage::LoadWorkspaceLayout { layout };
+
+		let message = PersistentStateMessage::LoadState { state };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = loadDocumentContent)]
+	pub fn load_document_content(&self, document_id: u64, document: String) {
+		let message = PersistentStateMessage::LoadDocument {
+			document_id: DocumentId(document_id),
+			document: document,
+		};
 		self.dispatch(message);
 	}
 
@@ -411,22 +421,6 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = importFile)]
 	pub fn import_file(&self, path: String, content: Vec<u8>) {
 		let message = PortfolioMessage::ImportFile { path: PathBuf::from(path), content };
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String, to_front: bool) {
-		let document_id = DocumentId(document_id);
-		let message = PortfolioMessage::OpenDocumentFileWithId {
-			document_id,
-			document_name: Some(document_name),
-			document_path: None,
-			document_is_auto_saved: true,
-			document_is_saved,
-			document_serialized_content,
-			to_front,
-			select_after_open: false,
-		};
 		self.dispatch(message);
 	}
 

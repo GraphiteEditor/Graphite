@@ -36,15 +36,15 @@ impl EditorTestUtils {
 		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let document_id = portfolio.active_document_id.unwrap();
-			let exector = &mut portfolio.executor;
-			let document = portfolio.documents.get_mut(&document_id).unwrap();
+			let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+			let document = documents.get_mut(&document_id).unwrap();
 
-			let instrumented = match exector.update_node_graph_instrumented(document) {
+			let instrumented = match executor.update_node_graph_instrumented(document) {
 				Ok(instrumented) => instrumented,
 				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
 			};
 
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+			if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
 			runtime.run().await;

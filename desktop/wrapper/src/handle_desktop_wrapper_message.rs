@@ -49,41 +49,18 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = FrontendMessage::UpdateFullscreen { fullscreen };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::LoadDocument {
-			id,
-			document,
-			to_front,
-			select_after_open,
-		} => {
-			let message = PortfolioMessage::OpenDocumentFileWithId {
-				document_id: id,
-				document_name: Some(document.name),
-				document_path: document.path,
-				document_serialized_content: document.content,
-				document_is_auto_saved: true,
-				document_is_saved: document.is_saved,
-				to_front,
-				select_after_open,
-			};
+		DesktopWrapperMessage::LoadDocumentContent { id, document } => {
+			let message = PersistentStateMessage::LoadDocument { document_id: id, document };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::SelectDocument { id } => {
-			let message = PortfolioMessage::SelectDocument { document_id: id };
+		DesktopWrapperMessage::LoadPersistedState { state } => {
+			let message = PersistentStateMessage::LoadState { state };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::LoadPreferences { preferences } => {
 			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message);
 		}
-		DesktopWrapperMessage::LoadWorkspaceLayout { workspace_layout } => match ron::from_str(&workspace_layout) {
-			Ok(layout) => {
-				let message = PortfolioMessage::LoadWorkspaceLayout { layout };
-				dispatcher.queue_editor_message(message);
-			}
-			Err(e) => {
-				tracing::error!("Failed to deserialize workspace layout: {e}");
-			}
-		},
 		#[cfg(target_os = "macos")]
 		DesktopWrapperMessage::MenuEvent { id } => {
 			if let Some(message) = crate::utils::menu::parse_item_path(id) {
