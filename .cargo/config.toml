@@ -9,6 +9,9 @@ rustflags = [
 	"-C",
 	"link-arg=--max-memory=4294967296",
 	"--cfg=web_sys_unstable_apis",
+	# TODO: Remove this and find a better way to stay within the 25MB limit of cloudflare pages
+	"-C",
+	"opt-level=s",
 ]
 
 [env]
