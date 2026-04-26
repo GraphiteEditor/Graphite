@@ -1,5 +1,4 @@
 use graph_craft::document::NodeNetwork;
-use graphene_hash::CacheHash;
 use std::cell::Cell;
 
 #[derive(Debug, Default, Clone, PartialEq)]

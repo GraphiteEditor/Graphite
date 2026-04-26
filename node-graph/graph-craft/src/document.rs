@@ -1369,9 +1369,6 @@ mod test {
 		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
 	}
 
-	/// Expected output of `flatten_with_fns` on the outer add network.
-	/// Contains unresolved `Import` inputs (the call argument still flows through as an import)
-	/// and `dependants` populated by the prior `populate_dependants` call.
 	fn flatten_add_expected() -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(11), 0)],
@@ -1421,8 +1418,6 @@ mod test {
 		}
 	}
 
-	/// A fully resolved flat network ready for proto compilation (no `Import` inputs remain).
-	/// Used as input to `into_proto_networks` in `resolve_flatten_add_as_proto_network`.
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(11), 0)],
