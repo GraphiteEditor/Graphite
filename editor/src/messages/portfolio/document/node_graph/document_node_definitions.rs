@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	NumberInputSettings, Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
@@ -29,7 +29,7 @@ use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -537,7 +537,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 11: Switch (closed → count, open → max(count - 1, 1) as denominator)
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(logic::switch::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(math_nodes::switch::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(18), 0)],
 								..Default::default()
 							},
@@ -1489,6 +1489,113 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		DocumentNodeDefinition {
+			identifier: "Regex Find",
+			category: "Text: Regex",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![
+							// Primary output: the whole match (String)
+							NodeInput::node(NodeId(1), 0),
+							// Secondary output: capture groups (Vec<String>)
+							NodeInput::node(NodeId(2), 0),
+						],
+						nodes: [
+							// Node 0: regex_find proto node — returns Vec<String> of [whole_match, ...capture_groups]
+							DocumentNode {
+								inputs: vec![
+									NodeInput::import(concrete!(String), 0),
+									NodeInput::import(concrete!(String), 1),
+									NodeInput::import(concrete!(f64), 2),
+									NodeInput::import(concrete!(bool), 3),
+									NodeInput::import(concrete!(bool), 4),
+								],
+								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
+								..Default::default()
+							},
+							// Node 1: index_elements at index 0 — extracts the whole match as a String
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::index_elements::IDENTIFIER),
+								..Default::default()
+							},
+							// Node 2: omit_element at index 0 — returns capture groups as Vec<String>
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
+					inputs: vec![
+						NodeInput::value(TaggedValue::String(String::new()), true),
+						NodeInput::value(TaggedValue::String(String::new()), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_metadata: vec![
+						("String", "The string to search within.").into(),
+						("Pattern", "The regular expression pattern to search for.").into(),
+						(
+							"Match Index",
+							"Which non-overlapping occurrence of the pattern to return, starting from 0 for the first match. Negative indices count backwards from the last match.",
+						)
+							.into(),
+						("Case Insensitive", "Match letters regardless of case.").into(),
+						("Multiline", "Make `^` and `$` match the start and end of each line, not just the whole string.").into(),
+					],
+					output_names: vec!["Match".to_string(), "Captures".to_string()],
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 2)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed(
+				r#"Finds a portion of the string matching a regular expression pattern. With "Match Index" at its default 0, it selects the first non-overlapping occurrence, but others may be selected. Capture groups, if any, are produced as a list in the "Captures" output."#,
+			),
+			properties: None,
+		},
 		// Aims for interoperable compatibility with:
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
@@ -2035,6 +2142,8 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("selective_color_properties".to_string(), Box::new(node_properties::selective_color_properties));
 	map.insert("exposure_properties".to_string(), Box::new(node_properties::exposure_properties));
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
+	map.insert("format_number_properties".to_string(), Box::new(node_properties::format_number_properties));
+	map.insert("string_capitalization_properties".to_string(), Box::new(node_properties::string_capitalization_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
 	map.insert("spiral_properties".to_string(), Box::new(node_properties::spiral_properties));

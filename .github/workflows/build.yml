@@ -153,22 +153,38 @@ jobs:
           if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
             REF="latest-stable"
             ENVIRONMENT="graphite-editor (Production)"
+            AUTO_INACTIVE="true"
+            TRANSIENT_ENVIRONMENT="false"
           elif [ "${{ github.event_name }}" = "push" ]; then
             REF="master"
             ENVIRONMENT="graphite-dev (Production)"
+            AUTO_INACTIVE="true"
+            TRANSIENT_ENVIRONMENT="false"
           else
-            REF="$(git rev-parse HEAD)"
+            REF="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
             ENVIRONMENT="graphite-dev (Preview)"
+            AUTO_INACTIVE="false"
+            TRANSIENT_ENVIRONMENT="true"
           fi
-          DEPLOY_ID=$(gh api \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            repos/${{ github.repository }}/deployments \
-            --input - \
-            --jq '.id' <<EOF
-            {"ref":"$REF","environment":"$ENVIRONMENT","auto_merge":false,"required_contexts":[]}
+          create_deployment() {
+            gh api \
+              -X POST \
+              -H "Accept: application/vnd.github+json" \
+              repos/${{ github.repository }}/deployments \
+              --input - \
+              --jq '.id' <<EOF
+              {
+                "ref": "$1",
+                "environment": "$ENVIRONMENT",
+                "auto_merge": false,
+                "required_contexts": [],
+                "auto_inactive": $AUTO_INACTIVE,
+                "transient_environment": $TRANSIENT_ENVIRONMENT
+              }
           EOF
-          )
+          }
+          # Try branch name first (needed for GitHub's PR "View deployment" button), fall back to commit SHA if the branch was deleted
+          DEPLOY_ID=$(create_deployment "$REF" 2>/dev/null) || DEPLOY_ID=$(create_deployment "$(git rev-parse HEAD)")
           gh api \
             -X POST \
             -H "Accept: application/vnd.github+json" \
@@ -188,9 +204,19 @@ jobs:
             exit 0
           fi
 
+          size_of() { find frontend/dist/assets "$@" -printf '%s\n' | awk '{s+=$1} END {printf "%.2f MB", s/1048576}'; }
+          WASM_SIZE=$(size_of -name '*.wasm')
+          JS_SIZE=$(size_of -name '*.js')
+          CSS_SIZE=$(size_of -name '*.css')
+          FONT_SIZE=$(size_of \( -name '*.woff2' -o -name '*.woff' -o -name '*.ttf' -o -name '*.otf' \))
+          IMAGE_SIZE=$(size_of \( -name '*.png' -o -name '*.jpg' -o -name '*.svg' \))
+          ALL_SIZE=$(size_of -type f)
+
           COMMENT_BODY="| 📦 **Web Build Complete for** $(git rev-parse HEAD) |
           |-|
-          | $CF_URL |"
+          | $CF_URL |
+
+          Wasm: **$WASM_SIZE** — JS: **$JS_SIZE** — CSS: **$CSS_SIZE** — Fonts: **$FONT_SIZE** — Images: **$IMAGE_SIZE** — All Assets: **$ALL_SIZE**"
 
           if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
             # Push tag: skip commenting (commit was already commented on master merge)

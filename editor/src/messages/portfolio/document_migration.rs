@@ -10,7 +10,6 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
@@ -110,44 +109,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::animation::RealTimeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::logic::serialize::IDENTIFIER,
-		aliases: &["graphene_core::logic::SerializeNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::debug::size_of::IDENTIFIER,
 		aliases: &["graphene_core::ops::SizeOfNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::some::IDENTIFIER,
 		aliases: &["graphene_core::ops::SomeNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::string_concatenate::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringConcatenateNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::string_length::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringLengthNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::string_replace::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringReplaceNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::string_slice::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringSliceNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::string_split::IDENTIFIER,
-		aliases: &["graphene_core::logic::StringSplitNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::switch::IDENTIFIER,
-		aliases: &["graphene_core::logic::SwitchNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::logic::to_string::IDENTIFIER,
-		aliases: &["graphene_core::logic::ToStringNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::debug::unwrap_option::IDENTIFIER,
@@ -418,10 +385,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::SineInverseNode", "graphene_core::ops::SineInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::string_value::IDENTIFIER,
-		aliases: &["graphene_math_nodes::StringValueNode", "graphene_core::ops::StringValueNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::subtract::IDENTIFIER,
 		aliases: &["graphene_math_nodes::SubtractNode", "graphene_core::ops::SubtractNode"],
 	},
@@ -585,8 +548,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER,
+		node: graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
 		aliases: &[
+			"raster_nodes::std_nodes::ImageValueNode",
 			"graphene_raster_nodes::std_nodes::ImageValueNode",
 			"graphene_std::raster::ImageValueNode",
 			"graphene_std::raster::ImageNode",
@@ -679,6 +643,46 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::text::text::IDENTIFIER,
 		aliases: &["graphene_core::text::text::TextNode", "graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_value::IDENTIFIER,
+		aliases: &["graphene_math_nodes::StringValueNode", "graphene_core::ops::StringValueNode", "math_nodes::StringValueNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_concatenate::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringConcatenateNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_length::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringLengthNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_replace::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringReplaceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_slice::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringSliceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_split::IDENTIFIER,
+		aliases: &["graphene_core::logic::StringSplitNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::switch::IDENTIFIER,
+		aliases: &["graphene_core::logic::SwitchNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::to_string::IDENTIFIER,
+		aliases: &["graphene_core::logic::ToStringNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
+		aliases: &["graphene_core::logic::JsonGetNode", "graphene_std::text_nodes::JsonGetNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::serialize::IDENTIFIER,
+		aliases: &["graphene_core::logic::SerializeNode"],
 	},
 	// ================================
 	// transform
@@ -1140,10 +1144,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			log::error!("Path node does not exist.");
 			return None;
 		};
-		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
-			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
-		]);
+		let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(&vector));
+		let path_node = path_node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))]);
 
 		// Get the "Spline" node definition and wire it up with the "Path" node as input
 		let Some(spline_node_type) = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER) else {
@@ -1387,7 +1389,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER) && inputs_count == 1 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) && inputs_count == 1 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1675,7 +1677,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
 		//
 		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
-		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> Table<Vector> { ... }
+		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> Table<Vector> { ... }
 		//
 		// v2 signature:
 		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }
@@ -1950,6 +1952,42 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+	}
+
+	// Migrate Path nodes that stored geometry directly in input 0 (as a Table<Vector>) to instead use a VectorModification in input 1
+	if reference == DefinitionIdentifier::Network("Path".into()) {
+		let input_0 = node.inputs.first()?;
+		if let NodeInput::Value { tagged_value, exposed } = input_0
+			&& !exposed
+			&& let TaggedValue::Vector(vector_table) = &**tagged_value
+			&& !vector_table.is_empty()
+		{
+			let vector = vector_table.iter().next()?.element;
+			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
+
+			// Reset input 0 to the default exposed state
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Vector(Default::default()), true), network_path);
+
+			// Store the converted VectorModification in input 1
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+		}
+	}
+
+	// Migrate Image nodes that stored a Table<Raster<CPU>> in input 1 to instead use bare Image<Color> via TaggedValue::ImageData
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
+		&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(1)
+		&& let TaggedValue::Raster(raster_table) = &**tagged_value
+		&& let Some(row) = raster_table.iter().next()
+	{
+		let image = row.element.data().clone();
+
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
 	// ==================================

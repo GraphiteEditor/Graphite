@@ -21,7 +21,7 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
+use crate::messages::portfolio::utility_types::{CachedData, PanelType};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -34,10 +34,8 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Raster;
 use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
@@ -52,7 +50,7 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -193,7 +191,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			persistent_data,
+			cached_data,
 			executor,
 			viewport,
 			current_tool,
@@ -231,7 +229,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
-					persistent_data,
+					cached_data,
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
@@ -696,7 +694,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, layer_parent, responses);
+				let layer = graph_modification_utils::new_image_layer(image, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {

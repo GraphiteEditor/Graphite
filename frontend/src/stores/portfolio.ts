@@ -2,15 +2,14 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
-import { storeDocumentTabOrder } from "/src/utility-functions/persistence";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, OpenDocument, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { EditorWrapper, DocumentInfo, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
 type PortfolioStoreState = {
 	unsaved: boolean;
-	documents: OpenDocument[];
+	documents: DocumentInfo[];
 	activeDocumentIndex: number;
 	panelLayout: WorkspacePanelLayout;
 };
@@ -38,7 +37,6 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 			state.documents = data.openDocuments;
 			return state;
 		});
-		storeDocumentTabOrder({ subscribe });
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateActiveDocument", (data) => {

@@ -1,6 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType, WorkspacePanelLayout};
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use super::persistent_state::PersistentStateMessage;
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
@@ -15,6 +16,8 @@ pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	PersistentState(PersistentStateMessage),
 
 	// Messages
 	Init,
@@ -61,8 +64,12 @@ pub enum PortfolioMessage {
 	LoadDocumentResources {
 		document_id: DocumentId,
 	},
-	LoadWorkspaceLayout {
-		layout: WorkspacePanelLayout,
+	LoadPersistedState {
+		state: PersistedState,
+	},
+	LoadDocumentContent {
+		document_id: DocumentId,
+		document_serialized_content: String,
 	},
 	MoveAllPanelTabs {
 		source_group: PanelGroupId,
@@ -93,15 +100,13 @@ pub enum PortfolioMessage {
 		document_path: Option<PathBuf>,
 		document_serialized_content: String,
 	},
-	OpenDocumentFileWithId {
+	LoadDocument {
 		document_id: DocumentId,
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
-		to_front: bool,
-		select_after_open: bool,
 	},
 	OpenImage {
 		name: Option<String>,
@@ -186,7 +191,6 @@ pub enum PortfolioMessage {
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateWorkspacePanelLayout,
-	SaveWorkspaceLayout,
 	ResetWorkspaceLayout,
 	ResetPanelGroupSizes {
 		/// Path of child indices from the root to the split node whose children's sizes should be reset to defaults.

@@ -1400,6 +1400,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fancy-regex"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1e1dacd0d2082dfcf1351c4bdd566bbe89a2b263235a2b50058f1e130a47277"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "fastnoise-lite"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1990,7 +2001,6 @@ dependencies = [
  "node-macro",
  "raster-types",
  "serde",
- "serde_json",
  "tsify",
  "wasm-bindgen",
 ]
@@ -3082,6 +3092,7 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "glam",
+ "graphic-types",
  "log",
  "math-parser",
  "node-macro",
@@ -4452,9 +4463,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.10"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9458fa0bfeeac22b5ca447c63aaf45f28439a709ccd244698632f9aa6394d6"
+checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -5497,15 +5508,21 @@ dependencies = [
 name = "text-nodes"
 version = "0.1.0"
 dependencies = [
+ "convert_case 0.8.0",
  "core-types",
  "dyn-any",
+ "fancy-regex",
  "glam",
  "log",
  "node-macro",
  "parley",
+ "raster-types",
  "serde",
+ "serde_json",
  "skrifa 0.40.0",
+ "titlecase",
  "tsify",
+ "unicode-segmentation",
  "vector-types",
  "wasm-bindgen",
 ]
@@ -5672,6 +5689,15 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "titlecase"
+version = "3.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb567088a91d59b492520c8149e2be5ce10d5deb2d9a383f3378df3259679d40"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "tokio"
@@ -5990,9 +6016,9 @@ checksum = "9fb421b350c9aff471779e262955939f565ec18b86c15364e6bdf0d662ca7c1f"
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.12.0"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
+checksum = "9629274872b2bfaf8d66f5f15725007f635594914870f65218920345aa11aa8c"
 
 [[package]]
 name = "unicode-vo"

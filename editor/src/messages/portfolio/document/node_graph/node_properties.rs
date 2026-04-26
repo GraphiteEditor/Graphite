@@ -5,7 +5,7 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
-use crate::messages::portfolio::utility_types::{FontCatalogStyle, PersistentData};
+use crate::messages::portfolio::utility_types::{CachedData, FontCatalogStyle};
 use crate::messages::prelude::*;
 use choice::enum_choice;
 use dyn_any::DynAny;
@@ -21,13 +21,15 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
+use graphene_std::raster_types::Image;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
+use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
-use graphene_std::vector::QRCodeErrorCorrectionLevel;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -132,18 +134,13 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	}
 	widgets.push(TextLabel::new(name).tooltip_description(description).widget_instance());
 
-	let mut blank_assist = blank_assist;
-	if input.is_exposed() {
-		if blank_assist {
-			add_blank_assist(&mut widgets);
-			blank_assist = false;
-		}
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
+	if blank_assist || input.is_exposed() {
+		add_blank_assist(&mut widgets);
 	}
 
-	if blank_assist {
-		add_blank_assist(&mut widgets);
+	if input.is_exposed() {
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
 	}
 
 	widgets
@@ -195,7 +192,6 @@ pub(crate) fn property_from_type(
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
 				Some("Progression") => progression_widget(default_info, number_input.min(min(0.))).into(),
 				Some("SignedInteger") => number_widget(default_info, number_input.int()).into(),
-				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
 				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
@@ -230,6 +226,8 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
+						Some(x) if x == TypeId::of::<Box<VectorModification>>() => vector_modification_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Image<Color>>() => image_data_widget(default_info).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
@@ -244,6 +242,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<StringCapitalization>() => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
@@ -395,6 +394,44 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 				.widget_instance(),
 		])
 	}
+	widgets
+}
+
+pub fn vector_modification_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id: _, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return widgets };
+	let Some(input) = document_node.inputs.get(index) else { return widgets };
+
+	if let Some(TaggedValue::VectorModification(modification)) = input.as_non_exposed_value() {
+		let label = modification.summary_label();
+		let tooltip = modification.summary_tooltip();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextLabel::new(label).tooltip_label("Summary of Differential Edits").tooltip_description(tooltip).widget_instance(),
+		]);
+	}
+
+	widgets
+}
+
+pub fn image_data_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id: _, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return widgets };
+	let Some(input) = document_node.inputs.get(index) else { return widgets };
+
+	if let Some(TaggedValue::ImageData(image)) = input.as_non_exposed_value() {
+		let label = format!("{} x {}", image.width, image.height);
+
+		widgets.extend_from_slice(&[Separator::new(SeparatorStyle::Unrelated).widget_instance(), TextLabel::new(label).widget_instance()]);
+	}
+
 	widgets
 }
 
@@ -793,7 +830,7 @@ pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_p
 
 pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetInstance>, Option<Vec<WidgetInstance>>) {
 	let ParameterWidgetsInfo {
-		persistent_data,
+		cached_data,
 		document_node,
 		node_id,
 		index,
@@ -813,7 +850,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
-				persistent_data
+				cached_data
 					.font_catalog
 					.0
 					.iter()
@@ -866,7 +903,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					})
 					.collect::<Vec<_>>(),
 			])
-			.selected_index(persistent_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.selected_index(cached_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
 			.virtual_scrolling(true)
 			.widget_instance(),
 		]);
@@ -876,7 +913,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		second_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new({
-				persistent_data
+				cached_data
 					.font_catalog
 					.0
 					.iter()
@@ -914,7 +951,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.unwrap_or_default()
 			})
 			.selected_index(
-				persistent_data
+				cached_data
 					.font_catalog
 					.0
 					.iter()
@@ -1588,6 +1625,190 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
 }
 
+pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::text_nodes::format_number::{DecimalPlacesInput, DecimalSeparatorInput, FixedDecimalsInput, StartAt10000Input, ThousandsSeparatorInput, UseThousandsSeparatorInput};
+
+	// Read current values before borrowing context mutably for widgets
+	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let decimal_places = match document_node.inputs.get(DecimalPlacesInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::U32(x)) => x,
+				_ => 2,
+			};
+			let decimal_sep = match document_node.inputs.get(DecimalSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			let use_thousands = match document_node.inputs.get(UseThousandsSeparatorInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Bool(x)) => x,
+				_ => false,
+			};
+			let use_thousands = use_thousands || document_node.inputs.get(ThousandsSeparatorInput::INDEX).is_some_and(|input| input.is_exposed());
+			let thousands_sep = match document_node.inputs.get(ThousandsSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			(decimal_places == 0, decimal_sep, use_thousands, thousands_sep)
+		}
+		Err(err) => {
+			log::error!("Could not get document node in format_number_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	let decimal_places = number_widget(ParameterWidgetsInfo::new(node_id, DecimalPlacesInput::INDEX, true, context), NumberInput::default().min(0.).int());
+
+	// Fixed decimals and decimal separator are disabled when decimal places is 0
+	let fixed_decimals = bool_widget(
+		ParameterWidgetsInfo::new(node_id, FixedDecimalsInput::INDEX, true, context),
+		CheckboxInput::default().disabled(no_decimals),
+	);
+	let mut decimal_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, DecimalSeparatorInput::INDEX, true, context));
+	if let Some(sep) = decimal_sep_value {
+		decimal_sep_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(sep)
+				.disabled(no_decimals)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, DecimalSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Thousands separator: checkbox in assist area
+	let mut thousands_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ThousandsSeparatorInput::INDEX, false, context));
+	if let Some(sep) = thousands_sep_value {
+		thousands_sep_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(use_thousands)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseThousandsSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(sep)
+				.disabled(!use_thousands)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, ThousandsSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Start at 10,000: disabled when thousands separator is off
+	let start_at_10000 = bool_widget(
+		ParameterWidgetsInfo::new(node_id, StartAt10000Input::INDEX, true, context),
+		CheckboxInput::default().disabled(!use_thousands),
+	);
+
+	vec![
+		LayoutGroup::row(decimal_places),
+		LayoutGroup::row(decimal_sep_widgets),
+		LayoutGroup::row(fixed_decimals),
+		LayoutGroup::row(thousands_sep_widgets),
+		LayoutGroup::row(start_at_10000),
+	]
+}
+
+pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::text_nodes::string_capitalization::*;
+
+	// Read the current values before borrowing context mutably for widgets
+	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let capitalization_input = document_node.inputs.get(CapitalizationInput::INDEX);
+			let capitalization_exposed = capitalization_input.is_some_and(|input| input.is_exposed());
+			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
+			let is_simple = !capitalization_exposed
+				&& matches!(
+					capitalization_input.and_then(|input| input.as_value()),
+					Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
+				);
+			let use_joiner = match document_node.inputs.get(UseJoinerInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Bool(x)) => x,
+				_ => true,
+			};
+			let joiner = match document_node.inputs.get(JoinerInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			(is_simple, use_joiner, joiner)
+		}
+		Err(err) => {
+			log::error!("Could not get document node in string_capitalization_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	// The joiner controls are disabled when lowercase/UPPERCASE are selected (they don't use word boundaries)
+	let joiner_disabled = is_simple_case || !use_joiner_enabled;
+
+	let capitalization = enum_choice::<StringCapitalization>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput::INDEX, true, context))
+		.property_row();
+
+	// Joiner row: the UseJoiner checkbox is drawn in the assist area, followed by the Joiner text input
+	let mut joiner_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, JoinerInput::INDEX, false, context));
+	if let Some(joiner) = joiner_value {
+		let joiner_is_empty = joiner.is_empty();
+		joiner_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(use_joiner_enabled)
+				.disabled(is_simple_case)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseJoinerInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(joiner)
+				.placeholder(if joiner_is_empty { "Empty" } else { "" })
+				.disabled(joiner_disabled)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, JoinerInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Preset buttons for common joiner values, indented to align with the input field
+	let mut joiner_preset_buttons = vec![TextLabel::new("").widget_instance()];
+	add_blank_assist(&mut joiner_preset_buttons);
+	joiner_preset_buttons.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	for (label, value, tooltip) in [
+		("Empty", "", "Join words without any separator."),
+		("Space", " ", "Join words with a space."),
+		("Kebab", "-", "Join words with a hyphen."),
+		("Snake", "_", "Join words with an underscore."),
+	] {
+		let value = value.to_string();
+		joiner_preset_buttons.push(
+			TextButton::new(label)
+				.tooltip_description(tooltip)
+				.disabled(is_simple_case)
+				.on_update(move |_: &TextButton| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: UseJoinerInput::INDEX,
+							value: TaggedValue::Bool(true),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: JoinerInput::INDEX,
+							value: TaggedValue::String(value.clone()),
+						}
+						.into(),
+					]),
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
+
+	vec![capitalization, LayoutGroup::row(joiner_widgets), LayoutGroup::row(joiner_preset_buttons)]
+}
+
 pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
@@ -2208,7 +2429,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
-	persistent_data: &'a PersistentData,
+	cached_data: &'a CachedData,
 	network_interface: &'a NodeNetworkInterface,
 	selection_network_path: &'a [NodeId],
 	document_node: Option<&'a DocumentNode>,
@@ -2231,7 +2452,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
-			persistent_data: context.persistent_data,
+			cached_data: context.cached_data,
 			network_interface: context.network_interface,
 			selection_network_path: context.selection_network_path,
 			document_node,
@@ -2314,7 +2535,12 @@ pub mod choice {
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
 							let committer = committer_factory();
-							MenuListEntry::new(metadata.name).label(metadata.label).on_update(move |_| updater(item)).on_commit(committer)
+							MenuListEntry::new(metadata.name)
+								.label(metadata.label)
+								.tooltip_label(metadata.label)
+								.tooltip_description(metadata.description.unwrap_or_default())
+								.on_update(move |_| updater(item))
+								.on_commit(committer)
 						})
 						.collect()
 				})

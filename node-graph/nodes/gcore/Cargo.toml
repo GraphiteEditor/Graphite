@@ -27,7 +27,6 @@ node-macro = { workspace = true }
 dyn-any = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
-serde_json = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

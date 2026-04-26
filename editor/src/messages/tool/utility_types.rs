@@ -9,7 +9,7 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
@@ -24,7 +24,7 @@ pub struct ToolActionMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -37,11 +37,11 @@ impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mu
 type Tool = dyn ToolCommon + Send + Sync;
 
 pub trait ToolRefreshOptions {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData);
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData);
 }
 
 impl<T: LayoutHolder> ToolRefreshOptions for T {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData) {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData) {
 		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 }

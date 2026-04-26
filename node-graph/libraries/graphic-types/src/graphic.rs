@@ -397,6 +397,41 @@ impl<T: Clone> AtIndex for Table<T> {
 	}
 }
 
+pub trait OmitIndex {
+	fn omit_index(&self, index: usize) -> Self;
+	fn omit_index_from_end(&self, index: usize) -> Self;
+}
+impl<T: Clone> OmitIndex for Vec<T> {
+	fn omit_index(&self, index: usize) -> Self {
+		self.iter().enumerate().filter(|(i, _)| *i != index).map(|(_, v)| v.clone()).collect()
+	}
+
+	fn omit_index_from_end(&self, index: usize) -> Self {
+		if index == 0 || index > self.len() {
+			return self.clone();
+		}
+		self.omit_index(self.len() - index)
+	}
+}
+impl<T: Clone> OmitIndex for Table<T> {
+	fn omit_index(&self, index: usize) -> Self {
+		let mut result = Self::default();
+		for (i, row) in self.iter().enumerate() {
+			if i != index {
+				result.push(row.into_cloned());
+			}
+		}
+		result
+	}
+
+	fn omit_index_from_end(&self, index: usize) -> Self {
+		if index == 0 || index > self.len() {
+			return self.clone();
+		}
+		self.omit_index(self.len() - index)
+	}
+}
+
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
 	use serde::Deserialize;

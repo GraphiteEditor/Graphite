@@ -324,7 +324,108 @@ pub enum VectorModificationType {
 	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
 }
 
+/// Per-category `[added, removed, modified]` counts for a [`VectorModification`].
+struct ModificationCategoryCounts {
+	points: [usize; 3],
+	segments: [usize; 3],
+	regions: [usize; 3],
+	smooth_handles: [usize; 3],
+}
+
+impl ModificationCategoryCounts {
+	/// Returns the `[added, removed, modified]` totals across all categories.
+	fn totals(&self) -> [usize; 3] {
+		let mut totals = [0; 3];
+		for [a, r, m] in [self.points, self.segments, self.regions, self.smooth_handles] {
+			totals[0] += a;
+			totals[1] += r;
+			totals[2] += m;
+		}
+		totals
+	}
+
+	/// Iterates over each named category and its `[added, removed, modified]` counts.
+	fn iter_categories(&self) -> impl Iterator<Item = (&str, [usize; 3])> {
+		[("Points", self.points), ("Segments", self.segments), ("Regions", self.regions), ("Smooth Handles", self.smooth_handles)].into_iter()
+	}
+}
+
 impl VectorModification {
+	/// Computes per-category counts of additions, removals, and modifications.
+	fn category_counts(&self) -> ModificationCategoryCounts {
+		// Build sets of added IDs so we can distinguish true modifications from initial values stored for newly added items
+		let add_points: HashSet<_> = self.points.add.iter().copied().collect();
+		let add_segments: HashSet<_> = self.segments.add.iter().copied().collect();
+		let add_regions: HashSet<_> = self.regions.add.iter().copied().collect();
+
+		let point_modifications = self.points.delta.keys().filter(|id| !add_points.contains(id)).count();
+
+		// Count unique modified segment IDs across all field maps
+		let mut modified_segments: HashSet<&SegmentId> = HashSet::with_capacity(self.segments.start_point.len());
+		let not_added_segment = |id: &&SegmentId| !add_segments.contains(id);
+		modified_segments.extend(self.segments.start_point.keys().filter(not_added_segment));
+		modified_segments.extend(self.segments.end_point.keys().filter(not_added_segment));
+		modified_segments.extend(self.segments.handle_primary.keys().filter(not_added_segment));
+		modified_segments.extend(self.segments.handle_end.keys().filter(not_added_segment));
+		modified_segments.extend(self.segments.stroke.keys().filter(not_added_segment));
+
+		// Count unique modified region IDs across all field maps
+		let mut modified_regions: HashSet<&RegionId> = HashSet::with_capacity(self.regions.segment_range.len());
+		let not_added_region = |id: &&RegionId| !add_regions.contains(id);
+		modified_regions.extend(self.regions.segment_range.keys().filter(not_added_region));
+		modified_regions.extend(self.regions.fill.keys().filter(not_added_region));
+
+		ModificationCategoryCounts {
+			points: [self.points.add.len(), self.points.remove.len(), point_modifications],
+			segments: [self.segments.add.len(), self.segments.remove.len(), modified_segments.len()],
+			regions: [self.regions.add.len(), self.regions.remove.len(), modified_regions.len()],
+			smooth_handles: [self.add_g1_continuous.len(), self.remove_g1_continuous.len(), 0],
+		}
+	}
+
+	/// Returns a short human-readable summary string like "+6 / −1 / Δ1".
+	pub fn summary_label(&self) -> String {
+		let counts = self.category_counts();
+		let [additions, removals, modifications] = counts.totals();
+
+		let mut parts = Vec::new();
+		if additions > 0 {
+			parts.push(format!("+{additions}"));
+		}
+		if removals > 0 {
+			parts.push(format!("\u{2212}{removals}"));
+		}
+		if modifications > 0 {
+			parts.push(format!("\u{0394}{modifications}"));
+		}
+		if parts.is_empty() { "No Differential Edits".to_string() } else { parts.join(" / ") }
+	}
+
+	/// Returns a detailed multi-line tooltip describing all the changes.
+	pub fn summary_tooltip(&self) -> String {
+		let counts = self.category_counts();
+
+		let mut lines = Vec::new();
+
+		for (name, [added, removed, modified]) in counts.iter_categories() {
+			let mut parts = Vec::new();
+			if added > 0 {
+				parts.push(format!("+{added}"));
+			}
+			if removed > 0 {
+				parts.push(format!("\u{2212}{removed}"));
+			}
+			if modified > 0 {
+				parts.push(format!("\u{0394}{modified}"));
+			}
+			if !parts.is_empty() {
+				lines.push(format!("{name}: {}", parts.join(" / ")));
+			}
+		}
+
+		if lines.is_empty() { "None".to_string() } else { lines.join("\n") }
+	}
+
 	/// Apply this modification to the specified [`Vector`].
 	pub fn apply<Upstream>(&self, vector: &mut Vector<Upstream>) {
 		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);

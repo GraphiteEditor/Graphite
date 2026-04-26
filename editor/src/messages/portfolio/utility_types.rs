@@ -3,7 +3,7 @@ use graphene_std::raster::Image;
 use graphene_std::text::{Font, FontCache};
 
 #[derive(Debug, Default)]
-pub struct PersistentData {
+pub struct CachedData {
 	pub font_cache: FontCache,
 	pub font_catalog: FontCatalog,
 }

@@ -497,7 +497,7 @@ impl TableRowLayout for Raster<CPU> {
 		"Raster"
 	}
 	fn identifier(&self) -> String {
-		format!("Raster ({}x{})", self.width, self.height)
+		format!("Raster ({} x {})", self.width, self.height)
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let raster = self.data();
@@ -528,7 +528,7 @@ impl TableRowLayout for Raster<GPU> {
 		"Raster"
 	}
 	fn identifier(&self) -> String {
-		format!("Raster ({}x{})", self.data().width(), self.data().height())
+		format!("Raster ({} x {})", self.data().width(), self.data().height())
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextLabel::new("Raster is a texture on the GPU and cannot currently be displayed here").widget_instance()];
@@ -584,7 +584,7 @@ impl TableRowLayout for f64 {
 		"Number (f64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
+		let widgets = vec![NumberInput::new(Some(*self)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -597,7 +597,7 @@ impl TableRowLayout for u32 {
 		"Number (u32)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
+		let widgets = vec![NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -610,7 +610,8 @@ impl TableRowLayout for u64 {
 		"Number (u64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
+		// TODO: Make this robust for large u64 values that don't fit in f64 (above roughly 2^53). Perhaps using a bigint kind of approach through the widget's data flow.
+		let widgets = vec![NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -642,7 +643,7 @@ impl TableRowLayout for String {
 		}
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_instance()];
+		let widgets = vec![TextAreaInput::new(self.to_string()).monospace(true).disabled(true).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
