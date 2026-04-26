@@ -9,7 +9,7 @@ let
     "rustc-dev"
     "llvm-tools"
   ];
-  toolchain = pkgs.rust-bin.nightly."2025-06-23".default.override {
+  toolchain = pkgs.rust-bin.nightly."2026-04-11".default.override {
     inherit extensions;
   };
   cargo = pkgs.writeShellScriptBin "cargo" ''
@@ -30,16 +30,14 @@ let
       cargo = toolchain;
       rustc = toolchain;
     }).buildRustPackage
-      (finalAttrs: {
+      (finalAttrs: rec {
         pname = "rustc_codegen_spirv";
-        version = "0-unstable-2025-08-04";
-        src = pkgs.fetchFromGitHub {
-          owner = "Firestar99";
-          repo = "rust-gpu-new";
-          rev = "c12f216121820580731440ee79ebc7403d6ea04f";
-          hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
+        version = "0.10.0-alpha.1";
+        src = pkgs.fetchCrate {
+          inherit pname version;
+          sha256 = "sha256-zJEpExkPgYzwo7fR4ge4GxJNj7H5yo4bJ4eTOw36+7c=";
         };
-        cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
+        cargoHash = "sha256-J1rtbfGqrL2NJ7Bu2pYfDwCdUmnECB/kzxrpYluA0kY=";
         cargoBuildFlags = [
           "-p"
           "rustc_codegen_spirv"
