@@ -294,6 +294,10 @@ pub enum GradientDragTarget {
 	Stop(usize),
 	Midpoint(usize),
 	New,
+	/// Drag the +minor-axis handle (perpendicular to major axis, toward +perp direction)
+	RadialMinorPos,
+	/// Drag the −minor-axis handle (perpendicular to major axis, toward −perp direction)
+	RadialMinorNeg,
 }
 
 /// Contains information about the selected gradient handle
@@ -341,7 +345,17 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 		return Some(projection);
 	}
 
-	None
+/// Compute minor-axis handle positions in document space for a radial gradient.
+fn radial_minor_handles(gradient: &Gradient) -> Option<(DVec2, DVec2)> {
+	let major_vec = gradient.end - gradient.start;
+	let major_len = major_vec.length();
+	if major_len < f64::EPSILON {
+		return None;
+	}
+	let minor_len = major_len * gradient.aspect;
+	let minor_dir = (major_vec / major_len).perp();
+	let center = gradient.start;
+	Some((center + minor_dir * minor_len, center - minor_dir * minor_len))
 }
 
 impl SelectedGradient {
@@ -559,6 +573,28 @@ impl SelectedGradient {
 				if range > 0. {
 					let midpoint_ratio = ((full_pos - left_stop) / range).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX);
 					self.gradient.stops.midpoint[midpoint_index] = midpoint_ratio;
+				}
+			}
+			GradientDragTarget::RadialMinorPos | GradientDragTarget::RadialMinorNeg => {
+				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+				let mouse_doc = document_to_viewport.inverse().transform_point2(mouse);
+
+				let center_doc = self.gradient.start;
+				let major_vec = self.gradient.end - center_doc;
+				let major_len = major_vec.length();
+
+				if major_len < f64::EPSILON {
+					self.render_gradient(responses);
+					return;
+				}
+
+				let minor_dir = (major_vec / major_len).perp();
+				let minor_dist = (mouse_doc - center_doc).dot(minor_dir).abs();
+
+				if snap_rotate {
+					self.gradient.aspect = 1.;
+				} else {
+					self.gradient.aspect = (minor_dist / major_len).clamp(0.01, 10.);
 				}
 			}
 		}
@@ -810,6 +846,34 @@ impl Fsm for GradientToolFsmState {
 					}
 				}
 
+				if gradient.gradient_type == GradientType::Radial {
+					let major_vec = end - start;
+					let major_len = major_vec.length();
+					if major_len > f64::EPSILON {
+						let minor_len = major_len * gradient.aspect;
+						let major_dir = major_vec / major_len;
+						let minor_dir = major_dir.perp();
+						let center = start;
+
+						let minor_pos_vp = center + minor_dir * minor_len;
+						let minor_neg_vp = center - minor_dir * minor_len;
+
+						let angle = major_dir.y.atan2(major_dir.x);
+						overlay_context.dashed_ellipse(center, major_len, minor_len, Some(angle), None, None, None, None, Some(COLOR_OVERLAY_BLUE), Some(4.), Some(4.), None);
+
+						overlay_context.line(center, minor_pos_vp, Some(COLOR_OVERLAY_BLUE), None);
+						overlay_context.line(center, minor_neg_vp, Some(COLOR_OVERLAY_BLUE), None);
+
+						let minor_tol_sq = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
+						let pos_active = dragging == Some(GradientDragTarget::RadialMinorPos);
+						let neg_active = dragging == Some(GradientDragTarget::RadialMinorNeg);
+						let pos_hovered = !pos_active && !matches!(self, GradientToolFsmState::Drawing { .. }) && minor_pos_vp.distance_squared(mouse) < minor_tol_sq;
+						let neg_hovered = !neg_active && !matches!(self, GradientToolFsmState::Drawing { .. }) && minor_neg_vp.distance_squared(mouse) < minor_tol_sq;
+						overlay_context.manipulator_handle(minor_pos_vp, pos_active || pos_hovered, None);
+						overlay_context.manipulator_handle(minor_neg_vp, neg_active || neg_hovered, None);
+					}
+				}
+
 				let snap_data = SnapData::new(document, input, viewport);
 				tool_data.snap_manager.draw_overlays(snap_data, &mut overlay_context);
 
@@ -1047,6 +1111,33 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
+
+					if drag_hint.is_none() && gradient.gradient_type == GradientType::Radial {
+						if let Some((minor_pos_doc, minor_neg_doc)) = radial_minor_handles(&gradient) {
+							let minor_pos_vp = transform.transform_point2(minor_pos_doc);
+							let minor_neg_vp = transform.transform_point2(minor_neg_doc);
+							let minor_tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
+
+							let minor_drag_target = if minor_pos_vp.distance_squared(mouse) < minor_tolerance {
+								Some(GradientDragTarget::RadialMinorPos)
+							} else if minor_neg_vp.distance_squared(mouse) < minor_tolerance {
+								Some(GradientDragTarget::RadialMinorNeg)
+							} else {
+								None
+							};
+
+							if let Some(drag_target) = minor_drag_target {
+								drag_hint = Some(GradientDragHintState::RadialMinor);
+								tool_data.selected_gradient = Some(SelectedGradient {
+									layer: Some(layer),
+									transform,
+									gradient: gradient.clone(),
+									dragging: drag_target,
+									initial_gradient: gradient.clone(),
+								});
+							}
+						}
+					}
 
 					// Check for dragging a midpoint diamond
 					if drag_hint.is_none() {
@@ -1380,6 +1471,12 @@ impl Fsm for GradientToolFsmState {
 							groups.push(HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Reset Midpoint")]));
 						}
 					}
+					GradientHoverTarget::RadialMinor => {
+						groups.push(HintGroup(vec![
+							HintInfo::mouse(MouseMotion::LmbDrag, "Adjust Ellipse"),
+							HintInfo::keys([Key::Shift], "Snap to Circle").prepend_plus(),
+						]));
+					}
 				}
 
 				// Delete/reset hint based on selection
@@ -1413,6 +1510,9 @@ impl Fsm for GradientToolFsmState {
 					}
 					GradientDragHintState::Midpoint { resettable: true } => {
 						groups.push(HintGroup(vec![HintInfo::keys([Key::Backspace], "Reset Midpoint")]));
+					}
+					GradientDragHintState::RadialMinor => {
+						groups.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Snap to Circle")]));
 					}
 					_ => {}
 				}
@@ -1448,6 +1548,17 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		let transform = gradient_space_transform(layer, document);
 		let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
 		let line_length = start.distance(end);
+
+		if gradient.gradient_type == GradientType::Radial {
+			if let Some((minor_pos_doc, minor_neg_doc)) = radial_minor_handles(&gradient) {
+				let minor_pos_vp = transform.transform_point2(minor_pos_doc);
+				let minor_neg_vp = transform.transform_point2(minor_neg_doc);
+				let minor_tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
+				if minor_pos_vp.distance_squared(mouse) < minor_tolerance || minor_neg_vp.distance_squared(mouse) < minor_tolerance {
+					return GradientHoverTarget::RadialMinor;
+				}
+			}
+		}
 
 		// Check midpoint diamonds first (smaller hit area, higher priority)
 		for i in 0..gradient.stops.position.len().saturating_sub(1) {
@@ -1506,7 +1617,7 @@ fn compute_selected_target(tool_data: &GradientToolData) -> GradientSelectedTarg
 			let resettable = selected_gradient.gradient.stops.midpoint.get(i).is_some_and(|&midpoint_value| midpoint_is_resettable(midpoint_value));
 			GradientSelectedTarget::Midpoint { resettable }
 		}
-		GradientDragTarget::New => GradientSelectedTarget::None,
+		GradientDragTarget::New | GradientDragTarget::RadialMinorPos | GradientDragTarget::RadialMinorNeg => GradientSelectedTarget::None,
 	}
 }
 
@@ -1593,6 +1704,8 @@ enum GradientHoverTarget {
 	Midpoint {
 		resettable: bool,
 	},
+	/// Hovering over a radial minor-axis handle
+	RadialMinor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -1615,6 +1728,8 @@ enum GradientDragHintState {
 	Midpoint {
 		resettable: bool,
 	},
+	/// Dragging a radial minor-axis handle to reshape the ellipse
+	RadialMinor,
 }
 
 #[cfg(test)]

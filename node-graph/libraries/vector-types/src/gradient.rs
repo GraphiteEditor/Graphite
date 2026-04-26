@@ -368,6 +368,14 @@ pub struct Gradient {
 	pub end: DVec2,
 	#[serde(default)]
 	pub spread_method: GradientSpreadMethod,
+	/// Ratio of the minor radius to the major radius for radial gradients (1.0 = circle).
+	/// Ignored for linear gradients. Defaults to 1.0 so old documents deserialize as circles.
+	#[serde(default = "default_aspect")]
+	pub aspect: f64,
+}
+
+fn default_aspect() -> f64 {
+	1.
 }
 
 impl Default for Gradient {
@@ -378,6 +386,7 @@ impl Default for Gradient {
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
 			spread_method: GradientSpreadMethod::Pad,
+			aspect: 1.,
 		}
 	}
 }
@@ -390,6 +399,7 @@ impl std::hash::Hash for Gradient {
 			.chain(self.end.to_array().iter())
 			.chain(self.stops.position.iter())
 			.chain(self.stops.midpoint.iter())
+			.chain(std::iter::once(&self.aspect))
 			.for_each(|x| x.to_bits().hash(state));
 		self.stops.color.iter().for_each(|color| color.hash(state));
 		self.gradient_type.hash(state);
@@ -432,6 +442,7 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			aspect: 1.,
 		}
 	}
 
@@ -446,6 +457,7 @@ impl Gradient {
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
 		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
+		let aspect = self.aspect + (other.aspect - self.aspect) * time;
 
 		Self {
 			start,
@@ -453,6 +465,7 @@ impl Gradient {
 			stops,
 			gradient_type,
 			spread_method,
+			aspect,
 		}
 	}
 

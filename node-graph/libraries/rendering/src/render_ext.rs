@@ -36,16 +36,10 @@ impl RenderExt for Gradient {
 		let start = transform_points.transform_point2(self.start);
 		let end = transform_points.transform_point2(self.end);
 
-		let gradient_transform = if transformed_bounds.matrix2.determinant() != 0. {
+		let gradient_transform_raw = if transformed_bounds.matrix2.determinant() != 0. {
 			transformed_bounds.inverse()
 		} else {
 			DAffine2::IDENTITY // Ignore if the transform cannot be inverted (the bounds are zero). See issue #1944.
-		};
-		let gradient_transform = format_transform_matrix(gradient_transform);
-		let gradient_transform = if gradient_transform.is_empty() {
-			String::new()
-		} else {
-			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
 		let spread_method = if self.spread_method == GradientSpreadMethod::Pad {
@@ -58,6 +52,12 @@ impl RenderExt for Gradient {
 
 		match self.gradient_type {
 			GradientType::Linear => {
+				let gradient_transform = format_transform_matrix(gradient_transform_raw);
+				let gradient_transform = if gradient_transform.is_empty() {
+					String::new()
+				} else {
+					format!(r#" gradientTransform="{gradient_transform}""#)
+				};
 				let _ = write!(
 					svg_defs,
 					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{spread_method}{gradient_transform}>{}</linearGradient>"#,
@@ -65,7 +65,28 @@ impl RenderExt for Gradient {
 				);
 			}
 			GradientType::Radial => {
-				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
+				let radius = start.distance(end);
+
+				let ellipse_transform = if (self.aspect - 1.).abs() > f64::EPSILON {
+					let angle = (end - start).to_angle();
+					let squash = DAffine2::from_translation(start)
+						* DAffine2::from_angle(angle)
+						* DAffine2::from_scale(DVec2::new(1., self.aspect))
+						* DAffine2::from_angle(-angle)
+						* DAffine2::from_translation(-start);
+					
+					squash * gradient_transform_raw
+				} else {
+					gradient_transform_raw
+				};
+
+				let gradient_transform = format_transform_matrix(ellipse_transform);
+				let gradient_transform = if gradient_transform.is_empty() {
+					String::new()
+				} else {
+					format!(r#" gradientTransform="{gradient_transform}""#)
+				};
+
 				let _ = write!(
 					svg_defs,
 					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{spread_method}{gradient_transform}>{}</radialGradient>"#,
