@@ -1326,18 +1326,34 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 }
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
-#[node_macro::node(category(""), path(core_types::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"))]
 async fn sample_polyline(
 	_: impl Ctx,
 	content: Table<Vector>,
 	spacing: PointSpacingType,
-	#[unit(" px")] separation: f64,
+	#[default(100.)]
+	#[hard_min(0.)]
+	#[unit(" px")]
+	separation: f64,
+	#[default(100)]
+	#[hard_min(2)]
 	quantity: u32,
-	#[unit(" px")] start_offset: f64,
-	#[unit(" px")] stop_offset: f64,
+	#[hard_min(0.)]
+	#[unit(" px")]
+	start_offset: f64,
+	#[hard_min(0.)]
+	#[unit(" px")]
+	stop_offset: f64,
 	adaptive_spacing: bool,
-	subpath_segment_lengths: Vec<f64>,
 ) -> Table<Vector> {
+	let pathseg_perimeter = |segment: PathSeg| {
+		if is_linear(segment) {
+			Line::new(segment.start(), segment.end()).perimeter(DEFAULT_ACCURACY)
+		} else {
+			segment.perimeter(DEFAULT_ACCURACY)
+		}
+	};
+
 	content
 		.into_iter()
 		.map(|mut row| {
@@ -1351,27 +1367,14 @@ async fn sample_polyline(
 			// Transfer the stroke transform from the input vector content to the result.
 			result.style.set_stroke_transform(row.attribute_cloned_or_default("transform"));
 
-			// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
-			// So we can index into `subpath_segment_lengths` to get the length of the segments.
-			// NOTE: `subpath_segment_lengths` has precalulated lengths with transformation applied.
-			let bezpaths = row.element().stroke_bezpath_iter();
-
-			// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
-			let mut next_segment_index = 0;
-
-			for local_bezpath in bezpaths {
+			for local_bezpath in row.element().stroke_bezpath_iter() {
 				// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
 				let mut world_bezpath = local_bezpath.clone();
 				let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
 				world_bezpath.apply_affine(Affine::new(transform_attribute.to_cols_array()));
 
-				let segment_count = world_bezpath.segments().count();
-
-				// For the current bezpath we get its segment's length by calculating the start index and end index.
-				let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
-
-				// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
-				next_segment_index += segment_count;
+				// Per-segment perimeter lengths (transform-baked) for distance-based spacing
+				let segment_lengths: Vec<f64> = world_bezpath.segments().map(pathseg_perimeter).collect();
 
 				let amount = match spacing {
 					PointSpacingType::Separation => separation,
@@ -1380,9 +1383,7 @@ async fn sample_polyline(
 
 				// Compute sample locations using world-space distances, then evaluate positions on the untransformed bezpath.
 				// This avoids needing to invert the transform (which fails when the transform is singular, e.g. zero scale).
-				let Some((locations, was_closed)) =
-					bezpath_algorithms::compute_sample_locations(&world_bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length)
-				else {
+				let Some((locations, was_closed)) = bezpath_algorithms::compute_sample_locations(&world_bezpath, spacing, amount, start_offset, stop_offset, adaptive_spacing, &segment_lengths) else {
 					continue;
 				};
 
@@ -1823,32 +1824,6 @@ async fn poisson_disk_points(
 
 			*row.element_mut() = result;
 			row
-		})
-		.collect()
-}
-
-#[node_macro::node(category(""), path(core_types::vector))]
-async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64> {
-	let pathseg_perimeter = |segment: PathSeg| {
-		if is_linear(segment) {
-			Line::new(segment.start(), segment.end()).perimeter(DEFAULT_ACCURACY)
-		} else {
-			segment.perimeter(DEFAULT_ACCURACY)
-		}
-	};
-
-	content
-		.into_iter()
-		.flat_map(|vector| {
-			let transform: DAffine2 = vector.attribute_cloned_or_default("transform");
-			vector
-				.element()
-				.stroke_bezpath_iter()
-				.flat_map(|mut bezpath| {
-					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.segments().map(pathseg_perimeter).collect::<Vec<f64>>()
-				})
-				.collect::<Vec<f64>>()
 		})
 		.collect()
 }
@@ -3126,7 +3101,7 @@ mod test {
 	#[tokio::test]
 	async fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 30., 0, 0., 0., false, vec![100.]).await;
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 30., 0, 0., 0., false).await;
 		let sample_polyline = sample_polyline.element(0).unwrap();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
@@ -3136,7 +3111,7 @@ mod test {
 	#[tokio::test]
 	async fn sample_polyline_adaptive_spacing() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 18., 0, 45., 10., true, vec![100.]).await;
+		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 18., 0, 45., 10., true).await;
 		let sample_polyline = sample_polyline.element(0).unwrap();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
@@ -3161,12 +3136,6 @@ mod test {
 		for point in poisson_points.point_domain.positions() {
 			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
 		}
-	}
-	#[tokio::test]
-	async fn segment_lengths() {
-		let bezpath = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
-		let lengths = subpath_segment_lengths(Footprint::default(), vector_node_from_bezpath(bezpath)).await;
-		assert_eq!(lengths, vec![100.]);
 	}
 	#[tokio::test]
 	async fn path_length() {
