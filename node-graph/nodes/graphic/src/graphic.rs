@@ -16,11 +16,7 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
-		Vec<f64>,
-		Vec<u32>,
-		Vec<u64>,
-		Vec<DVec2>,
-		Vec<String>,
+		Table<String>,
 		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
@@ -53,11 +49,7 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
-		Vec<f64>,
-		Vec<u32>,
-		Vec<u64>,
-		Vec<DVec2>,
-		Vec<String>,
+		Table<String>,
 		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
@@ -208,13 +200,13 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHas
 	name: String,
 	/// The node that produces the per-row value. Called once per row with the row index in context.
 	#[implementations(
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = U>,
 ) -> Table<T> {

@@ -182,11 +182,11 @@ tagged_value! {
 	VecF64(Vec<f64>),
 	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
-	VecString(Vec<String>),
 	NodePath(Vec<NodeId>),
 	// ===========
 	// TABLE TYPES
 	// ===========
+	StringTable(Table<String>),
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),

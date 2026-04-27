@@ -36,7 +36,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
-			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
+			TaggedValue::String(_) | TaggedValue::StringTable(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}

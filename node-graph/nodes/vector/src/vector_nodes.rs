@@ -2850,11 +2850,6 @@ impl<T> Count for Table<T> {
 		self.len()
 	}
 }
-impl<T> Count for Vec<T> {
-	fn count(&self) -> usize {
-		self.len()
-	}
-}
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
@@ -2868,9 +2863,7 @@ async fn count_elements<I: Count>(
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		Vec<String>,
-		Vec<f64>,
-		Vec<DVec2>,
+		Table<String>,
 	)]
 	content: I,
 ) -> f64 {
