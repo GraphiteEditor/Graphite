@@ -9,8 +9,7 @@ use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::{Render, RenderBackground, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use std::collections::HashMap;
+use rendering::{Render, RenderBackground, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
@@ -24,7 +23,7 @@ type ImageData = HashMap<core_types::graphene_hash::CacheHashWrapper<Image<Color
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
 	Vello(Arc<(vello::Scene, RenderContext)>),
-	Svg(Arc<(String, ImageData, String)>),
+	Svg(Arc<SvgRenderOutput>),
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
@@ -75,7 +74,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			data.render_svg(&mut render, render_params);
 
 			RenderIntermediate {
-				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
+				ty: RenderIntermediateType::Svg(Arc::new(render.into())),
 				metadata,
 			}
 		}
@@ -96,9 +95,9 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 	let RenderIntermediate { ty, mut metadata } = data;
 	metadata.apply_transform(footprint.transform);
 
-	let data = match (render_params.render_output_type, &ty) {
+	let data = match (render_params.render_output_type, ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
-			let (svg, image_data) = render_svg(&data.0, &data.1, &data.2, *footprint, &render_params);
+			let (svg, image_data) = render_svg(data.as_ref().into(), &render_params);
 			RenderOutputType::Svg { svg, image_data }
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
@@ -106,50 +105,13 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
 			let (scene, context) = data.as_ref();
-			let texture = render_vello(scene, context, *footprint, &render_params, exec).await;
+			let texture = render_vello(scene, context, &render_params, exec).await;
 			RenderOutputType::Texture(texture.into())
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
 	RenderOutput { data, metadata }
-}
-
-fn render_svg(svg: &str, image_data: &ImageData, svg_defs: &str, footprint: Footprint, render_params: &RenderParams) -> (String, Vec<(u64, Image<Color>)>) {
-	let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
-
-	let mut rendering = SvgRender::new();
-	rendering.svg.push(SvgSegment::from(svg.to_string()));
-	rendering.image_data = image_data.clone();
-	rendering.svg_defs = svg_defs.to_string();
-
-	rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
-	(rendering.svg.to_svg_string(), rendering.image_data.into_iter().map(|(image, id)| (id, image)).collect())
-}
-
-async fn render_vello(scene: &vello::Scene, context: &RenderContext, footprint: Footprint, render_params: &RenderParams, exec: &wgpu_executor::WgpuExecutor) -> Arc<wgpu::Texture> {
-	let scale = render_params.scale;
-	let physical_resolution = render_params.footprint.resolution;
-
-	let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
-	let footprint_transform = scale_transform * footprint.transform;
-	let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
-
-	let mut transformed_scene = vello::Scene::new();
-	transformed_scene.append(scene, Some(footprint_transform_vello));
-
-	// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
-	// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
-	let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
-	for transform in transformed_scene.encoding_mut().transforms.iter_mut() {
-		if transform.matrix[0] == f32::INFINITY {
-			*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
-		}
-	}
-
-	exec.render_vello_scene(&transformed_scene, physical_resolution, context, None)
-		.await
-		.expect("Failed to render Vello scene")
 }
 
 #[node_macro::node(category(""))]
@@ -175,7 +137,7 @@ async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVar
 				let mut background_scene = vello::Scene::new();
 				metadata.backgrounds.render_background_to_vello(&mut background_scene, Default::default(), &render_params);
 
-				let background_texture = render_vello(&background_scene, &RenderContext::default(), *footprint, &render_params, exec).await;
+				let background_texture = render_vello(&background_scene, &RenderContext::default(), &render_params, exec).await;
 
 				let blended = exec.blend_textures(foreground_texture.as_ref(), background_texture.as_ref()).await;
 				RenderOutputType::Texture(blended.into())
@@ -190,7 +152,7 @@ async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVar
 			let mut render = SvgRender::new();
 			metadata.backgrounds.render_background_svg(&mut render, &render_params);
 
-			let (background_svg, background_images) = render_svg(&render.svg.to_svg_string(), &render.image_data, &render.svg_defs, *footprint, &render_params);
+			let (background_svg, background_images) = render_svg(render, &render_params);
 
 			let mut image_data = background_images;
 			image_data.extend(foreground_images);
@@ -204,6 +166,42 @@ async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVar
 	};
 
 	RenderOutput { data, metadata }
+}
+
+async fn render_vello(scene: &vello::Scene, context: &RenderContext, render_params: &RenderParams, exec: &wgpu_executor::WgpuExecutor) -> Arc<wgpu::Texture> {
+	let scale = render_params.scale;
+	let physical_resolution = render_params.footprint.resolution;
+
+	let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
+	let footprint_transform = scale_transform * render_params.footprint.transform;
+	let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
+
+	let mut transformed_scene = vello::Scene::new();
+	transformed_scene.append(scene, Some(footprint_transform_vello));
+
+	// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
+	// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
+	let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
+	for transform in transformed_scene.encoding_mut().transforms.iter_mut() {
+		if transform.matrix[0] == f32::INFINITY {
+			*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
+		}
+	}
+
+	exec.render_vello_scene(&transformed_scene, physical_resolution, context, None)
+		.await
+		.expect("Failed to render Vello scene")
+}
+
+fn render_svg(mut render: SvgRender, render_params: &RenderParams) -> (String, Vec<(u64, Image<Color>)>) {
+	let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
+
+	render.wrap_with_transform(render_params.footprint.transform, Some(logical_resolution));
+
+	let output = SvgRenderOutput::from(render);
+	assert!(output.svg_defs.is_empty());
+
+	(output.svg, output.image_data.into_iter().map(|(image, id)| (id, image)).collect())
 }
 
 #[node_macro::node(category(""))]

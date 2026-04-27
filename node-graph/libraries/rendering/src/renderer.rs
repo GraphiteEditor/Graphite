@@ -83,15 +83,17 @@ impl SvgRender {
 	pub fn format_svg(&mut self, bounds_min: DVec2, bounds_max: DVec2) {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
-		let defs = &self.svg_defs;
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
+		let svg_header = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,
+			defs = &self.svg_defs
+		);
+		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</svg>".into());
 	}
 
 	/// Wraps the SVG with `<svg><g transform="...">...</g></svg>`, which allows for rotation
 	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>) {
-		let defs = &self.svg_defs;
 		let view_box = size
 			.map(|size| format!("viewBox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
 			.unwrap_or_default();
@@ -99,7 +101,11 @@ impl SvgRender {
 		let matrix = format_transform_matrix(transform);
 		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#);
+		let svg_header = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#,
+			defs = &self.svg_defs
+		);
+		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -140,6 +146,34 @@ impl SvgRender {
 		} else {
 			self.svg.pop();
 			self.svg.push("/>".into());
+		}
+	}
+}
+
+pub struct SvgRenderOutput {
+	pub svg: String,
+	pub svg_defs: String,
+	pub image_data: HashMap<Image<Color>, u64>,
+}
+
+impl From<&SvgRenderOutput> for SvgRender {
+	fn from(value: &SvgRenderOutput) -> Self {
+		Self {
+			svg: vec![value.svg.clone().into()],
+			svg_defs: value.svg_defs.clone(),
+			transform: DAffine2::IDENTITY,
+			image_data: value.image_data.clone(),
+			indent: 0,
+		}
+	}
+}
+
+impl From<SvgRender> for SvgRenderOutput {
+	fn from(val: SvgRender) -> Self {
+		Self {
+			svg: val.svg.to_svg_string(),
+			svg_defs: val.svg_defs,
+			image_data: val.image_data,
 		}
 	}
 }
