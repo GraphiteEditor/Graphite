@@ -77,6 +77,7 @@ impl TextureCache {
 			}
 			if Arc::strong_count(&entry.texture) == 1 {
 				free_bytes -= entry.bytes;
+				entry.texture.destroy();
 				false
 			} else {
 				true
