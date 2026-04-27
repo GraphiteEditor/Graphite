@@ -177,34 +177,13 @@ where
 	result_table
 }
 
-/// Performs internal editor record-keeping that enables tools to target this network's layer.
-/// This node associates the ID of the network's parent layer to every element of output data.
-/// This technical detail may be ignored by users, and will be phased out in the future.
+/// Returns the NodeId of the user-facing parent layer node that encapsulates this sub-network.
+/// Used as the value source for stamping the `editor:layer` attribute on each row of a layer's output,
+/// which lets editor tools (e.g. selection, click target routing) trace data back to its owning layer.
 #[node_macro::node(category(""))]
-pub async fn source_node_id<T: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-	)]
-	content: Table<T>,
-	node_path: Vec<NodeId>,
-) -> Table<T> {
+pub fn parent_layer(_: impl Ctx, node_path: Vec<NodeId>) -> Option<NodeId> {
 	// Get the penultimate element of the node path, or None if the path is too short
-	// This is used to get the ID of the user-facing parent layer node (whose network contains this internal node).
-	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-
-	let mut content = content;
-	for source_id in content.iter_attribute_values_mut_or_default::<Option<NodeId>>("source_node_id") {
-		*source_id = source_node_id;
-	}
-
-	content
+	node_path.get(node_path.len().wrapping_sub(2)).copied()
 }
 
 /// Writes a per-row attribute column on the input table. The value-producing input is evaluated once per row,
@@ -280,11 +259,11 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 ) -> Table<T> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
-	let source_node_id = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();
+	let layer = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute("source_node_id", source_node_id);
+		row.set_attribute("editor:layer", layer);
 		base.push(row);
 	}
 

@@ -17,8 +17,8 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 
 	// Update the source node id
 	let this_node_path = node_path.iter().rev().nth(1).copied();
-	let existing: Option<NodeId> = vector.attribute_cloned_or_default("source_node_id", 0);
-	vector.set_attribute("source_node_id", 0, existing.or(this_node_path));
+	let existing: Option<NodeId> = vector.attribute_cloned_or_default("editor:layer", 0);
+	vector.set_attribute("editor:layer", 0, existing.or(this_node_path));
 
 	if vector.len() > 1 {
 		warn!("The path modify ran on {} vector rows. Only the first can be modified.", vector.len());

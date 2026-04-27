@@ -141,7 +141,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
 		for current_graphic_row in current_graphic_table.into_iter() {
-			let source_node_id: Option<NodeId> = current_graphic_row.attribute_cloned_or_default("source_node_id");
+			let layer: Option<NodeId> = current_graphic_row.attribute_cloned_or_default("editor:layer");
 			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default("transform");
 			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default("alpha_blending");
 
@@ -168,7 +168,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 							attributes.insert("transform", current_transform * row_transform);
 							attributes.insert("alpha_blending", compose_alpha_blending(current_alpha_blending, row_alpha_blending));
-							attributes.insert("source_node_id", source_node_id);
+							attributes.insert("editor:layer", layer);
 
 							output.push(TableRow::from_parts(element, attributes));
 						}
@@ -504,70 +504,32 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 		Table(serde_json::Value),
 	}
 
+	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// to recover the elements. Per-row attribute values are populated at runtime by the node graph.
 	Ok(match GraphicFormat::deserialize(deserializer)? {
-		GraphicFormat::OldGraphicGroup(old) => {
-			let mut graphic_table = Table::new();
-			for (graphic, source_node_id) in old.elements {
-				graphic_table.push(
-					TableRow::new_from_element(graphic)
-						.with_attribute("transform", old.transform)
-						.with_attribute("alpha_blending", old.alpha_blending)
-						.with_attribute("source_node_id", source_node_id),
-				);
-			}
-			graphic_table
-		}
+		GraphicFormat::OldGraphicGroup(old) => old.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)).collect(),
 		GraphicFormat::OlderTableOldGraphicGroup(old) => old
 			.element
 			.into_iter()
-			.flat_map(|element| {
-				element.elements.into_iter().map(move |(graphic, source_node_id)| {
-					TableRow::new_from_element(graphic)
-						.with_attribute("transform", element.transform)
-						.with_attribute("alpha_blending", element.alpha_blending)
-						.with_attribute("source_node_id", source_node_id)
-				})
-			})
+			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
 			.collect(),
 		GraphicFormat::OldTableOldGraphicGroup(old) => old
 			.element
 			.into_iter()
-			.flat_map(|element| {
-				element.elements.into_iter().map(move |(graphic, source_node_id)| {
-					TableRow::new_from_element(graphic)
-						.with_attribute("transform", element.transform)
-						.with_attribute("alpha_blending", element.alpha_blending)
-						.with_attribute("source_node_id", source_node_id)
-				})
-			})
+			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
 			.collect(),
 		GraphicFormat::OldTableGraphicGroup(old) => old
 			.element
 			.into_iter()
-			.flat_map(|element| {
-				element.elements.into_iter().map(move |(graphic, source_node_id)| {
-					TableRow::new_from_element(graphic)
-						.with_attribute("transform", DAffine2::IDENTITY)
-						.with_attribute("alpha_blending", AlphaBlending::default())
-						.with_attribute("source_node_id", source_node_id)
-				})
-			})
+			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
 			.collect(),
 		GraphicFormat::Table(value) => {
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut graphic_table = Table::new();
 				for index in 0..old_table.len() {
-					let row_transform: DAffine2 = old_table.attribute_cloned_or_default("transform", index);
-					let row_alpha_blending: AlphaBlending = old_table.attribute_cloned_or_default("alpha_blending", index);
-
-					for (graphic, source_node_id) in &old_table.element(index).unwrap().elements {
-						graphic_table.push(
-							TableRow::new_from_element(graphic.clone())
-								.with_attribute("transform", row_transform)
-								.with_attribute("alpha_blending", row_alpha_blending)
-								.with_attribute("source_node_id", *source_node_id),
-						);
+					for (graphic, _) in &old_table.element(index).unwrap().elements {
+						graphic_table.push(TableRow::new_from_element(graphic.clone()));
 					}
 				}
 				graphic_table

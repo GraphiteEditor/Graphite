@@ -46,7 +46,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 		let result_vector = result_vector_table.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
 		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
-		result_vector.upstream_data = Some(content.clone());
+		result_vector.merged_layers = Some(content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_table.attribute_cloned_or_default("transform", 0);
@@ -127,7 +127,7 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 		let copy_from = vector.element(index).unwrap();
 		let element = Vector {
 			style: copy_from.style.clone(),
-			upstream_data: copy_from.upstream_data.clone(),
+			merged_layers: copy_from.merged_layers.clone(),
 			..Default::default()
 		};
 		TableRow::from_parts(element, attributes)
@@ -177,7 +177,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				}
 				Graphic::RasterCPU(image) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
-					let make_row = |transform, source_node_id, alpha_blending| {
+					let make_row = |transform, layer, alpha_blending| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
@@ -186,24 +186,24 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 						TableRow::new_from_element(element)
 							.with_attribute("alpha_blending", alpha_blending)
-							.with_attribute("source_node_id", source_node_id)
+							.with_attribute("editor:layer", layer)
 					};
 
-					// Apply the parent graphic's transform to each raster element, preserving each row's source_node_id
+					// Apply the parent graphic's transform to each raster element, preserving each row's layer
 					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
 					// back to the originating raster layer
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
-							let source_node_id: Option<NodeId> = image.attribute_cloned_or_default("source_node_id", i);
+							let layer: Option<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
 							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
-							make_row(parent_transform * row_transform, source_node_id, alpha_blending)
+							make_row(parent_transform * row_transform, layer, alpha_blending)
 						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
-					let make_row = |transform, source_node_id, alpha_blending| {
+					let make_row = |transform, layer, alpha_blending| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
@@ -212,18 +212,18 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 						TableRow::new_from_element(element)
 							.with_attribute("alpha_blending", alpha_blending)
-							.with_attribute("source_node_id", source_node_id)
+							.with_attribute("editor:layer", layer)
 					};
 
-					// Apply the parent graphic's transform to each raster element, preserving each row's source_node_id
+					// Apply the parent graphic's transform to each raster element, preserving each row's layer
 					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
 					// back to the originating raster layer
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
-							let source_node_id: Option<NodeId> = image.attribute_cloned_or_default("source_node_id", i);
+							let layer: Option<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
 							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
-							make_row(parent_transform * row_transform, source_node_id, alpha_blending)
+							make_row(parent_transform * row_transform, layer, alpha_blending)
 						})
 						.collect::<Vec<_>>()
 				}

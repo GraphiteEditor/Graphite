@@ -354,7 +354,7 @@ async fn round_corners(
 			let attributes = source.clone_row_attributes(index);
 			let source = source.element(index).unwrap();
 
-			let upstream_nested_layers = source.upstream_data.clone();
+			let upstream_nested_layers = source.merged_layers.clone();
 
 			// Flip the roundness to help with user intuition
 			let roundness = 1. - roundness;
@@ -439,7 +439,7 @@ async fn round_corners(
 				result.append_bezpath(rounded_subpath);
 			}
 
-			result.upstream_data = upstream_nested_layers;
+			result.merged_layers = upstream_nested_layers;
 
 			TableRow::from_parts(result, attributes)
 		})
@@ -1300,7 +1300,7 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let node_id: Option<NodeId> = flattened.attribute_cloned_or_default("source_node_id", index);
+		let node_id: Option<NodeId> = flattened.attribute_cloned_or_default("editor:layer", index);
 		let node_id = node_id.map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
@@ -1317,13 +1317,13 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Preserve a reference to the original upstream graphic table so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
-	output.upstream_data = Some(graphic_table);
+	output.merged_layers = Some(graphic_table);
 
-	// Adopt the last input row's source_node_id so the editor can also bucket clicks under a contributing child layer
+	// Adopt the last input row's layer so the editor can also bucket clicks under a contributing child layer
 	if !flattened.is_empty() {
 		let primary = flattened.len() - 1;
-		let source_node_id: Option<NodeId> = flattened.attribute_cloned_or_default("source_node_id", primary);
-		output_table.set_attribute("source_node_id", 0, source_node_id);
+		let layer: Option<NodeId> = flattened.attribute_cloned_or_default("editor:layer", primary);
+		output_table.set_attribute("editor:layer", 0, layer);
 	}
 
 	output_table
@@ -1351,7 +1351,7 @@ async fn sample_polyline(
 				region_domain: Default::default(),
 				colinear_manipulators: Default::default(),
 				style: std::mem::take(&mut row.element_mut().style),
-				upstream_data: std::mem::take(&mut row.element_mut().upstream_data),
+				merged_layers: std::mem::take(&mut row.element_mut().merged_layers),
 			};
 			// Transfer the stroke transform from the input vector content to the result.
 			result.style.set_stroke_transform(row.attribute_cloned_or_default("transform"));
@@ -1441,7 +1441,7 @@ async fn simplify(
 
 			let mut result = Vector {
 				style: std::mem::take(&mut row.element_mut().style),
-				upstream_data: std::mem::take(&mut row.element_mut().upstream_data),
+				merged_layers: std::mem::take(&mut row.element_mut().merged_layers),
 				..Default::default()
 			};
 
@@ -1538,7 +1538,7 @@ async fn decimate(
 
 			let mut result = Vector {
 				style: std::mem::take(&mut row.element_mut().style),
-				upstream_data: std::mem::take(&mut row.element_mut().upstream_data),
+				merged_layers: std::mem::take(&mut row.element_mut().merged_layers),
 				..Default::default()
 			};
 
@@ -2382,13 +2382,13 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		trs * skew
 	};
 
-	// Pre-compensate upstream_data transforms so that when collect_metadata applies
+	// Pre-compensate merged_layers transforms so that when collect_metadata applies
 	// the row transform (which will be group_transform * lerped_transform after the
 	// pipeline's Transform node runs), the lerped_transform cancels out and children
 	// get the correct footprint: parent * group_transform * child_transform.
 	// Only pre-compensate if the lerped transform is invertible (non-zero determinant).
 	// A zero determinant can occur when interpolated scale passes through zero (e.g., flipped axes),
-	// in which case we skip pre-compensation to avoid propagating NaN through upstream_data transforms.
+	// in which case we skip pre-compensation to avoid propagating NaN through merged_layers transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
 		let lerped_inverse = lerped_transform.inverse();
 		for transform in graphic_table_content.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
@@ -2407,7 +2407,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 
 		return Table::new_from_row(TableRow::from_parts(
 			Vector {
-				upstream_data: Some(graphic_table_content),
+				merged_layers: Some(graphic_table_content),
 				..endpoint_element.clone()
 			},
 			attributes,
@@ -2415,7 +2415,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	}
 
 	let mut vector = Vector {
-		upstream_data: Some(graphic_table_content),
+		merged_layers: Some(graphic_table_content),
 		..Default::default()
 	};
 	vector.style = source_element.style.lerp(&target_element.style, time);
@@ -2566,13 +2566,13 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
-	let source_node_id: Option<NodeId> = content.attribute_cloned_or_default("source_node_id", primary_index);
+	let layer: Option<NodeId> = content.attribute_cloned_or_default("editor:layer", primary_index);
 
 	Table::new_from_row(
 		TableRow::new_from_element(vector)
 			.with_attribute("transform", lerped_transform)
 			.with_attribute("alpha_blending", vector_alpha_blending)
-			.with_attribute("source_node_id", source_node_id),
+			.with_attribute("editor:layer", layer),
 	)
 }
 
@@ -3073,10 +3073,7 @@ mod test {
 	fn create_vector_row(bezpath: BezPath, transform: DAffine2) -> TableRow<Vector> {
 		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
-		TableRow::new_from_element(row)
-			.with_attribute("transform", transform)
-			.with_attribute("alpha_blending", AlphaBlending::default())
-			.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
+		TableRow::new_from_element(row).with_attribute("transform", transform)
 	}
 
 	#[tokio::test]

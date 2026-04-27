@@ -72,40 +72,18 @@ pub mod migrations {
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
 			VectorFormat::Vector(vector) => Table::new_from_element(vector),
-			VectorFormat::OldVectorData(old) => {
-				let mut vector_table = Table::new_from_element(Vector {
-					style: old.style,
-					colinear_manipulators: old.colinear_manipulators,
-					point_domain: old.point_domain,
-					segment_domain: old.segment_domain,
-					region_domain: old.region_domain,
-					upstream_data: old.upstream_graphic_group,
-				});
-				vector_table.set_attribute("transform", 0, old.transform);
-				vector_table.set_attribute("alpha_blending", 0, old.alpha_blending);
-				vector_table
-			}
-			VectorFormat::OlderVectorTable(older_table) => older_table
-				.element
-				.into_iter()
-				.map(|element| {
-					TableRow::new_from_element(element)
-						.with_attribute("transform", DAffine2::IDENTITY)
-						.with_attribute("alpha_blending", AlphaBlending::default())
-						.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
-				})
-				.collect(),
-			VectorFormat::OldVectorTable(old_table) => old_table
-				.element
-				.into_iter()
-				.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-				.map(|(element, (transform, alpha_blending))| {
-					TableRow::new_from_element(element)
-						.with_attribute("transform", transform)
-						.with_attribute("alpha_blending", alpha_blending)
-						.with_attribute("source_node_id", None::<core_types::uuid::NodeId>)
-				})
-				.collect(),
+			// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+			// to recover the elements. Per-row attribute values are populated at runtime by the node graph.
+			VectorFormat::OldVectorData(old) => Table::new_from_element(Vector {
+				style: old.style,
+				colinear_manipulators: old.colinear_manipulators,
+				point_domain: old.point_domain,
+				segment_domain: old.segment_domain,
+				region_domain: old.region_domain,
+				merged_layers: old.upstream_graphic_group,
+			}),
+			VectorFormat::OlderVectorTable(older_table) => older_table.element.into_iter().map(TableRow::new_from_element).collect(),
+			VectorFormat::OldVectorTable(old_table) => old_table.element.into_iter().map(TableRow::new_from_element).collect(),
 			VectorFormat::VectorTable(vector_table) => vector_table,
 		})
 	}

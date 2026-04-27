@@ -113,30 +113,11 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		alpha_blending: Vec<AlphaBlending>,
 	}
 
+	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// to recover the elements. Per-row attribute values are populated at runtime by the node graph.
 	Ok(match ArtboardFormat::deserialize(deserializer)? {
-		ArtboardFormat::ArtboardGroup(artboard_group) => {
-			let mut table = Table::new();
-			for (artboard, source_node_id) in artboard_group.artboards {
-				table.push(
-					TableRow::new_from_element(artboard)
-						.with_attribute("transform", DAffine2::IDENTITY)
-						.with_attribute("alpha_blending", AlphaBlending::default())
-						.with_attribute("source_node_id", source_node_id),
-				);
-			}
-			table
-		}
-		ArtboardFormat::OldArtboardTable(old_table) => old_table
-			.element
-			.into_iter()
-			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
-			.map(|(element, (transform, alpha_blending))| {
-				TableRow::new_from_element(element)
-					.with_attribute("transform", transform)
-					.with_attribute("alpha_blending", alpha_blending)
-					.with_attribute("source_node_id", None::<NodeId>)
-			})
-			.collect(),
+		ArtboardFormat::ArtboardGroup(artboard_group) => artboard_group.artboards.into_iter().map(|(artboard, _)| TableRow::new_from_element(artboard)).collect(),
+		ArtboardFormat::OldArtboardTable(old_table) => old_table.element.into_iter().map(TableRow::new_from_element).collect(),
 		ArtboardFormat::ArtboardTable(artboard_table) => artboard_table,
 	})
 }

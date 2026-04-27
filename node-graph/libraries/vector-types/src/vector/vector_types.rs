@@ -36,7 +36,7 @@ pub struct Vector<Upstream> {
 	/// Used to store the upstream group/folder of nested layers during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved for the child layers.
 	/// Without this, the tools would be working with a collapsed version of the data which has no reference to the original child layers that were booleaned together, resulting in the inner layers not being editable.
 	#[cfg_attr(feature = "serde", serde(alias = "upstream_group"))]
-	pub upstream_data: Upstream,
+	pub merged_layers: Upstream,
 }
 unsafe impl<Upstream: 'static> StaticType for Vector<Upstream> {
 	type Static = Self;
@@ -50,7 +50,7 @@ impl<Upstream: Default + 'static> Default for Vector<Upstream> {
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
-			upstream_data: Upstream::default(),
+			merged_layers: Upstream::default(),
 		}
 	}
 }
@@ -62,7 +62,7 @@ impl<Upstream> graphene_hash::CacheHash for Vector<Upstream> {
 		self.region_domain.cache_hash(state);
 		self.style.cache_hash(state);
 		self.colinear_manipulators.cache_hash(state);
-		// We don't hash the upstream_data intentionally
+		// We don't hash the merged_layers intentionally
 	}
 }
 

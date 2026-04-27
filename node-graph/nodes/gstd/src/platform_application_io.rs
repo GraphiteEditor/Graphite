@@ -238,6 +238,6 @@ where
 	Table::new_from_row(
 		TableRow::new_from_element(Raster::new_cpu(image))
 			.with_attribute("transform", footprint.transform)
-			.with_attribute("upstream_data", Some(upstream_graphic_table)),
+			.with_attribute("editor:merged_layers", Some(upstream_graphic_table)),
 	)
 }
