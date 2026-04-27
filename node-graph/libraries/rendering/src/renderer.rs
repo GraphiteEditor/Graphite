@@ -367,9 +367,12 @@ impl RenderMetadata {
 		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
-		// TODO: Don't!
-		if other.backgrounds.len() > backgrounds.len() {
-			*backgrounds = other.backgrounds.clone();
+
+		// TODO: Find a better non O(n^2) way to merge backgrounds
+		for background in &other.backgrounds {
+			if !backgrounds.contains(background) {
+				backgrounds.push(background.clone());
+			}
 		}
 	}
 }
