@@ -1,8 +1,10 @@
+mod blend;
 mod context;
 mod resample;
 pub mod shader_runtime;
 pub mod texture_conversion;
 
+use crate::blend::Blender;
 use crate::resample::Resampler;
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
@@ -24,6 +26,7 @@ pub struct WgpuExecutor {
 	pub context: WgpuContext,
 	vello_renderer: Mutex<Renderer>,
 	resampler: Resampler,
+	blender: Blender,
 	pub shader_runtime: ShaderRuntime,
 }
 
@@ -139,6 +142,10 @@ impl WgpuExecutor {
 	pub fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> wgpu::Texture {
 		self.resampler.resample(&self.context, source, target_size, transform)
 	}
+
+	pub fn blend_textures(&self, foreground: &wgpu::Texture, background: &wgpu::Texture) -> wgpu::Texture {
+		self.blender.blend(&self.context, foreground, background)
+	}
 }
 
 impl WgpuExecutor {
@@ -160,11 +167,13 @@ impl WgpuExecutor {
 		.ok()?;
 
 		let resampler = Resampler::new(&context.device);
+		let blender = Blender::new(&context.device);
 
 		Some(Self {
 			shader_runtime: ShaderRuntime::new(&context),
 			context,
 			resampler,
+			blender,
 			vello_renderer: vello_renderer.into(),
 		})
 	}

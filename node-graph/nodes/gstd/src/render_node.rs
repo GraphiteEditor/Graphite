@@ -9,8 +9,8 @@ use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
-use rendering::{RenderMetadata, SvgSegment};
+use rendering::background::Background;
+use rendering::{Render, RenderBackground, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::GradientStops;
@@ -31,7 +31,6 @@ pub enum RenderIntermediateType {
 pub struct RenderIntermediate {
 	pub(crate) ty: RenderIntermediateType,
 	pub(crate) metadata: RenderMetadata,
-	pub(crate) contains_artboard: bool,
 }
 
 #[node_macro::node(category(""))]
@@ -59,8 +58,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
-	let contains_artboard = data.contains_artboard();
-
 	match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
@@ -71,7 +68,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
 				metadata,
-				contains_artboard,
 			}
 		}
 		RenderOutputTypeRequest::Svg => {
@@ -82,45 +78,69 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
 				metadata,
-				contains_artboard,
 			}
 		}
 	}
 }
 
 #[node_macro::node(category(""))]
-async fn create_context<'a: 'n>(
-	// Context injections are defined in the wrap_network_in_scope function
-	render_config: RenderConfig,
-	data: impl Node<Context<'static>, Output = RenderOutput>,
-) -> RenderOutput {
-	let footprint = render_config.viewport;
+async fn render_background_intermediate<'a: 'n, T: 'static + RenderBackground + WasmNotSend + Send + Sync>(
+	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs + ExtractAll + CloneVarArgs,
+	#[implementations(
+		Context -> Table<Artboard>,
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
+	)]
+	data: impl Node<Context<'static>, Output = T>,
+) -> RenderIntermediate {
+	let footprint = ctx.footprint();
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
+	let mut render_params = render_params.clone();
+	render_params.footprint = *footprint;
+	let render_params = &render_params;
 
-	let render_output_type = match render_config.export_format {
-		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
-		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
-	};
+	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
+	let data = data.eval(ctx).await;
+	let has_artboard = data.contains_artboard();
 
-	let render_params = RenderParams {
-		render_mode: render_config.render_mode,
-		hide_artboards: render_config.hide_artboards,
-		for_export: render_config.for_export,
-		render_output_type,
-		footprint: Footprint::default(),
-		scale: render_config.scale,
-		viewport_zoom: footprint.scale_magnitudes().x,
-		..Default::default()
-	};
+	match &render_params.render_output_type {
+		RenderOutputTypeRequest::Vello => {
+			let mut scene = vello::Scene::new();
 
-	let ctx = OwnedContextImpl::default()
-		.with_footprint(footprint)
-		.with_real_time(render_config.time.time)
-		.with_animation_time(render_config.time.animation_time.as_secs_f64())
-		.with_pointer_position(render_config.pointer)
-		.with_vararg(Box::new(render_params))
-		.into_context();
+			let mut context = wgpu_executor::RenderContext::default();
+			if has_artboard {
+				data.render_background_to_vello(&mut scene, Default::default(), &mut context, render_params);
+			} else {
+				Background.render_background_to_vello(&mut scene, Default::default(), &mut context, render_params);
+			}
 
-	data.eval(ctx).await
+			RenderIntermediate {
+				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
+				metadata: RenderMetadata::default(),
+			}
+		}
+		RenderOutputTypeRequest::Svg => {
+			let mut render = SvgRender::new();
+
+			if has_artboard {
+				data.render_background_svg(&mut render, render_params);
+			} else {
+				Background.render_background_svg(&mut render, render_params);
+			}
+
+			RenderIntermediate {
+				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
+				metadata: RenderMetadata::default(),
+			}
+		}
+	}
 }
 
 #[node_macro::node(category(""))]
@@ -139,25 +159,12 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 	let physical_resolution = render_params.footprint.resolution;
 	let logical_resolution = render_params.footprint.resolution.as_dvec2() / scale;
 
-	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
+	let RenderIntermediate { ty, mut metadata } = data;
 	metadata.apply_transform(footprint.transform);
 
 	let data = match (render_params.render_output_type, &ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
 			let mut rendering = SvgRender::new();
-			if !contains_artboard && !render_params.hide_artboards {
-				rendering.leaf_tag("rect", |attributes| {
-					attributes.push("x", "0");
-					attributes.push("y", "0");
-					attributes.push("width", logical_resolution.x.to_string());
-					attributes.push("height", logical_resolution.y.to_string());
-					let matrix = format_transform_matrix(footprint.transform.inverse());
-					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
-					}
-					attributes.push("fill", "white");
-				});
-			}
 			rendering.svg.push(SvgSegment::from(svg_data.0.clone()));
 			rendering.image_data = svg_data.1.clone();
 			rendering.svg_defs = svg_data.2.clone();
@@ -190,14 +197,8 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				}
 			}
 
-			let background = if !render_params.for_export && !contains_artboard && !render_params.hide_artboards {
-				Some(Color::WHITE)
-			} else {
-				None
-			};
-
 			let texture = Arc::new(
-				exec.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
+				exec.render_vello_scene_to_texture(&scene, physical_resolution, context, None)
 					.await
 					.expect("Failed to render Vello scene"),
 			);
@@ -207,4 +208,98 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 	RenderOutput { data, metadata }
+}
+
+#[node_macro::node(category(""))]
+async fn compose<'a: 'n>(
+	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
+	editor_api: &'a PlatformEditorApi,
+	data: impl Node<Context<'static>, Output = RenderOutput>,
+	background: impl Node<Context<'static>, Output = RenderOutput>,
+) -> RenderOutput {
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
+
+	let eval_ctx = OwnedContextImpl::from(ctx.clone()).into_context();
+	let artwork = data.eval(eval_ctx.clone()).await;
+
+	if render_params.for_export {
+		return artwork;
+	}
+
+	let background = background.eval(eval_ctx).await;
+	let RenderOutput { data: foreground_data, metadata } = artwork;
+
+	let data = match (foreground_data, background.data) {
+		(RenderOutputType::Texture(foreground_texture), RenderOutputType::Texture(background_texture)) => {
+			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
+				return RenderOutput {
+					data: RenderOutputType::Texture(foreground_texture),
+					metadata,
+				};
+			};
+
+			let blended = exec.blend_textures(foreground_texture.as_ref(), background_texture.as_ref());
+			RenderOutputType::Texture(blended.into())
+		}
+		(
+			RenderOutputType::Svg {
+				svg: foreground_svg,
+				image_data: foreground_images,
+			},
+			RenderOutputType::Svg {
+				svg: background_svg,
+				image_data: background_images,
+			},
+		) => {
+			let mut image_data = background_images;
+			image_data.extend(foreground_images);
+
+			RenderOutputType::Svg {
+				svg: format!("{background_svg}{foreground_svg}"),
+				image_data,
+			}
+		}
+		(foreground_data, _) => foreground_data,
+	};
+
+	RenderOutput { data, metadata }
+}
+
+#[node_macro::node(category(""))]
+async fn create_context<'a: 'n>(
+	// Context injections are defined in the wrap_network_in_scope function
+	render_config: RenderConfig,
+	data: impl Node<Context<'static>, Output = RenderOutput>,
+) -> RenderOutput {
+	let footprint = render_config.viewport;
+
+	let render_output_type = match render_config.export_format {
+		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
+		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
+	};
+
+	let render_params = RenderParams {
+		render_mode: render_config.render_mode,
+		hide_artboards: render_config.hide_artboards,
+		for_export: render_config.for_export,
+		render_output_type,
+		footprint: Footprint::BOUNDLESS,
+		scale: render_config.scale,
+		viewport_zoom: footprint.scale_magnitudes().x,
+		..Default::default()
+	};
+
+	let ctx = OwnedContextImpl::default()
+		.with_footprint(footprint)
+		.with_real_time(render_config.time.time)
+		.with_animation_time(render_config.time.animation_time.as_secs_f64())
+		.with_pointer_position(render_config.pointer)
+		.with_vararg(Box::new(render_params))
+		.into_context();
+
+	data.eval(ctx).await
 }
