@@ -272,7 +272,7 @@ async fn create_context<'a: 'n>(
 		render_mode: render_config.render_mode,
 		for_export: render_config.for_export,
 		render_output_type,
-		footprint: Footprint::BOUNDLESS,
+		footprint,
 		scale: render_config.scale,
 		viewport_zoom: footprint.scale_magnitudes().x,
 		..Default::default()
