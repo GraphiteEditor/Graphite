@@ -63,7 +63,7 @@ where
 
 impl RenderBackground for Artboard {
 	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		if render_params.hide_artboards || !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
+		if !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
 			return;
 		}
 
@@ -72,7 +72,7 @@ impl RenderBackground for Artboard {
 	}
 
 	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if render_params.hide_artboards || !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
+		if !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
 			return;
 		}
 

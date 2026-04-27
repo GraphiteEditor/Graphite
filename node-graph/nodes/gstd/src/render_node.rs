@@ -274,7 +274,6 @@ async fn create_context<'a: 'n>(
 
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
-		hide_artboards: render_config.hide_artboards,
 		for_export: render_config.for_export,
 		render_output_type,
 		footprint: Footprint::BOUNDLESS,

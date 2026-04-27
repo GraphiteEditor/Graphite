@@ -31,6 +31,7 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	/// Color of the artboard background. Only positive integers are valid.
 	background: Table<Color>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
+	#[default(true)]
 	clip: bool,
 ) -> Table<Artboard> {
 	let location = location.as_ivec2();

@@ -173,7 +173,6 @@ pub enum PortfolioMessage {
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
-		transparent_background: bool,
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},

@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::color::Color;
 use graphene_std::raster::BlendMode;
@@ -14,6 +13,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::{Artboard, Color};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -94,6 +94,12 @@ pub enum GraphOperationMessage {
 	NewCustomLayer {
 		id: NodeId,
 		nodes: Vec<(NodeId, NodeTemplate)>,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
+	NewColorFillLayer {
+		node_id: NodeId,
+		color: Color,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

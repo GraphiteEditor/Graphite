@@ -172,8 +172,6 @@ pub struct RenderParams {
 	pub scale: f64,
 	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
-	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
-	pub hide_artboards: bool,
 	/// Are we exporting
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
@@ -185,6 +183,24 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
+}
+
+impl Hash for RenderParams {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.render_mode.hash(state);
+		self.footprint.hash(state);
+		self.render_output_type.hash(state);
+		self.thumbnail.hash(state);
+		self.for_export.hash(state);
+		self.for_mask.hash(state);
+		if let Some(x) = self.alignment_parent_transform {
+			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+		self.aligned_strokes.hash(state);
+		self.override_paint_order.hash(state);
+		self.artboard_background.hash(state);
+		self.viewport_zoom.to_bits().hash(state);
+	}
 }
 
 impl RenderParams {
@@ -461,19 +477,16 @@ impl Render for Graphic {
 impl Render for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		// Rectangle for the artboard
-		if !render_params.hide_artboards {
-			// Background
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
-				if self.background.a() < 1. {
-					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
-				}
-				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
-				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
-				attributes.push("width", self.dimensions.x.abs().to_string());
-				attributes.push("height", self.dimensions.y.abs().to_string());
-			});
-		}
+		render.leaf_tag("rect", |attributes| {
+			attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
+			if self.background.a() < 1. {
+				attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
+			}
+			attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
+			attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
+			attributes.push("width", self.dimensions.x.abs().to_string());
+			attributes.push("height", self.dimensions.y.abs().to_string());
+		});
 
 		// Artwork
 		render.parent_tag(
@@ -515,12 +528,10 @@ impl Render for Artboard {
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
 		// Render background
-		if !render_params.hide_artboards {
-			let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
-			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
-			scene.pop_layer();
-		}
+		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
+		scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
+		scene.pop_layer();
 
 		if self.clip {
 			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
