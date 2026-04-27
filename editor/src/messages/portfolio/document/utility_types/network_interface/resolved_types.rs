@@ -60,7 +60,6 @@ impl TypeSource {
 				| TaggedValue::DVec2(_)
 				| TaggedValue::F64Array4(_)
 				| TaggedValue::VecF64(_)
-				| TaggedValue::VecDVec2(_)
 				| TaggedValue::DAffine2(_) => FrontendGraphDataType::Number,
 				TaggedValue::Artboard(_) => FrontendGraphDataType::Artboard,
 				TaggedValue::Graphic(_) => FrontendGraphDataType::Graphic,

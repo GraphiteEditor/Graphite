@@ -214,7 +214,6 @@ pub(crate) fn property_from_type(
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
 						// ===========
 						// TABLE TYPES
 						// ===========
@@ -789,38 +788,6 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
 				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
-				.widget_instance(),
-		])
-	}
-	widgets
-}
-
-pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetInstance> {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info);
-
-	let from_string = |string: &str| {
-		string
-			.split(|c: char| !c.is_alphanumeric() && !matches!(c, '.' | '+' | '-'))
-			.filter(|x| !x.is_empty())
-			.map(|x| x.parse::<f64>().ok())
-			.collect::<Option<Vec<_>>>()
-			.map(|numbers| numbers.chunks_exact(2).map(|values| DVec2::new(values[0], values[1])).collect())
-			.map(TaggedValue::VecDVec2)
-	};
-
-	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let Some(TaggedValue::VecDVec2(x)) = &input.as_non_exposed_value() {
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			text_props
-				.value(x.iter().map(|v| format!("({}, {})", v.x, v.y)).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_instance(),
 		])

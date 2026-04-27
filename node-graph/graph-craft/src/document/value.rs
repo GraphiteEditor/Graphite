@@ -180,7 +180,6 @@ tagged_value! {
 	// ========================
 	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
-	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
 	NodePath(Vec<NodeId>),
 	// ===========
