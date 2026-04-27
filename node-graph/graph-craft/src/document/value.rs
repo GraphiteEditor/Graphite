@@ -191,6 +191,9 @@ tagged_value! {
 	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
+	#[serde(deserialize_with = "brush_nodes::migrations::migrate_brush_strokes_to_table")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "BrushStrokes")]
+	BrushStrokeTable(Table<BrushStroke>),
 	// ============
 	// SCALAR TYPES
 	// ============
@@ -208,7 +211,6 @@ tagged_value! {
 	Stroke(Stroke),
 	Gradient(Gradient),
 	Font(Font),
-	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),

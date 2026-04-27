@@ -217,46 +217,6 @@ trait TableRowLayout {
 	}
 }
 
-impl<T: TableRowLayout> TableRowLayout for Vec<T> {
-	fn type_name() -> &'static str {
-		"Vec"
-	}
-	fn identifier(&self) -> String {
-		format!("Vec<{}> ({} element{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
-	}
-	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
-			match step {
-				PathStep::Element(index) => {
-					if let Some(row) = self.get(index) {
-						data.current_depth += 1;
-						let result = row.layout_with_breadcrumb(data);
-						data.current_depth -= 1;
-						return result;
-					} else {
-						warn!("Desired path truncated");
-						data.desired_path.truncate(data.current_depth);
-					}
-				}
-				PathStep::Attribute { .. } => {
-					warn!("Attribute path step inside a Vec is unsupported");
-					data.desired_path.truncate(data.current_depth);
-				}
-			}
-		}
-
-		let mut rows = self
-			.iter()
-			.enumerate()
-			.map(|(index, row)| vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), row.cell_widget(PathStep::Element(index))])
-			.collect::<Vec<_>>();
-
-		rows.insert(0, column_headings(&["", "element"]));
-
-		vec![LayoutGroup::table(rows, false)]
-	}
-}
-
 impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	fn type_name() -> &'static str {
 		"Table"

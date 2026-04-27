@@ -580,7 +580,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_network_node_id("Brush", true) else {
 			return;
 		};
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		let strokes_table = strokes.into_iter().map(graphene_std::table::TableRow::new_from_element).collect();
+		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokeTable(strokes_table), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
