@@ -1,10 +1,11 @@
 { pkgs, ... }:
 
 let
-  versionFile = builtins.fromJSON (builtins.readFile ./version.json);
-
-  version = versionFile.version;
-  hash = selectSystem versionFile.hashes;
+  version = "147.0.10+gd58e84d+chromium-147.0.7727.118";
+  hashes = {
+    aarch64-linux = "sha256-kaRijMDacPcoeCcS31zmRSNOvgozx+uq2M34mD28bu4=";
+		x86_64-linux = "sha256-CHzPofBDhCniDZEpOxXK4I7p57SYjMAY1HVo3Vna0e8=";
+  };
 
   selectSystem =
     attrs:
@@ -18,7 +19,7 @@ let
         x86_64-linux = "linux64";
       }
     }_minimal.tar.bz2";
-    hash = hash;
+    hash = selectSystem hashes;
   };
 in
 pkgs.cef-binary.overrideAttrs (finalAttrs: {

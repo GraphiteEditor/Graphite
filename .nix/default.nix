@@ -62,10 +62,9 @@ in
       graphite-bundle-dev = (lib.call ./pkgs/graphite-bundle.nix) { graphite = graphite-dev; };
       graphite-flatpak-manifest = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { };
       graphite-flatpak-manifest-dev = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { graphite-bundle = graphite-bundle-dev; };
+      graphite-cef = lib.call ./pkgs/graphite-cef.nix;
 
       # TODO: graphene-cli = lib.call ./pkgs/graphene-cli.nix;
-
-      graphite-cef = lib.call ./pkgs/graphite-cef/package.nix;
     }
   );
 
