@@ -32,7 +32,7 @@
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
-	let textInputMatrix: [number, number, number, number, number, number];
+	let textInputMatrix: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0];
 
 	// Scrollbars
 	let scrollbarPos = { x: 0.5, y: 0.5 };
@@ -345,6 +345,7 @@
 	}
 
 	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
+		textInputMatrix = data.transform;
 		showTextInput = true;
 
 		await tick();
@@ -373,8 +374,6 @@
 			if (!textInput) return;
 			editor.updateBounds(textInputCleanup(textInput.innerText));
 		};
-
-		textInputMatrix = data.transform;
 
 		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
 			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
