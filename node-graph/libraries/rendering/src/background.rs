@@ -1,111 +1,59 @@
-use crate::renderer::{Render, RenderContext, RenderParams, SvgRender};
-use core_types::color::Color;
-use core_types::table::Table;
+use crate::renderer::{RenderParams, SvgRender};
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
-use glam::DAffine2;
+use dyn_any::DynAny;
 use glam::DVec2;
-use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::vector_types::gradient::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
+use glam::{DAffine2, IVec2};
 use std::fmt::Write;
 use std::sync::{Arc, LazyLock};
 
-pub trait RenderBackground: Render {
-	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		if self.contains_artboard() {
-			return;
-		}
-		render_viewport_checkerboard_vello(scene, transform, render_params)
-	}
-
-	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if self.contains_artboard() {
-			return;
-		}
-		render_viewport_checkerboard_svg(render, render_params);
-	}
+#[derive(Debug, Default, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct Background {
+	pub location: IVec2,
+	pub dimensions: IVec2,
 }
 
-impl<T> RenderBackground for Table<T>
-where
-	T: RenderBackground,
-	Table<T>: Render,
-{
-	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		if !self.contains_artboard() {
-			render_viewport_checkerboard_vello(scene, transform, render_params);
-			return;
-		}
-
-		for row in self.iter() {
-			if !row.element.contains_artboard() {
-				continue;
-			}
-			row.element.render_background_to_vello(scene, transform, context, render_params);
-		}
-	}
-
-	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if !self.contains_artboard() {
-			render_viewport_checkerboard_svg(render, render_params);
-			return;
-		}
-
-		for row in self.iter() {
-			if !row.element.contains_artboard() {
-				continue;
-			}
-			row.element.render_background_svg(render, render_params);
-		}
-	}
+pub trait RenderBackground {
+	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, render_params: &RenderParams);
+	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 }
 
-impl RenderBackground for Artboard {
-	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		if !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
-			return;
-		}
-
-		let rect = artboard_rect(self);
+impl RenderBackground for Background {
+	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, render_params: &RenderParams) {
+		let rect = background_rect(self);
 		checkerboard_fill_vello(scene, transform, rect, DVec2::new(rect.x0, rect.y0), render_params.viewport_zoom);
 	}
 
 	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
-			return;
-		}
-
-		let rect = artboard_rect(self);
+		let rect = background_rect(self);
 		checkerboard_fill_svg(render, rect, DVec2::new(rect.x0, rect.y0), render_params.viewport_zoom, "checkered-artboard");
 	}
 }
 
-impl RenderBackground for Graphic {}
-impl RenderBackground for Table<Vector> {}
-impl RenderBackground for Table<Raster<CPU>> {}
-impl RenderBackground for Table<Raster<GPU>> {}
-impl RenderBackground for Table<Color> {}
-impl RenderBackground for Table<GradientStops> {}
+impl RenderBackground for Vec<Background> {
+	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, render_params: &RenderParams) {
+		if self.is_empty() {
+			let Some(rect) = viewport_rect(render_params.footprint, render_params.scale) else { return };
+			checkerboard_fill_vello(scene, transform, rect, DVec2::ZERO, render_params.viewport_zoom);
+			return;
+		}
 
-fn render_viewport_checkerboard_vello(scene: &mut vello::Scene, transform: DAffine2, render_params: &RenderParams) {
-	if !render_params.to_canvas() {
-		return;
+		for background in self {
+			background.render_background_to_vello(scene, transform, render_params);
+		}
 	}
-	let Some(rect) = viewport_rect(render_params.footprint, render_params.scale) else {
-		return;
-	};
-	checkerboard_fill_vello(scene, transform, rect, DVec2::ZERO, render_params.viewport_zoom);
-}
 
-fn render_viewport_checkerboard_svg(render: &mut SvgRender, render_params: &RenderParams) {
-	if !render_params.to_canvas() {
-		return;
+	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		if self.is_empty() {
+			let Some(rect) = viewport_rect(render_params.footprint, render_params.scale) else { return };
+			checkerboard_fill_svg(render, rect, DVec2::ZERO, render_params.viewport_zoom, "checkered-viewport");
+			return;
+		}
+
+		for background in self {
+			background.render_background_svg(render, render_params);
+		}
 	}
-	let Some(rect) = viewport_rect(render_params.footprint, render_params.scale) else {
-		return;
-	};
-	checkerboard_fill_svg(render, rect, DVec2::ZERO, render_params.viewport_zoom, "checkered-viewport");
 }
 
 fn checkerboard_fill_vello(scene: &mut vello::Scene, transform: DAffine2, rect: kurbo::Rect, pattern_origin: DVec2, viewport_zoom: f64) {
@@ -162,8 +110,8 @@ fn checkerboard_fill_svg(render: &mut SvgRender, rect: kurbo::Rect, pattern_orig
 	});
 }
 
-fn artboard_rect(artboard: &Artboard) -> kurbo::Rect {
-	let [a, b] = [artboard.location.as_dvec2(), artboard.location.as_dvec2() + artboard.dimensions.as_dvec2()];
+fn background_rect(background: &Background) -> kurbo::Rect {
+	let [a, b] = [background.location.as_dvec2(), background.location.as_dvec2() + background.dimensions.as_dvec2()];
 	kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y))
 }
 

@@ -1,3 +1,4 @@
+use crate::background::Background;
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
 use core_types::AlphaBlending;
@@ -303,6 +304,7 @@ pub struct RenderMetadata {
 	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
+	pub backgrounds: Vec<Background>,
 }
 
 impl RenderMetadata {
@@ -323,6 +325,7 @@ impl RenderMetadata {
 			click_targets,
 			clip_targets,
 			vector_data,
+			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
 		local_transforms.extend(other.local_transforms.iter());
@@ -330,6 +333,10 @@ impl RenderMetadata {
 		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
+		// TODO: Don't!
+		if other.backgrounds.len() > backgrounds.len() {
+			*backgrounds = other.backgrounds.clone();
+		}
 	}
 }
 
@@ -558,6 +565,10 @@ impl Render for Artboard {
 			}
 		}
 		footprint.transform *= self.transform();
+		metadata.backgrounds.push(Background {
+			location: self.location,
+			dimensions: self.dimensions,
+		});
 		self.content.collect_metadata(metadata, footprint, None);
 	}
 

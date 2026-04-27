@@ -413,6 +413,7 @@ impl NodeGraphExecutor {
 			click_targets,
 			clip_targets,
 			vector_data,
+			backgrounds: _,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately

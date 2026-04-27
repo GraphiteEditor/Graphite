@@ -28,17 +28,11 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 	let render_node = DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0)],
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(8), 0)],
+			exports: vec![NodeInput::node(NodeId(7), 0)],
 			nodes: [
 				DocumentNode {
 					call_argument: concrete!(Context),
 					inputs: vec![NodeInput::import(core_types::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::memo::IDENTIFIER),
-					..Default::default()
-				},
-				DocumentNode {
-					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,
@@ -48,37 +42,17 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_background_intermediate::IDENTIFIER),
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::VARARGS,
-						inject: ContextFeatures::INDEX,
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::empty(),
 					},
 					..Default::default()
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
 					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(1), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
-					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
-						inject: ContextFeatures::empty(),
-					},
-					..Default::default()
-				},
-				DocumentNode {
-					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
-					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
-						inject: ContextFeatures::empty(),
-					},
-					..Default::default()
-				},
-				DocumentNode {
-					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(3), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -88,7 +62,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(5), 0)],
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::pixel_preview::pixel_preview::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -98,7 +72,27 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(6), 0), NodeInput::node(NodeId(4), 0)],
+					inputs: vec![NodeInput::node(NodeId(3), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_background_intermediate::IDENTIFIER),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::INDEX,
+					},
+					..Default::default()
+				},
+				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(4), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::empty(),
+					},
+					..Default::default()
+				},
+				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(3), 0), NodeInput::node(NodeId(5), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::compose::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,
@@ -108,7 +102,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
-					inputs: vec![NodeInput::node(NodeId(7), 0)],
+					inputs: vec![NodeInput::node(NodeId(6), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work

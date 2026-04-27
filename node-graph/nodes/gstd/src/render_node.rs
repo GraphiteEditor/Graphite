@@ -83,53 +83,42 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 }
 
 #[node_macro::node(category(""))]
-async fn render_background_intermediate<'a: 'n, T: 'static + RenderBackground + WasmNotSend + Send + Sync>(
-	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs + ExtractAll + CloneVarArgs,
-	#[implementations(
-		Context -> Table<Artboard>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-	)]
-	data: impl Node<Context<'static>, Output = T>,
-) -> RenderIntermediate {
+async fn render_background_intermediate(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, data: RenderOutput) -> RenderIntermediate {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
-	let mut render_params = render_params.clone();
-	render_params.footprint = *footprint;
-	let render_params = &render_params;
 
-	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let data = data.eval(ctx).await;
+	dbg!(&data.metadata.backgrounds);
 
-	match &render_params.render_output_type {
-		RenderOutputTypeRequest::Vello => {
-			let mut scene = vello::Scene::new();
-
-			let mut context = wgpu_executor::RenderContext::default();
-			data.render_background_to_vello(&mut scene, Default::default(), &mut context, render_params);
+	match data {
+		RenderOutput {
+			data: RenderOutputType::Texture(_),
+			metadata,
+		} => {
+			let mut background_scene = vello::Scene::new();
+			metadata.backgrounds.render_background_to_vello(&mut background_scene, footprint.transform, render_params);
 
 			RenderIntermediate {
-				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
-				metadata: RenderMetadata::default(),
+				ty: RenderIntermediateType::Vello(Arc::new((background_scene, RenderContext::default()))),
+				metadata,
 			}
 		}
-		RenderOutputTypeRequest::Svg => {
+		RenderOutput {
+			data: RenderOutputType::Svg { .. },
+			metadata,
+		} => {
 			let mut render = SvgRender::new();
-
-			data.render_background_svg(&mut render, render_params);
+			metadata.backgrounds.render_background_svg(&mut render, render_params);
 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
-				metadata: RenderMetadata::default(),
+				metadata,
 			}
 		}
+		_ => unreachable!("Render background node received unsupported render output type"),
 	}
 }
 
