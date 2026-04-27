@@ -187,11 +187,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				}
 			}
 
-			let texture = Arc::new(
-				exec.render_vello_scene_to_texture(&scene, physical_resolution, context, None)
-					.await
-					.expect("Failed to render Vello scene"),
-			);
+			let texture = exec.render_vello_scene(&scene, physical_resolution, context, None).await.expect("Failed to render Vello scene");
 
 			RenderOutputType::Texture(texture.into())
 		}
@@ -232,7 +228,7 @@ async fn compose<'a: 'n>(
 				};
 			};
 
-			let blended = exec.blend_textures(foreground_texture.as_ref(), background_texture.as_ref());
+			let blended = exec.blend_textures(foreground_texture.as_ref(), background_texture.as_ref()).await;
 			RenderOutputType::Texture(blended.into())
 		}
 		(

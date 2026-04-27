@@ -1,8 +1,7 @@
-use std::borrow::Cow;
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{TargetTexture, WgpuContext, WgpuExecutor};
+use crate::wrapper::{WgpuContext, WgpuExecutor};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -19,7 +18,7 @@ pub(crate) struct RenderState {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<std::sync::Arc<wgpu::Texture>>,
-	overlays_texture: Option<TargetTexture>,
+	overlays_texture: Option<std::sync::Arc<wgpu::Texture>>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
@@ -233,11 +232,17 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = futures::executor::block_on(self.executor.render_vello_scene_to_target_texture(&scene, size, &Default::default(), None, &mut self.overlays_texture));
-		if let Err(e) = result {
-			tracing::error!("Error rendering overlays: {:?}", e);
-			return;
+		let result = futures::executor::block_on(self.executor.render_vello_scene(&scene, size, &Default::default(), None));
+		match result {
+			Ok(texture) => {
+				self.overlays_texture = Some(texture);
+			}
+			Err(e) => {
+				self.overlays_texture = None;
+				tracing::error!("Error rendering overlays: {:?}", e);
+			}
 		}
+
 		self.update_bindgroup();
 	}
 
@@ -314,11 +319,7 @@ impl RenderState {
 	fn update_bindgroup(&mut self) {
 		self.surface_outdated = true;
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
-		let overlays_texture_view = self
-			.overlays_texture
-			.as_ref()
-			.map(|target| Cow::Borrowed(target.view()))
-			.unwrap_or_else(|| Cow::Owned(self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default())));
+		let overlays_texture_view = self.overlays_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -330,7 +331,7 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(overlays_texture_view.as_ref()),
+					resource: wgpu::BindingResource::TextureView(&overlays_texture_view),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,

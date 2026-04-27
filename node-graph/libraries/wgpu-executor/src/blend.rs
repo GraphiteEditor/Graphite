@@ -1,5 +1,4 @@
 use crate::WgpuContext;
-use glam::UVec2;
 
 pub struct Blender {
 	pipeline: wgpu::RenderPipeline,
@@ -91,31 +90,12 @@ impl Blender {
 		Self { pipeline, bind_group_layout, sampler }
 	}
 
-	pub fn blend(&self, context: &WgpuContext, foreground: &wgpu::Texture, background: &wgpu::Texture) -> wgpu::Texture {
-		let device = &context.device;
-		let queue = &context.queue;
-		let size = UVec2::new(foreground.width(), foreground.height()).max(UVec2::ONE);
-
-		let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("blend_output"),
-			size: wgpu::Extent3d {
-				width: size.x,
-				height: size.y,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Rgba8Unorm,
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
-			view_formats: &[],
-		});
-
+	pub fn blend(&self, context: &WgpuContext, foreground: &wgpu::Texture, background: &wgpu::Texture, output: &wgpu::Texture) {
 		let foreground_view = foreground.create_view(&wgpu::TextureViewDescriptor::default());
 		let background_view = background.create_view(&wgpu::TextureViewDescriptor::default());
-		let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+		let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("blend_bind_group"),
 			layout: &self.bind_group_layout,
 			entries: &[
@@ -134,7 +114,7 @@ impl Blender {
 			],
 		});
 
-		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("blend_encoder") });
+		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("blend_encoder") });
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -158,8 +138,6 @@ impl Blender {
 			render_pass.draw(0..3, 0..1);
 		}
 
-		queue.submit([encoder.finish()]);
-
-		output_texture
+		context.queue.submit([encoder.finish()]);
 	}
 }

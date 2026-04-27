@@ -1,5 +1,5 @@
 use crate::WgpuContext;
-use glam::{DAffine2, UVec2, Vec2};
+use glam::{DAffine2, Vec2};
 
 pub struct Resampler {
 	pipeline: wgpu::RenderPipeline,
@@ -74,29 +74,11 @@ impl Resampler {
 		Resampler { pipeline, bind_group_layout }
 	}
 
-	pub fn resample(&self, context: &WgpuContext, source: &wgpu::Texture, target_size: UVec2, transform: &DAffine2) -> wgpu::Texture {
-		let device = &context.device;
-		let queue = &context.queue;
-
-		let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("resample_output"),
-			size: wgpu::Extent3d {
-				width: target_size.x.max(1),
-				height: target_size.y.max(1),
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Rgba8Unorm,
-			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
-			view_formats: &[],
-		});
-
+	pub fn resample(&self, context: &WgpuContext, source: &wgpu::Texture, transform: &DAffine2, output: &wgpu::Texture) {
 		let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-		let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+		let params_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("resample_params"),
 			size: 32,
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -104,9 +86,9 @@ impl Resampler {
 		});
 
 		let params_data = [transform.matrix2.x_axis.as_vec2(), transform.matrix2.y_axis.as_vec2(), transform.translation.as_vec2(), Vec2::ZERO];
-		queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&params_data));
+		context.queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&params_data));
 
-		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+		let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("resample_bind_group"),
 			layout: &self.bind_group_layout,
 			entries: &[
@@ -121,7 +103,7 @@ impl Resampler {
 			],
 		});
 
-		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("resample_encoder") });
+		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("resample_encoder") });
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -143,8 +125,6 @@ impl Resampler {
 			render_pass.draw(0..3, 0..1);
 		}
 
-		queue.submit([encoder.finish()]);
-
-		output_texture
+		context.queue.submit([encoder.finish()]);
 	}
 }
