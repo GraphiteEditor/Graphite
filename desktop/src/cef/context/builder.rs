@@ -109,21 +109,21 @@ fn accelerated_paint(disable_gpu_acceleration: bool) -> bool {
 }
 
 fn platform_settings(instance_dir: &Path) -> Settings {
-	let log_severity = LogSeverity::from(match std::env::var("GRAPHITE_BROWSER_LOG").as_deref() {
-		Ok("debug") => cef_log_severity_t::LOGSEVERITY_VERBOSE,
-		Ok("info") => cef_log_severity_t::LOGSEVERITY_INFO,
-		Ok("warn") => cef_log_severity_t::LOGSEVERITY_WARNING,
-		Ok("error") => cef_log_severity_t::LOGSEVERITY_ERROR,
-		Ok("none") => cef_log_severity_t::LOGSEVERITY_DISABLE,
+	let log_severity = match std::env::var("GRAPHITE_BROWSER_LOG").unwrap_or_default().to_lowercase().as_str() {
+		"debug" => cef_log_severity_t::LOGSEVERITY_VERBOSE,
+		"info" => cef_log_severity_t::LOGSEVERITY_INFO,
+		"warn" => cef_log_severity_t::LOGSEVERITY_WARNING,
+		"error" => cef_log_severity_t::LOGSEVERITY_ERROR,
+		"none" => cef_log_severity_t::LOGSEVERITY_DISABLE,
 		_ => cef_log_severity_t::LOGSEVERITY_FATAL,
-	});
+	};
 
 	let base = Settings {
 		windowless_rendering_enabled: 1,
 		root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
 		cache_path: "".into(),
 		disable_signal_handlers: 1,
-		log_severity,
+		log_severity: LogSeverity::from(log_severity),
 		..Default::default()
 	};
 
