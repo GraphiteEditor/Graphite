@@ -1,6 +1,3 @@
-#[cfg(target_os = "linux")]
-use std::env;
-
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_app_t, cef_base_ref_counted_t};
 use cef::{BrowserProcessHandler, CefString, ImplApp, ImplCommandLine, SchemeRegistrar, WrapApp};
@@ -33,81 +30,77 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
 		if let Some(cmd) = command_line {
-			cmd.append_switch_with_value(Some(&CefString::from("renderer-process-limit")), Some(&CefString::from("1")));
-			cmd.append_switch_with_value(Some(&CefString::from("password-store")), Some(&CefString::from("basic")));
-			cmd.append_switch_with_value(Some(&CefString::from("disk-cache-size")), Some(&CefString::from("0")));
-			cmd.append_switch(Some(&CefString::from("incognito")));
-			cmd.append_switch(Some(&CefString::from("no-first-run")));
-			cmd.append_switch(Some(&CefString::from("no-default-browser-check")));
-			cmd.append_switch(Some(&CefString::from("disable-component-update")));
-			cmd.append_switch(Some(&CefString::from("disable-geolocation")));
-			cmd.append_switch(Some(&CefString::from("disable-notifications")));
-			cmd.append_switch(Some(&CefString::from("disable-audio-input")));
-			cmd.append_switch(Some(&CefString::from("disable-audio-output")));
-			cmd.append_switch(Some(&CefString::from("disable-sync")));
-			cmd.append_switch(Some(&CefString::from("disable-file-system")));
-			cmd.append_switch(Some(&CefString::from("disable-local-storage")));
-			cmd.append_switch(Some(&CefString::from("disable-background-networking")));
-			cmd.append_switch(Some(&CefString::from("disable-default-apps")));
-			cmd.append_switch(Some(&CefString::from("disable-breakpad")));
-			cmd.append_switch_with_value(Some(&CefString::from("disable-blink-features")), Some(&CefString::from("WebBluetooth,WebUSB,Serial")));
+			cmd.append_switch_with_value(Some(&"renderer-process-limit".into()), Some(&"1".into()));
+			cmd.append_switch_with_value(Some(&"password-store".into()), Some(&"basic".into()));
+			cmd.append_switch_with_value(Some(&"disk-cache-size".into()), Some(&"0".into()));
+			cmd.append_switch(Some(&"no-sandbox".into()));
+			cmd.append_switch(Some(&"no-first-run".into()));
+			cmd.append_switch(Some(&"noerrdialogs".into()));
+			cmd.append_switch(Some(&"no-default-browser-check".into()));
+			cmd.append_switch(Some(&"mute-audio".into()));
+			cmd.append_switch(Some(&"use-fake-device-for-media-stream".into()));
+			cmd.append_switch(Some(&"incognito".into()));
+			cmd.append_switch(Some(&"disable-sync".into()));
+			cmd.append_switch(Some(&"disable-file-system".into()));
+			cmd.append_switch(Some(&"disable-component-update".into()));
+			cmd.append_switch(Some(&"disable-geolocation".into()));
+			cmd.append_switch(Some(&"disable-notifications".into()));
+			cmd.append_switch(Some(&"disable-background-networking".into()));
+			cmd.append_switch(Some(&"disable-default-apps".into()));
+			cmd.append_switch(Some(&"disable-breakpad".into()));
+			cmd.append_switch_with_value(Some(&"disable-blink-features".into()), Some(&"WebBluetooth,WebUSB,Serial".into()));
 
 			let extra_disabled_features = ["OptimizationHints", "OnDeviceModelService", "TranslateUI"];
-			let disabled_features_switch = Some(&CefString::from("disable-features"));
-			let disabled_features: String = CefString::from(&cmd.switch_value(disabled_features_switch))
+			let disabled_features_switch = Some(&"disable-features".into());
+			let mut disabled_features: Vec<String> = CefString::from(&cmd.switch_value(disabled_features_switch))
 				.to_string()
 				.split(',')
-				.chain(extra_disabled_features)
-				.collect::<Vec<_>>()
-				.join(",");
-			cmd.append_switch_with_value(disabled_features_switch, Some(&CefString::from(disabled_features.as_str())));
+				.filter(|feature| !feature.is_empty())
+				.map(ToOwned::to_owned)
+				.collect();
+			disabled_features.extend(extra_disabled_features.into_iter().map(ToOwned::to_owned));
+			cmd.append_switch_with_value(disabled_features_switch, Some(&disabled_features.join(",").as_str().into()));
 
 			#[cfg(not(feature = "accelerated_paint"))]
 			{
 				// Disable GPU acceleration when accelerated_paint feature is not enabled
-				cmd.append_switch(Some(&CefString::from("disable-gpu")));
-				cmd.append_switch(Some(&CefString::from("disable-gpu-compositing")));
+				cmd.append_switch(Some(&"disable-gpu".into()));
+				cmd.append_switch(Some(&"disable-gpu-compositing".into()));
 			}
 
 			#[cfg(feature = "accelerated_paint")]
 			{
-				// Enable GPU acceleration switches for better performance
-				cmd.append_switch(Some(&CefString::from("enable-gpu-rasterization")));
-				cmd.append_switch(Some(&CefString::from("enable-accelerated-2d-canvas")));
+				cmd.append_switch(Some(&"enable-gpu".into()));
+				cmd.append_switch(Some(&"enable-gpu-compositing".into()));
+				cmd.append_switch(Some(&"enable-begin-frame-scheduling".into()));
+				cmd.append_switch(Some(&"off-screen-rendering-enabled".into()));
+				cmd.append_switch(Some(&"enable-accelerated-2d-canvas".into()));
 			}
 
 			#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
 			{
-				// Use Vulkan for accelerated painting
-				cmd.append_switch_with_value(Some(&CefString::from("use-angle")), Some(&CefString::from("vulkan")));
-			}
+				cmd.append_switch_with_value(Some(&"use-angle".into()), Some(&"gl-egl".into()));
 
-			// Tell CEF to use Wayland if available
-			#[cfg(target_os = "linux")]
-			{
-				let use_wayland = env::var("WAYLAND_DISPLAY")
-					.ok()
-					.filter(|var| !var.is_empty())
-					.or_else(|| env::var("WAYLAND_SOCKET").ok())
-					.filter(|var| !var.is_empty())
-					.is_some();
-				if use_wayland {
-					cmd.append_switch_with_value(Some(&CefString::from("ozone-platform")), Some(&CefString::from("wayland")));
-				}
+				let ozone_platform = if std::env::var("WAYLAND_DISPLAY").ok().filter(|value| !value.is_empty()).is_some() {
+					"wayland".to_owned()
+				} else {
+					"x11".to_owned()
+				};
+				cmd.append_switch_with_value(Some(&"ozone-platform".into()), Some(&ozone_platform.as_str().into()));
 			}
 
 			#[cfg(target_os = "macos")]
 			{
 				// Hide user prompt asking for keychain access
-				cmd.append_switch(Some(&CefString::from("use-mock-keychain")));
+				cmd.append_switch(Some(&"use-mock-keychain".into()));
 			}
 
 			// Enable browser debugging via environment variable
 			if let Some(env) = std::env::var("GRAPHITE_BROWSER_DEBUG_PORT").ok()
 				&& let Some(port) = env.parse::<u16>().ok()
 			{
-				cmd.append_switch_with_value(Some(&CefString::from("remote-debugging-port")), Some(&CefString::from(port.to_string().as_str())));
-				cmd.append_switch_with_value(Some(&CefString::from("remote-allow-origins")), Some(&CefString::from("*")));
+				cmd.append_switch_with_value(Some(&"remote-debugging-port".into()), Some(&port.to_string().as_str().into()));
+				cmd.append_switch_with_value(Some(&"remote-allow-origins".into()), Some(&"*".into()));
 			}
 		}
 	}

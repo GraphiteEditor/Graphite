@@ -31,7 +31,6 @@ let
 
         deps = {
           crane = lib.call ./deps/crane.nix;
-          cef = lib.call ./deps/cef.nix;
           rustGPU = lib.call ./deps/rust-gpu.nix;
         };
 
@@ -66,9 +65,7 @@ in
 
       # TODO: graphene-cli = lib.call ./pkgs/graphene-cli.nix;
 
-      tools = {
-        third-party-licenses = lib.call ./pkgs/tools/third-party-licenses.nix;
-      };
+      graphite-cef = lib.call ./pkgs/graphite-cef/package.nix;
     }
   );
 
