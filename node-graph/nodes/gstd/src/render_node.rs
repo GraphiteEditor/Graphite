@@ -83,46 +83,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 }
 
 #[node_macro::node(category(""))]
-async fn render_background_intermediate(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, data: RenderOutput) -> RenderIntermediate {
-	let footprint = ctx.footprint();
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
-
-	dbg!(&data.metadata.backgrounds);
-
-	match data {
-		RenderOutput {
-			data: RenderOutputType::Texture(_),
-			metadata,
-		} => {
-			let mut background_scene = vello::Scene::new();
-			metadata.backgrounds.render_background_to_vello(&mut background_scene, footprint.transform, render_params);
-
-			RenderIntermediate {
-				ty: RenderIntermediateType::Vello(Arc::new((background_scene, RenderContext::default()))),
-				metadata,
-			}
-		}
-		RenderOutput {
-			data: RenderOutputType::Svg { .. },
-			metadata,
-		} => {
-			let mut render = SvgRender::new();
-			metadata.backgrounds.render_background_svg(&mut render, render_params);
-
-			RenderIntermediate {
-				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
-				metadata,
-			}
-		}
-		_ => unreachable!("Render background node received unsupported render output type"),
-	}
-}
-
-#[node_macro::node(category(""))]
 async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderIntermediate) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
@@ -132,8 +92,10 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 		.expect("Downcasting render params yielded invalid type");
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
-	let render_params = &render_params;
+	render_intermediate_to_output(*footprint, &render_params, editor_api, data).await
+}
 
+async fn render_intermediate_to_output(footprint: Footprint, render_params: &RenderParams, editor_api: &PlatformEditorApi, data: RenderIntermediate) -> RenderOutput {
 	let scale = render_params.scale;
 	let physical_resolution = render_params.footprint.resolution;
 	let logical_resolution = render_params.footprint.resolution.as_dvec2() / scale;
@@ -186,27 +148,45 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 }
 
 #[node_macro::node(category(""))]
-async fn compose<'a: 'n>(
-	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
-	editor_api: &'a PlatformEditorApi,
-	data: impl Node<Context<'static>, Output = RenderOutput>,
-	background: impl Node<Context<'static>, Output = RenderOutput>,
-) -> RenderOutput {
+async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderOutput) -> RenderOutput {
+	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	let eval_ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let artwork = data.eval(eval_ctx.clone()).await;
-
 	if render_params.for_export {
-		return artwork;
+		return data;
 	}
 
-	let background = background.eval(eval_ctx).await;
-	let RenderOutput { data: foreground_data, metadata } = artwork;
+	let RenderOutput { data: foreground_data, metadata } = data;
+
+	let intermediate = match &foreground_data {
+		RenderOutputType::Texture(_) => {
+			let mut background_scene = vello::Scene::new();
+			metadata.backgrounds.render_background_to_vello(&mut background_scene, Default::default(), render_params);
+
+			RenderIntermediate {
+				ty: RenderIntermediateType::Vello(Arc::new((background_scene, RenderContext::default()))),
+				metadata: RenderMetadata::default(),
+			}
+		}
+		RenderOutputType::Svg { .. } => {
+			let mut render = SvgRender::new();
+			metadata.backgrounds.render_background_svg(&mut render, render_params);
+
+			RenderIntermediate {
+				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
+				metadata: RenderMetadata::default(),
+			}
+		}
+		_ => unreachable!("Render background node received unsupported render output type"),
+	};
+
+	let mut render_params = render_params.clone();
+	render_params.footprint = *footprint;
+	let background = render_intermediate_to_output(*footprint, &render_params, editor_api, intermediate).await;
 
 	let data = match (foreground_data, background.data) {
 		(RenderOutputType::Texture(foreground_texture), RenderOutputType::Texture(background_texture)) => {
