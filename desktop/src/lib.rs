@@ -86,7 +86,7 @@ pub fn start() {
 	}
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler, disable_ui_acceleration) {
+	let cef_context = match cef_context_builder.create(cef_handler, disable_ui_acceleration) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context

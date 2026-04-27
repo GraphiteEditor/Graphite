@@ -9,12 +9,14 @@ use crate::cef::CefEventHandler;
 pub(crate) struct BrowserProcessAppImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_app_t, Self>,
 	event_handler: H,
+	accelerated_paint: bool,
 }
 impl<H: CefEventHandler> BrowserProcessAppImpl<H> {
-	pub(crate) fn new(event_handler: H) -> Self {
+	pub(crate) fn new(event_handler: H, accelerated_paint: bool) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
 			event_handler,
+			accelerated_paint,
 		}
 	}
 }
@@ -61,35 +63,30 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 			disabled_features.extend(extra_disabled_features.into_iter().map(ToOwned::to_owned));
 			cmd.append_switch_with_value(disabled_features_switch, Some(&disabled_features.join(",").as_str().into()));
 
-			#[cfg(not(feature = "accelerated_paint"))]
-			{
-				// Disable GPU acceleration when accelerated_paint feature is not enabled
-				cmd.append_switch(Some(&"disable-gpu".into()));
-				cmd.append_switch(Some(&"disable-gpu-compositing".into()));
-			}
-
-			#[cfg(feature = "accelerated_paint")]
-			{
+			if self.accelerated_paint {
 				cmd.append_switch(Some(&"enable-gpu".into()));
 				cmd.append_switch(Some(&"enable-gpu-compositing".into()));
 				cmd.append_switch(Some(&"enable-begin-frame-scheduling".into()));
 				cmd.append_switch(Some(&"off-screen-rendering-enabled".into()));
 				cmd.append_switch(Some(&"enable-accelerated-2d-canvas".into()));
-			}
 
-			#[cfg(all(feature = "accelerated_paint", target_os = "linux"))]
-			{
-				cmd.append_switch_with_value(Some(&"use-angle".into()), Some(&"gl-egl".into()));
+				#[cfg(target_os = "linux")]
+				{
+					cmd.append_switch_with_value(Some(&"use-angle".into()), Some(&"gl-egl".into()));
 
-				let use_wayland = std::env::var("WAYLAND_DISPLAY")
-					.ok()
-					.filter(|var| !var.is_empty())
-					.or_else(|| std::env::var("WAYLAND_SOCKET").ok())
-					.filter(|var| !var.is_empty())
-					.is_some();
-				if use_wayland {
-					cmd.append_switch_with_value(Some(&"ozone-platform".into()), Some(&"wayland".into()));
+					let use_wayland = std::env::var("WAYLAND_DISPLAY")
+						.ok()
+						.filter(|var| !var.is_empty())
+						.or_else(|| std::env::var("WAYLAND_SOCKET").ok())
+						.filter(|var| !var.is_empty())
+						.is_some();
+					if use_wayland {
+						cmd.append_switch_with_value(Some(&"ozone-platform".into()), Some(&"wayland".into()));
+					}
 				}
+			} else {
+				cmd.append_switch(Some(&"disable-gpu".into()));
+				cmd.append_switch(Some(&"disable-gpu-compositing".into()));
 			}
 
 			#[cfg(target_os = "macos")]
@@ -122,6 +119,7 @@ impl<H: CefEventHandler> Clone for BrowserProcessAppImpl<H> {
 		Self {
 			object: self.object,
 			event_handler: self.event_handler.duplicate(),
+			accelerated_paint: self.accelerated_paint,
 		}
 	}
 }
