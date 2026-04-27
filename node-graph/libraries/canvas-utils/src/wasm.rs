@@ -52,13 +52,20 @@ impl Canvas for CanvasHandle {
 }
 
 #[cfg(feature = "wgpu")]
-pub struct CanvasSurfaceHandle(CanvasHandle, Option<Arc<wgpu::Surface<'static>>>);
+struct SurfaceState {
+	surface: Arc<wgpu::Surface<'static>>,
+	format: wgpu::TextureFormat,
+	blitter: wgpu_executor::cached_blitter::CachedBlitter,
+}
+
+#[cfg(feature = "wgpu")]
+pub struct CanvasSurfaceHandle(CanvasHandle, Option<SurfaceState>);
 #[cfg(feature = "wgpu")]
 impl CanvasSurfaceHandle {
 	pub fn new() -> Self {
 		Self(CanvasHandle::new(), None)
 	}
-	fn surface(&mut self, executor: &WgpuExecutor) -> &wgpu::Surface<'_> {
+	fn state(&mut self, executor: &WgpuExecutor) -> &SurfaceState {
 		if self.1.is_none() {
 			let canvas = self.0.get().canvas.clone();
 			let surface = executor
@@ -66,7 +73,17 @@ impl CanvasSurfaceHandle {
 				.instance
 				.create_surface(wgpu::SurfaceTarget::Canvas(canvas))
 				.expect("Failed to create surface from canvas");
-			self.1 = Some(Arc::new(surface));
+
+			// Use the surface's preferred format (Firefox WebGL prefers Bgra8Unorm, Chrome prefers Rgba8Unorm)
+			let surface_caps = surface.get_capabilities(&executor.context.adapter);
+			let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
+			let blitter = wgpu_executor::cached_blitter::CachedBlitter::new(&executor.context.device, surface_format);
+
+			self.1 = Some(SurfaceState {
+				surface: Arc::new(surface),
+				format: surface_format,
+				blitter,
+			});
 		}
 		self.1.as_ref().unwrap()
 	}
@@ -87,25 +104,21 @@ impl Canvas for CanvasSurfaceHandle {
 impl CanvasSurface for CanvasSurfaceHandle {
 	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) {
 		let source_texture: &wgpu::Texture = image_texture.as_ref();
+		let state = self.state(executor);
 
-		let surface = self.surface(executor);
-
-		// Blit the texture to the surface
 		let mut encoder = executor.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("Texture to Surface Blit"),
 		});
 
 		let size = source_texture.size();
 
-		// Configure the surface using the surface's preferred format
-		// (Firefox WebGL prefers Bgra8Unorm, Chrome prefers Rgba8Unorm)
-		let surface_caps = surface.get_capabilities(&executor.context.adapter);
-		let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
-		surface.configure(
+		// Configure the surface at the detected preferred format
+		let surface_caps = state.surface.get_capabilities(&executor.context.adapter);
+		state.surface.configure(
 			&executor.context.device,
 			&wgpu::SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
-				format: surface_format,
+				format: state.format,
 				width: size.width,
 				height: size.height,
 				present_mode: surface_caps.present_modes[0],
@@ -115,11 +128,11 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			},
 		);
 
-		let surface_texture = surface.get_current_texture().expect("Failed to get surface texture");
+		let surface_texture = state.surface.get_current_texture().expect("Failed to get surface texture");
 
-		// If the surface format matches the source, use a direct copy; otherwise use a shader-based blit
-		// to handle format conversion (e.g., Rgba8Unorm source to Bgra8Unorm surface on Firefox)
-		if surface_format == source_texture.format() {
+		// If the surface format matches the source, use a direct copy; otherwise use the cached blitter
+		// for format conversion (e.g., Rgba8Unorm source to Bgra8Unorm surface on Firefox)
+		if state.format == source_texture.format() {
 			encoder.copy_texture_to_texture(
 				wgpu::TexelCopyTextureInfoBase {
 					texture: source_texture,
@@ -136,10 +149,8 @@ impl CanvasSurface for CanvasSurfaceHandle {
 				source_texture.size(),
 			);
 		} else {
-			// Different format (e.g., Firefox's Bgra8Unorm) — use a shader-based blit for format conversion
-			let source_view = source_texture.create_view(&wgpu::TextureViewDescriptor::default());
 			let target_view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
-			blit_texture_with_conversion(&executor.context.device, &executor.context.queue, &mut encoder, &source_view, &target_view, surface_format);
+			state.blitter.copy(&executor.context.device, &mut encoder, source_texture, &target_view);
 		}
 
 		executor.context.queue.submit([encoder.finish()]);
@@ -196,145 +207,6 @@ impl CanvasImpl {
 		self.canvas.set_width(resolution.x);
 		self.canvas.set_height(resolution.y);
 	}
-}
-
-/// Blit a texture to a render target with format conversion using a fullscreen shader pass.
-/// Used when the surface format differs from the source (e.g., Rgba8Unorm -> Bgra8Unorm on Firefox).
-#[cfg(feature = "wgpu")]
-fn blit_texture_with_conversion(
-	device: &wgpu::Device,
-	_queue: &wgpu::Queue,
-	encoder: &mut wgpu::CommandEncoder,
-	source: &wgpu::TextureView,
-	target: &wgpu::TextureView,
-	target_format: wgpu::TextureFormat,
-) {
-	let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-		label: Some("Blit Shader"),
-		source: wgpu::ShaderSource::Wgsl(
-			r"
-			@group(0) @binding(0) var src: texture_2d<f32>;
-			@group(0) @binding(1) var src_sampler: sampler;
-
-			struct VertexOutput {
-				@builtin(position) position: vec4<f32>,
-				@location(0) uv: vec2<f32>,
-			}
-
-			@vertex
-			fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-				var positions = array<vec2<f32>, 3>(
-					vec2<f32>(-1.0, -1.0),
-					vec2<f32>(3.0, -1.0),
-					vec2<f32>(-1.0, 3.0),
-				);
-				var out: VertexOutput;
-				let pos = positions[vertex_index];
-				out.position = vec4<f32>(pos, 0.0, 1.0);
-				out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 1.0 - (pos.y * 0.5 + 0.5));
-				return out;
-			}
-
-			@fragment
-			fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-				return textureSample(src, src_sampler, in.uv);
-			}
-			"
-			.into(),
-		),
-	});
-
-	let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-		label: Some("Blit Bind Group Layout"),
-		entries: &[
-			wgpu::BindGroupLayoutEntry {
-				binding: 0,
-				visibility: wgpu::ShaderStages::FRAGMENT,
-				ty: wgpu::BindingType::Texture {
-					sample_type: wgpu::TextureSampleType::Float { filterable: true },
-					view_dimension: wgpu::TextureViewDimension::D2,
-					multisampled: false,
-				},
-				count: None,
-			},
-			wgpu::BindGroupLayoutEntry {
-				binding: 1,
-				visibility: wgpu::ShaderStages::FRAGMENT,
-				ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-				count: None,
-			},
-		],
-	});
-
-	let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-		label: Some("Blit Pipeline Layout"),
-		bind_group_layouts: &[&bind_group_layout],
-		push_constant_ranges: &[],
-	});
-
-	let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-		label: Some("Blit Pipeline"),
-		layout: Some(&pipeline_layout),
-		vertex: wgpu::VertexState {
-			module: &shader,
-			entry_point: Some("vs_main"),
-			buffers: &[],
-			compilation_options: Default::default(),
-		},
-		fragment: Some(wgpu::FragmentState {
-			module: &shader,
-			entry_point: Some("fs_main"),
-			targets: &[Some(wgpu::ColorTargetState {
-				format: target_format,
-				blend: None,
-				write_mask: wgpu::ColorWrites::ALL,
-			})],
-			compilation_options: Default::default(),
-		}),
-		primitive: wgpu::PrimitiveState::default(),
-		depth_stencil: None,
-		multisample: wgpu::MultisampleState::default(),
-		multiview: None,
-		cache: None,
-	});
-
-	let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-		mag_filter: wgpu::FilterMode::Nearest,
-		min_filter: wgpu::FilterMode::Nearest,
-		..Default::default()
-	});
-
-	let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-		label: Some("Blit Bind Group"),
-		layout: &bind_group_layout,
-		entries: &[
-			wgpu::BindGroupEntry {
-				binding: 0,
-				resource: wgpu::BindingResource::TextureView(source),
-			},
-			wgpu::BindGroupEntry {
-				binding: 1,
-				resource: wgpu::BindingResource::Sampler(&sampler),
-			},
-		],
-	});
-
-	let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-		label: Some("Blit Render Pass"),
-		color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-			view: target,
-			resolve_target: None,
-			ops: wgpu::Operations {
-				load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-				store: wgpu::StoreOp::Store,
-			},
-		})],
-		..Default::default()
-	});
-
-	render_pass.set_pipeline(&pipeline);
-	render_pass.set_bind_group(0, &bind_group, &[]);
-	render_pass.draw(0..3, 0..1);
 }
 
 impl Drop for CanvasImpl {
