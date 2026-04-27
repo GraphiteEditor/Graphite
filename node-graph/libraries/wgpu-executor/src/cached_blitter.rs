@@ -111,13 +111,7 @@ impl CachedBlitter {
 	/// 2. Blits intermediate → `target` via a render pass with the cached bind group
 	///
 	/// The bind group and intermediate texture are only recreated when the source size changes.
-	pub fn copy(
-		&self,
-		device: &wgpu::Device,
-		encoder: &mut wgpu::CommandEncoder,
-		source: &wgpu::Texture,
-		target: &wgpu::TextureView,
-	) {
+	pub fn copy(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::Texture, target: &wgpu::TextureView) {
 		let size = source.size();
 
 		// Take cache out of mutex to avoid holding the lock during GPU operations
@@ -150,7 +144,11 @@ impl CachedBlitter {
 					},
 				],
 			});
-			cache = Some(BlitCache { source_texture: texture, bind_group, size });
+			cache = Some(BlitCache {
+				source_texture: texture,
+				bind_group,
+				size,
+			});
 		}
 
 		let c = cache.as_ref().unwrap();
