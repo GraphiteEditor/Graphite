@@ -153,7 +153,7 @@ impl SvgRender {
 pub struct SvgRenderOutput {
 	pub svg: String,
 	pub svg_defs: String,
-	pub image_data: HashMap<Image<Color>, u64>,
+	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
 }
 
 impl From<&SvgRenderOutput> for SvgRender {
@@ -218,24 +218,6 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
-}
-
-impl Hash for RenderParams {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.render_mode.hash(state);
-		self.footprint.hash(state);
-		self.render_output_type.hash(state);
-		self.thumbnail.hash(state);
-		self.for_export.hash(state);
-		self.for_mask.hash(state);
-		if let Some(x) = self.alignment_parent_transform {
-			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-		self.aligned_strokes.hash(state);
-		self.override_paint_order.hash(state);
-		self.artboard_background.hash(state);
-		self.viewport_zoom.to_bits().hash(state);
-	}
 }
 
 impl RenderParams {

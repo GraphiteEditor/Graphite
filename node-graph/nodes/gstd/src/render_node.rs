@@ -17,9 +17,6 @@ use wgpu_executor::RenderContext;
 // Re-export render_output_cache from render_cache module
 pub use crate::render_cache::render_output_cache;
 
-/// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
-type ImageData = HashMap<core_types::graphene_hash::CacheHashWrapper<Image<Color>>, u64>;
-
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
 	Vello(Arc<(vello::Scene, RenderContext)>),
@@ -201,7 +198,7 @@ fn render_svg(mut render: SvgRender, render_params: &RenderParams) -> (String, V
 	let output = SvgRenderOutput::from(render);
 	assert!(output.svg_defs.is_empty());
 
-	(output.svg, output.image_data.into_iter().map(|(image, id)| (id, image)).collect())
+	(output.svg, output.image_data.into_iter().map(|(image, id)| (id, image.0)).collect())
 }
 
 #[node_macro::node(category(""))]
