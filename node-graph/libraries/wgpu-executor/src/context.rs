@@ -104,7 +104,8 @@ impl ContextBuilder {
 		let selected_adapter = if let Some(select) = select {
 			self.select_adapter(&instance, select).await
 		} else if cfg!(target_os = "windows") {
-			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12)).await
+			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12))
+				.await
 		} else {
 			None
 		};

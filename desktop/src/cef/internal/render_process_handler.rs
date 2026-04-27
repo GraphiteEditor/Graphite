@@ -52,11 +52,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 
 				let function_call = format!("window.{function_name}(window.{property_name})");
 
-				global.set_value_bykey(
-					Some(&property_name.into()),
-					Some(&mut value),
-					cef_v8_propertyattribute_t::V8_PROPERTY_ATTRIBUTE_READONLY.wrap_result(),
-				);
+				global.set_value_bykey(Some(&property_name.into()), Some(&mut value), cef_v8_propertyattribute_t::V8_PROPERTY_ATTRIBUTE_READONLY.wrap_result());
 
 				if global.value_bykey(Some(&function_name.into())).is_some() {
 					frame.execute_java_script(Some(&function_call.as_str().into()), None, 0);
