@@ -1376,4 +1376,89 @@ mod test_transform_layer {
 		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
 		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
 	}
+
+	#[tokio::test]
+	async fn test_artboard_gs_operations() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create an artboard using the Artboard tool (mirroring existing artboard tests)
+		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }).await;
+		let artboard = {
+			let document = editor.active_document();
+			document.metadata().all_layers().next().unwrap()
+		};
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard.to_node()] }).await;
+
+		// Test 1: Grab operation
+		let document = editor.active_document();
+		let original_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let grab_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let moved = (grab_bounds[0] - original_bounds[0]).length() > 1.;
+		assert!(moved, "Artboard should move after grab operation");
+
+		// Test 2: Scale operation
+		let scale_original_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let original_size = (scale_original_bounds[1] - scale_original_bounds[0]).length();
+
+		// Move the mouse to the same side of the pivot that scaling will continue from
+		editor.move_mouse(150., 150., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.move_mouse(200., 200., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let scale_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let final_size = (scale_bounds[1] - scale_bounds[0]).length();
+		assert!(final_size > original_size, "Artboard should be larger after scale operation");
+
+		// Test 3: Typed scale input
+		let typed_original_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let typed_original_width = typed_original_bounds[1].x - typed_original_bounds[0].x;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let typed_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let typed_final_width = typed_bounds[1].x - typed_bounds[0].x;
+		let scale_factor = typed_final_width / typed_original_width;
+		assert!((scale_factor - 2.).abs() < 0.1, "Artboard should scale by 2x with typed input");
+
+		// Test 4: Grab with X constraint
+		let constrain_original_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let constrain_original_x = constrain_original_bounds[0].x;
+		let constrain_original_y = constrain_original_bounds[0].y;
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let constrain_bounds = document.metadata().bounding_box_document(artboard).unwrap();
+		let constrain_final_x = constrain_bounds[0].x;
+		let constrain_final_y = constrain_bounds[0].y;
+		assert!(constrain_final_x != constrain_original_x, "Artboard X should change with X constraint");
+		assert!((constrain_final_y - constrain_original_y).abs() < 1., "Artboard Y should stay roughly the same with X constraint");
+	}
 }
