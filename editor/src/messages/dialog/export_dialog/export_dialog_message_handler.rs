@@ -14,6 +14,7 @@ pub struct ExportDialogMessageHandler {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
+	pub transparent_background: bool,
 	pub artboards: HashMap<LayerNodeIdentifier, String>,
 	pub has_selection: bool,
 }
@@ -24,6 +25,7 @@ impl Default for ExportDialogMessageHandler {
 			file_type: Default::default(),
 			scale_factor: 1.,
 			bounds: Default::default(),
+			transparent_background: false,
 			artboards: Default::default(),
 			has_selection: false,
 		}
@@ -38,17 +40,11 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 		match message {
 			ExportDialogMessage::FileType { file_type } => self.file_type = file_type,
 			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
+			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 
 			ExportDialogMessage::Submit => {
-				// Fall back to "All Artwork" if "Selection" was chosen but nothing is currently selected
-				let bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
-					ExportBounds::AllArtwork
-				} else {
-					self.bounds
-				};
-
-				let artboard_name = match bounds {
+				let artboard_name = match self.bounds {
 					ExportBounds::Artboard(layer) => self.artboards.get(&layer).cloned(),
 					_ => None,
 				};
@@ -56,7 +52,8 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 					name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 					file_type: self.file_type,
 					scale_factor: self.scale_factor,
-					bounds,
+					bounds: self.bounds,
+					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
 					artboard_name,
 					artboard_count: self.artboards.len(),
 				})
@@ -130,7 +127,6 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
 		let choices = [standard_bounds, artboards];
 
-		// Fall back to "All Artwork" if "Selection" was chosen but nothing is currently selected
 		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
 			ExportBounds::AllArtwork
 		} else {
@@ -163,6 +159,22 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::row(export_type), LayoutGroup::row(resolution), LayoutGroup::row(export_area)])
+		let checkbox_id = CheckboxId::new();
+		let transparent_background = vec![
+			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			CheckboxInput::new(self.transparent_background)
+				.disabled(self.file_type == FileType::Jpg)
+				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground { transparent: value.checked }.into())
+				.for_label(checkbox_id)
+				.widget_instance(),
+		];
+
+		Layout(vec![
+			LayoutGroup::row(export_type),
+			LayoutGroup::row(resolution),
+			LayoutGroup::row(export_area),
+			LayoutGroup::row(transparent_background),
+		])
 	}
 }

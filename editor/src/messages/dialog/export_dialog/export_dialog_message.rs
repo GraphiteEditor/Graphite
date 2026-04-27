@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 pub enum ExportDialogMessage {
 	FileType { file_type: FileType },
 	ScaleFactor { factor: f64 },
+	TransparentBackground { transparent: bool },
 	ExportBounds { bounds: ExportBounds },
 
 	Submit,

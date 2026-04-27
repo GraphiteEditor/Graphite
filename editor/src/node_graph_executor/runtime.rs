@@ -86,6 +86,7 @@ pub struct ExportConfig {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
+	pub transparent_background: bool,
 	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,

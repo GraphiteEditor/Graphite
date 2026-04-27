@@ -153,6 +153,7 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode: document.render_mode,
+			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: false,
 		};
@@ -217,6 +218,7 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode,
+			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
 		};
@@ -239,10 +241,10 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
+		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -264,6 +266,7 @@ impl NodeGraphExecutor {
 			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
+			hide_artboards: export_config.transparent_background,
 			for_export: true,
 			for_eyedropper: false,
 		};
@@ -478,7 +481,7 @@ impl NodeGraphExecutor {
 				use image::buffer::ConvertBuffer;
 				use image::{ImageFormat, RgbImage, RgbaImage};
 
-				let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
+				let Some(image) = RgbaImage::from_raw(width, height, data) else {
 					return Err("Failed to create image buffer for export".to_string());
 				};
 
@@ -493,14 +496,6 @@ impl NodeGraphExecutor {
 						}
 					}
 					FileType::Jpg => {
-						// Composite onto a white background since JPG doesn't support transparency
-						for pixel in image.pixels_mut() {
-							let [r, g, b, a] = pixel.0;
-							let alpha = a as f32 / 255.;
-							let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
-							*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
-						}
-
 						let image: RgbImage = image.convert();
 						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
 						if let Err(err) = result {

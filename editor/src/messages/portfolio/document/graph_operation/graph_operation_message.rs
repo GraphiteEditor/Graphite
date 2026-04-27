@@ -97,12 +97,6 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	NewColorFillLayer {
-		node_id: NodeId,
-		color: Color,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
 	NewVectorLayer {
 		id: NodeId,
 		subpaths: Vec<Subpath<PointId>>,

@@ -233,7 +233,7 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = futures::executor::block_on(self.executor.render_vello_scene_to_target_texture(&scene, size, &Default::default(), &mut self.overlays_texture));
+		let result = futures::executor::block_on(self.executor.render_vello_scene_to_target_texture(&scene, size, &Default::default(), None, &mut self.overlays_texture));
 		if let Err(e) = result {
 			tracing::error!("Error rendering overlays: {:?}", e);
 			return;

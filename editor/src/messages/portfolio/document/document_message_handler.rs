@@ -1398,7 +1398,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
 				let new_artboard_node = document_node_definitions::resolve_network_node_type("Artboard")
 					.expect("Failed to create artboard node")
-					.default_node_template();
+					// Enable clipping by default (input index 5) so imported content is masked to the artboard bounds
+					.node_template_input_override([None, None, None, None, None, Some(NodeInput::value(TaggedValue::Bool(true), false))]);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
 					node_template: Box::new(new_artboard_node),
