@@ -84,7 +84,6 @@ pub fn derive_cache_hash(input: TokenStream) -> TokenStream {
 	};
 
 	quote! {
-		#[allow(clippy::derived_hash_with_manual_eq)]
 		impl #impl_generics graphene_hash::CacheHash for #name #ty_generics #where_clause {
 			fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
 				#body
