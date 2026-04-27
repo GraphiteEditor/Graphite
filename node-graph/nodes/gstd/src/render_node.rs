@@ -21,7 +21,7 @@ use wgpu_executor::RenderContext;
 pub use crate::render_cache::render_output_cache;
 
 /// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
-type ImageData = HashMap<Image<Color>, u64>;
+type ImageData = HashMap<core_types::graphene_hash::CacheHashWrapper<Image<Color>>, u64>;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
@@ -191,7 +191,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
 			RenderOutputType::Svg {
 				svg: rendering.svg.to_svg_string(),
-				image_data: rendering.image_data.into_iter().map(|(image, id)| (id, image)).collect(),
+				image_data: rendering.image_data.into_iter().map(|(image, id)| (id, image.0)).collect(),
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {

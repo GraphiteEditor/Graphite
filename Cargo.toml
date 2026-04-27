@@ -11,6 +11,7 @@ members = [
 	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
+	"node-graph/libraries/graphene-hash",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
 	"node-graph/nodes/raster/shaders",
@@ -63,6 +64,7 @@ dyn-any = { path = "libraries/dyn-any", features = [
 	"log-bad-types",
 	"rc",
 ] }
+graphene-hash = { path = "node-graph/libraries/graphene-hash", features = ["derive"] }
 preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 graphene-application-io = { path = "node-graph/libraries/application-io" }

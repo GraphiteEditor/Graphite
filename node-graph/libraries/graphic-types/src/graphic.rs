@@ -1,6 +1,7 @@
 use core_types::Color;
 use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::graphene_hash::CacheHash;
 use core_types::ops::TableConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
@@ -8,14 +9,13 @@ use core_types::uuid::NodeId;
 use dyn_any::DynAny;
 use glam::DAffine2;
 use raster_types::{CPU, GPU, Raster};
-use std::hash::Hash;
 use vector_types::GradientStops;
 // use vector_types::Vector;
 
 pub type Vector = vector_types::Vector<Option<Table<Graphic>>>;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),

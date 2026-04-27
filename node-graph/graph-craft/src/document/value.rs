@@ -5,7 +5,7 @@ use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
 use core_types::uuid::NodeId;
-use core_types::{Color, ContextFeatures, MemoHash, Node, Type};
+use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
@@ -43,19 +43,18 @@ macro_rules! tagged_value {
 			EditorApi(Arc<PlatformEditorApi>)
 		}
 
-		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
-		#[allow(clippy::derived_hash_with_manual_eq)]
-		impl Hash for TaggedValue {
-			fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		impl CacheHash for TaggedValue {
+			fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 				core::mem::discriminant(self).hash(state);
 				match self {
 					Self::None => {}
-					$( Self::$identifier(x) => {x.hash(state)}),*
-					Self::RenderOutput(x) => x.hash(state),
-					Self::EditorApi(x) => x.hash(state),
+					$( Self::$identifier(x) => { x.cache_hash(state) }),*
+					Self::RenderOutput(x) => x.cache_hash(state),
+					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
 		}
+
 		impl<'a> TaggedValue {
 			/// Converts to a Box<dyn DynAny>
 			pub fn to_dynany(self) -> DAny<'a> {
@@ -495,96 +494,33 @@ pub enum RenderOutputType {
 	},
 }
 
-impl Hash for RenderOutputType {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl CacheHash for RenderOutputType {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::mem::discriminant(self).hash(state);
 		match self {
-			Self::Texture(texture) => {
-				texture.hash(state);
-			}
+			Self::Texture(texture) => texture.hash(state),
 			Self::Buffer { data, width, height } => {
-				data.hash(state);
-				width.hash(state);
-				height.hash(state);
+				data.cache_hash(state);
+				width.cache_hash(state);
+				height.cache_hash(state);
 			}
 			Self::Svg { svg, image_data } => {
-				svg.hash(state);
-				image_data.hash(state);
+				svg.cache_hash(state);
+				image_data.cache_hash(state);
 			}
 			#[cfg(target_family = "wasm")]
 			Self::CanvasFrame { canvas_id, resolution } => {
-				canvas_id.hash(state);
-				resolution.to_array().iter().for_each(|x| x.to_bits().hash(state));
+				canvas_id.cache_hash(state);
+				resolution.cache_hash(state);
 			}
 		}
-	}
-}
-impl Hash for RenderOutput {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.data.hash(state)
 	}
 }
 
-/// We hash the floats and so-forth despite it not being reproducible because all inputs to the node graph must be hashed otherwise the graph execution breaks (so sorry about this hack)
-trait FakeHash {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H);
-}
-mod fake_hash {
-	use super::*;
-	impl FakeHash for f64 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_bits().hash(state)
-		}
-	}
-	impl FakeHash for f32 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_bits().hash(state)
-		}
-	}
-	impl FakeHash for DVec2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl FakeHash for Vec2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl FakeHash for DAffine2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl FakeHash for Affine2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl<T: FakeHash> FakeHash for Option<T> {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			if let Some(x) = self {
-				1.hash(state);
-				x.hash(state);
-			} else {
-				0.hash(state);
-			}
-		}
-	}
-	impl<T: FakeHash> FakeHash for Vec<T> {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.len().hash(state);
-			self.iter().for_each(|x| x.hash(state))
-		}
-	}
-	impl<T: FakeHash, const N: usize> FakeHash for [T; N] {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.iter().for_each(|x| x.hash(state))
-		}
-	}
-	impl FakeHash for (f64, Color) {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.0.to_bits().hash(state);
-			self.1.hash(state)
-		}
+// Metadata is excluded because it's editor-side auxiliary data (click targets, transforms)
+// that shouldn't affect render cache invalidation, and it contains HashMaps with non-deterministic iteration order
+impl CacheHash for RenderOutput {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.data.cache_hash(state);
 	}
 }

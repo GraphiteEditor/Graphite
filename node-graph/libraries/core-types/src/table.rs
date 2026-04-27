@@ -4,7 +4,6 @@ use crate::uuid::NodeId;
 use crate::{AlphaBlending, math::quad::Quad};
 use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
-use std::hash::Hash;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Table<T> {
@@ -198,16 +197,16 @@ impl<T> Default for Table<T> {
 	}
 }
 
-impl<T: Hash> Hash for Table<T> {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl<T: graphene_hash::CacheHash> graphene_hash::CacheHash for Table<T> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		for element in &self.element {
-			element.hash(state);
+			element.cache_hash(state);
 		}
 		for transform in &self.transform {
-			transform.to_cols_array().map(|x| x.to_bits()).hash(state);
+			graphene_hash::CacheHash::cache_hash(transform, state);
 		}
 		for alpha_blending in &self.alpha_blending {
-			alpha_blending.hash(state);
+			alpha_blending.cache_hash(state);
 		}
 	}
 }

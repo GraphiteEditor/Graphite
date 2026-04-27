@@ -77,7 +77,7 @@ macro_rules! fn_type_fut {
 }
 
 // TODO: Rename to NodeSignatureMonomorphization
-#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -126,7 +126,7 @@ impl std::fmt::Debug for NodeIOTypes {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
 	name: Cow<'static, str>,
 }
@@ -200,6 +200,12 @@ impl std::hash::Hash for TypeDescriptor {
 	}
 }
 
+impl graphene_hash::CacheHash for TypeDescriptor {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		graphene_hash::CacheHash::cache_hash(&self.name, state);
+	}
+}
+
 impl std::fmt::Display for TypeDescriptor {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let text = make_type_user_readable(&simplify_identifier_name(&self.name));
@@ -222,7 +228,7 @@ impl PartialEq for TypeDescriptor {
 
 /// Graph runtime type information used for type inference.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize)]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),

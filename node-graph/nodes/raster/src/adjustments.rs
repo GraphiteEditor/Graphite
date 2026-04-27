@@ -1015,3 +1015,20 @@ fn exposure<T: Adjust<Color>>(
 	});
 	input
 }
+
+#[cfg(feature = "std")]
+mod _graphene_hash_impls {
+	use super::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice};
+	graphene_hash::impl_via_hash!(
+		LuminanceCalculation,
+		RedGreenBlue,
+		RedGreenBlueAlpha,
+		NoiseType,
+		FractalType,
+		CellularDistanceFunction,
+		CellularReturnType,
+		DomainWarpType,
+		RelativeAbsolute,
+		SelectiveColorChoice
+	);
+}

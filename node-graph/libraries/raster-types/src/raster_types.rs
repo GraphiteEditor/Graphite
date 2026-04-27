@@ -16,7 +16,7 @@ pub trait Storage: __private::Sealed + Clone + Debug + 'static {
 	fn is_empty(&self) -> bool;
 }
 
-#[derive(Clone, Debug, PartialEq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Raster<T>
 where
 	Raster<T>: Storage,
@@ -60,13 +60,23 @@ where
 	}
 }
 
+impl<T> core_types::CacheHash for Raster<T>
+where
+	Raster<T>: Storage,
+	T: core_types::CacheHash,
+{
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		core_types::CacheHash::cache_hash(&self.storage, state);
+	}
+}
+
 pub use cpu::CPU;
 
 mod cpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
 
-	#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
+	#[derive(Clone, Debug, Default, PartialEq, core_types::CacheHash, DynAny)]
 	pub struct CPU(Image<Color>);
 
 	impl Sealed for Raster<CPU> {}
@@ -140,6 +150,13 @@ mod gpu {
 		pub texture: wgpu::Texture,
 	}
 
+	impl core_types::CacheHash for GPU {
+		fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+			use ::core::hash::Hash;
+			self.texture.hash(state);
+		}
+	}
+
 	impl Sealed for Raster<GPU> {}
 
 	impl Storage for Raster<GPU> {
@@ -164,7 +181,7 @@ mod gpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
 
-	#[derive(Clone, Debug, PartialEq, Hash)]
+	#[derive(Clone, Debug, PartialEq, Hash, core_types::CacheHash)]
 	pub struct GPU;
 
 	impl Sealed for Raster<GPU> {}

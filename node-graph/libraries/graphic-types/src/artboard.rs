@@ -9,10 +9,10 @@ use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
-use std::hash::Hash;
+use graphene_hash::CacheHash;
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
 	pub content: Table<Graphic>,
 	pub label: String,
@@ -76,7 +76,7 @@ impl Transform for Artboard {
 pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Artboard>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Default, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub struct ArtboardGroup {
 		pub artboards: Vec<(Artboard, Option<NodeId>)>,
 	}
