@@ -81,12 +81,15 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 			{
 				cmd.append_switch_with_value(Some(&"use-angle".into()), Some(&"gl-egl".into()));
 
-				let ozone_platform = if std::env::var("WAYLAND_DISPLAY").ok().filter(|value| !value.is_empty()).is_some() {
-					"wayland".to_owned()
-				} else {
-					"x11".to_owned()
-				};
-				cmd.append_switch_with_value(Some(&"ozone-platform".into()), Some(&ozone_platform.as_str().into()));
+				let use_wayland = std::env::var("WAYLAND_DISPLAY")
+					.ok()
+					.filter(|var| !var.is_empty())
+					.or_else(|| std::env::var("WAYLAND_SOCKET").ok())
+					.filter(|var| !var.is_empty())
+					.is_some();
+				if use_wayland {
+					cmd.append_switch_with_value(Some(&"ozone-platform".into()), Some(&"wayland".into()));
+				}
 			}
 
 			#[cfg(target_os = "macos")]
