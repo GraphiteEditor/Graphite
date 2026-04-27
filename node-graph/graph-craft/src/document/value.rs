@@ -4,28 +4,27 @@ use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
+use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graphic_types::Artboard;
-use graphic_types::Graphic;
-use graphic_types::Vector;
-use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::vector_types::vector;
-use graphic_types::vector_types::vector::ReferencePoint;
-use graphic_types::vector_types::vector::style::Fill;
-use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
+use graphic_types::vector_types::vector::{self, ReferencePoint};
+use graphic_types::{Artboard, Graphic, Vector};
+use raster_nodes::curve::Curve;
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use text_nodes::Font;
 use text_nodes::vector_types::GradientStop;
+use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
 
@@ -166,15 +165,6 @@ macro_rules! tagged_value {
 }
 
 tagged_value! {
-	// ===============
-	// PRIMITIVE TYPES
-	// ===============
-	F32(f32),
-	F64(f64),
-	U32(u32),
-	U64(u64),
-	Bool(bool),
-	String(String),
 	// ===========
 	// TABLE TYPES
 	// ===========
@@ -202,23 +192,29 @@ tagged_value! {
 	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
 	// ============
-	// STRUCT TYPES
+	// SCALAR TYPES
 	// ============
+	F32(f32),
+	F64(f64),
+	U32(u32),
+	U64(u64),
+	Bool(bool),
+	String(String),
 	FVec2(Vec2),
 	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Stroke(graphic_types::vector_types::vector::style::Stroke),
-	Gradient(graphic_types::vector_types::vector::style::Gradient),
-	Font(text_nodes::Font),
+	Stroke(Stroke),
+	Gradient(Gradient),
+	Font(Font),
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
-	Curve(raster_nodes::curve::Curve),
-	Footprint(core_types::transform::Footprint),
-	VectorModification(Box<vector::VectorModification>),
+	Curve(Curve),
+	Footprint(Footprint),
+	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	// ==========
 	// ENUM TYPES
