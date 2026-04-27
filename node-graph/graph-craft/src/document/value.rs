@@ -175,10 +175,6 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	// ========================
-	// LISTS OF PRIMITIVE TYPES
-	// ========================
-	NodePath(Vec<NodeId>),
 	// ===========
 	// TABLE TYPES
 	// ===========
@@ -186,6 +182,7 @@ tagged_value! {
 	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 	F64Table(Table<f64>),
+	NodeIdTable(Table<NodeId>),
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),

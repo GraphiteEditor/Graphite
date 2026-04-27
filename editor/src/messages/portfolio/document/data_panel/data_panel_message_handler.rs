@@ -170,6 +170,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Color>,
 		Table<GradientStops>,
 		Table<String>,
+		Table<NodeId>,
 		Table<f64>,
 		Table<u8>,
 		GradientStops,
@@ -791,6 +792,26 @@ impl TableRowLayout for AlphaBlending {
 	}
 }
 
+impl TableRowLayout for NodeId {
+	fn type_name() -> &'static str {
+		"NodeId"
+	}
+	fn identifier(&self) -> String {
+		format!("Node {self}")
+	}
+	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+		let node_id = *self;
+		TextButton::new("Go to Node")
+			.tooltip_description("Click to select the node with this ID in the graph.")
+			.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into())
+			.narrow(true)
+			.widget_instance()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+	}
+}
+
 impl TableRowLayout for Option<NodeId> {
 	fn type_name() -> &'static str {
 		"NodeId"
@@ -830,6 +851,7 @@ macro_rules! known_table_row_types {
 			Table<Color>,
 			Table<GradientStops>,
 			Table<String>,
+			Table<NodeId>,
 			Table<f64>,
 			Table<u8>,
 			GradientStops,

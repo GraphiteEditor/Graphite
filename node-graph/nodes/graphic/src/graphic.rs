@@ -173,9 +173,10 @@ where
 /// Used as the value source for stamping the `editor:layer` attribute on each row of a layer's output,
 /// which lets editor tools (e.g. selection, click target routing) trace data back to its owning layer.
 #[node_macro::node(category(""))]
-pub fn parent_layer(_: impl Ctx, node_path: Vec<NodeId>) -> Option<NodeId> {
+pub fn parent_layer(_: impl Ctx, node_path: Table<NodeId>) -> Option<NodeId> {
 	// Get the penultimate element of the node path, or None if the path is too short
-	node_path.get(node_path.len().wrapping_sub(2)).copied()
+	let index = node_path.len().wrapping_sub(2);
+	node_path.element(index).copied()
 }
 
 /// Writes a per-row attribute column on the input table. The value-producing input is evaluated once per row,
@@ -247,11 +248,14 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	#[expose]
 	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	new: Table<T>,
-	nested_node_path: Vec<NodeId>,
+	nested_node_path: Table<NodeId>,
 ) -> Table<T> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
-	let layer = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();
+	let layer = {
+		let index = nested_node_path.len().wrapping_sub(2);
+		nested_node_path.element(index).copied()
+	};
 
 	let mut base = base;
 	for mut row in new.into_iter() {
