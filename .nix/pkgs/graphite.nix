@@ -152,6 +152,7 @@ deps.crane.lib.buildPackage (
       patchelf \
         --set-rpath "${pkgs.lib.makeLibraryPath libs}:${self.packages.${system}.graphite-cef}" \
         --add-needed libGL.so \
+        --add-needed libEGL.so \
         $out/bin/graphite
     '';
 
