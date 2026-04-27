@@ -9,7 +9,6 @@ use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::background::Background;
 use rendering::{Render, RenderBackground, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -108,18 +107,13 @@ async fn render_background_intermediate<'a: 'n, T: 'static + RenderBackground + 
 
 	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
 	let data = data.eval(ctx).await;
-	let has_artboard = data.contains_artboard();
 
 	match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
 
 			let mut context = wgpu_executor::RenderContext::default();
-			if has_artboard {
-				data.render_background_to_vello(&mut scene, Default::default(), &mut context, render_params);
-			} else {
-				Background.render_background_to_vello(&mut scene, Default::default(), &mut context, render_params);
-			}
+			data.render_background_to_vello(&mut scene, Default::default(), &mut context, render_params);
 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
@@ -129,11 +123,7 @@ async fn render_background_intermediate<'a: 'n, T: 'static + RenderBackground + 
 		RenderOutputTypeRequest::Svg => {
 			let mut render = SvgRender::new();
 
-			if has_artboard {
-				data.render_background_svg(&mut render, render_params);
-			} else {
-				Background.render_background_svg(&mut render, render_params);
-			}
+			data.render_background_svg(&mut render, render_params);
 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),

@@ -1,7 +1,5 @@
 use crate::renderer::{Render, RenderContext, RenderParams, SvgRender};
-use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::Color;
-use core_types::render_complexity::RenderComplexity;
 use core_types::table::Table;
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
@@ -14,12 +12,71 @@ use std::fmt::Write;
 use std::sync::{Arc, LazyLock};
 
 pub trait RenderBackground: Render {
-	fn render_background_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
+	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		if self.contains_artboard() {
+			return;
+		}
+		render_viewport_checkerboard_vello(scene, transform, render_params)
+	}
 
-	fn render_background_to_vello(&self, _scene: &mut vello::Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
+	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		if self.contains_artboard() {
+			return;
+		}
+		render_viewport_checkerboard_svg(render, render_params);
+	}
+}
+
+impl<T> RenderBackground for Table<T>
+where
+	T: RenderBackground,
+	Table<T>: Render,
+{
+	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		if !self.contains_artboard() {
+			render_viewport_checkerboard_vello(scene, transform, render_params);
+			return;
+		}
+
+		for row in self.iter() {
+			if !row.element.contains_artboard() {
+				continue;
+			}
+			row.element.render_background_to_vello(scene, transform, context, render_params);
+		}
+	}
+
+	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		if !self.contains_artboard() {
+			render_viewport_checkerboard_svg(render, render_params);
+			return;
+		}
+
+		for row in self.iter() {
+			if !row.element.contains_artboard() {
+				continue;
+			}
+			row.element.render_background_svg(render, render_params);
+		}
+	}
 }
 
 impl RenderBackground for Artboard {
+	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		if render_params.hide_artboards || !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
+			return;
+		}
+
+		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
+		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+		let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+		let Some(brush_transform) = checkerboard_brush_transform(render_params.viewport_zoom, DVec2::new(rect.x0, rect.y0)) else {
+			return;
+		};
+
+		scene.fill(vello::peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
+	}
+
 	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		if render_params.hide_artboards || !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
 			return;
@@ -42,103 +99,51 @@ impl RenderBackground for Artboard {
 			attributes.push("fill", format!("url(#{checker_id})"));
 		});
 	}
-
-	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		if render_params.hide_artboards || !render_params.to_canvas() || self.background.a() >= 1. || render_params.viewport_zoom <= 0. {
-			return;
-		}
-
-		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
-		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-		let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
-		let Some(brush_transform) = checkerboard_brush_transform(render_params.viewport_zoom, DVec2::new(rect.x0, rect.y0)) else {
-			return;
-		};
-
-		scene.fill(vello::peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
-	}
-}
-
-impl RenderBackground for Table<Artboard> {
-	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for artboard in self.iter() {
-			artboard.element.render_background_svg(render, render_params);
-		}
-	}
-
-	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for row in self.iter() {
-			row.element.render_background_to_vello(scene, transform * *row.transform, context, render_params);
-		}
-	}
 }
 
 impl RenderBackground for Graphic {}
-impl RenderBackground for Table<Graphic> {}
 impl RenderBackground for Table<Vector> {}
 impl RenderBackground for Table<Raster<CPU>> {}
 impl RenderBackground for Table<Raster<GPU>> {}
 impl RenderBackground for Table<Color> {}
 impl RenderBackground for Table<GradientStops> {}
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Background;
-
-impl BoundingBox for Background {
-	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
-		RenderBoundingBox::Infinite
+fn render_viewport_checkerboard_vello(scene: &mut vello::Scene, transform: DAffine2, render_params: &RenderParams) {
+	if !render_params.to_canvas() {
+		return;
 	}
+	let Some(rect) = viewport_checkerboard_rect(render_params.footprint, render_params.scale) else {
+		return;
+	};
+	let Some(brush_transform) = checkerboard_brush_transform(render_params.viewport_zoom, DVec2::ZERO) else {
+		return;
+	};
+	scene.fill(
+		vello::peniko::Fill::NonZero,
+		kurbo::Affine::new(transform.to_cols_array()),
+		&checkerboard_brush(),
+		Some(brush_transform),
+		&rect,
+	);
 }
 
-impl RenderComplexity for Background {}
-
-impl Render for Background {
-	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
-
-	fn render_to_vello(&self, _scene: &mut vello::Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
-}
-
-impl RenderBackground for Background {
-	fn render_background_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		if !render_params.to_canvas() {
-			return;
-		}
-
-		let Some(rect) = viewport_checkerboard_rect(render_params.footprint, render_params.scale) else {
-			return;
-		};
-
-		let checker_id = format!("checkered-viewport-{}", generate_uuid());
-		if write_checkerboard_pattern(&mut render.svg_defs, &checker_id, DVec2::ZERO, render_params.viewport_zoom) {
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("x", rect.x0.to_string());
-				attributes.push("y", rect.y0.to_string());
-				attributes.push("width", rect.width().to_string());
-				attributes.push("height", rect.height().to_string());
-				attributes.push("fill", format!("url(#{checker_id})"));
-			});
-		}
+fn render_viewport_checkerboard_svg(render: &mut SvgRender, render_params: &RenderParams) {
+	if !render_params.to_canvas() {
+		return;
 	}
+	let Some(rect) = viewport_checkerboard_rect(render_params.footprint, render_params.scale) else {
+		return;
+	};
+	let checker_id = format!("checkered-viewport-{}", generate_uuid());
 
-	fn render_background_to_vello(&self, scene: &mut vello::Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		if !render_params.to_canvas() {
-			return;
-		}
-
-		let Some(rect) = viewport_checkerboard_rect(render_params.footprint, render_params.scale) else {
-			return;
-		};
-		let Some(brush_transform) = checkerboard_brush_transform(render_params.viewport_zoom, DVec2::ZERO) else {
-			return;
-		};
-
-		scene.fill(
-			vello::peniko::Fill::NonZero,
-			kurbo::Affine::new(transform.to_cols_array()),
-			&checkerboard_brush(),
-			Some(brush_transform),
-			&rect,
-		);
+	if write_checkerboard_pattern(&mut render.svg_defs, &checker_id, DVec2::ZERO, render_params.viewport_zoom) {
+		render.leaf_tag("rect", |attributes| {
+			attributes.push("x", rect.x0.to_string());
+			attributes.push("y", rect.y0.to_string());
+			attributes.push("width", rect.width().to_string());
+			attributes.push("height", rect.height().to_string());
+			attributes.push("fill", format!("url(#{checker_id})"));
+		});
 	}
 }
 
