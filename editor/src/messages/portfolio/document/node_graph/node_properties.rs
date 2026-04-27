@@ -1803,13 +1803,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		};
 		let uniform_val = match input.as_non_exposed_value() {
 			Some(TaggedValue::F64(x)) => *x,
-			Some(TaggedValue::F64Array4(x)) => x[0],
+			Some(TaggedValue::F64Table(table)) => table.iter_element_values().copied().next().unwrap_or(0.),
 			_ => 0.,
 		};
 		let individual_val = match input.as_non_exposed_value() {
-			Some(&TaggedValue::F64Array4(x)) => x,
-			Some(&TaggedValue::F64(x)) => [x; 4],
-			_ => [0.; 4],
+			Some(&TaggedValue::F64(x)) => vec![x; 4],
+			Some(TaggedValue::F64Table(table)) => table.iter_element_values().copied().collect(),
+			_ => vec![0.; 4],
 		};
 
 		// Uniform/individual radio input widget
@@ -1832,6 +1832,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 				]),
 			})
 			.on_commit(commit_value);
+		let individual_val_for_switch = individual_val.clone();
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
 			.on_update(move |_| Message::Batched {
@@ -1845,7 +1846,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64Array4(individual_val),
+						value: TaggedValue::F64Table(individual_val_for_switch.iter().copied().map(graphene_std::table::TableRow::new_from_element).collect()),
 					}
 					.into(),
 				]),
@@ -1863,11 +1864,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.map(str::parse::<f64>)
 					.collect::<Result<Vec<f64>, _>>()
 					.ok()
-					.map(|v| {
-						let arr: Box<[f64; 4]> = v.into_boxed_slice().try_into().unwrap_or_default();
-						*arr
-					})
-					.map(TaggedValue::F64Array4)
+					.map(|values| TaggedValue::F64Table(values.into_iter().take(4).map(graphene_std::table::TableRow::new_from_element).collect()))
 			};
 			TextInput::default()
 				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))

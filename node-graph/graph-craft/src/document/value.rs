@@ -178,14 +178,13 @@ tagged_value! {
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
-	F64Array4([f64; 4]),
 	NodePath(Vec<NodeId>),
 	// ===========
 	// TABLE TYPES
 	// ===========
 	StringTable(Table<String>),
 	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "VecF64", alias = "VecF32")]
+	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 	F64Table(Table<f64>),
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
