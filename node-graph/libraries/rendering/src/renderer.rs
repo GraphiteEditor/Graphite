@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::{GRADIENT_TABLE_END, GRADIENT_TABLE_START, GradientSpreadMethod};
 use vello::*;
 
 /// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
@@ -282,6 +282,10 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	let cols = transform.to_cols_array();
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
+}
+
+fn to_point(p: DVec2) -> kurbo::Point {
+	kurbo::Point::new(p.x, p.y)
 }
 
 fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::Color) {
@@ -1060,7 +1064,6 @@ impl Render for Table<Vector> {
 			}
 			let layer_bounds = row.element.bounding_box().unwrap_or_default();
 
-			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 			let mut path = kurbo::BezPath::new();
 			for mut bezpath in row.element.stroke_bezpath_iter() {
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
@@ -1686,10 +1689,9 @@ impl Render for Table<Color> {
 }
 
 impl Render for Table<GradientStops> {
-	// TODO: Fix infinite gradient rendering
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
-			render.leaf_tag("rect", |attributes| {
+			render.leaf_tag("polyline", |attributes| {
 				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
 				let max = u64::MAX;
 				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
@@ -1706,7 +1708,12 @@ impl Render for Table<GradientStops> {
 					stop_string.push_str(" />");
 				}
 
-				let gradient_transform = render_params.footprint.transform * *row.transform;
+				// render_thumbnail already added the footprint transform
+				let gradient_transform = if render_params.thumbnail {
+					*row.transform
+				} else {
+					render_params.footprint.transform * *row.transform
+				};
 				let gradient_transform_matrix = format_transform_matrix(gradient_transform);
 				let gradient_transform_attribute = if gradient_transform_matrix.is_empty() {
 					String::new()
@@ -1715,10 +1722,11 @@ impl Render for Table<GradientStops> {
 				};
 
 				let gradient_id = generate_uuid();
-				let start = DVec2::ZERO;
-				let end = DVec2::X;
+				let start = GRADIENT_TABLE_START;
+				let end = GRADIENT_TABLE_END;
 
-				match GradientType::Radial {
+				// Linear gradient only for now
+				match GradientType::Linear {
 					GradientType::Linear => {
 						let (x1, y1) = (start.x, start.y);
 						let (x2, y2) = (end.x, end.y);
@@ -1751,29 +1759,57 @@ impl Render for Table<GradientStops> {
 		}
 	}
 
-	// TODO: Fix infinite gradient rendering
-	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
+		if let RenderMode::Outline = render_params.render_mode {
+			return;
+		}
+
 		for row in self.iter() {
+			let gradient_transform = parent_transform * *row.transform;
+
 			let alpha_blending = *row.alpha_blending;
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let color = row.element.color.first().copied().unwrap_or(Color::MAGENTA);
-			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+			let mut stops: peniko::ColorStops = peniko::ColorStops::new();
+			for (position, color, _) in row.element.interpolated_samples() {
+				stops.push(peniko::ColorStop {
+					offset: position as f32,
+					color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+				})
+			}
 
+			let fill = peniko::Brush::Gradient(peniko::Gradient {
+				kind: peniko::LinearGradientPosition {
+					start: to_point(GRADIENT_TABLE_START),
+					end: to_point(GRADIENT_TABLE_END),
+				}
+				.into(),
+				stops,
+				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+				..Default::default()
+			});
+			let brush_transform = kurbo::Affine::new((gradient_transform).to_cols_array());
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				// See implemenation in `Table<Color>` for more detail
+				// See implementation in `Table<Color>` for more detail
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
+			// Encode shape and brush manually instead of Scene.fill(), which would multiply brush_transform by the path transform.
+			scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&kurbo::Affine::scale(f64::INFINITY)));
+			scene.encoding_mut().encode_fill_style(peniko::Fill::NonZero);
+			scene.encoding_mut().encode_shape(&rect, true);
+
+			scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&brush_transform));
+			scene.encoding_mut().swap_last_path_tags();
+			scene.encoding_mut().encode_brush(&fill, 1.0);
 
 			if layer {
 				scene.pop_layer();

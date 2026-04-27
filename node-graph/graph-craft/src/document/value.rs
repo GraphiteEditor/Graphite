@@ -3,7 +3,7 @@ use crate::application_io::PlatformEditorApi;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
-use core_types::table::Table;
+use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
@@ -119,7 +119,11 @@ macro_rules! tagged_value {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
 							// Table-wrapped types need a single-row default with the element's default, not an empty table
 							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
-							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_element(GradientStops::default())),
+							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_row(TableRow {
+								element: GradientStops::default(),
+								transform: DAffine2::from_scale(DVec2::splat(100.)),
+								..Default::default()
+							})),
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
 						})

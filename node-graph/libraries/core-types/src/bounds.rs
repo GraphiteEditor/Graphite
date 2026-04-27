@@ -11,12 +11,17 @@ pub enum RenderBoundingBox {
 
 pub trait BoundingBox {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox;
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox;
 }
 
 macro_rules! none_impl {
 	($t:path) => {
 		impl BoundingBox for $t {
 			fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+				RenderBoundingBox::None
+			}
+
+			fn thumbnail_bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
 				RenderBoundingBox::None
 			}
 		}
@@ -31,5 +36,9 @@ none_impl!(String);
 impl BoundingBox for Color {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
 		RenderBoundingBox::Infinite
+	}
+
+	fn thumbnail_bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		RenderBoundingBox::Rectangle([DVec2::ZERO, DVec2::new(300., 200.)])
 	}
 }

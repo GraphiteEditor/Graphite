@@ -2,6 +2,9 @@ use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
+pub const GRADIENT_TABLE_START: DVec2 = DVec2::ZERO;
+pub const GRADIENT_TABLE_END: DVec2 = DVec2::X;
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
@@ -483,5 +486,13 @@ pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D)
 impl core_types::bounds::BoundingBox for GradientStops {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		core_types::bounds::RenderBoundingBox::Infinite
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|vec| transform.transform_point2(vec));
+		let min = corners.iter().fold(DVec2::MAX, |acc, &p| acc.min(p));
+		let max = corners.iter().fold(DVec2::MIN, |acc, &p| acc.max(p));
+
+		core_types::bounds::RenderBoundingBox::Rectangle([min, max])
 	}
 }
