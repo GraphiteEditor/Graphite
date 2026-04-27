@@ -428,14 +428,14 @@ impl OverlayContext {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
-		self.internal().fill_overlay(subpaths, transform, color, stroke);
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		self.internal().fill_overlay(subpaths, is_closed_on_all, transform, color, stroke);
 	}
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
-		self.internal().stroke_overlay(subpaths, transform, color, stroke);
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		self.internal().stroke_overlay(subpaths, is_closed_on_all, transform, color, stroke);
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -1002,7 +1002,7 @@ impl OverlayContextInternal {
 		path.push(bezier.as_path_el());
 	}
 
-	fn path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) -> BezPath {
+	fn path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, auto_close: bool, transform: DAffine2) -> BezPath {
 		let mut path = BezPath::new();
 
 		for subpath in subpaths {
@@ -1043,7 +1043,7 @@ impl OverlayContextInternal {
 				}
 			}
 
-			if subpath.closed() {
+			if subpath.closed() && auto_close {
 				path.close_path();
 			}
 		}
@@ -1065,7 +1065,7 @@ impl OverlayContextInternal {
 		}
 
 		if !subpaths.is_empty() {
-			let path = self.path_from_subpaths(subpaths.iter(), transform);
+			let path = self.path_from_subpaths(subpaths.iter(), true, transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 
 			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
@@ -1115,20 +1115,20 @@ impl OverlayContextInternal {
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
 	fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		let path = self.path_from_subpaths(subpaths, transform);
+		let path = self.path_from_subpaths(subpaths, true, transform);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
 		if let Some(stroke) = stroke {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
-			let path = self.path_from_subpaths(subpaths, applied_stroke_transform);
+			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
 			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 
 			let do_fill = |scene: &mut Scene| {
@@ -1141,7 +1141,7 @@ impl OverlayContextInternal {
 				if let Some(scale) = stroke_scale {
 					stroke.width *= scale;
 				}
-				let path_bbox = path.bounding_box().inflate(stroke.width, stroke.width);
+				let path_bbox = path.bounding_box().inflate(stroke.width * 1.5, stroke.width * 1.5);
 
 				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
 				scene.stroke(&stroke, element_transform, &brush, Some(element_transform.inverse()), &path);
@@ -1149,7 +1149,6 @@ impl OverlayContextInternal {
 			};
 
 			// For layers with open subpaths, stroke align is ignored and set to default
-			let is_closed_on_all = true;
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			match (stroke_align, stroke.paint_order) {
@@ -1173,7 +1172,7 @@ impl OverlayContextInternal {
 				}
 			}
 		} else {
-			let path = self.path_from_subpaths(subpaths, transform);
+			let path = self.path_from_subpaths(subpaths, false, transform);
 			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 			self.scene.fill(peniko::Fill::NonZero, Affine::IDENTITY, &brush, None, &path);
 		}
@@ -1181,13 +1180,13 @@ impl OverlayContextInternal {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
 		if let Some(stroke) = stroke {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
-			let path = self.path_from_subpaths(subpaths, applied_stroke_transform);
+			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
 			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 
 			let do_stroke = |scene: &mut Scene, stroke_scale: Option<f64>| {
@@ -1201,7 +1200,7 @@ impl OverlayContextInternal {
 			};
 			let composite_fill_out = |scene: &mut Scene, compose_mode: peniko::Compose, stroke_scale: Option<f64>| {
 				let element_transform = Affine::new(element_transform.to_cols_array());
-				let stroke_width = stroke.weight() * stroke_scale.map_or(1.0, |scale| scale);
+				let stroke_width = stroke.weight() * stroke_scale.map_or(1.0, |scale| scale) * 1.5;
 				let path_bbox = path.bounding_box().inflate(stroke_width, stroke_width);
 
 				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
@@ -1210,7 +1209,6 @@ impl OverlayContextInternal {
 			};
 
 			// For layers with open subpaths, stroke align is ignored and set to default
-			let is_closed_on_all = true;
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			match (stroke_align, stroke.paint_order) {

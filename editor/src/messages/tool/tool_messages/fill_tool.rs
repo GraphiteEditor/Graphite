@@ -90,11 +90,8 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 		let mouse_point = kurbo::Point::new(mouse_pos.x, mouse_pos.y);
 		for seg in subpath_bezpath.segments() {
 			let nearest = seg.nearest(mouse_point, 0.01);
-			let is_inside_seg = if is_closed_on_all {
-				// Inside/outside detection for closed bezpaths
-				subpath_bezpath.contains(mouse_point)
-			} else {
-				// Inside/outside detection for open bezpaths
+			let is_inside_seg = {
+				// Inside/outside detection for bezpaths
 				let tangent = seg.tangent_at(nearest.t);
 				let normal = kurbo::Vec2::new(-tangent.y, tangent.x);
 				let dir = (seg.eval(nearest.t) - mouse_point).normalize();
@@ -115,6 +112,7 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 					max_stroke_distance = -1.0;
 				}
 				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {}
+				// TODO: Fix logic detection for open subpaths on (StrokeAlign::Inside, PaintOrder::StrokeBelow)
 				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
 					if is_inside_seg {
 						max_stroke_distance = -1.0;
@@ -192,6 +190,7 @@ impl Fsm for FillToolFsmState {
 					let stroke = vector_data.style.stroke();
 
 					let mut subpaths = vector_data.stroke_bezier_paths();
+					// Subpaths on a layer is considered "closed" only if all subpaths are closed.
 					let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
 					subpaths = vector_data.stroke_bezier_paths();
 					let near_to_stroke = subpaths.any(|subpath| near_to_subpath(input.mouse.position, subpath, is_closed_on_all, stroke.clone(), document.metadata().transform_to_viewport(layer)));
@@ -203,9 +202,9 @@ impl Fsm for FillToolFsmState {
 					subpaths = vector_data.stroke_bezier_paths();
 					let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 					if stroke_exists_and_visible && near_to_stroke {
-						overlay_context.stroke_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
+						overlay_context.stroke_overlay(subpaths, is_closed_on_all, layer_to_viewport, &preview_color, stroke);
 					} else if fill_exists_and_visible {
-						overlay_context.fill_overlay(subpaths, layer_to_viewport, &preview_color, stroke);
+						overlay_context.fill_overlay(subpaths, is_closed_on_all, layer_to_viewport, &preview_color, stroke);
 					}
 				}
 
@@ -246,6 +245,7 @@ impl Fsm for FillToolFsmState {
 					let stroke = vector_data.style.stroke();
 
 					let mut subpaths = vector_data.stroke_bezier_paths();
+					// Subpaths on a layer is considered "closed" only if all subpaths are closed.
 					let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
 					subpaths = vector_data.stroke_bezier_paths();
 					let near_to_stroke = subpaths.any(|subpath| near_to_subpath(input.mouse.position, subpath, is_closed_on_all, stroke.clone(), document.metadata().transform_to_viewport(layer)));

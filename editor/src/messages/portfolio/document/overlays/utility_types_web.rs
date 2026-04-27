@@ -955,9 +955,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, stroke_transform: DAffine2) -> bool {
-		// Subpaths on a layer is considered "closed" only if all subpaths are closed.
-		let mut is_closed_on_all = true;
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, auto_close: bool, stroke_transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow().clone();
@@ -998,13 +996,10 @@ impl OverlayContext {
 				}
 			}
 
-			if subpath.closed() {
+			if subpath.closed() && auto_close {
 				self.render_context.close_path();
-			} else {
-				is_closed_on_all = false;
 			}
 		}
-		return is_closed_on_all;
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
@@ -1021,8 +1016,7 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			// TODO: Modify stroke_transform to take note of this
-			self.draw_path_from_subpaths(subpaths.iter(), transform);
+			self.draw_path_from_subpaths(subpaths.iter(), true, transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
@@ -1082,7 +1076,7 @@ impl OverlayContext {
 
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.draw_path_from_subpaths(subpaths, transform);
+		self.draw_path_from_subpaths(subpaths, true, transform);
 
 		self.render_context.set_fill_style_str(color);
 		self.render_context.fill();
@@ -1090,7 +1084,7 @@ impl OverlayContext {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
 		// Render for elements with fill
 		// Render for elements with fill only
 		// Render for elements with fill and stroke
@@ -1107,9 +1101,9 @@ impl OverlayContext {
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default
-			let is_closed_on_all = self.draw_path_from_subpaths(subpaths, applied_stroke_transform);
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			let do_fill = || {
@@ -1148,6 +1142,7 @@ impl OverlayContext {
 				}
 			}
 		} else {
+			self.draw_path_from_subpaths(subpaths, false, transform);
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
 			self.render_context.fill();
 		}
@@ -1159,7 +1154,7 @@ impl OverlayContext {
 	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// WARN: Don't use source-in, destination-atop, destination-in, copy
 	///       on the main canvas as it will erase the existing overlays
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, layer_to_viewport: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
 		// Render for elements with stroke
 		//----StrokeAlign
 		// Render for elements with stroke only
@@ -1171,14 +1166,14 @@ impl OverlayContext {
 
 		if let Some(stroke) = stroke {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
-			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { layer_to_viewport };
-			let element_transform = if has_real_stroke { layer_to_viewport * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
+			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default
-			let is_closed_on_all = self.draw_path_from_subpaths(subpaths, applied_stroke_transform);
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			let do_stroke = |stroke_weight: f64| {
