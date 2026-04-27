@@ -630,7 +630,7 @@ impl<'a> Selected<'a> {
 
 		// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 		for layer in self.network_interface.shallowest_unique_layers(&[]) {
-			// Artboards are resized via `ResizeArtboard` messages in the transform layer handler.
+			// Artboards are resized via ResizeArtboard messages in the transform layer handler.
 			if *self.tool_type == ToolType::Artboard && self.network_interface.is_artboard(&layer.to_node(), &[]) {
 				continue;
 			}

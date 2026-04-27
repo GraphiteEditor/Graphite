@@ -698,6 +698,7 @@ impl TransformLayerMessageHandler {
 			return;
 		}
 
+		// Build the transform chain
 		let inner = match transform_operation {
 			TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state, document)),
 			TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
@@ -710,6 +711,7 @@ impl TransformLayerMessageHandler {
 		let document_to_viewport = document.metadata().document_to_viewport;
 		let document_transform = document_to_viewport.inverse() * viewport_transform * document_to_viewport;
 
+		// Apply transform to each artboard and send resize messages
 		for (&layer, &original_bounds) in original_artboard_bounds {
 			let new_top_left = document_transform.transform_point2(original_bounds[0]);
 			let new_bottom_right = document_transform.transform_point2(original_bounds[1]);
@@ -719,6 +721,7 @@ impl TransformLayerMessageHandler {
 		}
 	}
 
+	// Reset artboards to their original bounds
 	fn revert_artboards_to_original_bounds(original_artboard_bounds: &HashMap<LayerNodeIdentifier, [DVec2; 2]>, responses: &mut VecDeque<Message>) {
 		for (&layer, &original_bounds) in original_artboard_bounds {
 			let location = original_bounds[0].min(original_bounds[1]).round().as_ivec2();
