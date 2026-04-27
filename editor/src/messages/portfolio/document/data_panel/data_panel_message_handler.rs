@@ -170,6 +170,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Color>,
 		Table<GradientStops>,
 		Table<String>,
+		Table<u8>,
 		GradientStops,
 		f64,
 		u32,
@@ -616,6 +617,21 @@ impl TableRowLayout for f64 {
 	}
 }
 
+impl TableRowLayout for u8 {
+	fn type_name() -> &'static str {
+		"Byte"
+	}
+	fn identifier(&self) -> String {
+		format!("{self:02X}")
+	}
+	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+		TextLabel::new(self.identifier()).narrow(true).widget_instance()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+	}
+}
+
 impl TableRowLayout for u32 {
 	fn type_name() -> &'static str {
 		"Number (u32)"
@@ -813,6 +829,7 @@ macro_rules! known_table_row_types {
 			Table<Color>,
 			Table<GradientStops>,
 			Table<String>,
+			Table<u8>,
 			GradientStops,
 			Color,
 			Option<NodeId>,
