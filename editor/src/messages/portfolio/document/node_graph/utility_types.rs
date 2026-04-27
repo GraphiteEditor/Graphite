@@ -27,7 +27,7 @@ impl FrontendGraphDataType {
 			| TaggedValue::F64(_)
 			| TaggedValue::DVec2(_)
 			| TaggedValue::F64Array4(_)
-			| TaggedValue::VecF64(_)
+			| TaggedValue::F64Table(_)
 			| TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Artboard(_) => Self::Artboard,
 			TaggedValue::Graphic(_) => Self::Graphic,

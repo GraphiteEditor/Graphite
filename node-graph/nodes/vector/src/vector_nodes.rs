@@ -179,9 +179,9 @@ impl IntoF64Vec for f64 {
 		vec![self]
 	}
 }
-impl IntoF64Vec for Vec<f64> {
+impl IntoF64Vec for Table<f64> {
 	fn into_vec(self) -> Vec<f64> {
-		self
+		self.into_iter().map(|row| row.into_element()).collect()
 	}
 }
 impl IntoF64Vec for String {
@@ -217,7 +217,7 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	#[implementations(Vec<f64>, f64, String, Vec<f64>, f64, String)]
+	#[implementations(Table<f64>, f64, String, Table<f64>, f64, String)]
 	dash_lengths: L,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]

@@ -28,6 +28,7 @@ async fn context_modification<T>(
 		Context -> DVec2,
 		Context -> Option<NodeId>,
 		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> Table<u8>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,

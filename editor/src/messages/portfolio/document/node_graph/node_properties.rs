@@ -210,13 +210,10 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						// ==========================
-						// PRIMITIVE COLLECTION TYPES
-						// ==========================
-						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						// ===========
 						// TABLE TYPES
 						// ===========
+						Some(x) if x == TypeId::of::<Table<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						// ============
@@ -775,7 +772,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			.map(str::parse::<f64>)
 			.collect::<Result<Vec<_>, _>>()
 			.ok()
-			.map(TaggedValue::VecF64)
+			.map(|values| TaggedValue::F64Table(values.into_iter().map(graphene_std::table::TableRow::new_from_element).collect()))
 	};
 
 	let Some(document_node) = document_node else { return Vec::new() };
@@ -783,11 +780,11 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(TaggedValue::VecF64(x)) = &input.as_non_exposed_value() {
+	if let Some(TaggedValue::F64Table(table)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
-				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.value(table.iter_element_values().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_instance(),
 		])
@@ -2263,11 +2260,10 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let dash_lengths_val = match &document_node.inputs[DashLengthsInput::<Vec<f64>>::INDEX].as_value() {
-		Some(TaggedValue::VecF64(x)) => x,
-		_ => &vec![],
+	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<Table<f64>>::INDEX].as_value() {
+		Some(TaggedValue::F64Table(table)) => table.is_empty(),
+		_ => true,
 	};
-	let has_dash_lengths = dash_lengths_val.is_empty();
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
@@ -2292,7 +2288,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<Vec<f64>>::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<Table<f64>>::INDEX, true, context),
 		TextInput::default().centered(true),
 	);
 	let number_input = disabled_number_input;
