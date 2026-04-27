@@ -168,10 +168,10 @@ impl PerPixelAdjustGraphicsPipeline {
 		let mut cmd = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some(&format!("{name} cmd encoder")),
 		});
-		let out = textures
-			.iter()
-			.map(|instance| {
-				let tex_in = &instance.element().texture;
+		let out = (0..textures.len())
+			.map(|index| {
+				let element = textures.element(index).unwrap();
+				let tex_in = &element.texture;
 				let view_in = tex_in.create_view(&TextureViewDescriptor::default());
 				let format = tex_in.format();
 
@@ -233,7 +233,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.set_bind_group(0, Some(&bind_group), &[]);
 				rp.draw(0..3, 0..1);
 
-				let (_, attributes) = instance.into_cloned().into_parts();
+				let attributes = textures.clone_row_attributes(index);
 				TableRow::from_parts(Raster::new(GPU { texture: tex_out }), attributes)
 			})
 			.collect::<Table<_>>();

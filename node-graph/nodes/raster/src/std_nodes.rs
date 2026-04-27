@@ -278,13 +278,12 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let color = color.iter().next().map(|row| row.element()).copied();
-	let image = Image::new(width, height, color.unwrap_or(Color::WHITE));
+	let color = color.element(0).copied().unwrap_or(Color::WHITE);
+	let image = Image::new(width, height, color);
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
-	let mut row = result_table.get_mut(0).unwrap();
-	row.set_attribute("transform", transform);
-	row.set_attribute("alpha_blending", AlphaBlending::default());
+	result_table.set_attribute("transform", 0, transform);
+	result_table.set_attribute("alpha_blending", 0, AlphaBlending::default());
 
 	// Callers of empty_image can safely unwrap on returned table
 	result_table

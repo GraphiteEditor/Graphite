@@ -148,13 +148,12 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 			match current_graphic_row.into_element() {
 				// Recurse into nested graphic tables, composing the parent's transform onto each child
 				Graphic::Graphic(mut sub_table) => {
-					let mut iter = sub_table.iter_mut();
-					while let Some(mut graphic) = iter.next() {
-						let child_transform: DAffine2 = graphic.attribute_cloned_or_default("transform");
-						let child_alpha_blending: AlphaBlending = graphic.attribute_cloned_or_default("alpha_blending");
+					for index in 0..sub_table.len() {
+						let child_transform: DAffine2 = sub_table.attribute_cloned_or_default("transform", index);
+						let child_alpha_blending: AlphaBlending = sub_table.attribute_cloned_or_default("alpha_blending", index);
 
-						graphic.set_attribute("transform", current_transform * child_transform);
-						graphic.set_attribute("alpha_blending", compose_alpha_blending(current_alpha_blending, child_alpha_blending));
+						sub_table.set_attribute("transform", index, current_transform * child_transform);
+						sub_table.set_attribute("alpha_blending", index, compose_alpha_blending(current_alpha_blending, child_alpha_blending));
 					}
 
 					flatten_recursive(output, sub_table, extract_variant);
@@ -321,23 +320,27 @@ impl Graphic {
 	}
 
 	pub fn had_clip_enabled(&self) -> bool {
+		fn all_clipped<T>(table: &Table<T>) -> bool {
+			table.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending").all(|a| a.clip)
+		}
 		match self {
-			Graphic::Vector(vector) => vector.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
-			Graphic::Graphic(graphic) => graphic.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
-			Graphic::RasterCPU(raster) => raster.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
-			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
-			Graphic::Color(color) => color.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
-			Graphic::Gradient(gradient) => gradient.iter().all(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").clip),
+			Graphic::Vector(table) => all_clipped(table),
+			Graphic::Graphic(table) => all_clipped(table),
+			Graphic::RasterCPU(table) => all_clipped(table),
+			Graphic::RasterGPU(table) => all_clipped(table),
+			Graphic::Color(table) => all_clipped(table),
+			Graphic::Gradient(table) => all_clipped(table),
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector.iter().all(|row| {
-				let style = &row.element().style;
-				let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
-			}),
+			Graphic::Vector(vector) => vector
+				.iter_element_values()
+				.zip(vector.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending"))
+				.all(|(element, alpha_blending)| {
+					(alpha_blending.opacity > 1. - f32::EPSILON) && element.style.fill().is_opaque() && element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+				}),
 			_ => false,
 		}
 	}
@@ -407,25 +410,15 @@ impl<T: Clone> AtIndex for Table<T> {
 	type Output = Table<T>;
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
-		let mut result_table = Self::default();
-		if let Some(row) = self.iter().nth(index) {
-			result_table.push(row.into_cloned());
-			Some(result_table)
-		} else {
-			None
-		}
+		self.clone_row(index).map(|row| {
+			let mut result_table = Self::default();
+			result_table.push(row);
+			result_table
+		})
 	}
 
 	fn at_index_from_end(&self, index: usize) -> Option<Self::Output> {
-		let mut result_table = Self::default();
-		if index == 0 || index > self.len() {
-			None
-		} else if let Some(row) = self.iter().nth(self.len() - index) {
-			result_table.push(row.into_cloned());
-			Some(result_table)
-		} else {
-			None
-		}
+		if index == 0 || index > self.len() { None } else { self.at_index(self.len() - index) }
 	}
 }
 
@@ -448,9 +441,11 @@ impl<T: Clone> OmitIndex for Vec<T> {
 impl<T: Clone> OmitIndex for Table<T> {
 	fn omit_index(&self, index: usize) -> Self {
 		let mut result = Self::default();
-		for (i, row) in self.iter().enumerate() {
-			if i != index {
-				result.push(row.into_cloned());
+		for i in 0..self.len() {
+			if i != index
+				&& let Some(row) = self.clone_row(i)
+			{
+				result.push(row);
 			}
 		}
 		result
@@ -562,11 +557,11 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut graphic_table = Table::new();
-				for row in old_table.iter() {
-					let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-					let row_alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
+				for index in 0..old_table.len() {
+					let row_transform: DAffine2 = old_table.attribute_cloned_or_default("transform", index);
+					let row_alpha_blending: AlphaBlending = old_table.attribute_cloned_or_default("alpha_blending", index);
 
-					for (graphic, source_node_id) in &row.element().elements {
+					for (graphic, source_node_id) in &old_table.element(index).unwrap().elements {
 						graphic_table.push(
 							TableRow::new_from_element(graphic.clone())
 								.with_attribute("transform", row_transform)

@@ -150,11 +150,10 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
 		let device = &executor.context.device;
 		let queue = &executor.context.queue;
 		let table = self
-			.iter()
+			.into_iter()
 			.map(|row| {
-				let image = row.element();
-				let texture = upload_to_texture(device, queue, image);
-				let attributes = row.clone_attributes();
+				let (image, attributes) = row.into_parts();
+				let texture = upload_to_texture(device, queue, &image);
 
 				TableRow::from_parts(Raster::new_gpu(texture), attributes)
 			})

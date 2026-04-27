@@ -105,9 +105,6 @@ trait AttributeColumn: std::any::Any + Send + Sync {
 	/// Returns a shared reference to the value at the requested index.
 	fn get_any(&self, index: usize) -> Option<&dyn std::any::Any>;
 
-	/// Returns a mutable reference to the value at the requested index.
-	fn get_any_mut(&mut self, index: usize) -> Option<&mut dyn std::any::Any>;
-
 	/// Returns a debug-formatted display string for the value at the requested index.
 	fn display_at(&self, index: usize) -> Option<String>;
 
@@ -186,11 +183,6 @@ impl<T: Clone + Send + Sync + Default + Debug + 'static> AttributeColumn for Col
 	/// Returns a shared reference to the value at the given index as a type-erased `Any`.
 	fn get_any(&self, index: usize) -> Option<&dyn std::any::Any> {
 		self.0.get(index).map(|v| v as &dyn std::any::Any)
-	}
-
-	/// Returns a mutable reference to the value at the given index as a type-erased `Any`.
-	fn get_any_mut(&mut self, index: usize) -> Option<&mut dyn std::any::Any> {
-		self.0.get_mut(index).map(|v| v as &mut dyn std::any::Any)
 	}
 
 	/// Returns a debug-formatted string for the value at the given index.
@@ -319,7 +311,7 @@ impl AttributeValues {
 ///
 /// A collection of type-erased parallel attribute columns, keyed by string name.
 /// Used for columnar attribute storage in a Table.
-/// Not public. All access goes through Table, TableRowRef, and TableRowMut.
+/// Not public. All access goes through Table and TableRow.
 /// Invariant: every column in `columns` has exactly `len` elements.
 #[derive(Clone, Default)]
 struct AttributeColumns {
@@ -402,13 +394,6 @@ impl AttributeColumns {
 		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index)?.downcast_ref::<T>() } else { None })
 	}
 
-	/// Gets a mutable reference to a cell value at the given index from the column for the given key.
-	fn get_cell_mut<T: 'static>(&mut self, key: &str, index: usize) -> Option<&mut T> {
-		self.columns
-			.iter_mut()
-			.find_map(|(k, column)| if k == key { column.get_any_mut(index)?.downcast_mut::<T>() } else { None })
-	}
-
 	/// Finds or creates a column for the given key and type, returning its position.
 	/// If a column with the key exists but has the wrong type, it is removed and replaced with a new column of the correct type, padded with defaults.
 	/// A newly created column is filled with `T::default()` for all existing rows.
@@ -467,6 +452,31 @@ impl AttributeColumns {
 		self.columns.iter().map(|(key, _)| key.as_str())
 	}
 
+	/// Returns a typed slice of the column for the given key, if it exists and can be downcast to `Column<T>`.
+	fn get_column_slice<T: 'static>(&self, key: &str) -> Option<&[T]> {
+		self.columns
+			.iter()
+			.find_map(|(k, column)| if k == key { column.as_any().downcast_ref::<Column<T>>().map(|c| c.0.as_slice()) } else { None })
+	}
+
+	/// Returns a mutable typed slice of the column for the given key, if it exists and can be downcast to `Column<T>`.
+	fn get_column_slice_mut<T: 'static>(&mut self, key: &str) -> Option<&mut [T]> {
+		self.columns.iter_mut().find_map(|(k, column)| {
+			if k == key {
+				column.as_any_mut().downcast_mut::<Column<T>>().map(|c| c.0.as_mut_slice())
+			} else {
+				None
+			}
+		})
+	}
+
+	/// Returns a mutable typed slice of the column for the given key, creating a new column filled with defaults if it doesn't exist.
+	fn get_or_create_column_slice_mut<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> &mut [T] {
+		let position = self.find_or_create_column::<T>(key);
+		let column = (*self.columns[position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
+		&mut column.0
+	}
+
 	/// Clones all attribute values at the given row index into a new scalar Attributes.
 	fn clone_row(&self, index: usize) -> AttributeValues {
 		let mut attributes = AttributeValues::new();
@@ -503,8 +513,7 @@ impl AttributeColumns {
 ///
 /// Elements are stored contiguously in a `Vec<T>`, while attributes live in an internal
 /// [`AttributeColumns`] store that keeps one column per attribute key. Rows are accessed
-/// by index through [`TableRowRef`] (shared) or [`TableRowMut`] (mutable) views, or
-/// consumed as owned [`TableRow`]s via iteration.
+/// by index through element/attribute accessor methods, or consumed as owned [`TableRow`]s via iteration.
 #[derive(Clone, Debug)]
 pub struct Table<T> {
 	element: Vec<T>,
@@ -555,25 +564,6 @@ impl<T> Table<T> {
 		self.attributes.extend(table.attributes);
 	}
 
-	/// Returns a shared reference to the row at the given index, or `None` if out of bounds.
-	pub fn get(&self, index: usize) -> Option<TableRowRef<'_, T>> {
-		Some(TableRowRef {
-			element: self.element.get(index)?,
-			index,
-			columns: &self.attributes,
-		})
-	}
-
-	/// Returns a mutable reference to the row at the given index, or `None` if out of bounds.
-	pub fn get_mut(&mut self, index: usize) -> Option<TableRowMut<'_, T>> {
-		let element = self.element.get_mut(index)?;
-		Some(TableRowMut {
-			element,
-			index,
-			columns: &mut self.attributes,
-		})
-	}
-
 	/// Returns the number of rows in this table.
 	pub fn len(&self) -> usize {
 		self.element.len()
@@ -589,32 +579,124 @@ impl<T> Table<T> {
 		self.attributes.keys()
 	}
 
-	/// Borrows a [`Table`] and returns an iterator of [`TableRowRef`]s, each containing references to the data of the respective row from the table.
-	pub fn iter(&self) -> impl DoubleEndedIterator<Item = TableRowRef<'_, T>> + Clone {
-		self.element.iter().enumerate().map(|(index, element)| TableRowRef {
-			element,
-			index,
-			columns: &self.attributes,
+	// ===========================
+	// Column-oriented iteration
+	// ===========================
+
+	/// Returns an iterator over shared references to all element values.
+	pub fn iter_element_values(&self) -> std::slice::Iter<'_, T> {
+		self.element.iter()
+	}
+
+	/// Returns an iterator over mutable references to all element values.
+	pub fn iter_element_values_mut(&mut self) -> std::slice::IterMut<'_, T> {
+		self.element.iter_mut()
+	}
+
+	/// Returns an iterator over shared references to the values of a typed attribute column, or `None` if the column doesn't exist or has the wrong type.
+	pub fn iter_attribute_values<U: 'static>(&self, key: &str) -> Option<std::slice::Iter<'_, U>> {
+		self.attributes.get_column_slice::<U>(key).map(|s| s.iter())
+	}
+
+	/// Returns an iterator over mutable references to the values of a typed attribute column, or `None` if the column doesn't exist or has the wrong type.
+	pub fn iter_attribute_values_mut<U: 'static>(&mut self, key: &str) -> Option<std::slice::IterMut<'_, U>> {
+		self.attributes.get_column_slice_mut::<U>(key).map(|s| s.iter_mut())
+	}
+
+	/// Returns an iterator that yields cloned attribute values for the given key, falling back to `U::default()` for each row if the column is missing or has the wrong type.
+	pub fn iter_attribute_values_or_default<U: Clone + Default + 'static>(&self, key: &str) -> impl Iterator<Item = U> + '_ {
+		let slice = self.attributes.get_column_slice::<U>(key);
+		let len = self.element.len();
+		(0..len).map(move |i| slice.map_or_else(U::default, |s| s[i].clone()))
+	}
+
+	/// Returns a mutable iterator over a typed attribute column, creating the column with default values if it doesn't exist or has the wrong type.
+	pub fn iter_attribute_values_mut_or_default<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> std::slice::IterMut<'_, U> {
+		self.attributes.get_or_create_column_slice_mut::<U>(key).iter_mut()
+	}
+
+	// =======================
+	// Indexed element access
+	// =======================
+
+	/// Returns a shared reference to the element at the given index, or `None` if out of bounds.
+	pub fn element(&self, index: usize) -> Option<&T> {
+		self.element.get(index)
+	}
+
+	/// Returns a mutable reference to the element at the given index, or `None` if out of bounds.
+	pub fn element_mut(&mut self, index: usize) -> Option<&mut T> {
+		self.element.get_mut(index)
+	}
+
+	// =========================
+	// Indexed attribute access
+	// =========================
+
+	/// Returns a shared reference to the attribute value at the given row index and key, if it exists and can be downcast to the requested type.
+	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
+		self.attributes.get_cell(key, index)
+	}
+
+	/// Returns a clone of the attribute value at the given row index and key, or `U::default()` if absent or of a different type.
+	pub fn attribute_cloned_or_default<U: Clone + Default + 'static>(&self, key: &str, index: usize) -> U {
+		self.attributes.get_cell::<U>(key, index).cloned().unwrap_or_default()
+	}
+
+	/// Returns a clone of the attribute value at the given row index and key, or the provided default if absent or of a different type.
+	pub fn attribute_cloned_or<U: Clone + 'static>(&self, key: &str, index: usize, default: U) -> U {
+		self.attributes.get_cell::<U>(key, index).cloned().unwrap_or(default)
+	}
+
+	/// Sets the attribute value at the given row index and key, creating the column with defaults if it doesn't exist.
+	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
+		self.attributes.set_cell(key, index, value);
+	}
+
+	/// Runs the given closure on a mutable reference to the attribute value at the given row index,
+	/// creating the column with defaults if it doesn't exist, and returns the closure's result.
+	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, index: usize, f: F) -> R {
+		f(self.attributes.get_or_insert_default_cell::<U>(key, index))
+	}
+
+	/// Returns a debug-formatted display string for the attribute at the given row index and key.
+	pub fn attribute_display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
+		self.attributes.display_cell_value(key, index, overrides)
+	}
+
+	// =====================
+	// Split borrow helpers
+	// =====================
+
+	/// Returns disjoint mutable references to the element slice and a typed attribute column slice,
+	/// creating the column with defaults if it doesn't exist. This enables simultaneous mutable
+	/// access to elements and a single attribute column without borrowing conflicts.
+	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
+		let Self { element, attributes } = self;
+		let column_position = attributes.find_or_create_column::<U>(key);
+		let column = (*attributes.columns[column_position].1).as_any_mut().downcast_mut::<Column<U>>().unwrap();
+		(element.as_mut_slice(), &mut column.0)
+	}
+
+	// ==================
+	// Row-level cloning
+	// ==================
+
+	/// Clones both the element and all attributes at the given row index into a new owned [`TableRow`], or `None` if out of bounds.
+	pub fn clone_row(&self, index: usize) -> Option<TableRow<T>>
+	where
+		T: Clone,
+	{
+		Some(TableRow {
+			element: self.element.get(index)?.clone(),
+			attributes: self.attributes.clone_row(index),
 		})
 	}
 
-	/// Mutably borrows a [`Table`] and returns a lender-style iterator yielding [`TableRowMut`]s.
-	///
-	/// Unlike a standard [`Iterator`], each [`TableRowMut`] borrows the iterator itself
-	/// (via [`TableRowIterMut::next`]), so only one row can be alive at a time. This prevents
-	/// constructing simultaneous mutable references into the shared column store.
-	pub fn iter_mut(&mut self) -> TableRowIterMut<'_, T> {
-		TableRowIterMut {
-			inner: self.element.iter_mut().enumerate(),
-			columns: &mut self.attributes,
-		}
+	/// Clones all attribute values at the given row index into a new [`AttributeValues`], without cloning the element.
+	pub fn clone_row_attributes(&self, index: usize) -> AttributeValues {
+		self.attributes.clone_row(index)
 	}
-
-	// TODO: Add an `iter_element_values` and `iter_element_values_mut`
-	// TODO: Add an `iter_attribute_values(key)` and `iter_attribute_values_mut(key)`
-	// TODO: Remove `iter` and `iter_mut`
-	// TODO: Remove `TableRowIterMut` and probably `TableRowMut`
-	// TODO: Maybe remove `TableRowRef` since it encourages per-row linear search of attributes for their key lookup in the storage Vec
 }
 
 #[cfg(feature = "serde")]
@@ -655,10 +737,8 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for row in self.iter() {
-			let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-
-			match row.element.bounding_box(transform * row_transform, include_stroke) {
+		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>("transform")) {
+			match element.bounding_box(transform * row_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -700,13 +780,13 @@ impl<T> Default for Table<T> {
 
 impl<T: graphene_hash::CacheHash> graphene_hash::CacheHash for Table<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		for element in &self.element {
+		for element in self.iter_element_values() {
 			element.cache_hash(state);
 		}
-		for row in self.iter() {
-			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-			let alpha_blending: crate::AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
+		for transform in self.iter_attribute_values_or_default::<DAffine2>("transform") {
 			graphene_hash::CacheHash::cache_hash(&transform, state);
+		}
+		for alpha_blending in self.iter_attribute_values_or_default::<crate::AlphaBlending>("alpha_blending") {
 			alpha_blending.cache_hash(state);
 		}
 	}
@@ -721,18 +801,15 @@ impl<T: PartialEq> PartialEq for Table<T> {
 impl<T> ApplyTransform for Table<T> {
 	/// Right-multiplies the modification into each row's transform attribute.
 	fn apply_transform(&mut self, modification: &DAffine2) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| *t *= *modification);
+		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+			*transform *= *modification;
 		}
 	}
 
 	/// Left-multiplies the modification into each row's transform attribute.
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-			row.set_attribute("transform", *modification * current_transform);
+		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+			*transform = *modification * *transform;
 		}
 	}
 }
@@ -899,163 +976,6 @@ impl<T> TableRow<T> {
 	}
 }
 
-// ==============
-// TableRowRef<T>
-// ==============
-
-/// A shared view into a single row of a [`Table`], providing read access to the element and its attributes.
-///
-/// Holds a reference to the element and a reference to the table's shared column store
-/// together with this row's index, so attribute lookups are forwarded to the correct column slot.
-#[derive(Copy, Clone, Debug)]
-pub struct TableRowRef<'a, T> {
-	element: &'a T,
-	index: usize,
-	columns: &'a AttributeColumns,
-}
-
-impl<'a, T> TableRowRef<'a, T> {
-	/// Returns a shared reference to this row's element.
-	pub fn element(&self) -> &'a T {
-		self.element
-	}
-
-	/// Returns an iterator over all attribute keys for this table.
-	pub fn attribute_keys(&self) -> impl Iterator<Item = &str> {
-		self.columns.keys()
-	}
-
-	/// Returns a debug-formatted display string for the attribute at the given key for this row.
-	pub fn attribute_display_value(&self, key: &str, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
-		self.columns.display_cell_value(key, self.index, overrides)
-	}
-
-	/// Returns a reference to the attribute value for the given key, if it exists and is of the requested type.
-	pub fn attribute<U: 'static>(&self, key: &str) -> Option<&U> {
-		self.columns.get_cell(key, self.index)
-	}
-
-	/// Returns the attribute value for the given key, or the provided default if absent or of a different type.
-	pub fn attribute_or<'b, U: 'static>(&'b self, key: &str, default: &'b U) -> &'b U {
-		self.attribute(key).unwrap_or(default)
-	}
-
-	/// Returns a clone of the attribute value for the given key, or the provided default if absent or of a different type.
-	pub fn attribute_cloned_or<U: Clone + 'static>(&self, key: &str, default: U) -> U {
-		self.attribute(key).cloned().unwrap_or(default)
-	}
-
-	/// Returns a clone of the attribute value for the given key, or `U`'s default value if absent or of a different type.
-	pub fn attribute_cloned_or_default<U: Clone + Default + 'static>(&self, key: &str) -> U {
-		self.attribute(key).cloned().unwrap_or_default()
-	}
-
-	/// Clones this row's attributes into a new owned [`AttributeValues`], without cloning the element.
-	pub fn clone_attributes(&self) -> AttributeValues {
-		self.columns.clone_row(self.index)
-	}
-
-	/// Clones both the element and its row attributes into a new owned [`TableRow`].
-	pub fn into_cloned(self) -> TableRow<T>
-	where
-		T: Clone,
-	{
-		TableRow {
-			element: self.element.clone(),
-			attributes: self.columns.clone_row(self.index),
-		}
-	}
-}
-
-// ==============
-// TableRowMut<T>
-// ==============
-
-/// A mutable view into a single row of a [`Table`], providing read-write access to the element and its attributes.
-///
-/// Borrows the element (which lives in the table's `Vec<T>`) and the attribute column store as
-/// disjoint mutable references. Yielded by [`TableRowIterMut::next`], where the row's lifetime is
-/// tied to the iterator's borrow so only one row can exist at a time.
-pub struct TableRowMut<'a, T> {
-	element: &'a mut T,
-	index: usize,
-	columns: &'a mut AttributeColumns,
-}
-
-impl<T> std::fmt::Debug for TableRowMut<'_, T>
-where
-	T: std::fmt::Debug,
-{
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("TableRowMut").field("element", &self.element).field("index", &self.index).finish()
-	}
-}
-
-impl<'a, T> TableRowMut<'a, T> {
-	/// Returns a shared reference to the element, bound by the lifetime of this borrow.
-	pub fn element(&self) -> &T {
-		self.element
-	}
-
-	/// Returns a mutable reference to the element, bound by the lifetime of this borrow.
-	pub fn element_mut(&mut self) -> &mut T {
-		self.element
-	}
-
-	/// Consumes this row reference and returns the underlying mutable reference with its full `'a` lifetime.
-	/// Use this instead of [`element_mut`](Self::element_mut) when the reference must outlive the row borrow itself,
-	/// such as when returning it from a closure or storing it past the row's scope.
-	pub fn into_element_mut(self) -> &'a mut T {
-		self.element
-	}
-
-	/// Returns a reference to the attribute value for the given key, if it exists and is of the requested type.
-	pub fn attribute<U: 'static>(&self, key: &str) -> Option<&U> {
-		self.columns.get_cell(key, self.index)
-	}
-
-	/// Returns the attribute value for the given key, or the provided default if absent or of a different type.
-	pub fn attribute_or<'b, U: 'static>(&'b self, key: &str, default: &'b U) -> &'b U {
-		self.attribute(key).unwrap_or(default)
-	}
-
-	/// Returns a clone of the attribute value for the given key, or the provided default if absent or of a different type.
-	pub fn attribute_cloned_or<U: Clone + 'static>(&self, key: &str, default: U) -> U {
-		self.attribute(key).cloned().unwrap_or(default)
-	}
-
-	/// Returns a clone of the attribute value for the given key, or a default constructed value if absent or of a different type.
-	pub fn attribute_cloned_or_default<U: Clone + Default + 'static>(&self, key: &str) -> U {
-		self.attribute(key).cloned().unwrap_or_default()
-	}
-
-	/// Runs the given closure on a mutable reference to the attribute value for the given key,
-	/// returning `Some(closure_result)` if the attribute exists with the requested type, or `None` otherwise.
-	///
-	/// Uses a closure rather than returning `&mut U` so the borrow cannot escape the call,
-	/// which keeps multi-row mutation sound under the shared column store.
-	pub fn with_attribute_mut<U: 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, f: F) -> Option<R> {
-		let index = self.index;
-		self.columns.get_cell_mut::<U>(key, index).map(f)
-	}
-
-	/// Runs the given closure on a mutable reference to the attribute value for the given key,
-	/// inserting a default value if the attribute is absent or of a different type, and returns the closure's result.
-	///
-	/// Uses a closure rather than returning `&mut U` so the borrow cannot escape the call,
-	/// which keeps multi-row mutation sound under the shared column store.
-	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, f: F) -> R {
-		let index = self.index;
-		f(self.columns.get_or_insert_default_cell::<U>(key, index))
-	}
-
-	/// Sets the attribute value for the given key, replacing any existing entry with the same key.
-	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, value: U) {
-		let index = self.index;
-		self.columns.set_cell(key, index, value);
-	}
-}
-
 // ===============
 // TableRowIter<T>
 // ===============
@@ -1085,45 +1005,6 @@ impl<T> DoubleEndedIterator for TableRowIter<T> {
 		Some(TableRow {
 			element: self.element.next_back()?,
 			attributes: self.attributes.next_back()?,
-		})
-	}
-}
-
-// ==================
-// TableRowIterMut<T>
-// ==================
-
-/// Lender-style mutable iterator over table rows.
-///
-/// Does not implement [`Iterator`]: each yielded [`TableRowMut`] borrows the iterator itself for
-/// the duration of its existence, so callers must use `while let Some(mut row) = iter.next() { ... }`
-/// rather than a `for` loop. This guarantees that only one [`TableRowMut`] is ever alive at a time,
-/// which is required for soundness because all rows would otherwise share access to the same
-/// underlying column store.
-pub struct TableRowIterMut<'a, T> {
-	inner: std::iter::Enumerate<std::slice::IterMut<'a, T>>,
-	columns: &'a mut AttributeColumns,
-}
-
-impl<'a, T> TableRowIterMut<'a, T> {
-	/// Yields the next [`TableRowMut`], borrowing this iterator until the row is dropped.
-	#[allow(clippy::should_implement_trait)]
-	pub fn next(&mut self) -> Option<TableRowMut<'_, T>> {
-		let (index, element) = self.inner.next()?;
-		Some(TableRowMut {
-			element,
-			index,
-			columns: &mut *self.columns,
-		})
-	}
-
-	/// Yields the next [`TableRowMut`] from the back, borrowing this iterator until the row is dropped.
-	pub fn next_back(&mut self) -> Option<TableRowMut<'_, T>> {
-		let (index, element) = self.inner.next_back()?;
-		Some(TableRowMut {
-			element,
-			index,
-			columns: &mut *self.columns,
 		})
 	}
 }

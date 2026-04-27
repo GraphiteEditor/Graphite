@@ -200,9 +200,8 @@ pub async fn source_node_id<T: 'n + Send + Clone>(
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	let mut content = content;
-	let mut iter = content.iter_mut();
-	while let Some(mut row) = iter.next() {
-		row.set_attribute("source_node_id", source_node_id);
+	for source_id in content.iter_attribute_values_mut_or_default::<Option<NodeId>>("source_node_id") {
+		*source_id = source_node_id;
 	}
 
 	content
@@ -293,11 +292,12 @@ pub async fn to_graphic<T: IntoGraphicTable + 'n>(
 pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
-		for current_row in current_graphic_table.iter() {
-			let current_element = current_row.element().clone();
-			let reference: Option<NodeId> = current_row.attribute_cloned_or_default("source_node_id");
-			let current_transform: DAffine2 = current_row.attribute_cloned_or_default("transform");
-			let current_alpha_blending: AlphaBlending = current_row.attribute_cloned_or_default("alpha_blending");
+		for index in 0..current_graphic_table.len() {
+			let Some(current_element) = current_graphic_table.element(index) else { continue };
+			let current_element = current_element.clone();
+			let reference: Option<NodeId> = current_graphic_table.attribute_cloned_or_default("source_node_id", index);
+			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default("transform", index);
+			let current_alpha_blending: AlphaBlending = current_graphic_table.attribute_cloned_or_default("alpha_blending", index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -305,10 +305,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					let mut iter = current_element.iter_mut();
-					while let Some(mut graphic) = iter.next() {
-						let graphic_transform: DAffine2 = graphic.attribute_cloned_or_default("transform");
-						graphic.set_attribute("transform", current_transform * graphic_transform);
+					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+						*graphic_transform = current_transform * *graphic_transform;
 					}
 
 					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
@@ -377,20 +375,17 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 		]));
 	}
 
-	if let (Some(color), None) = {
-		let mut colors_iter = colors.iter();
-		(colors_iter.next(), colors_iter.next())
-	} {
+	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
 		return Table::new_from_element(GradientStops::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
-				color: *color.element(),
+				color: single_color,
 			},
 			GradientStop {
 				position: 1.,
 				midpoint: 0.5,
-				color: *color.element(),
+				color: single_color,
 			},
 		]));
 	}

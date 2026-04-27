@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core_types::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
-use core_types::table::{Table, TableRow, TableRowMut};
+use core_types::table::{Table, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
@@ -31,38 +31,33 @@ use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, 
 
 /// Implemented for types that contain vector rows reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `Table<Graphic>` or `Table<Vector>`.
-///
-/// Uses a callback rather than returning a borrowing iterator so the [`TableRowMut`] borrow
-/// cannot escape the call, keeping multi-row access sound under the lender iterator.
 trait VectorTableIterMut {
-	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut TableRowMut<'_, Vector>));
+	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
 
 	fn vector_count(&self) -> usize;
 }
 
 impl VectorTableIterMut for Table<Graphic> {
-	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut TableRowMut<'_, Vector>)) {
-		// Grab only the direct children
-		let mut outer = self.iter_mut();
-		while let Some(element) = outer.next() {
-			let Some(vector_table) = element.into_element_mut().as_vector_mut() else { continue };
-			let mut inner = vector_table.iter_mut();
-			while let Some(mut vector) = inner.next() {
-				f(&mut vector);
+	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
+		for graphic in self.iter_element_values_mut() {
+			let Some(vector_table) = graphic.as_vector_mut() else { continue };
+			let (elements, transforms) = vector_table.element_and_attribute_slices_mut::<DAffine2>("transform");
+			for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
+				f(vector, *transform);
 			}
 		}
 	}
 
 	fn vector_count(&self) -> usize {
-		self.iter().filter_map(|element| element.element().as_vector()).map(|table| table.len()).sum()
+		self.iter_element_values().filter_map(|element| element.as_vector()).map(|table| table.len()).sum()
 	}
 }
 
 impl VectorTableIterMut for Table<Vector> {
-	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut TableRowMut<'_, Vector>)) {
-		let mut iter = self.iter_mut();
-		while let Some(mut vector) = iter.next() {
-			f(&mut vector);
+	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
+		let (elements, transforms) = self.element_and_attribute_slices_mut::<DAffine2>("transform");
+		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
+			f(vector, *transform);
 		}
 	}
 
@@ -111,7 +106,7 @@ where
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	let mut i: usize = 0;
-	content.for_each_vector_mut(|vector| {
+	content.for_each_vector_mut(|vector, _transform| {
 		let factor = match randomize {
 			true => rng.random::<f64>(),
 			false => match repeat_every {
@@ -124,10 +119,10 @@ where
 		let color = gradient.evaluate(factor);
 
 		if fill {
-			vector.element_mut().style.set_fill(Fill::Solid(color));
+			vector.style.set_fill(Fill::Solid(color));
 		}
-		if stroke && let Some(stroke) = vector.element_mut().style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
-			vector.element_mut().style.set_stroke(stroke);
+		if stroke && let Some(stroke) = vector.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
+			vector.style.set_stroke(stroke);
 		}
 
 		i += 1;
@@ -169,8 +164,8 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_backup_gradient: Gradient,
 ) -> V {
 	let fill: Fill = fill.into();
-	content.for_each_vector_mut(|vector| {
-		vector.element_mut().style.set_fill(fill.clone());
+	content.for_each_vector_mut(|vector, _transform| {
+		vector.style.set_fill(fill.clone());
 	});
 
 	content
@@ -232,7 +227,7 @@ where
 	Table<V>: VectorTableIterMut + 'n + Send,
 {
 	let stroke = Stroke {
-		color: color.iter().next().map(|row| row.element()).copied(),
+		color: color.element(0).copied(),
 		weight,
 		dash_lengths: dash_lengths.into_vec(),
 		dash_offset,
@@ -244,10 +239,10 @@ where
 		paint_order,
 	};
 
-	content.for_each_vector_mut(|vector| {
+	content.for_each_vector_mut(|vector, transform| {
 		let mut stroke = stroke.clone();
-		stroke.transform *= vector.attribute_cloned_or_default("transform");
-		vector.element_mut().style.set_stroke(stroke);
+		stroke.transform *= transform;
+		vector.style.set_stroke(stroke);
 	});
 
 	content
@@ -320,7 +315,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 
 			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
 
-			for mut row in instance.iter().map(|row| row.into_cloned()) {
+			for row_index in 0..instance.len() {
+				let Some(mut row) = instance.clone_row(row_index) else { continue };
 				let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 				row.set_attribute("transform", transform * row_transform);
 
@@ -351,13 +347,12 @@ async fn round_corners(
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> Table<Vector> {
-	source
-		.iter()
-		.map(|source| {
-			let source_transform: DAffine2 = source.attribute_cloned_or_default("transform");
+	(0..source.len())
+		.map(|index| {
+			let source_transform: DAffine2 = source.attribute_cloned_or_default("transform", index);
 			let source_transform_inverse = source_transform.inverse();
-			let source_node_id: Option<NodeId> = source.attribute_cloned_or_default("source_node_id");
-			let source = source.element();
+			let source_node_id: Option<NodeId> = source.attribute_cloned_or_default("source_node_id", index);
+			let source = source.element(index).unwrap();
 
 			let upstream_nested_layers = source.upstream_data.clone();
 
@@ -681,21 +676,16 @@ pub mod extrude_algorithms {
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> Table<Vector> {
-	let mut iter = source.iter_mut();
-	while let Some(mut row) = iter.next() {
-		extrude_algorithms::extrude(row.element_mut(), direction, joining_algorithm);
+	for vector in source.iter_element_values_mut() {
+		extrude_algorithms::extrude(vector, direction, joining_algorithm);
 	}
 	source
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>) -> Table<Vector> {
-	let element_and_transform = rectangle.get(0).map(|rect| {
-		let element = rect.element().clone();
-		let transform: DAffine2 = rect.attribute_cloned_or_default("transform");
-		(element, transform)
-	});
-	let Some((target, target_transform)) = element_and_transform else { return content };
+	let Some(target) = rectangle.element(0).cloned() else { return content };
+	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default("transform", 0);
 
 	content
 		.into_iter()
@@ -911,13 +901,12 @@ async fn auto_tangents(
 	#[default(true)]
 	preserve_existing: bool,
 ) -> Table<Vector> {
-	source
-		.iter()
-		.map(|source| {
-			let transform: DAffine2 = source.attribute_cloned_or_default("transform");
-			let alpha_blending: AlphaBlending = source.attribute_cloned_or_default("alpha_blending");
-			let source_node_id: Option<NodeId> = source.attribute_cloned_or_default("source_node_id");
-			let source = source.element();
+	(0..source.len())
+		.map(|index| {
+			let transform: DAffine2 = source.attribute_cloned_or_default("transform", index);
+			let alpha_blending: AlphaBlending = source.attribute_cloned_or_default("alpha_blending", index);
+			let source_node_id: Option<NodeId> = source.attribute_cloned_or_default("source_node_id", index);
+			let source = source.element(index).unwrap();
 
 			let mut result = Vector {
 				style: source.style.clone(),
@@ -1084,9 +1073,8 @@ async fn bounding_box(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn dimensions(_: impl Ctx, content: Table<Vector>) -> DVec2 {
-	content
-		.iter()
-		.filter_map(|vector| vector.element().bounding_box_with_transform(vector.attribute_cloned_or_default("transform")))
+	(0..content.len())
+		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default("transform", index)))
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default()
@@ -1107,12 +1095,11 @@ async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<Vector> {
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
 async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(true)] closed: bool) -> Table<Vector> {
-	let mut iter = points.iter_mut();
-	while let Some(mut row) = iter.next() {
+	for vector in points.iter_element_values_mut() {
 		let mut segment_domain = SegmentDomain::new();
 		let mut next_id = SegmentId::ZERO;
 
-		let points_count = row.element().point_domain.ids().len();
+		let points_count = vector.point_domain.ids().len();
 
 		if points_count >= 2 {
 			(0..points_count - 1).for_each(|i| {
@@ -1122,13 +1109,13 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 			if closed && points_count != 2 {
 				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
-				row.element_mut()
+				vector
 					.region_domain
 					.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
 			}
 		}
 
-		row.element_mut().segment_domain = segment_domain;
+		vector.segment_domain = segment_domain;
 	}
 
 	points
@@ -1299,8 +1286,8 @@ async fn path_is_closed(
 	index: f64,
 ) -> bool {
 	content
-		.iter()
-		.flat_map(|row| row.element().build_stroke_path_iter().map(|(_, closed)| closed))
+		.iter_element_values()
+		.flat_map(|vector| vector.build_stroke_path_iter().map(|(_, closed)| closed))
 		.nth(index.max(0.) as usize)
 		.unwrap_or(false)
 }
@@ -1310,9 +1297,8 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 	let mut content = content;
 	let mut index = 0;
 
-	let mut iter = content.iter_mut();
-	while let Some(mut row) = iter.next() {
-		for (_, position) in row.element_mut().point_domain.positions_mut() {
+	for vector in content.iter_element_values_mut() {
+		for (_, position) in vector.point_domain.positions_mut() {
 			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
 			index += 1;
 
@@ -1328,23 +1314,24 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
-	let mut output_iter = output_table.iter_mut();
-	let Some(mut output) = output_iter.next() else { return output_table };
+	let output = output_table.element_mut(0).unwrap();
 
 	// Concatenate every vector element's subpaths into the single output compound path
-	for (index, row) in content.into_flattened_table().iter().enumerate() {
-		let node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
+	let flattened = content.into_flattened_table();
+	for index in 0..flattened.len() {
+		let Some(element) = flattened.element(index) else { continue };
+		let node_id: Option<NodeId> = flattened.attribute_cloned_or_default("source_node_id", index);
 		let node_id = node_id.map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
 		(index, node_id).hash(&mut hasher);
 		let collision_hash_seed = hasher.finish();
 
-		output.element_mut().concat(row.element(), row.attribute_cloned_or_default("transform"), collision_hash_seed);
+		output.concat(element, flattened.attribute_cloned_or_default("transform", index), collision_hash_seed);
 
 		// TODO: Make this instead use the first encountered style
 		// Use the last encountered style as the output style
-		output.element_mut().style = row.element().style.clone();
+		output.style = element.style.clone();
 	}
 
 	output_table
@@ -1626,9 +1613,9 @@ async fn cut_path(
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
-		.iter()
+		.iter_element_values()
 		.enumerate()
-		.flat_map(|(row_index, vector)| vector.element().stroke_bezpath_iter().map(|bezpath| (row_index, bezpath)).collect::<Vec<_>>())
+		.flat_map(|(row_index, vector)| vector.stroke_bezpath_iter().map(|bezpath| (row_index, bezpath)).collect::<Vec<_>>())
 		.collect::<Vec<_>>();
 
 	let bezpath_count = bezpaths.len() as f64;
@@ -1638,7 +1625,7 @@ async fn cut_path(
 
 	if let Some((row_index, bezpath)) = bezpaths.get(index).cloned() {
 		let mut result_vector = Vector {
-			style: content.get(row_index).unwrap().element().style.clone(),
+			style: content.element(row_index).unwrap().style.clone(),
 			..Default::default()
 		};
 
@@ -1655,7 +1642,7 @@ async fn cut_path(
 			result_vector.append_bezpath(bezpath);
 		}
 
-		*content.get_mut(row_index).unwrap().element_mut() = result_vector;
+		*content.element_mut(row_index).unwrap() = result_vector;
 	}
 
 	content
@@ -1665,16 +1652,15 @@ async fn cut_path(
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
-	let mut iter = content.iter_mut();
-	while let Some(mut row) = iter.next() {
-		let points_count = row.element().point_domain.ids().len();
-		let segments_count = row.element().segment_domain.ids().len();
+	for vector in content.iter_element_values_mut() {
+		let points_count = vector.point_domain.ids().len();
+		let segments_count = vector.segment_domain.ids().len();
 
 		let mut point_usages = vec![0_usize; points_count];
 
 		// Count how many times each point is used as an endpoint of the segments
-		let start_points = row.element().segment_domain.start_point().to_vec();
-		let end_points = row.element().segment_domain.end_point().to_vec();
+		let start_points = vector.segment_domain.start_point().to_vec();
+		let end_points = vector.segment_domain.end_point().to_vec();
 		for (&start, &end) in start_points.iter().zip(end_points.iter()) {
 			point_usages[start] += 1;
 			point_usages[end] += 1;
@@ -1685,7 +1671,7 @@ async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> 
 		let mut points_with_new_offsets = Vec::with_capacity(points_count);
 
 		// Build a new point domain with the original points, but with duplications based on their extra usages by the segments
-		for (index, (point_id, point)) in row.element().point_domain.iter().enumerate() {
+		for (index, (point_id, point)) in vector.point_domain.iter().enumerate() {
 			// Ensure at least one usage to preserve free-floating points not connected to any segments
 			let usage_count = point_usages[index].max(1);
 
@@ -1700,7 +1686,7 @@ async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> 
 		}
 
 		// Reconcile the segment domain with the new points
-		row.element_mut().point_domain = new_points;
+		vector.point_domain = new_points;
 		for original_segment_index in 0..segments_count {
 			let original_point_start_index = start_points[original_segment_index];
 			let original_point_end_index = end_points[original_segment_index];
@@ -1711,8 +1697,8 @@ async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> 
 			let start_usage = points_with_new_offsets[original_point_start_index] + point_usages[original_point_start_index];
 			let end_usage = points_with_new_offsets[original_point_end_index] + point_usages[original_point_end_index];
 
-			row.element_mut().segment_domain.set_start_point(original_segment_index, start_usage);
-			row.element_mut().segment_domain.set_end_point(original_segment_index, end_usage);
+			vector.segment_domain.set_start_point(original_segment_index, start_usage);
+			vector.segment_domain.set_end_point(original_segment_index, end_usage);
 		}
 	}
 
@@ -1736,13 +1722,12 @@ async fn position_on_path(
 ) -> DVec2 {
 	let euclidian = !parameterized_distance;
 
-	let mut bezpaths = content
-		.iter()
-		.flat_map(|vector| {
-			let transform: DAffine2 = vector.attribute_cloned_or_default("transform");
-			vector.element().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform))
+	let mut bezpaths: Vec<_> = (0..content.len())
+		.flat_map(|index| {
+			let transform: DAffine2 = content.attribute_cloned_or_default("transform", index);
+			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
 		})
-		.collect::<Vec<_>>();
+		.collect();
 	let bezpath_count = bezpaths.len() as f64;
 	let progression = progression.clamp(0., bezpath_count);
 	let progression = if reverse { bezpath_count - progression } else { progression };
@@ -1777,13 +1762,12 @@ async fn tangent_on_path(
 ) -> f64 {
 	let euclidian = !parameterized_distance;
 
-	let mut bezpaths = content
-		.iter()
-		.flat_map(|vector| {
-			let transform: DAffine2 = vector.attribute_cloned_or_default("transform");
-			vector.element().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform))
+	let mut bezpaths: Vec<_> = (0..content.len())
+		.flat_map(|index| {
+			let transform: DAffine2 = content.attribute_cloned_or_default("transform", index);
+			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
 		})
-		.collect::<Vec<_>>();
+		.collect();
 	let bezpath_count = bezpaths.len() as f64;
 	let progression = progression.clamp(0., bezpath_count);
 	let progression = if reverse { bezpath_count - progression } else { progression };
@@ -2200,11 +2184,11 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// Collect all subpaths from the path input (applying transforms), or build a default polyline from element origins.
 	let default_polyline = || {
 		let mut default_path = BezPath::new();
-		for (i, row) in content.iter().enumerate() {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
+		for index in 0..content.len() {
+			let transform_attribute: DAffine2 = content.attribute_cloned_or_default("transform", index);
 			let origin = transform_attribute.translation;
 			let point = kurbo::Point::new(origin.x, origin.y);
-			if i == 0 {
+			if index == 0 {
 				default_path.move_to(point);
 			} else {
 				default_path.line_to(point);
@@ -2217,14 +2201,17 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		default_polyline()
 	} else {
 		// User-provided path: collect all subpaths with transforms applied
-		let paths: Vec<BezPath> = path
-			.iter()
-			.flat_map(|vector| {
-				let transform: DAffine2 = vector.attribute_cloned_or_default("transform");
-				vector.element().stroke_bezpath_iter().map(move |mut bezpath| {
-					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath
-				})
+		let paths: Vec<BezPath> = (0..path.len())
+			.flat_map(|index| {
+				let transform: DAffine2 = path.attribute_cloned_or_default("transform", index);
+				path.element(index)
+					.unwrap()
+					.stroke_bezpath_iter()
+					.map(move |mut bezpath| {
+						bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+						bezpath
+					})
+					.collect::<Vec<_>>()
 			})
 			.collect();
 
@@ -2287,11 +2274,11 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 						(content_offset + i + 1).min(max_content_index)
 					};
 
-					let (Some(source), Some(target)) = (content.get(source_index), content.get(target_index)) else {
+					if content.element(source_index).is_none() || content.element(target_index).is_none() {
 						return 0.;
-					};
-					let source_transform: DAffine2 = source.attribute_cloned_or_default("transform");
-					let target_transform: DAffine2 = target.attribute_cloned_or_default("transform");
+					}
+					let source_transform: DAffine2 = content.attribute_cloned_or_default("transform", source_index);
+					let target_transform: DAffine2 = content.attribute_cloned_or_default("transform", target_index);
 					let (s_angle, s_scale, s_skew) = source_transform.decompose_rotation_scale_skew();
 					let (t_angle, t_scale, t_skew) = target_transform.decompose_rotation_scale_skew();
 
@@ -2357,14 +2344,14 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let source_index = source_index.min(max_content_index);
 	let target_index = target_index.min(max_content_index);
 
-	// Use indexed access to borrow only the two rows we need, avoiding collecting the entire table
-	let (Some(source_row), Some(target_row)) = (content.get(source_index), content.get(target_index)) else {
+	// Use indexed access to borrow only the two elements we need
+	let (Some(source_element), Some(target_element)) = (content.element(source_index), content.element(target_index)) else {
 		return content;
 	};
 
 	// Lerp styles
-	let source_alpha_blending: AlphaBlending = source_row.attribute_cloned_or_default("alpha_blending");
-	let target_alpha_blending: AlphaBlending = target_row.attribute_cloned_or_default("alpha_blending");
+	let source_alpha_blending: AlphaBlending = content.attribute_cloned_or_default("alpha_blending", source_index);
+	let target_alpha_blending: AlphaBlending = content.attribute_cloned_or_default("alpha_blending", target_index);
 	let vector_alpha_blending = source_alpha_blending.lerp(&target_alpha_blending, time as f32);
 
 	// Evaluate the spatial position on the control path for the translation component.
@@ -2382,8 +2369,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// This decomposition must match the one used in Stroke::lerp so the renderer's stroke_transform.inverse()
 	// correctly cancels the element transform, keeping the stroke uniform when Stroke is after Transform.
 	let lerped_transform = {
-		let source_transform: DAffine2 = source_row.attribute_cloned_or_default("transform");
-		let target_transform: DAffine2 = target_row.attribute_cloned_or_default("transform");
+		let source_transform: DAffine2 = content.attribute_cloned_or_default("transform", source_index);
+		let target_transform: DAffine2 = content.attribute_cloned_or_default("transform", target_index);
 		let (s_angle, s_scale, s_skew) = source_transform.decompose_rotation_scale_skew();
 		let (t_angle, t_scale, t_skew) = target_transform.decompose_rotation_scale_skew();
 
@@ -2412,30 +2399,27 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// in which case we skip pre-compensation to avoid propagating NaN through upstream_data transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
 		let lerped_inverse = lerped_transform.inverse();
-		let mut iter = graphic_table_content.iter_mut();
-		while let Some(mut row) = iter.next() {
-			let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-			row.set_attribute("transform", lerped_inverse * row_transform);
+		for transform in graphic_table_content.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+			*transform = lerped_inverse * *transform;
 		}
 	}
 
 	// Fast path: when exactly at either endpoint, clone the corresponding geometry directly
 	// instead of extracting manipulator groups, subdividing, interpolating, and rebuilding.
 	if time == 0. || time == 1. {
-		let row = if time == 0. { source_row } else { target_row };
+		let endpoint_index = if time == 0. { source_index } else { target_index };
+		let endpoint_element = content.element(endpoint_index).unwrap();
 
-		let transform = lerped_transform;
-		let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-		let source_node_id: Option<NodeId> = None;
+		let alpha_blending: AlphaBlending = content.attribute_cloned_or_default("alpha_blending", endpoint_index);
 
 		return Table::new_from_row(
 			TableRow::new_from_element(Vector {
 				upstream_data: Some(graphic_table_content),
-				..row.element().clone()
+				..endpoint_element.clone()
 			})
-			.with_attribute("transform", transform)
+			.with_attribute("transform", lerped_transform)
 			.with_attribute("alpha_blending", alpha_blending)
-			.with_attribute("source_node_id", source_node_id),
+			.with_attribute("source_node_id", None::<NodeId>),
 		);
 	}
 
@@ -2443,12 +2427,12 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		upstream_data: Some(graphic_table_content),
 		..Default::default()
 	};
-	vector.style = source_row.element().style.lerp(&target_row.element().style, time);
+	vector.style = source_element.style.lerp(&target_element.style, time);
 
 	// Work directly with manipulator groups, bypassing the BezPath intermediate representation.
 	// This avoids the full Vector → BezPath → interpolate → BezPath → Vector roundtrip each frame.
-	let mut source_subpaths: Vec<_> = source_row.element().stroke_manipulator_groups().collect();
-	let mut target_subpaths: Vec<_> = target_row.element().stroke_manipulator_groups().collect();
+	let mut source_subpaths: Vec<_> = source_element.stroke_manipulator_groups().collect();
+	let mut target_subpaths: Vec<_> = target_element.stroke_manipulator_groups().collect();
 
 	// Interpolate geometry in local space (no transform baked in); the lerped transform handles positioning
 	let matched_count = source_subpaths.len().min(target_subpaths.len());
@@ -2939,7 +2923,7 @@ async fn count_elements<I: Count>(
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
-	content.into_iter().map(|row| row.element().point_domain.positions().len() as f64).sum()
+	content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum()
 }
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
@@ -2952,7 +2936,7 @@ async fn index_points(
 	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
 	index: f64,
 ) -> DVec2 {
-	let points_count = content.iter().map(|row| row.element().point_domain.positions().len()).sum::<usize>();
+	let points_count = content.iter_element_values().map(|vector| vector.point_domain.positions().len()).sum::<usize>();
 
 	if points_count == 0 {
 		return DVec2::ZERO;
@@ -2967,10 +2951,10 @@ async fn index_points(
 
 	// Find the point at the given index across all vector elements
 	let mut accumulated = 0;
-	for row in content.iter() {
-		let row_point_count = row.element().point_domain.positions().len();
+	for vector in content.iter_element_values() {
+		let row_point_count = vector.point_domain.positions().len();
 		if index - accumulated < row_point_count {
-			return row.element().point_domain.positions()[index - accumulated];
+			return vector.point_domain.positions()[index - accumulated];
 		}
 		accumulated += row_point_count;
 	}
@@ -2980,12 +2964,13 @@ async fn index_points(
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn path_length(_: impl Ctx, source: Table<Vector>) -> f64 {
-	source
-		.into_iter()
-		.map(|row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
+	(0..source.len())
+		.map(|index| {
+			let transform: DAffine2 = source.attribute_cloned_or_default("transform", index);
 
-			row.element()
+			source
+				.element(index)
+				.unwrap()
 				.stroke_bezpath_iter()
 				.map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
@@ -3001,12 +2986,11 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector = content.eval(new_ctx).await;
 
-	vector
-		.iter()
-		.map(|row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
+	(0..vector.len())
+		.map(|index| {
+			let transform: DAffine2 = vector.attribute_cloned_or_default("transform", index);
 			let area_scale = transform.matrix2.determinant().abs();
-			row.element().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
+			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
 		})
 		.sum()
 }
@@ -3025,14 +3009,15 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	// Cumulative area or length of all subpaths
 	let mut sum = 0.;
 
-	for row in vector.iter() {
-		for subpath in row.element().stroke_bezier_paths() {
+	for index in 0..vector.len() {
+		let Some(element) = vector.element(index) else { continue };
+		for subpath in element.stroke_bezier_paths() {
 			let partial = match centroid_type {
 				CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
 				CentroidType::Length => subpath.length_centroid_and_length(None, true),
 			};
 			if let Some((subpath_centroid, area_or_length)) = partial {
-				let transform: DAffine2 = row.attribute_cloned_or_default("transform");
+				let transform: DAffine2 = vector.attribute_cloned_or_default("transform", index);
 				let subpath_centroid = transform.transform_point2(subpath_centroid);
 
 				sum += area_or_length;
@@ -3048,11 +3033,17 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 	else {
 		let mut count: usize = 0;
 
-		let summed_positions = vector
-			.iter()
-			.flat_map(|row| {
-				let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-				row.element().point_domain.positions().iter().map(move |&p| transform.transform_point2(p))
+		let summed_positions = (0..vector.len())
+			.flat_map(|index| {
+				let transform: DAffine2 = vector.attribute_cloned_or_default("transform", index);
+				vector
+					.element(index)
+					.unwrap()
+					.point_domain
+					.positions()
+					.iter()
+					.map(move |&p| transform.transform_point2(p))
+					.collect::<Vec<_>>()
 			})
 			.inspect(|_| count += 1)
 			.sum::<DVec2>();
@@ -3099,7 +3090,7 @@ mod test {
 	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
-		let bounding_box = bounding_box.iter().next().unwrap().element();
+		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
 			.region_manipulator_groups()
@@ -3115,12 +3106,9 @@ mod test {
 		// Test a rectangular path with non-zero rotation
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = Table::new_from_element(square);
-		square
-			.get_mut(0)
-			.unwrap()
-			.with_attribute_mut_or_default("transform", |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
+		square.with_attribute_mut_or_default("transform", 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = BoundingBoxNode { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
-		let bounding_box = bounding_box.iter().next().unwrap().element();
+		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
 			.region_manipulator_groups()
@@ -3145,7 +3133,7 @@ mod test {
 
 		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node_from_bezpath(points), vector_node_from_bezpath(element), 1., 1., 0., 0, 0., 0).await;
 		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
-		let flattened_copy_to_points = flatten_path.iter().next().unwrap().element();
+		let flattened_copy_to_points = flatten_path.element(0).unwrap();
 
 		assert_eq!(flattened_copy_to_points.region_manipulator_groups().count(), expected_points.len());
 
@@ -3163,7 +3151,7 @@ mod test {
 	async fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
 		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 30., 0, 0., 0., false, vec![100.]).await;
-		let sample_polyline = sample_polyline.iter().next().unwrap().element();
+		let sample_polyline = sample_polyline.element(0).unwrap();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
@@ -3173,7 +3161,7 @@ mod test {
 	async fn sample_polyline_adaptive_spacing() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
 		let sample_polyline = super::sample_polyline(Footprint::default(), vector_node_from_bezpath(path), PointSpacingType::Separation, 18., 0, 45., 10., true, vec![100.]).await;
-		let sample_polyline = sample_polyline.iter().next().unwrap().element();
+		let sample_polyline = sample_polyline.element(0).unwrap();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
@@ -3188,7 +3176,7 @@ mod test {
 			0,
 		)
 		.await;
-		let poisson_points = poisson_points.iter().next().unwrap().element();
+		let poisson_points = poisson_points.element(0).unwrap();
 		assert!(
 			(20..=40).contains(&poisson_points.point_domain.positions().len()),
 			"actual len {}",
@@ -3219,26 +3207,26 @@ mod test {
 	#[tokio::test]
 	async fn spline() {
 		let spline = super::spline(Footprint::default(), vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY))).await;
-		let spline = spline.iter().next().unwrap().element();
+		let spline = spline.element(0).unwrap();
 		assert_eq!(spline.stroke_bezpath_iter().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
 	#[tokio::test]
 	async fn morph() {
 		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
-		let mut second_rectangle = rectangles.get(0).unwrap().into_cloned();
+		let mut second_rectangle = rectangles.clone_row(0).unwrap();
 		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>("transform") *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
 		let morphed = super::morph(Footprint::default(), rectangles, 0.5, false, InterpolationDistribution::default(), Table::default()).await;
-		let row = morphed.iter().next().unwrap();
+		let morphed_element = morphed.element(0).unwrap();
 		// Geometry stays in local space (original rectangle coordinates)
 		assert_eq!(
-			&row.element().point_domain.positions()[..4],
+			&morphed_element.point_domain.positions()[..4],
 			vec![DVec2::new(0., 0.), DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]
 		);
 		// The interpolated transform carries the midpoint translation (approximate due to arc-length parameterization)
-		assert!((row.attribute_cloned_or_default::<DAffine2>("transform").translation - DVec2::new(-50., -50.)).length() < 1e-3);
+		assert!((morphed.attribute_cloned_or_default::<DAffine2>("transform", 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
 	}
 
 	#[track_caller]
@@ -3260,7 +3248,7 @@ mod test {
 	async fn bevel_rect() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
 		let beveled = super::bevel(Footprint::default(), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
-		let beveled = beveled.iter().next().unwrap().element();
+		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
 		assert_eq!(beveled.segment_domain.ids().len(), 8);
@@ -3288,7 +3276,7 @@ mod test {
 		source.push(curve.as_path_el());
 
 		let beveled = super::bevel((), vector_node_from_bezpath(source), 2_f64.sqrt() * 10.);
-		let beveled = beveled.iter().next().unwrap().element();
+		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
@@ -3314,13 +3302,10 @@ mod test {
 		let vector = Vector::from_bezpath(source);
 		let mut vector_table = Table::new_from_element(vector.clone());
 
-		vector_table
-			.get_mut(0)
-			.unwrap()
-			.set_attribute("transform", DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
+		vector_table.set_attribute("transform", 0, DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
 
 		let beveled = super::bevel((), Table::new_from_element(vector), 2_f64.sqrt() * 10.);
-		let beveled = beveled.iter().next().unwrap().element();
+		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
@@ -3343,7 +3328,7 @@ mod test {
 		source.line_to(Point::new(0., 100.));
 
 		let beveled = super::bevel(Footprint::default(), vector_node_from_bezpath(source), 999.);
-		let beveled = beveled.iter().next().unwrap().element();
+		let beveled = beveled.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
@@ -3367,7 +3352,7 @@ mod test {
 		let subpath = BezPath::from_path_segments([line, point, curve].into_iter());
 
 		let beveled_table = super::bevel(Footprint::default(), vector_node_from_bezpath(subpath), 5.);
-		let beveled = beveled_table.iter().next().unwrap().element();
+		let beveled = beveled_table.element(0).unwrap();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);

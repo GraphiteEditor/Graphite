@@ -1,4 +1,4 @@
-use core_types::table::{Table, TableRow, TableRowRef};
+use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
 use core_types::{AlphaBlending, Color, Ctx};
 use glam::{DAffine2, DVec2};
@@ -35,21 +35,22 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 	let content = content.into_graphic_table();
 
 	// The first index is the bottom of the stack
-	let mut result_vector_table = boolean_operation_on_vector_table(flatten_vector(&content).iter(), operation);
+	let flattened = flatten_vector(&content);
+	let mut result_vector_table = boolean_operation_on_vector_table(&flattened, operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	let mut result_iter = result_vector_table.iter_mut();
-	if let Some(mut result_vector) = result_iter.next() {
-		let transform: DAffine2 = result_vector.attribute_cloned_or_default("transform");
-		result_vector.set_attribute("transform", DAffine2::IDENTITY);
+	if result_vector_table.element_mut(0).is_some() {
+		let transform: DAffine2 = result_vector_table.attribute_cloned_or_default("transform", 0);
+		result_vector_table.set_attribute("transform", 0, DAffine2::IDENTITY);
 
-		Vector::transform(result_vector.element_mut(), transform);
-		result_vector.element_mut().style.set_stroke_transform(DAffine2::IDENTITY);
-		result_vector.element_mut().upstream_data = Some(content.clone());
+		let result_vector = result_vector_table.element_mut(0).unwrap();
+		Vector::transform(result_vector, transform);
+		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
+		result_vector.upstream_data = Some(content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		let merge_transform: DAffine2 = result_vector.attribute_cloned_or_default("transform");
-		result_vector.element_mut().merge_by_distance_spatial(merge_transform, 0.0001);
+		let merge_transform: DAffine2 = result_vector_table.attribute_cloned_or_default("transform", 0);
+		result_vector_table.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
 	result_vector_table
@@ -109,26 +110,28 @@ impl WindingNumber {
 	}
 }
 
-fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>> + Clone, boolean_operation: BooleanOperation) -> Table<Vector> {
+fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: BooleanOperation) -> Table<Vector> {
 	const EPSILON: f64 = 1e-5;
 	let mut table = Table::new();
 	let mut paths = Vec::new();
 	let mut row = TableRow::<Vector>::default();
 
-	let copy_from = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
-		vector.clone().next()
+	let copy_from_index = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
+		if !vector.is_empty() { Some(0) } else { None }
 	} else {
-		vector.clone().next_back()
+		if !vector.is_empty() { Some(vector.len() - 1) } else { None }
 	};
-	if let Some(copy_from) = copy_from {
-		*row.attribute_mut_or_insert_default("alpha_blending") = copy_from.attribute_cloned_or_default::<AlphaBlending>("alpha_blending");
-		*row.attribute_mut_or_insert_default("source_node_id") = copy_from.attribute_cloned_or_default::<Option<NodeId>>("source_node_id");
-		row.element_mut().style = copy_from.element().style.clone();
-		row.element_mut().upstream_data = copy_from.element().upstream_data.clone();
+	if let Some(index) = copy_from_index {
+		*row.attribute_mut_or_insert_default("alpha_blending") = vector.attribute_cloned_or_default::<AlphaBlending>("alpha_blending", index);
+		*row.attribute_mut_or_insert_default("source_node_id") = vector.attribute_cloned_or_default::<Option<NodeId>>("source_node_id", index);
+		let copy_from = vector.element(index).unwrap();
+		row.element_mut().style = copy_from.style.clone();
+		row.element_mut().upstream_data = copy_from.upstream_data.clone();
 	}
 
-	for element in vector {
-		paths.push(to_bez_path(element.element(), element.attribute_cloned_or_default("transform")));
+	for index in 0..vector.len() {
+		let element = vector.element(index).unwrap();
+		paths.push(to_bez_path(element, vector.attribute_cloned_or_default("transform", index)));
 	}
 
 	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
@@ -150,13 +153,13 @@ fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item =
 }
 
 fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
-	graphic_table
-		.iter()
-		.flat_map(|element| {
-			match element.element().clone() {
+	(0..graphic_table.len())
+		.flat_map(|index| {
+			let graphic = graphic_table.element(index).unwrap();
+			match graphic.clone() {
 				Graphic::Vector(vector) => {
 					// Apply the parent graphic's transform to each element of the vector table
-					let parent_transform: DAffine2 = element.attribute_cloned_or_default("transform");
+					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
 					vector
 						.into_iter()
 						.map(|mut sub_vector| {
@@ -167,13 +170,11 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterCPU(image) => {
-					let parent_transform: DAffine2 = element.attribute_cloned_or_default("transform");
+					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
 					let make_row = |transform| {
-						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
-						// Create a vector table row from the rectangular subpath, with a default black fill
 						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
@@ -182,18 +183,16 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 					// Apply the parent graphic's transform to each raster element
 					image
-						.iter()
-						.map(|row| make_row(parent_transform * row.attribute_cloned_or_default::<DAffine2>("transform")))
+						.iter_attribute_values_or_default::<DAffine2>("transform")
+						.map(|row_transform| make_row(parent_transform * row_transform))
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
-					let parent_transform: DAffine2 = element.attribute_cloned_or_default("transform");
+					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
 					let make_row = |transform| {
-						// Convert the image frame into a rectangular subpath with the image's transform
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
-						// Create a vector table row from the rectangular subpath, with a default black fill
 						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
@@ -202,21 +201,20 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 					// Apply the parent graphic's transform to each raster element
 					image
-						.iter()
-						.map(|row| make_row(parent_transform * row.attribute_cloned_or_default::<DAffine2>("transform")))
+						.iter_attribute_values_or_default::<DAffine2>("transform")
+						.map(|row_transform| make_row(parent_transform * row_transform))
 						.collect::<Vec<_>>()
 				}
 				Graphic::Graphic(mut graphic) => {
-					let parent_transform: DAffine2 = element.attribute_cloned_or_default("transform");
+					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
 					// Apply the parent graphic's transform to each element of inner table
-					let mut iter = graphic.iter_mut();
-					while let Some(mut sub_element) = iter.next() {
-						let current_transform: DAffine2 = sub_element.attribute_cloned_or_default("transform");
-						sub_element.set_attribute("transform", parent_transform * current_transform);
+					for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+						*transform = parent_transform * *transform;
 					}
 
 					// Recursively flatten the inner table into the output vector table
-					let unioned = boolean_operation_on_vector_table(flatten_vector(&graphic).iter(), BooleanOperation::Union);
+					let flattened = flatten_vector(&graphic);
+					let unioned = boolean_operation_on_vector_table(&flattened, BooleanOperation::Union);
 
 					unioned.into_iter().collect::<Vec<_>>()
 				}

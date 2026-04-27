@@ -66,27 +66,20 @@ fn reset_transform<T>(
 	reset_rotation: bool,
 	reset_scale: bool,
 ) -> Table<T> {
-	let mut iter = content.iter_mut();
-	while let Some(mut row) = iter.next() {
-		// Translation
+	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
 		if reset_translation {
-			row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.translation = DVec2::ZERO);
+			row_transform.translation = DVec2::ZERO;
 		}
-		// (Rotation, Scale)
+
 		match (reset_rotation, reset_scale) {
-			(true, true) => {
-				row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.matrix2 = DMat2::IDENTITY);
-			}
+			(true, true) => row_transform.matrix2 = DMat2::IDENTITY,
 			(true, false) => {
-				let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
-				let scale = transform_attribute.scale_magnitudes();
-				row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.matrix2 = DMat2::from_diagonal(scale));
+				let scale = row_transform.scale_magnitudes();
+				row_transform.matrix2 = DMat2::from_diagonal(scale);
 			}
 			(false, true) => {
-				let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
-				let rotation = transform_attribute.decompose_rotation();
-				let rotation_matrix = DMat2::from_angle(rotation);
-				row.with_attribute_mut_or_default("transform", |t: &mut DAffine2| t.matrix2 = rotation_matrix);
+				let rotation = row_transform.decompose_rotation();
+				row_transform.matrix2 = DMat2::from_angle(rotation);
 			}
 			(false, false) => {}
 		}
@@ -109,9 +102,8 @@ fn replace_transform<T>(
 	mut content: Table<T>,
 	transform: DAffine2,
 ) -> Table<T> {
-	let mut iter = content.iter_mut();
-	while let Some(mut row) = iter.next() {
-		row.set_attribute("transform", transform.transform());
+	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+		*row_transform = transform.transform();
 	}
 	content
 }
@@ -131,7 +123,7 @@ async fn extract_transform<T>(
 	)]
 	content: Table<T>,
 ) -> DAffine2 {
-	content.iter().next().map(|row| row.attribute_cloned_or_default("transform")).unwrap_or_default()
+	content.attribute_cloned_or_default::<DAffine2>("transform", 0)
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.

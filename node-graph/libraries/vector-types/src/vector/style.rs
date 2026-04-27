@@ -135,8 +135,8 @@ impl From<Option<Color>> for Fill {
 
 impl From<Table<Color>> for Fill {
 	fn from(color: Table<Color>) -> Fill {
-		let alpha = color.get(0).map(|row| row.attribute_cloned_or_default::<AlphaBlending>("alpha_blending").opacity).unwrap_or(1.);
-		let color = color.iter().next().map(|row| row.element()).copied();
+		let alpha = color.attribute_cloned_or_default::<AlphaBlending>("alpha_blending", 0).opacity;
+		let color = color.element(0).copied();
 		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha)))
 	}
 }
@@ -144,7 +144,7 @@ impl From<Table<Color>> for Fill {
 impl From<Table<GradientStops>> for Fill {
 	fn from(gradient: Table<GradientStops>) -> Fill {
 		Fill::Gradient(Gradient {
-			stops: gradient.iter().nth(0).map(|row| row.element().clone()).unwrap_or_default(),
+			stops: gradient.element(0).cloned().unwrap_or_default(),
 			..Default::default()
 		})
 	}

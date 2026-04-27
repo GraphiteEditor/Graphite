@@ -18,41 +18,36 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for Table<Vector> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.opacity *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<Graphic> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.opacity *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<Raster<CPU>> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.opacity *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<Color> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.opacity *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<GradientStops> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.opacity *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.opacity *= factor as f32;
 		}
 	}
 }
@@ -67,41 +62,36 @@ impl MultiplyFill for Color {
 }
 impl MultiplyFill for Table<Vector> {
 	fn multiply_fill(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.fill *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<Graphic> {
 	fn multiply_fill(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.fill *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<Raster<CPU>> {
 	fn multiply_fill(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.fill *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<Color> {
 	fn multiply_fill(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.fill *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<GradientStops> {
 	fn multiply_fill(&mut self, factor: f64) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.fill *= factor as f32);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.fill *= factor as f32;
 		}
 	}
 }
@@ -112,41 +102,36 @@ trait SetBlendMode {
 
 impl SetBlendMode for Table<Vector> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.blend_mode = blend_mode);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<Graphic> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.blend_mode = blend_mode);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<Raster<CPU>> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.blend_mode = blend_mode);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.blend_mode = blend_mode);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<GradientStops> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.blend_mode = blend_mode);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
@@ -157,41 +142,36 @@ trait SetClip {
 
 impl SetClip for Table<Vector> {
 	fn set_clip(&mut self, clip: bool) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.clip = clip);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<Graphic> {
 	fn set_clip(&mut self, clip: bool) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.clip = clip);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<Raster<CPU>> {
 	fn set_clip(&mut self, clip: bool) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.clip = clip);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<Color> {
 	fn set_clip(&mut self, clip: bool) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.clip = clip);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<GradientStops> {
 	fn set_clip(&mut self, clip: bool) {
-		let mut iter = self.iter_mut();
-		while let Some(mut row) = iter.next() {
-			row.with_attribute_mut_or_default("alpha_blending", |a: &mut AlphaBlending| a.clip = clip);
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>("alpha_blending") {
+			a.clip = clip;
 		}
 	}
 }

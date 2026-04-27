@@ -13,13 +13,12 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 	if vector.is_empty() {
 		vector.push(TableRow::default());
 	}
-	let mut row = vector.get_mut(0).expect("push should give one item");
-	modification.apply(row.element_mut());
+	modification.apply(vector.element_mut(0).expect("push should give one item"));
 
 	// Update the source node id
 	let this_node_path = node_path.iter().rev().nth(1).copied();
-	let existing: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
-	row.set_attribute("source_node_id", existing.or(this_node_path));
+	let existing: Option<NodeId> = vector.attribute_cloned_or_default("source_node_id", 0);
+	vector.set_attribute("source_node_id", 0, existing.or(this_node_path));
 
 	if vector.len() > 1 {
 		warn!("The path modify ran on {} vector rows. Only the first can be modified.", vector.len());
@@ -30,16 +29,14 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 /// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
 async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vector> {
-	let mut iter = vector.iter_mut();
-	while let Some(mut row) = iter.next() {
-		let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-
-		for (_, point) in row.element_mut().point_domain.positions_mut() {
+	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>("transform");
+	for (element, transform) in elements.iter_mut().zip(transforms.iter_mut()) {
+		for (_, point) in element.point_domain.positions_mut() {
 			*point = transform.transform_point2(*point);
 		}
-		row.element_mut().segment_domain.transform(transform);
+		element.segment_domain.transform(*transform);
 
-		row.set_attribute("transform", DAffine2::IDENTITY);
+		*transform = DAffine2::IDENTITY;
 	}
 
 	vector

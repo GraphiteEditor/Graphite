@@ -31,14 +31,13 @@ mod blend_std {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
 			let pair_count = result_table.len().min(under.len());
-			let mut iter = result_table.iter_mut();
-			for under_index in 0..pair_count {
-				let Some(mut over) = iter.next() else { break };
-				let Some(under) = under.get(under_index) else { break };
-				let data = over.element().data.iter().zip(under.element().data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
-				let (width, height) = (over.element().width, over.element().height);
+			for index in 0..pair_count {
+				let Some(over) = result_table.element(index) else { break };
+				let Some(under_element) = under.element(index) else { break };
+				let data = over.data.iter().zip(under_element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+				let (width, height) = (over.width, over.height);
 
-				*over.element_mut() = Raster::new_cpu(Image {
+				*result_table.element_mut(index).unwrap() = Raster::new_cpu(Image {
 					data,
 					width,
 					height,
@@ -52,12 +51,11 @@ mod blend_std {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
 			let pair_count = result_table.len().min(under.len());
-			let mut iter = result_table.iter_mut();
-			for under_index in 0..pair_count {
-				let Some(mut over) = iter.next() else { break };
-				let Some(under) = under.get(under_index) else { break };
-				let new_val = blend_fn(*over.element(), *under.element());
-				*over.element_mut() = new_val;
+			for index in 0..pair_count {
+				let Some(over) = result_table.element(index) else { break };
+				let Some(under_element) = under.element(index) else { break };
+				let new_val = blend_fn(*over, *under_element);
+				*result_table.element_mut(index).unwrap() = new_val;
 			}
 			result_table
 		}
@@ -66,12 +64,11 @@ mod blend_std {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 			let mut result_table = self.clone();
 			let pair_count = result_table.len().min(under.len());
-			let mut iter = result_table.iter_mut();
-			for under_index in 0..pair_count {
-				let Some(mut over) = iter.next() else { break };
-				let Some(under) = under.get(under_index) else { break };
-				let new_val = over.element().blend(under.element(), &blend_fn);
-				*over.element_mut() = new_val;
+			for index in 0..pair_count {
+				let Some(over) = result_table.element(index) else { break };
+				let Some(under_element) = under.element(index) else { break };
+				let new_val = over.blend(under_element, &blend_fn);
+				*result_table.element_mut(index).unwrap() = new_val;
 			}
 			result_table
 		}
@@ -216,7 +213,7 @@ mod test {
 		let opacity = 100.;
 
 		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.iter().next().unwrap().element().clone();
+		let result = result.element(0).unwrap().clone();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

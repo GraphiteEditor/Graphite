@@ -441,8 +441,7 @@ impl NodeRuntime {
 			// Vector table: vector modifications
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 				// Insert the vector modify
-				self.vector_modify
-					.insert(parent_network_node_id, io.output.iter().next().map(|row| row.element().clone()).unwrap_or_default());
+				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
 			// Other
 			else {

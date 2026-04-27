@@ -77,8 +77,8 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for row in generated_instance.iter() {
-			let mut row = row.into_cloned();
+		for row_index in 0..generated_instance.len() {
+			let Some(mut row) = generated_instance.clone_row(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 			let local_translation = DAffine2::from_translation(local_transform.translation);
@@ -123,8 +123,8 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for row in generated_instance.iter() {
-			let mut row = row.into_cloned();
+		for row_index in 0..generated_instance.len() {
+			let Some(mut row) = generated_instance.clone_row(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 			let local_translation = DAffine2::from_translation(local_transform.translation);
@@ -154,9 +154,9 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 ) -> Table<T> {
 	let mut result_table = Table::new();
 
-	for points_row in points.iter() {
-		let points = points_row.element();
-		let transform: DAffine2 = points_row.attribute_cloned_or_default("transform");
+	for points_index in 0..points.len() {
+		let Some(points_element) = points.element(points_index) else { continue };
+		let transform: DAffine2 = points.attribute_cloned_or_default("transform", points_index);
 
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
@@ -170,7 +170,7 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 			}
 		};
 
-		let range = points.point_domain.positions().iter().enumerate();
+		let range = points_element.point_domain.positions().iter().enumerate();
 		if reverse {
 			for (index, &point) in range.rev() {
 				iteration(index, point).await;
@@ -233,8 +233,12 @@ mod test {
 		let points = Table::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
 		let generated = super::repeat_on_points(context, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
-		for (position, generated_row) in positions.into_iter().zip(generated.iter()) {
-			let bounds = generated_row.element().bounding_box_with_transform(generated_row.attribute_cloned_or_default("transform")).unwrap();
+		for (position, index) in positions.into_iter().zip(0..generated.len()) {
+			let bounds = generated
+				.element(index)
+				.unwrap()
+				.bounding_box_with_transform(generated.attribute_cloned_or_default("transform", index))
+				.unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}
@@ -254,7 +258,7 @@ mod test {
 		)
 		.await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element();
+		let vector = vector_table.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 3);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
@@ -275,7 +279,7 @@ mod test {
 		)
 		.await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element();
+		let vector = vector_table.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
@@ -287,7 +291,7 @@ mod test {
 		let context = OwnedContextImpl::default().into_context();
 		let repeated = super::repeat_radial(context, &FutureWrapperNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))), 45., 4., 8).await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element();
+		let vector = vector_table.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {

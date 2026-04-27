@@ -52,10 +52,8 @@ impl BoundingBox for Artboard {
 
 		let mut combined_bounds = None;
 
-		for row in self.content.iter() {
-			let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-
-			match row.element().bounding_box(transform * row_transform, include_stroke) {
+		for (element, row_transform) in self.content.iter_element_values().zip(self.content.iter_attribute_values_or_default::<DAffine2>("transform")) {
+			match element.bounding_box(transform * row_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {

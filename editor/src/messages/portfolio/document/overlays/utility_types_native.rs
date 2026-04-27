@@ -1166,13 +1166,14 @@ impl OverlayContextInternal {
 	fn render_text_paths(&mut self, text_table: &Table<Vector>, font_color: &str, base_transform: kurbo::Affine) {
 		let color = Self::parse_color(font_color);
 
-		for row in text_table.iter() {
+		for index in 0..text_table.len() {
 			// Use the existing bezier_to_path infrastructure to convert Vector to BezPath
 			let mut path = BezPath::new();
 			let mut last_point = None;
-			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
+			let transform: DAffine2 = text_table.attribute_cloned_or_default("transform", index);
 
-			for (_, bezier, start_id, end_id) in row.element().segment_iter() {
+			let Some(element) = text_table.element(index) else { continue };
+			for (_, bezier, start_id, end_id) in element.segment_iter() {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 

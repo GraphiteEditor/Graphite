@@ -90,15 +90,14 @@ where
 		return target;
 	}
 
-	let mut iter = target.iter_mut();
-	while let Some(mut table_row) = iter.next() {
-		let target_width = table_row.element().width;
-		let target_height = table_row.element().height;
+	let (elements, transforms) = target.element_and_attribute_slices_mut::<DAffine2>("transform");
+	for (element, transform_attribute) in elements.iter_mut().zip(transforms.iter()) {
+		let target_width = element.width;
+		let target_height = element.height;
 		let target_size = DVec2::new(target_width as f64, target_height as f64);
 
 		let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
 
-		let transform_attribute: DAffine2 = table_row.attribute_cloned_or_default("transform");
 		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * transform_attribute.inverse();
 
 		for position in &positions {
@@ -119,12 +118,12 @@ where
 			let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 			let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
 			assert!(texture_index(max_x, max_y) < texture.data.len());
-			assert!(target_index(max_x, max_y) < table_row.element().data.len());
+			assert!(target_index(max_x, max_y) < element.data.len());
 
 			for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 				for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 					let src_pixel = texture.data[texture_index(x, y)];
-					let dst_pixel = &mut table_row.element_mut().data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
+					let dst_pixel = &mut element.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
 					*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 				}
 			}
@@ -201,7 +200,7 @@ async fn brush(
 		image.push(TableRow::default());
 	}
 	// TODO: Find a way to handle more than one row
-	let table_row = image.iter().next().expect("Expected the one row we just pushed").into_cloned();
+	let table_row = image.clone_row(0).expect("Expected the one row we just pushed");
 
 	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
@@ -316,12 +315,10 @@ async fn brush(
 	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default("alpha_blending");
 	let source_node_id: Option<NodeId> = actual_image.attribute_cloned_or_default("source_node_id");
 
-	let mut iter = image.iter_mut();
-	let mut first_row = iter.next().unwrap();
-	*first_row.element_mut() = actual_image.into_element();
-	first_row.set_attribute("transform", transform);
-	first_row.set_attribute("alpha_blending", alpha_blending);
-	first_row.set_attribute("source_node_id", source_node_id);
+	*image.element_mut(0).unwrap() = actual_image.into_element();
+	image.set_attribute("transform", 0, transform);
+	image.set_attribute("alpha_blending", 0, alpha_blending);
+	image.set_attribute("source_node_id", 0, source_node_id);
 
 	image
 }
@@ -425,6 +422,6 @@ mod test {
 			BrushCache::default(),
 		)
 		.await;
-		assert_eq!(image.iter().next().unwrap().element().width, 20);
+		assert_eq!(image.element(0).unwrap().width, 20);
 	}
 }

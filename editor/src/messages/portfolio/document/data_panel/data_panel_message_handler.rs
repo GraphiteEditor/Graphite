@@ -247,9 +247,9 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	}
 	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
-			if let Some(row) = self.get(index) {
+			if let Some(element) = self.element(index) {
 				data.current_depth += 1;
-				let result = row.element().layout_with_breadcrumb(data);
+				let result = element.layout_with_breadcrumb(data);
 				data.current_depth -= 1;
 				return result;
 			} else {
@@ -258,24 +258,15 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 			}
 		}
 
-		// Collect all unique attribute keys across all rows, preserving first-seen order
-		let mut attribute_keys: Vec<String> = Vec::new();
-		for row in self.iter() {
-			for key in row.attribute_keys() {
-				if !attribute_keys.iter().any(|existing| existing == key) {
-					attribute_keys.push(key.to_string());
-				}
-			}
-		}
+		let attribute_keys: Vec<String> = self.attribute_keys().map(str::to_string).collect();
 
-		let mut rows = self
-			.iter()
-			.enumerate()
-			.map(|(index, row)| {
-				let mut cells = vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), row.element().element_widget(index)];
+		let mut rows = (0..self.len())
+			.map(|index| {
+				let element = self.element(index).unwrap();
+				let mut cells = vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), element.element_widget(index)];
 				for key in &attribute_keys {
-					let value = row
-						.attribute_display_value(key, |ty| {
+					let value = self
+						.attribute_display_value(key, index, |ty| {
 							Some(match () {
 								() if let Some(&value) = ty.downcast_ref::<DAffine2>() => format_transform_matrix(value),
 								() if let Some(&value) = ty.downcast_ref::<DVec2>() => format_dvec2(value),

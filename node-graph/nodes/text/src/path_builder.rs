@@ -61,7 +61,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element
-				self.vector_table.get_mut(0).unwrap().element_mut().append_subpath(subpath, false);
+				self.vector_table.element_mut(0).unwrap().append_subpath(subpath, false);
 			}
 		}
 	}
