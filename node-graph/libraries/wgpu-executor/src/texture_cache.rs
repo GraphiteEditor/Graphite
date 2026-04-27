@@ -23,6 +23,8 @@ impl TextureCache {
 	}
 
 	pub fn request_texture(&mut self, device: &wgpu::Device, size: UVec2) -> Arc<wgpu::Texture> {
+		let size = size.max(UVec2::ONE);
+
 		if let Some(pos) = self.textures.iter().position(|e| e.size == size && Arc::strong_count(&e.texture) == 1) {
 			let entry = self.textures.remove(pos).unwrap();
 			let texture = entry.texture.clone();
@@ -54,13 +56,6 @@ impl TextureCache {
 			bytes: incoming_bytes,
 		});
 
-		println!(
-			"total size {} MB, total free size {} MB, Textures in cache: {}",
-			self.textures.iter().map(|e| e.bytes).sum::<u64>() / (1024 * 1024),
-			self.total_free_bytes() / (1024 * 1024),
-			self.textures.len()
-		);
-
 		texture
 	}
 
@@ -69,13 +64,23 @@ impl TextureCache {
 	}
 
 	fn evict_until_fits(&mut self, incoming_bytes: u64) {
-		while self.total_free_bytes() + incoming_bytes > self.max_free_bytes {
-			match self.textures.iter().position(|e| Arc::strong_count(&e.texture) == 1) {
-				Some(pos) => {
-					self.textures.remove(pos);
-				}
-				None => break,
-			}
+		let mut free_bytes = self.total_free_bytes();
+		let max_free_bytes = self.max_free_bytes;
+
+		if free_bytes + incoming_bytes <= max_free_bytes {
+			return;
 		}
+
+		self.textures.retain(|entry| {
+			if free_bytes + incoming_bytes <= max_free_bytes {
+				return true;
+			}
+			if Arc::strong_count(&entry.texture) == 1 {
+				free_bytes -= entry.bytes;
+				false
+			} else {
+				true
+			}
+		});
 	}
 }

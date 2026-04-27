@@ -183,13 +183,13 @@ impl TileCacheImpl {
 	}
 
 	fn store_regions(&mut self, new_regions: Vec<CachedRegion>) {
-		self.evict_until_under_budget();
 		for mut region in new_regions {
 			region.last_access = self.timestamp;
 			self.timestamp += 1;
 			self.total_memory += region.memory_size;
 			self.regions.push(region);
 		}
+		self.evict_until_under_budget();
 	}
 
 	fn evict_until_under_budget(&mut self) {
