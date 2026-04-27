@@ -207,6 +207,47 @@ pub async fn source_node_id<T: 'n + Send + Clone>(
 	content
 }
 
+/// Writes a per-row attribute column on the input table. The value-producing input is evaluated once per row,
+/// with the row's element index and the row itself (as a single-row table vararg) passed via context, so the
+/// upstream pipeline can return a different value per row that may be derived from the row's own data.
+/// If the column already exists, its values are replaced; if not, the column is created.
+#[node_macro::node(category("General"))]
+async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	/// The table whose rows will gain or replace the named attribute column.
+	#[implementations(
+		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
+		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
+		Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>,
+		Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>,
+		Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>,
+		Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>,
+		Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>,
+	)]
+	mut content: Table<T>,
+	/// The attribute name (column key) to write or replace.
+	name: String,
+	/// The node that produces the per-row value. Called once per row with the row index in context.
+	#[implementations(
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+	)]
+	value: impl Node<'n, Context<'static>, Output = U>,
+) -> Table<T> {
+	for index in 0..content.len() {
+		let row = content.clone_row(index).expect("index is within bounds");
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_row(row))).with_index(index);
+		let v = value.eval(owned_ctx.into_context()).await;
+		content.set_attribute(&name, index, v);
+	}
+	content
+}
+
 /// Joins two tables of the same type, extending the base table with the rows of the new table.
 #[node_macro::node(category("General"))]
 pub async fn extend<T: 'n + Send + Clone>(
