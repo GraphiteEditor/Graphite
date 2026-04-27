@@ -1371,7 +1371,11 @@ impl Render for Table<Vector> {
 				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
 			}
 
-			if let Some(upstream_nested_layers) = &vector.merged_layers {
+			// If this row carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
+			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+			// surface the original child layers' click targets.
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", index);
+			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
 				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
@@ -1578,7 +1582,8 @@ impl Render for Table<Raster<CPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			if let Some(upstream_nested_layers) = self.attribute_cloned_or_default::<Option<Table<Graphic>>>("editor:merged_layers", 0) {
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -1667,7 +1672,8 @@ impl Render for Table<Raster<GPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			if let Some(upstream_nested_layers) = self.attribute_cloned_or_default::<Option<Table<Graphic>>>("editor:merged_layers", 0) {
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
 		}

@@ -87,7 +87,7 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path<Upstream: Default + 'static>(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector<Upstream>> {
+	pub fn to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
 			return Table::new_from_element(Vector::default());
 		};

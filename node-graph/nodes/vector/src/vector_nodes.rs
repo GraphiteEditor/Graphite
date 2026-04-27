@@ -354,8 +354,6 @@ async fn round_corners(
 			let attributes = source.clone_row_attributes(index);
 			let source = source.element(index).unwrap();
 
-			let upstream_nested_layers = source.merged_layers.clone();
-
 			// Flip the roundness to help with user intuition
 			let roundness = 1. - roundness;
 			// Convert 0-100 to 0-0.5
@@ -438,8 +436,6 @@ async fn round_corners(
 				rounded_subpath.apply_affine(Affine::new(source_transform_inverse.to_cols_array()));
 				result.append_bezpath(rounded_subpath);
 			}
-
-			result.merged_layers = upstream_nested_layers;
 
 			TableRow::from_parts(result, attributes)
 		})
@@ -1317,7 +1313,7 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Preserve a reference to the original upstream graphic table so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
-	output.merged_layers = Some(graphic_table);
+	output_table.set_attribute("editor:merged_layers", 0, graphic_table);
 
 	// Adopt the last input row's layer so the editor can also bucket clicks under a contributing child layer
 	if !flattened.is_empty() {
@@ -1351,7 +1347,6 @@ async fn sample_polyline(
 				region_domain: Default::default(),
 				colinear_manipulators: Default::default(),
 				style: std::mem::take(&mut row.element_mut().style),
-				merged_layers: std::mem::take(&mut row.element_mut().merged_layers),
 			};
 			// Transfer the stroke transform from the input vector content to the result.
 			result.style.set_stroke_transform(row.attribute_cloned_or_default("transform"));
@@ -1441,7 +1436,6 @@ async fn simplify(
 
 			let mut result = Vector {
 				style: std::mem::take(&mut row.element_mut().style),
-				merged_layers: std::mem::take(&mut row.element_mut().merged_layers),
 				..Default::default()
 			};
 
@@ -1538,7 +1532,6 @@ async fn decimate(
 
 			let mut result = Vector {
 				style: std::mem::take(&mut row.element_mut().style),
-				merged_layers: std::mem::take(&mut row.element_mut().merged_layers),
 				..Default::default()
 			};
 
@@ -2404,21 +2397,15 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 
 		let mut attributes = content.clone_row_attributes(endpoint_index);
 		attributes.insert("transform", lerped_transform);
+		attributes.insert("editor:merged_layers", graphic_table_content);
 
-		return Table::new_from_row(TableRow::from_parts(
-			Vector {
-				merged_layers: Some(graphic_table_content),
-				..endpoint_element.clone()
-			},
-			attributes,
-		));
+		return Table::new_from_row(TableRow::from_parts(endpoint_element.clone(), attributes));
 	}
 
 	let mut vector = Vector {
-		merged_layers: Some(graphic_table_content),
+		style: source_element.style.lerp(&target_element.style, time),
 		..Default::default()
 	};
-	vector.style = source_element.style.lerp(&target_element.style, time);
 
 	// Work directly with manipulator groups, bypassing the BezPath intermediate representation.
 	// This avoids the full Vector → BezPath → interpolate → BezPath → Vector roundtrip each frame.
@@ -2572,7 +2559,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		TableRow::new_from_element(vector)
 			.with_attribute("transform", lerped_transform)
 			.with_attribute("alpha_blending", vector_alpha_blending)
-			.with_attribute("editor:layer", layer),
+			.with_attribute("editor:layer", layer)
+			.with_attribute("editor:merged_layers", graphic_table_content),
 	)
 }
 
@@ -3047,7 +3035,6 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::AlphaBlending;
 	use core_types::Node;
 	use kurbo::{CubicBez, Ellipse, Point, Rect};
 	use std::future::Future;

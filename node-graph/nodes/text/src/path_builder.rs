@@ -9,16 +9,16 @@ use skrifa::{MetadataProvider, OutlineGlyph};
 use vector_types::subpath::{ManipulatorGroup, Subpath};
 use vector_types::vector::{PointId, Vector};
 
-pub struct PathBuilder<Upstream> {
+pub struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	pub vector_table: Table<Vector<Upstream>>,
+	pub vector_table: Table<Vector>,
 	scale: f64,
 	id: PointId,
 }
 
-impl<Upstream: Default + 'static> PathBuilder<Upstream> {
+impl PathBuilder {
 	pub fn new(per_glyph_instances: bool, scale: f64) -> Self {
 		Self {
 			current_subpath: Subpath::new(Vec::new(), false),
@@ -51,9 +51,8 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		}
 
 		if per_glyph_instances {
-			self.vector_table.push(
-				TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute("transform", DAffine2::from_translation(glyph_offset)),
-			);
+			self.vector_table
+				.push(TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute("transform", DAffine2::from_translation(glyph_offset)));
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element
@@ -116,7 +115,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		}
 	}
 
-	pub fn finalize(mut self) -> Table<Vector<Upstream>> {
+	pub fn finalize(mut self) -> Table<Vector> {
 		if self.vector_table.is_empty() {
 			self.vector_table = Table::new_from_element(Vector::default());
 		}
@@ -124,7 +123,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 	}
 }
 
-impl<Upstream: Default + 'static> OutlinePen for PathBuilder<Upstream> {
+impl OutlinePen for PathBuilder {
 	fn move_to(&mut self, x: f32, y: f32) {
 		if !self.current_subpath.is_empty() {
 			self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));

@@ -391,7 +391,7 @@ impl ManipulatorPointId {
 	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
 	#[must_use]
 	#[track_caller]
-	pub fn get_position<Upstream: 'static>(&self, vector: &Vector<Upstream>) -> Option<DVec2> {
+	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
 			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
@@ -399,7 +399,7 @@ impl ManipulatorPointId {
 		}
 	}
 
-	pub fn get_anchor_position<Upstream: 'static>(&self, vector: &Vector<Upstream>) -> Option<DVec2> {
+	pub fn get_anchor_position(&self, vector: &Vector) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
 			_ => self.get_position(vector),
@@ -408,7 +408,7 @@ impl ManipulatorPointId {
 
 	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
 	#[must_use]
-	pub fn get_handle_pair<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<[HandleId; 2]> {
+	pub fn get_handle_pair(self, vector: &Vector) -> Option<[HandleId; 2]> {
 		match self {
 			ManipulatorPointId::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
 			ManipulatorPointId::PrimaryHandle(segment) => {
@@ -429,7 +429,7 @@ impl ManipulatorPointId {
 	/// Finds all the connected handles of a point.
 	/// For an anchor it is all the connected handles.
 	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
-	pub fn get_all_connected_handles<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<Vec<HandleId>> {
+	pub fn get_all_connected_handles(self, vector: &Vector) -> Option<Vec<HandleId>> {
 		match self {
 			ManipulatorPointId::Anchor(point) => {
 				let connected = vector.all_connected(point).collect::<Vec<_>>();
@@ -452,7 +452,7 @@ impl ManipulatorPointId {
 
 	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
 	#[must_use]
-	pub fn get_anchor<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<PointId> {
+	pub fn get_anchor(self, vector: &Vector) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
 			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
@@ -538,7 +538,7 @@ impl HandleId {
 	}
 
 	/// Calculate the magnitude of the handle from the anchor.
-	pub fn length<Upstream: 'static>(self, vector: &Vector<Upstream>) -> f64 {
+	pub fn length(self, vector: &Vector) -> f64 {
 		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector) else {
 			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
 			return 0.;

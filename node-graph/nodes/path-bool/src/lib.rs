@@ -46,7 +46,10 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 		let result_vector = result_vector_table.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
 		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
-		result_vector.merged_layers = Some(content.clone());
+
+		// Snapshot the input layers as the `editor:merged_layers` row attribute so the renderer can recurse into them
+		// for editor click-target preservation.
+		result_vector_table.set_attribute("editor:merged_layers", 0, content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_table.attribute_cloned_or_default("transform", 0);
@@ -127,7 +130,6 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 		let copy_from = vector.element(index).unwrap();
 		let element = Vector {
 			style: copy_from.style.clone(),
-			merged_layers: copy_from.merged_layers.clone(),
 			..Default::default()
 		};
 		TableRow::from_parts(element, attributes)

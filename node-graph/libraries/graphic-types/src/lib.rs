@@ -80,7 +80,6 @@ pub mod migrations {
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
 				region_domain: old.region_domain,
-				merged_layers: old.upstream_graphic_group,
 			}),
 			VectorFormat::OlderVectorTable(older_table) => older_table.element.into_iter().map(TableRow::new_from_element).collect(),
 			VectorFormat::OldVectorTable(old_table) => old_table.element.into_iter().map(TableRow::new_from_element).collect(),

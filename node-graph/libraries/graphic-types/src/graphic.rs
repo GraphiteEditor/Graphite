@@ -12,7 +12,7 @@ use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 // use vector_types::Vector;
 
-pub type Vector = vector_types::Vector<Option<Table<Graphic>>>;
+pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]

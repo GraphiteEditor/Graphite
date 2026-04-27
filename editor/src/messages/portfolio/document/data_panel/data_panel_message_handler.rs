@@ -272,7 +272,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 								() if let Some(&value) = ty.downcast_ref::<DVec2>() => format_dvec2(value),
 								() if let Some(&value) = ty.downcast_ref::<AlphaBlending>() => format_alpha_blending(value),
 								() if let Some(&value) = ty.downcast_ref::<Option<NodeId>>() => value.map_or_else(|| "-".to_string(), |id| id.to_string()),
-								() if let Some(value) = ty.downcast_ref::<Option<Table<Graphic>>>() => value.as_ref().map_or_else(|| "-".to_string(), |table| format!("{} Objects", table.len())),
+								() if let Some(value) = ty.downcast_ref::<Table<Graphic>>() => format!("{} Objects", value.len()),
 								_ => return None,
 							})
 						})
@@ -454,17 +454,6 @@ impl TableRowLayout for Vector {
 				table_rows.push(vec![
 					TextLabel::new("Colinear Handle IDs").narrow(true).widget_instance(),
 					TextLabel::new(colinear).narrow(true).widget_instance(),
-				]);
-
-				table_rows.push(vec![
-					TextLabel::new("Upstream Nested Layers").narrow(true).widget_instance(),
-					TextLabel::new(if self.merged_layers.is_some() {
-						"Yes (this preserves references to its upstream nested layers for editing by tools)"
-					} else {
-						"No (this doesn't preserve references to its upstream nested layers for editing by tools)"
-					})
-					.narrow(true)
-					.widget_instance(),
 				]);
 			}
 			VectorTableTab::Points => {

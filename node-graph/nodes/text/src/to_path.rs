@@ -6,7 +6,7 @@ use parley::fontique::Blob;
 use std::sync::Arc;
 use vector_types::Vector;
 
-pub fn to_path<Upstream: Default + 'static>(text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector<Upstream>> {
+pub fn to_path(text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
 	TextContext::with_thread_local(|ctx| ctx.to_path(text, font, font_cache, typesetting, per_glyph_instances))
 }
 
