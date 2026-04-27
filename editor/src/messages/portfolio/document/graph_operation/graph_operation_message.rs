@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::brush::brush_stroke::BrushStroke;
-use graphene_std::color::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
