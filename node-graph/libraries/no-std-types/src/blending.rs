@@ -1,12 +1,11 @@
 use core::fmt::Display;
-use core::hash::{Hash, Hasher};
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(not(feature = "std"))]
 use num_traits::float::Float;
 
 #[derive(Debug, Clone, Copy, PartialEq, BufferStruct)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize, graphene_hash::CacheHash))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", serde(default))]
 pub struct AlphaBlending {
@@ -18,14 +17,6 @@ pub struct AlphaBlending {
 impl Default for AlphaBlending {
 	fn default() -> Self {
 		Self::new()
-	}
-}
-impl Hash for AlphaBlending {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.opacity.to_bits().hash(state);
-		self.fill.to_bits().hash(state);
-		self.blend_mode.hash(state);
-		self.clip.hash(state);
 	}
 }
 impl Display for AlphaBlending {
@@ -71,6 +62,7 @@ impl AlphaBlending {
 #[repr(i32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, BufferStruct, FromPrimitive, IntoPrimitive)]
 pub enum BlendMode {
 	// Basic group

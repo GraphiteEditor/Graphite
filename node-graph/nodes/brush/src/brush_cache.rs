@@ -1,5 +1,6 @@
 use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
+use core_types::graphene_hash::CacheHashWrapper;
 use core_types::table::TableRow;
 use dyn_any::DynAny;
 use raster_types::CPU;
@@ -31,7 +32,7 @@ struct BrushCacheImpl {
 
 	// A cache for brush textures.
 	#[serde(skip)]
-	brush_texture_cache: HashMap<BrushStyle, Raster<CPU>>,
+	brush_texture_cache: HashMap<CacheHashWrapper<BrushStyle>, Raster<CPU>>,
 }
 
 impl BrushCacheImpl {
@@ -165,6 +166,12 @@ impl Hash for BrushCache {
 	}
 }
 
+impl graphene_hash::CacheHash for BrushCache {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&self.0.lock().unwrap().unique_id, state);
+	}
+}
+
 impl BrushCache {
 	pub fn compute_brush_plan(&self, background: TableRow<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.0.lock().unwrap();
@@ -178,11 +185,11 @@ impl BrushCache {
 
 	pub fn get_cached_brush(&self, style: &BrushStyle) -> Option<Raster<CPU>> {
 		let inner = self.0.lock().unwrap();
-		inner.brush_texture_cache.get(style).cloned()
+		inner.brush_texture_cache.get(&CacheHashWrapper(style.clone())).cloned()
 	}
 
 	pub fn store_brush(&self, style: BrushStyle, brush: Raster<CPU>) {
 		let mut inner = self.0.lock().unwrap();
-		inner.brush_texture_cache.insert(style, brush);
+		inner.brush_texture_cache.insert(CacheHashWrapper(style), brush);
 	}
 }

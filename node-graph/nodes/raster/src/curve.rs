@@ -1,11 +1,10 @@
 use core_types::Node;
 use core_types::color::{Channel, Linear, LuminanceMut};
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
-use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Curve {
 	#[serde(rename = "manipulatorGroups")]
 	pub manipulator_groups: Vec<CurveManipulatorGroup>,
@@ -25,26 +24,11 @@ impl Default for Curve {
 	}
 }
 
-impl Hash for Curve {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.manipulator_groups.hash(state);
-		[self.first_handle, self.last_handle].iter().flatten().for_each(|f| f.to_bits().hash(state));
-	}
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct CurveManipulatorGroup {
 	pub anchor: [f32; 2],
 	pub handles: [[f32; 2]; 2],
-}
-
-impl Hash for CurveManipulatorGroup {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		for c in self.handles.iter().chain([&self.anchor]).flatten() {
-			c.to_bits().hash(state);
-		}
-	}
 }
 
 pub struct ValueMapperNode<C> {

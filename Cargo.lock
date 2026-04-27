@@ -350,6 +350,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "node-macro",
  "raster-nodes",
  "raster-types",
@@ -873,6 +874,7 @@ dependencies = [
  "ctor",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "image",
  "kurbo",
  "log",
@@ -1916,6 +1918,7 @@ dependencies = [
  "graph-craft",
  "graphene-application-io",
  "graphene-core",
+ "graphene-hash",
  "graphic-types",
  "iai-callgrind",
  "js-sys",
@@ -1996,6 +1999,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "graphic-types",
  "log",
  "node-macro",
@@ -2003,6 +2007,24 @@ dependencies = [
  "serde",
  "tsify",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "graphene-hash"
+version = "0.0.0"
+dependencies = [
+ "glam",
+ "graphene-hash-derive",
+]
+
+[[package]]
+name = "graphene-hash-derive"
+version = "0.0.0"
+dependencies = [
+ "graphene-hash",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -2065,6 +2087,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "node-macro",
  "raster-types",
  "serde",
@@ -2182,6 +2205,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graphene-hash",
  "graphene-std",
  "graphite-proc-macros",
  "image",
@@ -3296,6 +3320,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "half",
  "log",
  "node-macro",
@@ -4316,6 +4341,7 @@ dependencies = [
  "fastnoise-lite",
  "futures",
  "glam",
+ "graphene-hash",
  "image",
  "kurbo",
  "ndarray",
@@ -4361,6 +4387,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "image",
  "node-macro",
  "serde",
@@ -4501,6 +4528,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-hash",
  "graphic-types",
  "kurbo",
  "log",
@@ -5513,6 +5541,7 @@ dependencies = [
  "dyn-any",
  "fancy-regex",
  "glam",
+ "graphene-hash",
  "log",
  "node-macro",
  "parley",
@@ -6157,6 +6186,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-core",
+ "graphene-hash",
  "graphic-types",
  "kurbo",
  "log",
@@ -6182,6 +6212,7 @@ dependencies = [
  "dyn-any",
  "fixedbitset",
  "glam",
+ "graphene-hash",
  "kurbo",
  "log",
  "lyon_geom",

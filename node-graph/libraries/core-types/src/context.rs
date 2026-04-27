@@ -163,6 +163,12 @@ bitflags! {
 	}
 }
 
+impl graphene_hash::CacheHash for ContextFeatures {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
+	}
+}
+
 impl ContextFeatures {
 	pub fn name(&self) -> &'static str {
 		match *self {
@@ -182,7 +188,7 @@ impl ContextFeatures {
 // CONTEXT DEPENDENCIES
 // ====================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
@@ -536,14 +542,14 @@ impl Default for OwnedContextImpl {
 	}
 }
 
-impl Hash for OwnedContextImpl {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.footprint.hash(state);
-		self.real_time.map(|x| x.to_bits()).hash(state);
-		self.animation_time.map(|x| x.to_bits()).hash(state);
-		self.pointer_position.map(|v| (v.x.to_bits(), v.y.to_bits())).hash(state);
-		self.position.iter().flat_map(|x| x.iter()).map(|v| (v.x.to_bits(), v.y.to_bits())).for_each(|v| v.hash(state));
-		self.index.hash(state);
+impl graphene_hash::CacheHash for OwnedContextImpl {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.footprint.cache_hash(state);
+		self.real_time.cache_hash(state);
+		self.animation_time.cache_hash(state);
+		self.pointer_position.cache_hash(state);
+		self.position.cache_hash(state);
+		self.index.cache_hash(state);
 		self.hash_varargs(state);
 	}
 }
@@ -600,9 +606,9 @@ pub trait DynHash {
 	fn dyn_hash(&self, state: &mut dyn Hasher);
 }
 
-impl<H: Hash + ?Sized> DynHash for H {
+impl<H: graphene_hash::CacheHash + ?Sized> DynHash for H {
 	fn dyn_hash(&self, mut state: &mut dyn Hasher) {
-		self.hash(&mut state);
+		graphene_hash::CacheHash::cache_hash(self, &mut state);
 	}
 }
 

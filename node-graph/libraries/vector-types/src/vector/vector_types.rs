@@ -54,13 +54,13 @@ impl<Upstream: Default + 'static> Default for Vector<Upstream> {
 	}
 }
 
-impl<Upstream> std::hash::Hash for Vector<Upstream> {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.point_domain.hash(state);
-		self.segment_domain.hash(state);
-		self.region_domain.hash(state);
-		self.style.hash(state);
-		self.colinear_manipulators.hash(state);
+impl<Upstream> graphene_hash::CacheHash for Vector<Upstream> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.point_domain.cache_hash(state);
+		self.segment_domain.cache_hash(state);
+		self.region_domain.cache_hash(state);
+		self.style.cache_hash(state);
+		self.colinear_manipulators.cache_hash(state);
 		// We don't hash the upstream_data intentionally
 	}
 }

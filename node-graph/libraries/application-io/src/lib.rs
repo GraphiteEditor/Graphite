@@ -164,6 +164,12 @@ impl<Io> Hash for EditorApi<Io> {
 	}
 }
 
+impl<Io> core_types::graphene_hash::CacheHash for EditorApi<Io> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
+	}
+}
+
 impl<Io> PartialEq for EditorApi<Io> {
 	fn eq(&self, other: &Self) -> bool {
 		self.font_cache == other.font_cache

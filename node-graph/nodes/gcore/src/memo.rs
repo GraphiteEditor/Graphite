@@ -1,7 +1,8 @@
 use core_types::WasmNotSend;
+use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
 use std::hash::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -13,9 +14,9 @@ use std::sync::Mutex;
 ///
 /// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
 #[node_macro::node(category(""), path(graphene_core::memo), skip_impl)]
-async fn memo<I: Hash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
+async fn memo<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
 	let mut hasher = DefaultHasher::new();
-	input.hash(&mut hasher);
+	input.cache_hash(&mut hasher);
 	let hash = hasher.finish();
 
 	if let Some(data) = cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
