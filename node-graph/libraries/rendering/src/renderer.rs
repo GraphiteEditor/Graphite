@@ -1571,7 +1571,18 @@ impl Render for Table<Raster<CPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if !self.is_empty() {
-			metadata.local_transforms.insert(element_id, self.attribute_cloned_or_default("transform", 0));
+			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
+			metadata.local_transforms.insert(element_id, transform);
+
+			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
+			// which destructively merges its inputs into pixels), recurse into that snapshot so the editor can
+			// surface the original child layers' click targets (the same mechanism Boolean Operation uses).
+			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
+			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
+			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
+			if let Some(upstream_nested_layers) = self.attribute_cloned_or_default::<Option<Table<Graphic>>>("upstream_data", 0) {
+				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+			}
 		}
 	}
 
@@ -1649,7 +1660,18 @@ impl Render for Table<Raster<GPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if !self.is_empty() {
-			metadata.local_transforms.insert(element_id, self.attribute_cloned_or_default("transform", 0));
+			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
+			metadata.local_transforms.insert(element_id, transform);
+
+			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
+			// which destructively merges its inputs into pixels), recurse into that snapshot so the editor can
+			// surface the original child layers' click targets (the same mechanism Boolean Operation uses).
+			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
+			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
+			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
+			if let Some(upstream_nested_layers) = self.attribute_cloned_or_default::<Option<Table<Graphic>>>("upstream_data", 0) {
+				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+			}
 		}
 	}
 

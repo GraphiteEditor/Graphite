@@ -272,6 +272,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 								() if let Some(&value) = ty.downcast_ref::<DVec2>() => format_dvec2(value),
 								() if let Some(&value) = ty.downcast_ref::<AlphaBlending>() => format_alpha_blending(value),
 								() if let Some(&value) = ty.downcast_ref::<Option<NodeId>>() => value.map_or_else(|| "-".to_string(), |id| id.to_string()),
+								() if let Some(value) = ty.downcast_ref::<Option<Table<Graphic>>>() => value.as_ref().map_or_else(|| "-".to_string(), |table| format!("{} Objects", table.len())),
 								_ => return None,
 							})
 						})
