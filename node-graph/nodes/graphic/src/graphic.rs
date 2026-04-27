@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AlphaBlending, AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
@@ -295,9 +295,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 		for index in 0..current_graphic_table.len() {
 			let Some(current_element) = current_graphic_table.element(index) else { continue };
 			let current_element = current_element.clone();
-			let reference: Option<NodeId> = current_graphic_table.attribute_cloned_or_default("source_node_id", index);
 			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default("transform", index);
-			let current_alpha_blending: AlphaBlending = current_graphic_table.attribute_cloned_or_default("alpha_blending", index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -313,12 +311,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				}
 				// Push any leaf Graphic elements we encounter, which can be either Graphic table elements beyond the recursion depth, or table elements other than Graphic tables
 				_ => {
-					output_graphic_table.push(
-						TableRow::new_from_element(current_element)
-							.with_attribute("transform", current_transform)
-							.with_attribute("alpha_blending", current_alpha_blending)
-							.with_attribute("source_node_id", reference),
-					);
+					let attributes = current_graphic_table.clone_row_attributes(index);
+					output_graphic_table.push(TableRow::from_parts(current_element, attributes));
 				}
 			}
 		}

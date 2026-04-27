@@ -351,7 +351,7 @@ async fn round_corners(
 		.map(|index| {
 			let source_transform: DAffine2 = source.attribute_cloned_or_default("transform", index);
 			let source_transform_inverse = source_transform.inverse();
-			let source_node_id: Option<NodeId> = source.attribute_cloned_or_default("source_node_id", index);
+			let attributes = source.clone_row_attributes(index);
 			let source = source.element(index).unwrap();
 
 			let upstream_nested_layers = source.upstream_data.clone();
@@ -441,10 +441,7 @@ async fn round_corners(
 
 			result.upstream_data = upstream_nested_layers;
 
-			TableRow::new_from_element(result)
-				.with_attribute("transform", source_transform)
-				.with_attribute("alpha_blending", AlphaBlending::default())
-				.with_attribute("source_node_id", source_node_id)
+			TableRow::from_parts(result, attributes)
 		})
 		.collect()
 }
@@ -904,8 +901,7 @@ async fn auto_tangents(
 	(0..source.len())
 		.map(|index| {
 			let transform: DAffine2 = source.attribute_cloned_or_default("transform", index);
-			let alpha_blending: AlphaBlending = source.attribute_cloned_or_default("alpha_blending", index);
-			let source_node_id: Option<NodeId> = source.attribute_cloned_or_default("source_node_id", index);
+			let attributes = source.clone_row_attributes(index);
 			let source = source.element(index).unwrap();
 
 			let mut result = Vector {
@@ -1038,10 +1034,7 @@ async fn auto_tangents(
 				}
 			}
 
-			TableRow::new_from_element(result)
-				.with_attribute("transform", transform)
-				.with_attribute("alpha_blending", alpha_blending)
-				.with_attribute("source_node_id", source_node_id)
+			TableRow::from_parts(result, attributes)
 		})
 		.collect()
 }
@@ -1172,11 +1165,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 	content
 		.into_iter()
 		.flat_map(|row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-			let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-			let source_node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
-
-			let mut vector = row.into_element();
+			let (mut vector, attributes) = row.into_parts();
 
 			let stroke = vector.style.stroke().clone().unwrap_or_default();
 			let bezpaths = vector.stroke_bezpath_iter();
@@ -1225,20 +1214,14 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				solidified_stroke.style.set_fill(Fill::solid_or_none(stroke.color));
 			}
 
-			let stroke_row = TableRow::new_from_element(solidified_stroke)
-				.with_attribute("transform", transform)
-				.with_attribute("alpha_blending", alpha_blending)
-				.with_attribute("source_node_id", source_node_id);
-
 			// If the original vector has a fill, preserve it as a separate row with the stroke cleared.
 			let has_fill = !vector.style.fill().is_none();
-			let fill_row = has_fill.then(move || {
+			let fill_row = has_fill.then(|| {
 				vector.style.clear_stroke();
-				TableRow::new_from_element(vector)
-					.with_attribute("transform", transform)
-					.with_attribute("alpha_blending", alpha_blending)
-					.with_attribute("source_node_id", source_node_id)
+				TableRow::from_parts(vector, attributes.clone())
 			});
+
+			let stroke_row = TableRow::from_parts(solidified_stroke, attributes);
 
 			// Ordering based on the paint order. The first row in the table is rendered below the second.
 			match paint_order {
@@ -1255,21 +1238,16 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.into_iter()
 		.flat_map(|row| {
 			let style = row.element().style.clone();
-			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-			let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-			let source_node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
+			let (element, attributes) = row.into_parts();
 
-			row.element()
+			element
 				.stroke_bezpath_iter()
 				.map(move |bezpath| {
 					let mut vector = Vector::default();
 					vector.append_bezpath(bezpath);
 					vector.style = style.clone();
 
-					TableRow::new_from_element(vector)
-						.with_attribute("transform", transform)
-						.with_attribute("alpha_blending", alpha_blending)
-						.with_attribute("source_node_id", source_node_id)
+					TableRow::from_parts(vector, attributes.clone())
 				})
 				.collect::<Vec<TableRow<Vector>>>()
 		})
@@ -1312,12 +1290,14 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 // TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
+	let graphic_table = content.into_graphic_table();
+	let flattened = graphic_table.clone().into_flattened_table::<Vector>();
+
 	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
 	let output = output_table.element_mut(0).unwrap();
 
 	// Concatenate every vector element's subpaths into the single output compound path
-	let flattened = content.into_flattened_table();
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
 		let node_id: Option<NodeId> = flattened.attribute_cloned_or_default("source_node_id", index);
@@ -1332,6 +1312,18 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 		// TODO: Make this instead use the first encountered style
 		// Use the last encountered style as the output style
 		output.style = element.style.clone();
+	}
+
+	// Preserve a reference to the original upstream graphic table so the renderer can recurse into it
+	// when collecting metadata, exposing the original child layers' click targets to editor tools.
+	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
+	output.upstream_data = Some(graphic_table);
+
+	// Adopt the last input row's source_node_id so the editor can also bucket clicks under a contributing child layer
+	if !flattened.is_empty() {
+		let primary = flattened.len() - 1;
+		let source_node_id: Option<NodeId> = flattened.attribute_cloned_or_default("source_node_id", primary);
+		output_table.set_attribute("source_node_id", 0, source_node_id);
 	}
 
 	output_table
@@ -2410,17 +2402,16 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		let endpoint_index = if time == 0. { source_index } else { target_index };
 		let endpoint_element = content.element(endpoint_index).unwrap();
 
-		let alpha_blending: AlphaBlending = content.attribute_cloned_or_default("alpha_blending", endpoint_index);
+		let mut attributes = content.clone_row_attributes(endpoint_index);
+		attributes.insert("transform", lerped_transform);
 
-		return Table::new_from_row(
-			TableRow::new_from_element(Vector {
+		return Table::new_from_row(TableRow::from_parts(
+			Vector {
 				upstream_data: Some(graphic_table_content),
 				..endpoint_element.clone()
-			})
-			.with_attribute("transform", lerped_transform)
-			.with_attribute("alpha_blending", alpha_blending)
-			.with_attribute("source_node_id", None::<NodeId>),
-		);
+			},
+			attributes,
+		));
 	}
 
 	let mut vector = Vector {
@@ -2572,11 +2563,16 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		push_manipulators_to_vector(&mut vector, &manips, closed, &mut point_id, &mut segment_id);
 	}
 
+	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
+	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
+	let primary_index = if time < 0.5 { source_index } else { target_index };
+	let source_node_id: Option<NodeId> = content.attribute_cloned_or_default("source_node_id", primary_index);
+
 	Table::new_from_row(
 		TableRow::new_from_element(vector)
 			.with_attribute("transform", lerped_transform)
 			.with_attribute("alpha_blending", vector_alpha_blending)
-			.with_attribute("source_node_id", None::<NodeId>),
+			.with_attribute("source_node_id", source_node_id),
 	)
 }
 
@@ -2856,13 +2852,9 @@ fn bevel(_: impl Ctx, source: Table<Vector>, #[default(10.)] distance: Length) -
 		.into_iter()
 		.map(|row| {
 			let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-			let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-			let source_node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
+			let (element, attributes) = row.into_parts();
 
-			TableRow::new_from_element(bevel_algorithm(row.into_element(), transform, distance))
-				.with_attribute("transform", transform)
-				.with_attribute("alpha_blending", alpha_blending)
-				.with_attribute("source_node_id", source_node_id)
+			TableRow::from_parts(bevel_algorithm(element, transform, distance), attributes)
 		})
 		.collect()
 }

@@ -114,20 +114,26 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 	const EPSILON: f64 = 1e-5;
 	let mut table = Table::new();
 	let mut paths = Vec::new();
-	let mut row = TableRow::<Vector>::default();
 
 	let copy_from_index = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
 		if !vector.is_empty() { Some(0) } else { None }
 	} else {
 		if !vector.is_empty() { Some(vector.len() - 1) } else { None }
 	};
-	if let Some(index) = copy_from_index {
-		*row.attribute_mut_or_insert_default("alpha_blending") = vector.attribute_cloned_or_default::<AlphaBlending>("alpha_blending", index);
-		*row.attribute_mut_or_insert_default("source_node_id") = vector.attribute_cloned_or_default::<Option<NodeId>>("source_node_id", index);
+	let mut row = if let Some(index) = copy_from_index {
+		let mut attributes = vector.clone_row_attributes(index);
+		// The boolean op bakes input transforms into the output geometry, so the result row carries no transform of its own
+		attributes.insert("transform", DAffine2::IDENTITY);
 		let copy_from = vector.element(index).unwrap();
-		row.element_mut().style = copy_from.style.clone();
-		row.element_mut().upstream_data = copy_from.upstream_data.clone();
-	}
+		let element = Vector {
+			style: copy_from.style.clone(),
+			upstream_data: copy_from.upstream_data.clone(),
+			..Default::default()
+		};
+		TableRow::from_parts(element, attributes)
+	} else {
+		TableRow::<Vector>::default()
+	};
 
 	for index in 0..vector.len() {
 		let element = vector.element(index).unwrap();
@@ -171,7 +177,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				}
 				Graphic::RasterCPU(image) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
-					let make_row = |transform| {
+					let make_row = |transform, source_node_id, alpha_blending| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
@@ -179,17 +185,25 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
 						TableRow::new_from_element(element)
+							.with_attribute("alpha_blending", alpha_blending)
+							.with_attribute("source_node_id", source_node_id)
 					};
 
-					// Apply the parent graphic's transform to each raster element
-					image
-						.iter_attribute_values_or_default::<DAffine2>("transform")
-						.map(|row_transform| make_row(parent_transform * row_transform))
+					// Apply the parent graphic's transform to each raster element, preserving each row's source_node_id
+					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
+					// back to the originating raster layer
+					(0..image.len())
+						.map(|i| {
+							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
+							let source_node_id: Option<NodeId> = image.attribute_cloned_or_default("source_node_id", i);
+							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
+							make_row(parent_transform * row_transform, source_node_id, alpha_blending)
+						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
-					let make_row = |transform| {
+					let make_row = |transform, source_node_id, alpha_blending| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
@@ -197,12 +211,20 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
 						TableRow::new_from_element(element)
+							.with_attribute("alpha_blending", alpha_blending)
+							.with_attribute("source_node_id", source_node_id)
 					};
 
-					// Apply the parent graphic's transform to each raster element
-					image
-						.iter_attribute_values_or_default::<DAffine2>("transform")
-						.map(|row_transform| make_row(parent_transform * row_transform))
+					// Apply the parent graphic's transform to each raster element, preserving each row's source_node_id
+					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
+					// back to the originating raster layer
+					(0..image.len())
+						.map(|i| {
+							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
+							let source_node_id: Option<NodeId> = image.attribute_cloned_or_default("source_node_id", i);
+							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
+							make_row(parent_transform * row_transform, source_node_id, alpha_blending)
+						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::Graphic(mut graphic) => {
@@ -221,38 +243,23 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				Graphic::Color(color) => color
 					.into_iter()
 					.map(|row| {
-						let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-						let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-						let source_node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
-
+						let (color, attributes) = row.into_parts();
 						let mut element = Vector::default();
-						element.style.set_fill(Fill::Solid(row.into_element()));
+						element.style.set_fill(Fill::Solid(color));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
-						TableRow::new_from_element(element)
-							.with_attribute("transform", transform)
-							.with_attribute("alpha_blending", alpha_blending)
-							.with_attribute("source_node_id", source_node_id)
+						TableRow::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
 				Graphic::Gradient(gradient) => gradient
 					.into_iter()
 					.map(|row| {
-						let transform: DAffine2 = row.attribute_cloned_or_default("transform");
-						let alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
-						let source_node_id: Option<NodeId> = row.attribute_cloned_or_default("source_node_id");
-
+						let (stops, attributes) = row.into_parts();
 						let mut element = Vector::default();
-						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient {
-							stops: row.into_element(),
-							..Default::default()
-						}));
+						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient { stops, ..Default::default() }));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
-						TableRow::new_from_element(element)
-							.with_attribute("transform", transform)
-							.with_attribute("alpha_blending", alpha_blending)
-							.with_attribute("source_node_id", source_node_id)
+						TableRow::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
 			}
