@@ -631,7 +631,7 @@ impl Fsm for GradientToolFsmState {
 		match (self, event) {
 			(_, GradientToolMessage::Overlays { context: mut overlay_context }) => {
 				let selected = tool_data.selected_gradient.as_ref();
-				let mouse = input.mouse.position;
+				let mouse = input.pointer.position;
 
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
@@ -847,7 +847,7 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::DoubleClick) => {
 				// Only reset if the mouse hasn't moved so we don't trigger from a click-then-click-and-drag being reported as a double-click
 				let drag_start_viewport = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start);
-				if input.mouse.position.distance(drag_start_viewport) <= DRAG_THRESHOLD
+				if input.pointer.position.distance(drag_start_viewport) <= DRAG_THRESHOLD
 					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
 				{
 					match selected_gradient.dragging {
@@ -996,7 +996,7 @@ impl Fsm for GradientToolFsmState {
 					let Some(mut gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
 					let transform = gradient_space_transform(layer, document);
-					let mouse = input.mouse.position;
+					let mouse = input.pointer.position;
 					let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
 
 					// Compute the distance from the mouse to the gradient line in viewport space
@@ -1028,7 +1028,7 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerDown) => {
 				let document_to_viewport = document.metadata().document_to_viewport;
 
-				let mut mouse = input.mouse.position;
+				let mut mouse = input.pointer.position;
 
 				let snap_data = SnapData::new(document, input, viewport);
 				let point = SnapCandidatePoint::gradient_handle(document_to_viewport.inverse().transform_point2(mouse));
@@ -1235,7 +1235,7 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing { drag_hint }, GradientToolMessage::PointerMove { constrain_axis, lock_angle }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-					let mouse = input.mouse.position;
+					let mouse = input.pointer.position;
 					let snap_data = SnapData::new(document, input, viewport);
 
 					// Recompute the gradient-to-viewport transform fresh each frame so zoom/pan mid-drag works correctly
@@ -1311,7 +1311,7 @@ impl Fsm for GradientToolFsmState {
 				}
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerMove { .. }) => {
-				let mouse = input.mouse.position;
+				let mouse = input.pointer.position;
 				let hovering = detect_hover_target(mouse, document);
 				let selected = compute_selected_target(tool_data);
 
@@ -1619,8 +1619,8 @@ enum GradientDragHintState {
 
 #[cfg(test)]
 mod test_gradient {
-	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
-	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
+	use crate::messages::input_mapper::utility_types::input_pointer::EditorPointerState;
+	use crate::messages::input_mapper::utility_types::input_pointer::ScrollDelta;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	pub use crate::test_utils::test_prelude::*;
@@ -1847,7 +1847,7 @@ mod test_gradient {
 		editor.move_mouse(end_pos.x, end_pos.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: end_pos,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
@@ -1901,7 +1901,7 @@ mod test_gradient {
 		let click_position = DVec2::new(25., 0.);
 		editor
 			.mousedown(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: click_position,
 					mouse_keys: MouseKeys::LEFT,
 					scroll_delta: ScrollDelta::default(),
@@ -1915,7 +1915,7 @@ mod test_gradient {
 
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: drag_position,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
@@ -1980,7 +1980,7 @@ mod test_gradient {
 		editor.left_mousedown(position2.x, position2.y, ModifierKeys::empty()).await;
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: position2,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),

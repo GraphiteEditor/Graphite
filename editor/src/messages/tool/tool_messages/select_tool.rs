@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_pointer::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -746,7 +746,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounds| transform * Quad::from_box(bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 
-				let mouse_position = input.mouse.position;
+				let mouse_position = input.pointer.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
 
 				let show_hover_ring = if let SelectToolFsmState::Dragging { axis, using_compass, .. } = self {
@@ -758,13 +758,13 @@ impl Fsm for SelectToolFsmState {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
-					.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+					.and_then(|bounding_box| bounding_box.check_selected_edges(input.pointer.position))
 					.is_some();
 
 				let rotating_bounds = tool_data
 					.bounding_box_manager
 					.as_ref()
-					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
+					.map(|bounding_box| bounding_box.check_rotate(input.pointer.position))
 					.unwrap_or_default();
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
@@ -772,16 +772,16 @@ impl Fsm for SelectToolFsmState {
 				if overlay_context.visibility_settings.transform_cage()
 					&& let Some(bounds) = tool_data.bounding_box_manager.as_mut()
 				{
-					let edges = bounds.check_selected_edges(input.mouse.position);
+					let edges = bounds.check_selected_edges(input.pointer.position);
 					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
-					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.pointer.position, hover_edge));
 					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
 						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 					}
 					if !is_skewing
 						&& dragging_bounds && let Some(edges) = edges
 					{
-						tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
+						tool_data.skew_edge = bounds.get_closest_edge(edges, input.pointer.position);
 					}
 				}
 
@@ -1010,8 +1010,8 @@ impl Fsm for SelectToolFsmState {
 					..
 				},
 			) => {
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
+				tool_data.drag_start = input.pointer.position;
+				tool_data.drag_current = input.pointer.position;
 				tool_data.selection_mode = None;
 
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
@@ -1034,13 +1034,13 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds));
 
 				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
-				let mouse_position = input.mouse.position;
+				let mouse_position = input.pointer.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 
-				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.mouse.position) {
+				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.pointer.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
@@ -1235,7 +1235,7 @@ impl Fsm for SelectToolFsmState {
 						bounds,
 						input.keyboard.key(skew),
 						&mut tool_data.layers_dragging,
-						input.mouse.position,
+						input.pointer.position,
 						ToolType::Select,
 					);
 				}
@@ -1249,7 +1249,7 @@ impl Fsm for SelectToolFsmState {
 						bounds,
 						&mut tool_data.layers_dragging,
 						tool_data.drag_start,
-						input.mouse.position,
+						input.pointer.position,
 						input.keyboard.key(Key::Shift),
 						ToolType::Select,
 					);
@@ -1258,7 +1258,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::RotatingBounds
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
-				let mouse_position = input.mouse.position;
+				let mouse_position = input.pointer.position;
 				let snapped_mouse_position = mouse_position;
 
 				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
@@ -1279,7 +1279,7 @@ impl Fsm for SelectToolFsmState {
 					responses.add(ToolMessage::UpdateHints);
 				}
 
-				tool_data.drag_current = input.mouse.position;
+				tool_data.drag_current = input.pointer.position;
 				responses.add(OverlaysMessage::Draw);
 
 				if selection_shape == SelectionShapeType::Lasso {
@@ -1299,7 +1299,7 @@ impl Fsm for SelectToolFsmState {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
-					.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+					.and_then(|bounding_box| bounding_box.check_selected_edges(input.pointer.position))
 					.is_some();
 
 				let mut cursor = tool_data
@@ -1308,7 +1308,7 @@ impl Fsm for SelectToolFsmState {
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge)));
 
 				// Dragging the pivot overrules the other operations
-				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_some() {
+				if tool_data.state_from_pivot_gizmo(input.pointer.position).is_some() {
 					cursor = MouseCursorIcon::Move;
 				}
 
@@ -1468,7 +1468,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
-				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let drag_too_small = input.pointer.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 
 				let pivot_gizmo = tool_data.pivot_gizmo();

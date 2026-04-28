@@ -371,7 +371,7 @@ impl Fsm for BrushToolFsmState {
 						.document_metadata()
 						.downstream_transform_to_viewport(layer)
 						.inverse()
-						.transform_point2(input.mouse.position);
+						.transform_point2(input.pointer.position);
 					let layer_position = tool_data.transform.inverse().transform_point2(pos);
 					let layer_document_scale = document.metadata().downstream_transform_to_viewport(layer) * tool_data.transform;
 
@@ -422,7 +422,7 @@ impl Fsm for BrushToolFsmState {
 						.document_metadata()
 						.downstream_transform_to_viewport(layer)
 						.inverse()
-						.transform_point2(input.mouse.position);
+						.transform_point2(input.pointer.position);
 					let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
 
 					stroke.trace.push(BrushInputSample { position: layer_position })
