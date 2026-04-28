@@ -87,6 +87,7 @@ impl DataPanelMessageHandler {
 			current_depth: 0,
 			desired_path: &mut self.element_path,
 			network_interface: &*network_interface,
+			node_lookup_network_path: Vec::new(),
 			breadcrumbs: Vec::new(),
 			vector_table_tab: self.active_vector_table_tab,
 		};
@@ -154,6 +155,10 @@ struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<PathStep>,
 	network_interface: &'a NodeNetworkInterface,
+	/// The `network_path` to use when resolving a `NodeId` cell or leaf page against the network interface.
+	/// Defaults to root (`&[]`); `Table<NodeId>` rendering temporarily sets it to the path's prefix so nested
+	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
+	node_lookup_network_path: Vec<NodeId>,
 	breadcrumbs: Vec<String>,
 	vector_table_tab: VectorTableTab,
 }
@@ -171,6 +176,11 @@ macro_rules! generate_layout_downcast {
 }
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
+	// `Table<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
+	// table where each row's NodeId resolves against the prefix made up of the rows above it.
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<NodeId>>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
+	}
 	generate_layout_downcast!(introspected_data, data, [
 		Table<Artboard>,
 		Table<Graphic>,
@@ -180,7 +190,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Color>,
 		Table<GradientStops>,
 		Table<String>,
-		Table<NodeId>,
 		Table<f64>,
 		Table<u8>,
 		GradientStops,
@@ -760,10 +769,9 @@ impl TableRowLayout for AlphaBlending {
 	}
 }
 
-/// Resolves the cell/breadcrumb label for a `NodeId` from the root network's metadata, falling back
-/// to "Node {id}" if the node isn't present (e.g. an ID that no longer maps to a real node).
-fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterface) -> String {
-	let network_path: &[NodeId] = &[];
+/// Resolves the cell/breadcrumb label for a `NodeId` against `network_interface` at the given `network_path`,
+/// falling back to "Node {id}" if the node isn't present (e.g. an ID that no longer maps to a real node).
+fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> String {
 	if network_interface.node_metadata(&node_id, network_path).is_some() {
 		network_interface.display_name(&node_id, network_path)
 	} else {
@@ -780,13 +788,15 @@ impl TableRowLayout for NodeId {
 	}
 	// Override so the breadcrumb uses the same resolved display name as the cell button, instead of the bare-ID fallback `identifier()` returns.
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		data.breadcrumbs.push(node_id_display_label(*self, data.network_interface));
+		data.breadcrumbs.push(node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path));
 		self.element_page(data)
 	}
-	// Cell label resolves the node's display name via the network interface (looked up at the root network) so the
-	// button reads as the name shown in the Node Graph / Layers panels. Falls back to "Node {id}" if the lookup misses.
+	// Cell label resolves the node's display name via the network interface so the button reads as the name shown
+	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
+	// `Table<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. Falls back to
+	// "Node {id}" if the lookup misses.
 	fn cell_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
-		let label = node_id_display_label(*self, data.network_interface);
+		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
 		TextButton::new(label)
 			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
 			.narrow(true)
@@ -795,16 +805,15 @@ impl TableRowLayout for NodeId {
 	// The leaf page shows the node's kind, name, lock/visibility toggles, and a "Make Selected" action button.
 	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let node_id = *self;
-		// Layer NodeIds (e.g. via the `editor:layer` attribute) live at the root network; if the lookup misses we just show the placeholder name.
-		let network_path: &[NodeId] = &[];
-		let known = data.network_interface.node_metadata(&node_id, network_path).is_some();
+		let network_path = data.node_lookup_network_path.clone();
+		let known = data.network_interface.node_metadata(&node_id, &network_path).is_some();
 		let name = if known {
-			data.network_interface.display_name(&node_id, network_path)
+			data.network_interface.display_name(&node_id, &network_path)
 		} else {
-			"(node not found in root network)".to_string()
+			"(node not found)".to_string()
 		};
 		let kind_widget = if known {
-			let icon = if data.network_interface.is_layer(&node_id, network_path) { "Layer" } else { "Node" };
+			let icon = if data.network_interface.is_layer(&node_id, &network_path) { "Layer" } else { "Node" };
 			IconLabel::new(icon).widget_instance()
 		} else {
 			TextLabel::new("-").widget_instance()
@@ -813,8 +822,8 @@ impl TableRowLayout for NodeId {
 		let mut header = vec![kind_widget, Separator::new(SeparatorStyle::Related).widget_instance(), TextLabel::new(name).widget_instance()];
 
 		if known {
-			let is_locked = data.network_interface.is_locked(&node_id, network_path);
-			let is_visible = data.network_interface.is_visible(&node_id, network_path);
+			let is_locked = data.network_interface.is_locked(&node_id, &network_path);
+			let is_visible = data.network_interface.is_visible(&node_id, &network_path);
 
 			header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			header.push(
@@ -845,42 +854,6 @@ impl TableRowLayout for NodeId {
 	}
 }
 
-impl TableRowLayout for Option<NodeId> {
-	fn type_name() -> &'static str {
-		"NodeId"
-	}
-	fn identifier(&self) -> String {
-		match self {
-			Some(node_id) => format!("Node {}", node_id),
-			None => "-".to_string(),
-		}
-	}
-	// Cells defer to `NodeId`'s named cell button for `Some` (so the label reads as the node's display name),
-	// or render a plain "-" label for `None`. The leaf page likewise defers to `NodeId` for `Some`.
-	fn cell_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
-		match self {
-			Some(node_id) => node_id.cell_widget(target, data),
-			None => TextLabel::new("-").narrow(true).widget_instance(),
-		}
-	}
-	// Defer to `NodeId`'s breadcrumb for `Some` so it stays in sync with the cell label; `None` shows just "-".
-	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		match self {
-			Some(node_id) => node_id.layout_with_breadcrumb(data),
-			None => {
-				data.breadcrumbs.push("-".to_string());
-				self.element_page(data)
-			}
-		}
-	}
-	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		match self {
-			Some(node_id) => node_id.element_page(data),
-			None => vec![LayoutGroup::row(vec![TextLabel::new("-").widget_instance()])],
-		}
-	}
-}
-
 /// Invokes another macro with the full list of `TableRowLayout`-implementing types whose values may appear
 /// as attribute cell values. Both the cell-rendering and drilldown-navigation dispatchers iterate this list,
 /// so adding a new attribute-displayable type is a single edit here.
@@ -901,7 +874,6 @@ macro_rules! known_table_row_types {
 			GradientStops,
 			Color,
 			NodeId,
-			Option<NodeId>,
 			AlphaBlending,
 			DAffine2,
 			DVec2,
@@ -941,10 +913,54 @@ fn dispatch_cell_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> O
 	None
 }
 
+/// Renders a `Table<NodeId>` as a path: the standard table view, but each row's `NodeId` cell is resolved
+/// against the network path made up of all preceding rows. So for a path `[outer, middle, leaf]`, row 0
+/// resolves at root, row 1 resolves at `[outer]`, and row 2 resolves at `[outer, middle]` — letting deeply
+/// nested layers display each step's correct name. Drilling into a row drops into that node's leaf page
+/// using the same prefix as `network_path`.
+fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut LayoutData) -> Vec<LayoutGroup> {
+	data.breadcrumbs.push(path.identifier());
+
+	if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
+		if let PathStep::Element(index) = step
+			&& let Some(node_id) = path.element(index)
+		{
+			let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
+			let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
+			data.current_depth += 1;
+			let result = node_id.layout_with_breadcrumb(data);
+			data.current_depth -= 1;
+			data.node_lookup_network_path = saved;
+			return result;
+		}
+		warn!("Desired path truncated");
+		data.desired_path.truncate(data.current_depth);
+	}
+
+	let mut rows = (0..path.len())
+		.map(|index| {
+			let node_id = path.element(index).unwrap();
+			let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
+			let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
+			let widget = node_id.cell_widget(PathStep::Element(index), data);
+			data.node_lookup_network_path = saved;
+			vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), widget]
+		})
+		.collect::<Vec<_>>();
+	rows.insert(0, column_headings(&["", "element"]));
+
+	vec![LayoutGroup::table(rows, false)]
+}
+
 /// Type-dispatched recursion into an attribute value for the data panel breadcrumb navigation.
 /// Mirrors [`dispatch_cell_widget`] but routes to [`TableRowLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
+	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer` attribute), so each row's NodeId cell
+	// resolves against the prefix made up of preceding rows. Handled before the generic `Table<T>` blanket impl.
+	if let Some(path) = any.downcast_ref::<Table<NodeId>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
+	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
 			$(

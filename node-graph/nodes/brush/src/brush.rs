@@ -314,7 +314,7 @@ async fn brush(
 
 	let transform: DAffine2 = actual_image.attribute_cloned_or_default("transform");
 	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default("alpha_blending");
-	let layer: Option<NodeId> = actual_image.attribute_cloned_or_default("editor:layer");
+	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default("editor:layer");
 
 	*image.element_mut(0).unwrap() = actual_image.into_element();
 	image.set_attribute("transform", 0, transform);

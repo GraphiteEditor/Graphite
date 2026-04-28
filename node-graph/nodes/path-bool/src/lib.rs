@@ -197,7 +197,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
-							let layer: Option<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
+							let layer: Table<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
 							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
 							make_row(parent_transform * row_transform, layer, alpha_blending)
 						})
@@ -223,7 +223,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
-							let layer: Option<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
+							let layer: Table<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
 							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
 							make_row(parent_transform * row_transform, layer, alpha_blending)
 						})

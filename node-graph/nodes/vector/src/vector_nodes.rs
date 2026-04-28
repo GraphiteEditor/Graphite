@@ -1296,8 +1296,8 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let node_id: Option<NodeId> = flattened.attribute_cloned_or_default("editor:layer", index);
-		let node_id = node_id.map(|node_id| node_id.0).unwrap_or_default();
+		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default("editor:layer", index);
+		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
 		(index, node_id).hash(&mut hasher);
@@ -1318,8 +1318,8 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Adopt the last input row's layer so the editor can also bucket clicks under a contributing child layer
 	if !flattened.is_empty() {
 		let primary = flattened.len() - 1;
-		let layer: Option<NodeId> = flattened.attribute_cloned_or_default("editor:layer", primary);
-		output_table.set_attribute("editor:layer", 0, layer);
+		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default("editor:layer", primary);
+		output_table.set_attribute("editor:layer", 0, layer_path);
 	}
 
 	output_table
@@ -2529,13 +2529,13 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
-	let layer: Option<NodeId> = content.attribute_cloned_or_default("editor:layer", primary_index);
+	let layer_path: Table<NodeId> = content.attribute_cloned_or_default("editor:layer", primary_index);
 
 	Table::new_from_row(
 		TableRow::new_from_element(vector)
 			.with_attribute("transform", lerped_transform)
 			.with_attribute("alpha_blending", vector_alpha_blending)
-			.with_attribute("editor:layer", layer)
+			.with_attribute("editor:layer", layer_path)
 			.with_attribute("editor:merged_layers", graphic_table_content),
 	)
 }

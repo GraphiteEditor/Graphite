@@ -26,7 +26,6 @@ async fn context_modification<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Option<NodeId>,
 		Context -> Table<String>,
 		Context -> Table<NodeId>,
 		Context -> Table<f64>,

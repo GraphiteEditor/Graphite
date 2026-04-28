@@ -412,7 +412,8 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first row
 					if !table.is_empty() {
-						let layer: Option<NodeId> = table.attribute_cloned_or_default("editor:layer", 0);
+						let layer_path: Table<NodeId> = table.attribute_cloned_or_default("editor:layer", 0);
+						let layer = layer_path.iter_element_values().next_back().copied();
 						let transform: DAffine2 = table.attribute_cloned_or_default("transform", 0);
 
 						metadata.first_element_source_id.insert(element_id, layer);
@@ -655,7 +656,8 @@ impl Render for Table<Artboard> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let layer: Option<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer = layer_path.iter_element_values().next_back().copied();
 			self.element(index).unwrap().collect_metadata(metadata, footprint, layer);
 		}
 	}
@@ -805,7 +807,8 @@ impl Render for Table<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let layer: Option<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
 			let mut footprint = footprint;
@@ -860,9 +863,9 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<Option<NodeId>>("editor:layer");
+		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>("editor:layer");
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
-			element.new_ids_from_hash(*layer);
+			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
 	}
 }
@@ -1327,7 +1330,8 @@ impl Render for Table<Vector> {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let layer: Option<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
 				// When recovering element_id from the row's editor:layer tag (because the caller

@@ -209,14 +209,16 @@ where
 	result_table
 }
 
-/// Returns the NodeId of the user-facing parent layer node that encapsulates this sub-network.
-/// Used as the value source for stamping the `editor:layer` attribute on each row of a layer's output,
-/// which lets editor tools (e.g. selection, click target routing) trace data back to its owning layer.
-#[node_macro::node(category(""))]
-pub fn parent_layer(_: impl Ctx, node_path: Table<NodeId>) -> Option<NodeId> {
-	// Get the penultimate element of the node path, or None if the path is too short
-	let index = node_path.len().wrapping_sub(2);
-	node_path.element(index).copied()
+/// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
+/// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
+/// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
+/// Used as the value source for stamping the `editor:layer` attribute on each row of a layer's output, which lets
+/// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
+/// the layer is at the root document network or nested inside a custom subgraph.
+#[node_macro::node(name("Path of Subgraph"), category(""))]
+pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> {
+	let len = node_path.len();
+	node_path.into_iter().take(len.saturating_sub(1)).collect()
 }
 
 /// Writes a per-row attribute column on the input table. The value-producing input is evaluated once per row,
@@ -241,13 +243,13 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHas
 	name: String,
 	/// The node that produces the per-row value. Called once per row with the row index in context.
 	#[implementations(
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = U>,
 ) -> Table<T> {

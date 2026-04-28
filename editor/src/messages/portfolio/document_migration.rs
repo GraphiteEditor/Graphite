@@ -1016,7 +1016,7 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 		return true;
 	}
 
-	// The `source_node_id` proto node was removed in favor of `parent_layer` + `write_attribute`.
+	// The `source_node_id` proto node was removed in favor of `path_of_subgraph` + `write_attribute`.
 	// Documents that still reference it inside their Merge or Artboard layer networks need those layer definitions
 	// reset to the current default so the new internal plumbing replaces the obsolete node.
 	if document_serialized_content.contains("graphic_nodes::graphic::SourceNodeIdNode")
