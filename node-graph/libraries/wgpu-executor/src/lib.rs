@@ -1,11 +1,18 @@
+mod blend;
 mod context;
 mod resample;
 pub mod shader_runtime;
+mod texture_cache;
 pub mod texture_conversion;
 
+use std::sync::Arc;
+
+use crate::blend::Blender;
 use crate::resample::Resampler;
 use crate::shader_runtime::ShaderRuntime;
+use crate::texture_cache::TextureCache;
 use anyhow::Result;
+use core_types::Color;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi};
@@ -18,11 +25,15 @@ pub use rendering::RenderContext;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
 
+const TEXTURE_CACHE_SIZE: u64 = 256 * 1024 * 1024; // 256 MiB
+
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
 	pub context: WgpuContext,
+	texture_cache: Mutex<TextureCache>,
 	vello_renderer: Mutex<Renderer>,
 	resampler: Resampler,
+	blender: Blender,
 	pub shader_runtime: ShaderRuntime,
 }
 
@@ -38,105 +49,55 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 	}
 }
 
-#[derive(Clone, Debug)]
-pub struct TargetTexture {
-	texture: wgpu::Texture,
-	view: wgpu::TextureView,
-	size: UVec2,
-}
-
-impl TargetTexture {
-	/// Creates a new TargetTexture with the specified size.
-	pub fn new(device: &wgpu::Device, size: UVec2) -> Self {
-		let size = size.max(UVec2::ONE);
-		let texture = device.create_texture(&wgpu::TextureDescriptor {
-			label: None,
-			size: wgpu::Extent3d {
-				width: size.x,
-				height: size.y,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-			format: VELLO_SURFACE_FORMAT,
-			view_formats: &[],
-		});
-		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-		Self { texture, view, size }
-	}
-
-	/// Ensures the texture has the specified size, creating a new one if needed.
-	/// This allows reusing the same texture across frames when the size hasn't changed.
-	pub fn ensure_size(&mut self, device: &wgpu::Device, size: UVec2) {
-		let size = size.max(UVec2::ONE);
-		if self.size == size {
-			return;
-		}
-
-		*self = Self::new(device, size);
-	}
-
-	/// Returns a reference to the texture view for rendering.
-	pub fn view(&self) -> &wgpu::TextureView {
-		&self.view
-	}
-
-	/// Returns a reference to the underlying texture.
-	pub fn texture(&self) -> &wgpu::Texture {
-		&self.texture
-	}
-}
-
-const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
-
 impl WgpuExecutor {
-	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext) -> Result<wgpu::Texture> {
-		let mut output = None;
-		self.render_vello_scene_to_target_texture(scene, size, context, &mut output).await?;
-		Ok(output.unwrap().texture)
-	}
+	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Arc<wgpu::Texture>> {
+		let texture = self.request_texture(size).await;
 
-	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, output: &mut Option<TargetTexture>) -> Result<()> {
-		// Initialize (lazily) if this is the first call
-		if output.is_none() {
-			*output = Some(TargetTexture::new(&self.context.device, size));
-		}
+		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		if let Some(target_texture) = output.as_mut() {
-			target_texture.ensure_size(&self.context.device, size);
+		let [r, g, b, a] = background.unwrap_or(Color::TRANSPARENT).to_rgba8();
+		let render_params = RenderParams {
+			base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
+			width: size.x,
+			height: size.y,
+			antialiasing_method: AaConfig::Msaa16,
+		};
 
-			let render_params = RenderParams {
-				base_color: vello::peniko::Color::from_rgba8(0, 0, 0, 0),
-				width: size.x,
-				height: size.y,
-				antialiasing_method: AaConfig::Msaa16,
-			};
-
-			{
-				let mut renderer = self.vello_renderer.lock().await;
-				for (image_brush, texture) in context.resource_overrides.iter() {
-					let texture_view = wgpu::TexelCopyTextureInfoBase {
-						texture: texture.clone(),
-						mip_level: 0,
-						origin: Origin3d::ZERO,
-						aspect: TextureAspect::All,
-					};
-					renderer.override_image(&image_brush.image, Some(texture_view));
-				}
-				renderer.render_to_texture(&self.context.device, &self.context.queue, scene, target_texture.view(), &render_params)?;
-				for (image_brush, _) in context.resource_overrides.iter() {
-					renderer.override_image(&image_brush.image, None);
-				}
+		{
+			let mut renderer = self.vello_renderer.lock().await;
+			for (image_brush, texture) in context.resource_overrides.iter() {
+				let texture_view = wgpu::TexelCopyTextureInfoBase {
+					texture: texture.clone(),
+					mip_level: 0,
+					origin: Origin3d::ZERO,
+					aspect: TextureAspect::All,
+				};
+				renderer.override_image(&image_brush.image, Some(texture_view));
+			}
+			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &texture_view, &render_params)?;
+			for (image_brush, _) in context.resource_overrides.iter() {
+				renderer.override_image(&image_brush.image, None);
 			}
 		}
-		Ok(())
+
+		Ok(texture)
 	}
 
-	pub fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> wgpu::Texture {
-		self.resampler.resample(&self.context, source, target_size, transform)
+	pub async fn resample_texture(&self, source: &wgpu::Texture, target_size: UVec2, transform: &glam::DAffine2) -> Arc<wgpu::Texture> {
+		let out = self.request_texture(target_size).await;
+		self.resampler.resample(&self.context, source, transform, &out);
+		out
+	}
+
+	pub async fn blend_textures(&self, foreground: &wgpu::Texture, background: &wgpu::Texture) -> Arc<wgpu::Texture> {
+		let size = UVec2::new(foreground.width(), foreground.height()).max(UVec2::ONE);
+		let out = self.request_texture(size).await;
+		self.blender.blend(&self.context, foreground, background, &out);
+		out
+	}
+
+	pub async fn request_texture(&self, size: UVec2) -> Arc<wgpu::Texture> {
+		self.texture_cache.lock().await.request_texture(&self.context.device, size)
 	}
 }
 
@@ -159,11 +120,14 @@ impl WgpuExecutor {
 		.ok()?;
 
 		let resampler = Resampler::new(&context.device);
+		let blender = Blender::new(&context.device);
 
 		Some(Self {
 			shader_runtime: ShaderRuntime::new(&context),
+			texture_cache: Mutex::new(TextureCache::new(TEXTURE_CACHE_SIZE)),
 			context,
 			resampler,
+			blender,
 			vello_renderer: vello_renderer.into(),
 		})
 	}

@@ -1,17 +1,17 @@
 use crate::WgpuContext;
-use glam::{DAffine2, Vec2};
 
-pub struct Resampler {
+pub struct Blender {
 	pipeline: wgpu::RenderPipeline,
 	bind_group_layout: wgpu::BindGroupLayout,
+	sampler: wgpu::Sampler,
 }
 
-impl Resampler {
+impl Blender {
 	pub fn new(device: &wgpu::Device) -> Self {
-		let shader = device.create_shader_module(wgpu::include_wgsl!("resample_shader.wgsl"));
+		let shader = device.create_shader_module(wgpu::include_wgsl!("blend_shader.wgsl"));
 
 		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-			label: Some("resample_bind_group_layout"),
+			label: Some("blend_bind_group_layout"),
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
 					binding: 0,
@@ -19,31 +19,37 @@ impl Resampler {
 					ty: wgpu::BindingType::Texture {
 						multisampled: false,
 						view_dimension: wgpu::TextureViewDimension::D2,
-						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
 					},
 					count: None,
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
 					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Buffer {
-						ty: wgpu::BufferBindingType::Uniform,
-						has_dynamic_offset: false,
-						min_binding_size: None,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
 					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 2,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
 				},
 			],
 		});
 
 		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-			label: Some("resample_pipeline_layout"),
+			label: Some("blend_pipeline_layout"),
 			bind_group_layouts: &[&bind_group_layout],
 			..Default::default()
 		});
 
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some("resample_pipeline"),
+			label: Some("blend_pipeline"),
 			layout: Some(&pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: &shader,
@@ -71,43 +77,48 @@ impl Resampler {
 			cache: None,
 		});
 
-		Resampler { pipeline, bind_group_layout }
-	}
-
-	pub fn resample(&self, context: &WgpuContext, source: &wgpu::Texture, transform: &DAffine2, output: &wgpu::Texture) {
-		let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
-
-		let params_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
-			label: Some("resample_params"),
-			size: 32,
-			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-			mapped_at_creation: false,
+		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+			address_mode_u: wgpu::AddressMode::ClampToEdge,
+			address_mode_v: wgpu::AddressMode::ClampToEdge,
+			address_mode_w: wgpu::AddressMode::ClampToEdge,
+			mag_filter: wgpu::FilterMode::Nearest,
+			min_filter: wgpu::FilterMode::Nearest,
+			mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+			..Default::default()
 		});
 
-		let params_data = [transform.matrix2.x_axis.as_vec2(), transform.matrix2.y_axis.as_vec2(), transform.translation.as_vec2(), Vec2::ZERO];
-		context.queue.write_buffer(&params_buffer, 0, bytemuck::cast_slice(&params_data));
+		Self { pipeline, bind_group_layout, sampler }
+	}
+
+	pub fn blend(&self, context: &WgpuContext, foreground: &wgpu::Texture, background: &wgpu::Texture, output: &wgpu::Texture) {
+		let foreground_view = foreground.create_view(&wgpu::TextureViewDescriptor::default());
+		let background_view = background.create_view(&wgpu::TextureViewDescriptor::default());
+		let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some("resample_bind_group"),
+			label: Some("blend_bind_group"),
 			layout: &self.bind_group_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&source_view),
+					resource: wgpu::BindingResource::TextureView(&foreground_view),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: params_buffer.as_entire_binding(),
+					resource: wgpu::BindingResource::TextureView(&background_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
+					resource: wgpu::BindingResource::Sampler(&self.sampler),
 				},
 			],
 		});
 
-		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("resample_encoder") });
+		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("blend_encoder") });
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-				label: Some("resample_pass"),
+				label: Some("blend_pass"),
 				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
 					view: &output_view,
 					resolve_target: None,
@@ -117,7 +128,10 @@ impl Resampler {
 					},
 					depth_slice: None,
 				})],
-				..Default::default()
+				depth_stencil_attachment: None,
+				timestamp_writes: None,
+				occlusion_query_set: None,
+				multiview_mask: None,
 			});
 
 			render_pass.set_pipeline(&self.pipeline);

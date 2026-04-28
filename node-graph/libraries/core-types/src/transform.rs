@@ -176,7 +176,7 @@ impl Default for Footprint {
 impl Footprint {
 	pub const DEFAULT: Self = Self {
 		transform: DAffine2::IDENTITY,
-		resolution: UVec2::new(1920, 1080),
+		resolution: UVec2::ZERO,
 		quality: RenderQuality::Full,
 	};
 
