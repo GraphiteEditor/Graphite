@@ -793,33 +793,55 @@ impl TableRowLayout for NodeId {
 	}
 	// Cell label resolves the node's display name via the network interface so the button reads as the name shown
 	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
-	// `Table<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. Falls back to
-	// "Node {id}" if the lookup misses.
+	// `Table<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
+	// signals layer-vs-node kind. Falls back to "Node {id}" with no icon if the lookup misses.
 	fn cell_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
 		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
-		TextButton::new(label)
+		let mut button = TextButton::new(label)
 			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
-			.narrow(true)
-			.widget_instance()
+			.narrow(true);
+		if data.network_interface.node_metadata(self, &data.node_lookup_network_path).is_some() {
+			let icon = if data.network_interface.is_layer(self, &data.node_lookup_network_path) { "Layer" } else { "Node" };
+			button = button.icon(icon);
+		}
+		button.widget_instance()
 	}
-	// The leaf page shows the node's kind, name, lock/visibility toggles, and a "Make Selected" action button.
+	// The leaf page shows the node's kind, name (editable), lock/visibility toggles, and a "Select Layer/Node" action button.
 	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let node_id = *self;
 		let network_path = data.node_lookup_network_path.clone();
 		let known = data.network_interface.node_metadata(&node_id, &network_path).is_some();
+		let is_layer = known && data.network_interface.is_layer(&node_id, &network_path);
 		let name = if known {
 			data.network_interface.display_name(&node_id, &network_path)
 		} else {
 			"(node not found)".to_string()
 		};
 		let kind_widget = if known {
-			let icon = if data.network_interface.is_layer(&node_id, &network_path) { "Layer" } else { "Node" };
-			IconLabel::new(icon).widget_instance()
+			IconLabel::new(if is_layer { "Layer" } else { "Node" }).widget_instance()
 		} else {
 			TextLabel::new("-").widget_instance()
 		};
+		let name_widget = if known {
+			let path_for_rename = network_path.clone();
+			TextInput::new(name)
+				.tooltip_description(if is_layer { "Name of this layer." } else { "Name of this node." })
+				.on_update(move |text_input| {
+					NodeGraphMessage::SetDisplayName {
+						node_id,
+						network_path: path_for_rename.clone(),
+						alias: text_input.value.clone(),
+						skip_adding_history_step: false,
+					}
+					.into()
+				})
+				.max_width(200)
+				.widget_instance()
+		} else {
+			TextLabel::new(name).widget_instance()
+		};
 
-		let mut header = vec![kind_widget, Separator::new(SeparatorStyle::Related).widget_instance(), TextLabel::new(name).widget_instance()];
+		let mut header = vec![kind_widget, Separator::new(SeparatorStyle::Related).widget_instance(), name_widget];
 
 		if known {
 			let is_locked = data.network_interface.is_locked(&node_id, &network_path);
@@ -844,8 +866,8 @@ impl TableRowLayout for NodeId {
 
 		header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		header.push(
-			TextButton::new("Make Selected")
-				.tooltip_description("Click to select the node with this ID in the graph.")
+			TextButton::new(if is_layer { "Select Layer" } else { "Select Node" })
+				.tooltip_description(if is_layer { "Click to select this layer." } else { "Click to select this node." })
 				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into())
 				.widget_instance(),
 		);
