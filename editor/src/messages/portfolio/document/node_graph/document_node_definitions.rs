@@ -1391,7 +1391,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Raster(Default::default()), true),
-						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
+						NodeInput::value(TaggedValue::BrushStrokeTable(Default::default()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::default()), false),
 					],
 					..Default::default()
