@@ -1,16 +1,15 @@
 { pkgs, ... }:
 
 let
-  extensions = [
-    "rust-src"
-    "rust-analyzer"
-    "clippy"
-    "cargo"
-    "rustc-dev"
-    "llvm-tools"
-  ];
   toolchain = pkgs.rust-bin.nightly."2026-04-11".default.override {
-    inherit extensions;
+    extensions = [
+      "rust-src"
+      "rust-analyzer"
+      "clippy"
+      "cargo"
+      "rustc-dev"
+      "llvm-tools"
+    ];
   };
   cargo = pkgs.writeShellScriptBin "cargo" ''
     #!${pkgs.lib.getExe pkgs.bash}
