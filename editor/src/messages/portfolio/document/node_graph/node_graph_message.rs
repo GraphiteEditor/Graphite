@@ -157,11 +157,15 @@ pub enum NodeGraphMessage {
 	},
 	SetDisplayName {
 		node_id: NodeId,
+		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
+		/// Lets the rename target a node at any nesting depth, independent of the current selection network.
+		network_path: Vec<NodeId>,
 		alias: String,
 		skip_adding_history_step: bool,
 	},
 	SetDisplayNameImpl {
 		node_id: NodeId,
+		network_path: Vec<NodeId>,
 		alias: String,
 	},
 	SetToNodeOrLayer {
@@ -199,15 +203,22 @@ pub enum NodeGraphMessage {
 	ToggleSelectedLocked,
 	ToggleLocked {
 		node_id: NodeId,
+		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
+		/// Lets the toggle target a node at any nesting depth, independent of the current selection network.
+		network_path: Vec<NodeId>,
 	},
 	SetLocked {
 		node_id: NodeId,
+		network_path: Vec<NodeId>,
 		locked: bool,
 	},
 	ToggleSelectedIsPinned,
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,
+		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
+		/// Lets the toggle target a node at any nesting depth, independent of the current selection network.
+		network_path: Vec<NodeId>,
 	},
 	SetPinned {
 		node_id: NodeId,
@@ -215,10 +226,12 @@ pub enum NodeGraphMessage {
 	},
 	SetVisibility {
 		node_id: NodeId,
+		network_path: Vec<NodeId>,
 		visible: bool,
 	},
 	SetLockedOrVisibilitySideEffects {
 		node_ids: Vec<NodeId>,
+		network_path: Vec<NodeId>,
 	},
 	UpdateEdges,
 	UpdateBoxSelection,

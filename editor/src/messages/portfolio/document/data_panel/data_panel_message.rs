@@ -10,6 +10,9 @@ pub enum DataPanelMessage {
 		inspect_result: InspectResult,
 	},
 	ClearLayout,
+	/// Re-render the existing layout against the latest network interface state. Use this when node metadata
+	/// (display name, visibility, locked, etc.) changes but the introspected output value hasn't.
+	Refresh,
 
 	PushToElementPath {
 		step: PathStep,

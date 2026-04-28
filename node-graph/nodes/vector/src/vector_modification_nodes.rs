@@ -15,13 +15,14 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 	}
 	modification.apply(vector.element_mut(0).expect("push should give one item"));
 
-	// Update the source node id (penultimate element in the path, identifying the user-facing layer node)
-	let this_node_path = {
-		let index = node_path.len().wrapping_sub(2);
-		node_path.element(index).copied()
+	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
+	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.
+	let subgraph_path: Table<NodeId> = {
+		let len = node_path.len();
+		node_path.into_iter().take(len.saturating_sub(1)).collect()
 	};
-	let existing: Option<NodeId> = vector.attribute_cloned_or_default("editor:layer", 0);
-	vector.set_attribute("editor:layer", 0, existing.or(this_node_path));
+	let existing: Table<NodeId> = vector.attribute_cloned_or_default("editor:layer", 0);
+	vector.set_attribute("editor:layer", 0, if existing.is_empty() { subgraph_path } else { existing });
 
 	if vector.len() > 1 {
 		warn!("The path modify ran on {} vector rows. Only the first can be modified.", vector.len());
