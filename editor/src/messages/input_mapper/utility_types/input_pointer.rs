@@ -56,6 +56,7 @@ pub struct PointerState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	pub pressure: f64,
 }
 
 impl PointerState {
@@ -72,15 +73,36 @@ pub struct EditorPointerState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+
+	/// Tablet Pointer attributes
+	pub pressure: f64,
+	//TODO: tangential pressure, azimuth & altitude, twist
 }
 
 impl EditorPointerState {
+	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
+		let pressure: f64 = 1.0;
+		Self::from_keys_with_pressure_and_editor_position(keys, pressure, editor_position)
+	}
+
+	pub fn from_keys_with_pressure_and_editor_position(keys: u8, pressure: f64, editor_position: EditorPosition) -> Self {
+		// TODO: Some graphic tablets send key codes not mentioned in the spec. In the future we would like to support these as well.
+		let mouse_keys = MouseKeys::from_bits_truncate(keys);
+
+		Self {
+			editor_position,
+			mouse_keys,
+			scroll_delta: ScrollDelta::default(),
+			pressure,
+		}
+	}
 
 	pub fn to_pointer_state(&self, viewport: &ViewportMessageHandler) -> PointerState {
 		PointerState {
 			position: (viewport.logical(self.editor_position) - viewport.offset()).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
+			pressure: self.pressure,
 		}
 	}
 }
