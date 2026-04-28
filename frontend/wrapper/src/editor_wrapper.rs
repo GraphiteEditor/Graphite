@@ -545,6 +545,17 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	/// Pointer movement within the screenspace bounds of the viewport
+	#[wasm_bindgen(js_name = onPointerMove)]
+	pub fn on_pointer_move(&self, x: f64, y: f64, pressure: f64, _tangential_pressure: f64, _azimuth_angle: f64, _altitude_angle: f64, _twist: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_pointer_state = EditorPointerState::from_keys_with_pressure_and_editor_position(mouse_keys, pressure, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerMove { editor_pointer_state, modifier_keys };
+		self.dispatch(message);
+	}
+
 	/// Mouse scrolling within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onWheelScroll)]
 	pub fn on_wheel_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f64, wheel_delta_y: f64, wheel_delta_z: f64, modifiers: u8) {
@@ -564,7 +575,16 @@ impl EditorWrapper {
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = onPointerDown)]
+	pub fn on_pointer_down(&self, x: f64, y: f64, pressure: f64, _tangential_pressure: f64, _azimuth_angle: f64, _altitude_angle: f64, _twist: f64, mouse_keys: u8, modifiers: u8) {
+	let editor_pointer_state = EditorPointerState::from_keys_with_pressure_and_editor_position(mouse_keys, pressure, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
 		let message = InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
@@ -573,6 +593,16 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = onMouseUp)]
 	pub fn on_mouse_up(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
 		let editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerUp { editor_pointer_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = onPointerUp)]
+	pub fn on_pointer_up(&self, x: f64, y: f64, pressure: f64, _tangential_pressure: f64, _azimuth_angle: f64, _altitude_angle: f64, _twist: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_pointer_state = EditorPointerState::from_keys_with_pressure_and_editor_position(mouse_keys, pressure, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
@@ -975,6 +1005,14 @@ impl EditorWrapper {
 		};
 		self.dispatch(message);
 	}
+/* 
+	/// Is the tablet stylus drawing/dragging on the surface?
+	#[wasm_bindgen(getter, js_name = isPenDrawing)]
+	pub fn is_pen_drawing(&self) {
+		let message = InputPreprocessorMessage::IsPenDrawing { };
+		self.dispatch(message)
+	}
+	*/
 }
 
 // ====================================================================
