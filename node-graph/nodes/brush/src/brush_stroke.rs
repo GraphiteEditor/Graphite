@@ -3,7 +3,10 @@ use core_types::color::Color;
 use core_types::math::bbox::AxisAlignedBbox;
 use dyn_any::DynAny;
 use glam::DVec2;
-use std::hash::{Hash, Hasher};
+use std::{
+	hash::{Hash, Hasher},
+	thread::current,
+};
 
 /// The style of a brush.
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
@@ -59,14 +62,28 @@ pub struct BrushInputSample {
 	// The position of the sample in layer space, in pixels.
 	// The origin of layer space is not specified.
 	pub position: DVec2,
-	// Future work: pressure, stylus angle, etc.
+	pub pressure: f64,
+	// Future work: stylus angle, etc.
 }
 
 impl Hash for BrushInputSample {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.position.x.to_bits().hash(state);
 		self.position.y.to_bits().hash(state);
+		self.pressure.to_bits().hash(state);
 	}
+}
+
+/// Samples of blit point parameters along the brush stroke trace path.
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct BrushOutputSample {
+	// The position of the sample in layer space, in pixels.
+	// The origin of layer space is not specified.
+	pub position: DVec2,
+
+	// The scale multiplier for the brush stamp diameter
+	pub scale: f64,
+	// Future work: stylus angle, etc.
 }
 
 /// The parameters for a single stroke brush.
@@ -81,45 +98,49 @@ impl BrushStroke {
 		let radius = self.style.diameter / 2.;
 		self.compute_blit_points()
 			.iter()
-			.map(|pos| AxisAlignedBbox {
-				start: *pos + DVec2::new(-radius, -radius),
-				end: *pos + DVec2::new(radius, radius),
+			.map(|sample| AxisAlignedBbox {
+				start: sample.position + DVec2::new(-radius, -radius),
+				end: sample.position + DVec2::new(radius, radius),
 			})
 			.reduce(|a, b| a.union(&b))
 			.unwrap_or(AxisAlignedBbox::ZERO)
 	}
 
-	pub fn compute_blit_points(&self) -> Vec<DVec2> {
+	pub fn compute_blit_points(&self) -> Vec<BrushOutputSample> {
 		// We always travel in a straight line towards the next user input,
 		// placing a blit point every time we travelled our spacing distance.
 		let spacing_dist = self.style.spacing / 100. * self.style.diameter;
-
-		let Some(first_sample) = self.trace.first() else {
+		if self.trace.is_empty() {
 			return Vec::new();
 		};
 
-		let mut cur_pos = first_sample.position;
-		let mut result = vec![cur_pos];
-		let mut dist_until_next_blit = spacing_dist;
-		for sample in &self.trace[1..] {
-			// Travel to the next sample.
-			let delta = sample.position - cur_pos;
-			let mut dist_left = delta.length();
-			let unit_step = delta / dist_left;
+		let mut result = vec![BrushOutputSample {
+			position: self.trace[0].position,
+			scale: self.trace[0].pressure,
+		}];
 
-			while dist_left >= dist_until_next_blit {
-				// Take a step to the next blit point.
-				cur_pos += dist_until_next_blit * unit_step;
-				dist_left -= dist_until_next_blit;
-
-				// Blit.
-				result.push(cur_pos);
-				dist_until_next_blit = spacing_dist;
+		for samples in self.trace.windows(2) {
+			let position_delta = (samples[1].position - samples[0].position).length();
+			let unit_step = (samples[1].position - samples[0].position).normalize();
+			let pressure_delta = samples[1].pressure - samples[0].pressure;
+			let mut current_position = samples[0].position + unit_step;
+			loop {
+				let step = (samples[1].position - current_position).length();
+				if step < spacing_dist {
+					break;
+				}
+				// let t64 = t as f64;
+				result.push(BrushOutputSample {
+					position: current_position,
+					scale: samples[1].pressure - (step / position_delta) * pressure_delta,
+				});
+				current_position += unit_step;
 			}
 
-			// Take the partial step to land at the sample.
-			dist_until_next_blit -= dist_left;
-			cur_pos = sample.position;
+			result.push(BrushOutputSample {
+				position: samples[1].position,
+				scale: samples[1].pressure,
+			});
 		}
 
 		result
