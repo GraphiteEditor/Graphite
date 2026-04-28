@@ -1178,8 +1178,8 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	match &**tagged_value {
 		TaggedValue::Color(color_table) => widgets.push(
 			color_button
-				.value(match color_table.iter().next() {
-					Some(color) => FillChoice::Solid(*color.element),
+				.value(match color_table.element(0) {
+					Some(color) => FillChoice::Solid(*color),
 					None => FillChoice::None,
 				})
 				.on_update(update_value(
@@ -1192,8 +1192,8 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 		),
 		TaggedValue::GradientTable(gradient_table) => widgets.push(
 			color_button
-				.value(match gradient_table.iter().next() {
-					Some(row) => FillChoice::Gradient(row.element.clone()),
+				.value(match gradient_table.element(0) {
+					Some(gradient) => FillChoice::Gradient(gradient.clone()),
 					None => FillChoice::Gradient(GradientStops::default()),
 				})
 				.on_update(update_value(

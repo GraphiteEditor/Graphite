@@ -713,10 +713,10 @@ fn set_import_child_positions(
 		let child_pos = IVec2::new(child_x, current_y);
 
 		if i == 0 {
-			// Top of stack — set to `Absolute` position
+			// Top of stack: set to `Absolute` position
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Absolute(child_pos), &[]);
 		} else {
-			// Below top — set `Stack` with `y_offset` based on previous sibling's subtree extent
+			// Below top: set `Stack` with `y_offset` based on previous sibling's subtree extent
 			let prev_sibling_svg_index = n - i;
 			let y_offset = child_extents_svg_order[prev_sibling_svg_index] + STACK_VERTICAL_GAP as u32;
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Stack(y_offset), &[]);

@@ -12,7 +12,7 @@ async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percenta
 	image_frame
 		.into_iter()
 		.map(|mut row| {
-			let image = row.element;
+			let image = std::mem::replace(row.element_mut(), Raster::new_cpu(Image::default()));
 			// Prepare the image data for processing
 			let image_data = bytemuck::cast_vec(image.data.clone());
 			let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
@@ -31,7 +31,7 @@ async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percenta
 				base64_string: None,
 			};
 
-			row.element = Raster::new_cpu(dehazed_image);
+			*row.element_mut() = Raster::new_cpu(dehazed_image);
 			row
 		})
 		.collect()

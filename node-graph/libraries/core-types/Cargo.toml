@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+serde = ["dep:serde"]
 nightly = []
 type_id_logging = []
 dealloc_nodes = []

@@ -11,8 +11,10 @@ workspace = true
 
 [features]
 default = ["std"]
+serde = ["dep:serde", "core-types?/serde", "raster-types?/serde", "vector-types?/serde"]
 shader-nodes = ["std", "dep:raster-nodes-shaders", "dep:wgpu-executor"]
 std = [
+	"serde",
 	"dep:core-types",
 	"dep:dyn-any",
 	"dep:graphene-hash",
@@ -23,7 +25,6 @@ std = [
 	"dep:rand",
 	"dep:rand_chacha",
 	"dep:fastnoise-lite",
-	"dep:serde",
 	"dep:kurbo",
 ]
 wasm = [

@@ -26,7 +26,8 @@ pub use vector_types;
 /// Alignment of lines of type within a text block.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]
@@ -49,7 +50,8 @@ impl From<TextAlign> for parley::Alignment {
 	}
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypesettingConfig {
 	pub font_size: f64,
 	pub line_height_ratio: f64,

@@ -77,7 +77,8 @@ macro_rules! fn_type_fut {
 }
 
 // TODO: Rename to NodeSignatureMonomorphization
-#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -126,7 +127,8 @@ impl std::fmt::Debug for NodeIOTypes {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProtoNodeIdentifier {
 	name: Cow<'static, str>,
 }
@@ -180,17 +182,18 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeDescriptor {
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub id: Option<TypeId>,
-	#[serde(deserialize_with = "migrate_type_descriptor_names")]
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "migrate_type_descriptor_names"))]
 	pub name: Cow<'static, str>,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub alias: Option<Cow<'static, str>>,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub size: usize,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub align: usize,
 }
 
@@ -228,7 +231,8 @@ impl PartialEq for TypeDescriptor {
 
 /// Graph runtime type information used for type inference.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),

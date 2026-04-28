@@ -169,7 +169,8 @@ where
 
 	// Create and add mirrored instance
 	for mut row in content.into_iter() {
-		row.transform = reflected_transform * row.transform;
+		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+		row.set_attribute("transform", reflected_transform * current_transform);
 		result_table.push(row);
 	}
 
@@ -199,8 +200,8 @@ pub async fn source_node_id<T: 'n + Send + Clone>(
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	let mut content = content;
-	for row in content.iter_mut() {
-		*row.source_node_id = source_node_id;
+	for source_id in content.iter_attribute_values_mut_or_default::<Option<NodeId>>("source_node_id") {
+		*source_id = source_node_id;
 	}
 
 	content
@@ -241,8 +242,9 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	let source_node_id = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();
 
 	let mut base = base;
-	for row in new.into_iter() {
-		base.push(TableRow { source_node_id, ..row });
+	for mut row in new.into_iter() {
+		row.set_attribute("source_node_id", source_node_id);
+		base.push(row);
 	}
 
 	base
@@ -290,9 +292,10 @@ pub async fn to_graphic<T: IntoGraphicTable + 'n>(
 pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
 	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
-		for current_row in current_graphic_table.iter() {
-			let current_element = current_row.element.clone();
-			let reference = *current_row.source_node_id;
+		for index in 0..current_graphic_table.len() {
+			let Some(current_element) = current_graphic_table.element(index) else { continue };
+			let current_element = current_element.clone();
+			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default("transform", index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -300,20 +303,16 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					for graphic in current_element.iter_mut() {
-						*graphic.transform = *current_row.transform * *graphic.transform;
+					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+						*graphic_transform = current_transform * *graphic_transform;
 					}
 
 					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
 				}
 				// Push any leaf Graphic elements we encounter, which can be either Graphic table elements beyond the recursion depth, or table elements other than Graphic tables
 				_ => {
-					output_graphic_table.push(TableRow {
-						element: current_element,
-						transform: *current_row.transform,
-						alpha_blending: *current_row.alpha_blending,
-						source_node_id: reference,
-					});
+					let attributes = current_graphic_table.clone_row_attributes(index);
+					output_graphic_table.push(TableRow::from_parts(current_element, attributes));
 				}
 			}
 		}
@@ -370,20 +369,17 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 		]));
 	}
 
-	if let (Some(color), None) = {
-		let mut colors_iter = colors.iter();
-		(colors_iter.next(), colors_iter.next())
-	} {
+	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
 		return Table::new_from_element(GradientStops::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
-				color: *color.element,
+				color: single_color,
 			},
 			GradientStop {
 				position: 1.,
 				midpoint: 0.5,
-				color: *color.element,
+				color: single_color,
 			},
 		]));
 	}
@@ -391,7 +387,7 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
 		position: index as f64 / (total_colors - 1) as f64,
 		midpoint: 0.5,
-		color: row.element,
+		color: row.into_element(),
 	});
 	Table::new_from_element(GradientStops::new(colors))
 }

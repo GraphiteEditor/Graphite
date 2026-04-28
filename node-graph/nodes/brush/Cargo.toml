@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
-serde = ["dep:serde"]
+serde = ["dep:serde", "core-types/serde", "raster-types/serde", "raster-nodes/serde"]
 
 [dependencies]
 # Local dependencies
