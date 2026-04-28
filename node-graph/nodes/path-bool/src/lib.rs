@@ -18,7 +18,7 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
-#[node_macro::node(category(""))]
+#[node_macro::node(category("Vector: Modifier"), memoize)]
 async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The table of vector paths to perform the boolean operation on. Nested tables are automatically flattened.
