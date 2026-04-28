@@ -111,7 +111,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			})
 			.collect();
 
-		if generated_nodes == 0 {
+		if generated_nodes == 0 && !memoize {
 			continue;
 		}
 
