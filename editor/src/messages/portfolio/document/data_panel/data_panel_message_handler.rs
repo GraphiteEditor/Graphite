@@ -27,7 +27,9 @@ pub struct DataPanelMessageContext<'a> {
 /// The data panel allows for graph data to be previewed.
 #[derive(Default, Debug, Clone, ExtractField)]
 pub struct DataPanelMessageHandler {
-	introspected_node: Option<NodeId>,
+	/// Full path from the root network to the introspected node, with the node itself as the last element.
+	/// Empty when nothing is being introspected.
+	introspected_node_path: Vec<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	element_path: Vec<PathStep>,
 	active_vector_table_tab: VectorTableTab,
@@ -38,12 +40,12 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 	fn process_message(&mut self, message: DataPanelMessage, responses: &mut VecDeque<Message>, context: DataPanelMessageContext) {
 		match message {
 			DataPanelMessage::UpdateLayout { mut inspect_result } => {
-				self.introspected_node = Some(inspect_result.inspect_node);
 				self.introspected_data = inspect_result.take_data();
+				self.introspected_node_path = inspect_result.inspect_node_path;
 				self.update_layout(responses, context);
 			}
 			DataPanelMessage::ClearLayout => {
-				self.introspected_node = None;
+				self.introspected_node_path.clear();
 				self.introspected_data = None;
 				self.element_path.clear();
 				self.active_vector_table_tab = VectorTableTab::default();
@@ -93,8 +95,9 @@ impl DataPanelMessageHandler {
 		let mut widgets = Vec::new();
 
 		// Selected layer/node name
-		if let Some(node_id) = self.introspected_node {
-			let is_layer = network_interface.is_layer(&node_id, &[]);
+		if let Some((node_id, parent_path)) = self.introspected_node_path.split_last() {
+			let node_id = *node_id;
+			let is_layer = network_interface.is_layer(&node_id, parent_path);
 
 			widgets.extend([
 				if is_layer {
@@ -103,7 +106,7 @@ impl DataPanelMessageHandler {
 					IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance()
 				},
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				TextInput::new(network_interface.display_name(&node_id, &[]))
+				TextInput::new(network_interface.display_name(&node_id, parent_path))
 					.tooltip_description(if is_layer { "Name of the selected layer." } else { "Name of the selected node." })
 					.on_update(move |text_input| {
 						NodeGraphMessage::SetDisplayName {
