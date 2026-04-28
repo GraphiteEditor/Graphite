@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from "svelte";
+	import { getContext, onDestroy, onMount } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
@@ -11,6 +11,7 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { closeContextMenu } from "/src/stores/node-graph";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const GRID_COLLAPSE_SPACING = 10;
@@ -20,6 +21,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const documentState = getContext<DocumentStore>("document");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
 	let graph: HTMLDivElement | undefined;
 
@@ -35,6 +37,7 @@
 
 	let editingNameImportIndex: number | undefined = undefined;
 	let editingNameExportIndex: number | undefined = undefined;
+	let editingNameNodeId: bigint | undefined = undefined;
 	let editingNameText = "";
 
 	function exportsToEdgeTextInputWidth() {
@@ -93,6 +96,40 @@
 			editingNameExportIndex = undefined;
 		}
 	}
+
+	function setEditingNodeName(nodeId: bigint, currentName: string) {
+		editingNameText = currentName;
+		editingNameNodeId = nodeId;
+		// Wait for the input to mount before focusing and selecting its contents.
+		setTimeout(() => {
+			inputElement?.focus();
+			inputElement?.select();
+		}, 0);
+	}
+
+	function commitEditingNodeName(event: Event) {
+		if (editingNameNodeId === undefined) return;
+		if (!(event.target instanceof HTMLInputElement)) return;
+		editor.setLayerName(editingNameNodeId, event.target.value);
+		editingNameNodeId = undefined;
+	}
+
+	function cancelEditingNodeName() {
+		editingNameNodeId = undefined;
+	}
+
+	onMount(() => {
+		// Backend dispatches this when the user double-clicks a layer's name area or presses F2 with one layer selected.
+		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", (data) => {
+			const node = $nodeGraph.nodes.get(data.nodeId);
+			if (!node) return;
+			setEditingNodeName(data.nodeId, node.displayName);
+		});
+	});
+
+	onDestroy(() => {
+		subscriptions.unsubscribeFrontendMessage("TriggerEditLayerNameInGraph");
+	});
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
@@ -595,8 +632,23 @@
 					</div>
 				{/if}
 				<div class="details">
-					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
+					{#if editingNameNodeId === node.id}
+						<input
+							class="layer-name-input"
+							type="text"
+							bind:this={inputElement}
+							bind:value={editingNameText}
+							on:pointerdown|stopPropagation
+							on:dblclick|stopPropagation
+							on:blur={cancelEditingNodeName}
+							on:keydown={(e) => {
+								if (e.key === "Enter") commitEditingNodeName(e);
+								else if (e.key === "Escape") cancelEditingNodeName();
+							}}
+						/>
+					{:else}
+						<TextLabel>{node.displayName}</TextLabel>
+					{/if}
 				</div>
 				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
 				{#if node.locked}
@@ -1245,11 +1297,25 @@
 			}
 
 			.details {
+				display: flex;
+				align-items: center;
 				margin: 0 8px;
 
 				.text-label {
 					white-space: nowrap;
 					line-height: 48px;
+				}
+
+				.layer-name-input {
+					color: inherit;
+					background: var(--color-1-nearblack);
+					border: none;
+					outline: none;
+					margin: 0 -4px;
+					padding: 0 4px;
+					height: 24px;
+					border-radius: 2px;
+					field-sizing: content;
 				}
 			}
 

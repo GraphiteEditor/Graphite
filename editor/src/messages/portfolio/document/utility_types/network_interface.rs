@@ -2578,6 +2578,30 @@ impl NodeNetworkInterface {
 			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
 			let grip_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
+			// Update display-name text click target, used to detect double-click rename. Sized to the text bounds
+			// (not the surrounding `.details` area) so the rest of the layer still drills into the subgraph on dblclick.
+			// The text is rendered after the 72px thumbnail (with 1px side margins) and the 8px `.details` left margin,
+			// so it starts at 82px from the layer's left edge. Width is clamped so it can't reach into the right-side
+			// icon area (grip + lock + visibility).
+			let display_name = self.display_name(node_id, network_path);
+			let name_click_target = if display_name.is_empty() {
+				None
+			} else {
+				let name_left = node_top_left.x + 82.;
+				let icons_reserve = (GRID_SIZE as f64 / 2.) + icons_width + 8.;
+				let name_right_max = node_top_left.x + width as f64 - icons_reserve;
+				let text_w = crate::messages::portfolio::document::overlays::utility_functions::text_width(&display_name, 14.);
+				let name_right = (name_left + text_w).min(name_right_max);
+				if name_right > name_left {
+					let name_top = node_top_left.y + 12.;
+					let name_bottom = node_top_left.y + 36.;
+					let subpath = Subpath::new_rounded_rectangle(DVec2::new(name_left, name_top), DVec2::new(name_right, name_bottom), [3.; 4]);
+					Some(ClickTarget::new_with_subpath(subpath, 0.))
+				} else {
+					None
+				}
+			};
+
 			// Create layer click target, which is contains the layer and the chain background
 			let chain_width_grid_spaces = self.chain_width(node_id, network_path);
 
@@ -2594,6 +2618,7 @@ impl NodeNetworkInterface {
 					visibility_click_target,
 					lock_click_target,
 					grip_click_target,
+					name_click_target,
 				}),
 			}
 		};
@@ -2932,6 +2957,7 @@ impl NodeNetworkInterface {
 							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
 							LayerClickTargetTypes::Lock => layer.lock_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
 							LayerClickTargetTypes::Grip => layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id),
+							LayerClickTargetTypes::Name => layer.name_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
 						}
 					} else {
 						None
@@ -6602,6 +6628,10 @@ pub struct LayerClickTargets {
 	pub lock_click_target: Option<ClickTarget>,
 	/// Cache for the grip icon, which is next to the visibility button.
 	pub grip_click_target: ClickTarget,
+	/// Cache for the layer's display-name text bounds. Used to detect double-click rename and
+	/// to skip the drill-into-subgraph behavior when the click lands on the name itself.
+	/// `None` for layers whose display name is empty.
+	pub name_click_target: Option<ClickTarget>,
 	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
 	// preview_click_target: ClickTarget,
 }
@@ -6610,6 +6640,7 @@ pub enum LayerClickTargetTypes {
 	Visibility,
 	Lock,
 	Grip,
+	Name,
 	// Preview,
 }
 
