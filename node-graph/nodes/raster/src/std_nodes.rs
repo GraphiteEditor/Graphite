@@ -335,6 +335,8 @@ pub fn noise_pattern(
 		return Table::new();
 	}
 
+	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+
 	let footprint_scale = footprint.scale();
 	let width = (size.x * footprint_scale.x) as u32;
 	let height = (size.y * footprint_scale.y) as u32;
@@ -376,12 +378,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_row(
-				TableRow::new_from_element(Raster::new_cpu(image))
-					.with_attribute("transform", DAffine2::from_translation(offset) * DAffine2::from_scale(size))
-					.with_attribute("alpha_blending", AlphaBlending::default())
-					.with_attribute("source_node_id", None::<core_types::uuid::NodeId>),
-			);
+			return Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute("transform", transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -439,12 +436,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_row(
-		TableRow::new_from_element(Raster::new_cpu(image))
-			.with_attribute("transform", DAffine2::from_translation(offset) * DAffine2::from_scale(size))
-			.with_attribute("alpha_blending", AlphaBlending::default())
-			.with_attribute("source_node_id", None::<core_types::uuid::NodeId>),
-	)
+	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute("transform", transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
@@ -489,9 +481,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 			data,
 			..Default::default()
 		}))
-		.with_attribute("transform", DAffine2::from_translation(offset) * DAffine2::from_scale(size))
-		.with_attribute("alpha_blending", AlphaBlending::default())
-		.with_attribute("source_node_id", None::<core_types::uuid::NodeId>),
+		.with_attribute("transform", DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
 	)
 }
 

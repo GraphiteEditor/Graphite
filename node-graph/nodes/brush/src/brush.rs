@@ -276,10 +276,7 @@ async fn brush(
 	let has_erase_or_restore_strokes = strokes.iter().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image))
-			.with_attribute("transform", background_bounds)
-			.with_attribute("alpha_blending", AlphaBlending::default())
-			.with_attribute("source_node_id", None::<NodeId>);
+		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image)).with_attribute("transform", background_bounds);
 
 		for stroke in strokes {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -313,12 +310,12 @@ async fn brush(
 
 	let transform: DAffine2 = actual_image.attribute_cloned_or_default("transform");
 	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default("alpha_blending");
-	let source_node_id: Option<NodeId> = actual_image.attribute_cloned_or_default("source_node_id");
+	let layer: Option<NodeId> = actual_image.attribute_cloned_or_default("editor:layer");
 
 	*image.element_mut(0).unwrap() = actual_image.into_element();
 	image.set_attribute("transform", 0, transform);
 	image.set_attribute("alpha_blending", 0, alpha_blending);
-	image.set_attribute("source_node_id", 0, source_node_id);
+	image.set_attribute("editor:layer", 0, layer);
 
 	image
 }

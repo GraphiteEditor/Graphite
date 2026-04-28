@@ -16,13 +16,9 @@ use kurbo::{Affine, BezPath, Rect, Shape};
 use std::collections::HashMap;
 
 /// Represents vector graphics data, composed of Bézier curves in a path or mesh arrangement.
-///
-/// Generic over `Upstream` to avoid circular dependency with the Graphic type.
-/// - Use `Vector<()>` for basic vectors without upstream tracking
-/// - Use `Vector<Option<Table<Graphic>>>` in the graphic crate for vectors with upstream layers
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Vector<Upstream> {
+pub struct Vector {
 	pub style: PathStyle,
 
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
@@ -32,17 +28,12 @@ pub struct Vector<Upstream> {
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
 	pub region_domain: RegionDomain,
-
-	/// Used to store the upstream group/folder of nested layers during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved for the child layers.
-	/// Without this, the tools would be working with a collapsed version of the data which has no reference to the original child layers that were booleaned together, resulting in the inner layers not being editable.
-	#[cfg_attr(feature = "serde", serde(alias = "upstream_group"))]
-	pub upstream_data: Upstream,
 }
-unsafe impl<Upstream: 'static> StaticType for Vector<Upstream> {
+unsafe impl StaticType for Vector {
 	type Static = Self;
 }
 
-impl<Upstream: Default + 'static> Default for Vector<Upstream> {
+impl Default for Vector {
 	fn default() -> Self {
 		Self {
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
@@ -50,23 +41,21 @@ impl<Upstream: Default + 'static> Default for Vector<Upstream> {
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
-			upstream_data: Upstream::default(),
 		}
 	}
 }
 
-impl<Upstream> graphene_hash::CacheHash for Vector<Upstream> {
+impl graphene_hash::CacheHash for Vector {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.point_domain.cache_hash(state);
 		self.segment_domain.cache_hash(state);
 		self.region_domain.cache_hash(state);
 		self.style.cache_hash(state);
 		self.colinear_manipulators.cache_hash(state);
-		// We don't hash the upstream_data intentionally
 	}
 }
 
-impl<Upstream> Vector<Upstream> {
+impl Vector {
 	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &Subpath<PointId> = subpath.borrow();
@@ -140,28 +129,19 @@ impl<Upstream> Vector<Upstream> {
 	}
 
 	/// Construct some new vector path from a single subpath with an identity transform and black fill.
-	pub fn from_subpath(subpath: impl Borrow<Subpath<PointId>>) -> Self
-	where
-		Upstream: Default + 'static,
-	{
+	pub fn from_subpath(subpath: impl Borrow<Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
 	}
 
 	/// Construct some new vector path from a single [`BezPath`] with an identity transform and black fill.
-	pub fn from_bezpath(bezpath: BezPath) -> Self
-	where
-		Upstream: Default + 'static,
-	{
+	pub fn from_bezpath(bezpath: BezPath) -> Self {
 		let mut vector = Self::default();
 		vector.append_bezpath(bezpath);
 		vector
 	}
 
 	/// Construct some new vector path from subpaths with an identity transform and black fill.
-	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<Subpath<PointId>>>, preserve_id: bool) -> Self
-	where
-		Upstream: Default + 'static,
-	{
+	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<Subpath<PointId>>>, preserve_id: bool) -> Self {
 		let mut vector = Self::default();
 
 		for subpath in subpaths.into_iter() {
@@ -171,10 +151,7 @@ impl<Upstream> Vector<Upstream> {
 		vector
 	}
 
-	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self
-	where
-		Upstream: Default + 'static,
-	{
+	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self {
 		let mut vector = Self::default();
 
 		for target_type in target_types.into_iter() {
@@ -387,10 +364,7 @@ impl<Upstream> Vector<Upstream> {
 		}
 	}
 
-	pub fn other_colinear_handle(&self, handle: HandleId) -> Option<HandleId>
-	where
-		Upstream: 'static,
-	{
+	pub fn other_colinear_handle(&self, handle: HandleId) -> Option<HandleId> {
 		let pair = self.colinear_manipulators.iter().find(|pair| pair.contains(&handle))?;
 		let other = pair.iter().copied().find(|&val| val != handle)?;
 		if handle.to_manipulator_point().get_anchor(self) == other.to_manipulator_point().get_anchor(self) {
@@ -471,7 +445,7 @@ impl<Upstream> Vector<Upstream> {
 	}
 }
 
-impl<Upstream> BoundingBox for Vector<Upstream> {
+impl BoundingBox for Vector {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		if !include_stroke {
 			// Just use the path bounds without stroke
@@ -496,7 +470,7 @@ impl<Upstream> BoundingBox for Vector<Upstream> {
 	}
 }
 
-impl<Upstream> RenderComplexity for Vector<Upstream> {
+impl RenderComplexity for Vector {
 	fn render_complexity(&self) -> usize {
 		self.segment_domain.ids().len()
 	}
@@ -526,7 +500,7 @@ mod tests {
 	#[test]
 	fn construct_closed_subpath() {
 		let circle = Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
-		let vector: Vector<()> = Vector::from_subpath(&circle);
+		let vector: Vector = Vector::from_subpath(&circle);
 		assert_eq!(vector.point_domain.ids().len(), 4);
 		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
 		assert_eq!(bezier_paths.len(), 4);
@@ -540,7 +514,7 @@ mod tests {
 	fn construct_open_subpath() {
 		let bezier = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(-1., -1.), Point::new(1., 1.), Point::new(1., 0.)));
 		let subpath = Subpath::from_bezier(bezier);
-		let vector: Vector<()> = Vector::from_subpath(&subpath);
+		let vector: Vector = Vector::from_subpath(&subpath);
 		assert_eq!(vector.point_domain.ids().len(), 2);
 		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
 		assert_eq!(bezier_paths, vec![bezier]);
@@ -555,7 +529,7 @@ mod tests {
 		let curve = Subpath::from_bezier(curve);
 		let circle = Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
 
-		let vector: Vector<()> = Vector::from_subpaths([&curve, &circle], false);
+		let vector: Vector = Vector::from_subpaths([&curve, &circle], false);
 		assert_eq!(vector.point_domain.ids().len(), 6);
 
 		let bezier_paths = vector.segment_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();

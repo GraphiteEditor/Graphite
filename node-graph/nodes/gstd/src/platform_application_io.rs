@@ -18,6 +18,8 @@ pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
+use graphic_types::IntoGraphicTable;
+#[cfg(target_family = "wasm")]
 use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
@@ -170,7 +172,7 @@ async fn create_canvas(_: impl Ctx) -> CanvasHandle {
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + 'n>(
+async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Vector>,
@@ -184,7 +186,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	mut canvas: CanvasHandle,
 ) -> Table<Raster<CPU>>
 where
-	Table<T>: Render,
+	Table<T>: Render + Clone + graphic_types::IntoGraphicTable,
 {
 	use core_types::table::TableRow;
 	use glam::{DAffine2, DVec2};
@@ -193,6 +195,10 @@ where
 		log::trace!("Invalid footprint received for rasterization");
 		return Table::new();
 	}
+
+	// Snapshot the input as a Table<Graphic> so the renderer can recurse into the original child layers
+	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
+	let upstream_graphic_table = data.clone().into_graphic_table();
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -229,5 +235,9 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute("transform", footprint.transform))
+	Table::new_from_row(
+		TableRow::new_from_element(Raster::new_cpu(image))
+			.with_attribute("transform", footprint.transform)
+			.with_attribute("editor:merged_layers", upstream_graphic_table),
+	)
 }

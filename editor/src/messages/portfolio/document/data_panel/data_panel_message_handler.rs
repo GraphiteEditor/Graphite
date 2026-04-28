@@ -275,6 +275,8 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 								Some(format_alpha_blending(value))
 							} else if let Some(&value) = ty.downcast_ref::<Option<NodeId>>() {
 								Some(value.map_or_else(|| "-".to_string(), |id| id.to_string()))
+							} else if let Some(value) = ty.downcast_ref::<Table<Graphic>>() {
+								Some(format!("{} Objects", value.len()))
 							} else {
 								None
 							}
@@ -457,17 +459,6 @@ impl TableRowLayout for Vector {
 				table_rows.push(vec![
 					TextLabel::new("Colinear Handle IDs").narrow(true).widget_instance(),
 					TextLabel::new(colinear).narrow(true).widget_instance(),
-				]);
-
-				table_rows.push(vec![
-					TextLabel::new("Upstream Nested Layers").narrow(true).widget_instance(),
-					TextLabel::new(if self.upstream_data.is_some() {
-						"Yes (this preserves references to its upstream nested layers for editing by tools)"
-					} else {
-						"No (this doesn't preserve references to its upstream nested layers for editing by tools)"
-					})
-					.narrow(true)
-					.widget_instance(),
 				]);
 			}
 			VectorTableTab::Points => {

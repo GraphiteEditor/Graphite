@@ -170,10 +170,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic_nodes::source_node_id::IDENTIFIER,
-		aliases: &["graphene_core::graphic::graphic::SourceNodeIdNode", "graphene_core::graphic::SourceNodeIdNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::graphic::to_graphic::IDENTIFIER,
 		aliases: &[
 			"graphene_core::ToGraphicGroupNode",
@@ -1021,6 +1017,16 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 
 	// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 	if document_serialized_content.contains("graphene_core::ConstructLayerNode") || document_serialized_content.contains("graphene_core::AddArtboardNode") {
+		return true;
+	}
+
+	// The `source_node_id` proto node was removed in favor of `parent_layer` + `write_attribute`.
+	// Documents that still reference it inside their Merge or Artboard layer networks need those layer definitions
+	// reset to the current default so the new internal plumbing replaces the obsolete node.
+	if document_serialized_content.contains("graphic_nodes::graphic::SourceNodeIdNode")
+		|| document_serialized_content.contains("graphene_core::graphic::graphic::SourceNodeIdNode")
+		|| document_serialized_content.contains("graphene_core::graphic::SourceNodeIdNode")
+	{
 		return true;
 	}
 
