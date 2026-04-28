@@ -68,7 +68,7 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	let index = index as i32;
 
 	if index < 0 {
-		collection.omit_index_from_end(-index as usize)
+		collection.omit_index_from_end(index.unsigned_abs() as usize)
 	} else {
 		collection.omit_index(index as usize)
 	}
@@ -100,7 +100,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 	let len = table.len();
 	let index = index as i32;
 	let resolved = if index < 0 {
-		let from_end = (-index) as usize;
+		let from_end = index.unsigned_abs() as usize;
 		if from_end > len {
 			return T::default();
 		}
