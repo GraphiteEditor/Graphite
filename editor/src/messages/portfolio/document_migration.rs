@@ -94,6 +94,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform::FreezeRealTimeNode",
 			"graphene_core::transform_nodes::BoundlessFootprintNode",
 			"graphene_core::transform_nodes::FreezeRealTimeNode",
+			// `subpath_segment_lengths` was inlined into the `sample_polyline` proto; old "Sample Polyline" subnetworks pass through unchanged.
+			"graphene_core::vector::SubpathSegmentLengthsNode",
+			"core_types::vector::SubpathSegmentLengthsNode",
 		],
 	},
 	NodeReplacement {
@@ -947,10 +950,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::StrokeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::subpath_segment_lengths::IDENTIFIER,
-		aliases: &["graphene_core::vector::SubpathSegmentLengthsNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::vector::tangent_on_path::IDENTIFIER,
 		aliases: &["graphene_core::vector::TangentOnPathNode"],
 	},
@@ -1075,6 +1074,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 }
 
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
+	// Must run before the reset block below: a node referencing a removed catalog entry would otherwise abort
+	// `migrate_node` via the `?` on `resolve_document_node_type`, preventing subsequent migration blocks from running.
+	migrate_removed_catalog_definitions(node_id, node, network_path, document);
+
 	if reset_node_definitions_on_open && let Some(reference) = document.network_interface.reference(node_id, network_path) {
 		let node_definition = resolve_document_node_type(&reference)?;
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
@@ -2020,6 +2023,32 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if layer_position.x == downstream_position.x {
 				document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
 			}
+		}
+	}
+
+	Some(())
+}
+
+/// Migrates document nodes whose catalog definitions have been removed.
+///
+/// This is called from `migrate_node` BEFORE its standard reset/migration logic, since that logic aborts when it can't
+/// resolve the node's `reference` against the current catalog. Each block here detects a specific decommissioned
+/// definition by its old reference name, swaps it to a still-supported implementation, and preserves the user's inputs.
+/// After this runs, the node's reference resolves cleanly so the rest of `migrate_node` proceeds normally.
+fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
+	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto.
+	// The proto now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
+	// and `Memo` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
+	// old wrapper and the new proto.
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Sample Polyline"
+		&& node.inputs.len() == 7
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::vector::sample_polyline::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(7).enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
 		}
 	}
 
