@@ -4,9 +4,8 @@ use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::{Affine2, Vec2};
+use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
 use graphene_std::Context;
 use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
@@ -14,6 +13,7 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::{AlphaBlending, Color};
 use graphene_std::{Artboard, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -247,9 +247,9 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	}
 	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
-			if let Some(row) = self.get(index) {
+			if let Some(element) = self.element(index) {
 				data.current_depth += 1;
-				let result = row.element.layout_with_breadcrumb(data);
+				let result = element.layout_with_breadcrumb(data);
 				data.current_depth -= 1;
 				return result;
 			} else {
@@ -258,23 +258,37 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 			}
 		}
 
-		let mut rows = self
-			.iter()
-			.enumerate()
-			.map(|(index, row)| {
-				vec![
-					TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
-					row.element.element_widget(index),
-					TextLabel::new(format_transform_matrix(row.transform)).narrow(true).widget_instance(),
-					TextLabel::new(format!("{}", row.alpha_blending)).narrow(true).widget_instance(),
-					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0)))
-						.narrow(true)
-						.widget_instance(),
-				]
+		let attribute_keys: Vec<String> = self.attribute_keys().map(str::to_string).collect();
+
+		let mut rows = (0..self.len())
+			.map(|index| {
+				let element = self.element(index).unwrap();
+				let mut cells = vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), element.element_widget(index)];
+				for key in &attribute_keys {
+					let value = self
+						.attribute_display_value(key, index, |ty| {
+							if let Some(&value) = ty.downcast_ref::<DAffine2>() {
+								Some(format_transform_matrix(value))
+							} else if let Some(&value) = ty.downcast_ref::<DVec2>() {
+								Some(format_dvec2(value))
+							} else if let Some(&value) = ty.downcast_ref::<AlphaBlending>() {
+								Some(format_alpha_blending(value))
+							} else if let Some(&value) = ty.downcast_ref::<Option<NodeId>>() {
+								Some(value.map_or_else(|| "-".to_string(), |id| id.to_string()))
+							} else {
+								None
+							}
+						})
+						.unwrap_or_else(|| "-".to_string());
+					cells.push(TextLabel::new(value).narrow(true).widget_instance());
+				}
+				cells
 			})
 			.collect::<Vec<_>>();
 
-		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
+		let mut column_names = vec!["", "element"];
+		column_names.extend(attribute_keys.iter().map(|s| s.as_str()));
+		rows.insert(0, column_headings(&column_names));
 
 		vec![LayoutGroup::table(rows, false)]
 	}
@@ -430,7 +444,7 @@ impl TableRowLayout for Vector {
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Transform").narrow(true).widget_instance(),
-						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_instance(),
+						TextLabel::new(format_transform_matrix(stroke.transform)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
@@ -695,7 +709,7 @@ impl TableRowLayout for DAffine2 {
 		"Transform".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(format_transform_matrix(self)).widget_instance()];
+		let widgets = vec![TextLabel::new(format_transform_matrix(*self)).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -709,12 +723,12 @@ impl TableRowLayout for Affine2 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
-		let widgets = vec![TextLabel::new(format_transform_matrix(&matrix)).widget_instance()];
+		let widgets = vec![TextLabel::new(format_transform_matrix(matrix)).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
 
-fn format_transform_matrix(transform: &DAffine2) -> String {
+fn format_transform_matrix(transform: DAffine2) -> String {
 	let (scale, angle, translation) = if transform.matrix2.determinant().abs() <= f64::EPSILON {
 		let [col_0, col_1] = transform.matrix2.to_cols_array_2d().map(|[x, y]| DVec2::new(x, y));
 
@@ -747,4 +761,15 @@ fn format_transform_matrix(transform: &DAffine2) -> String {
 fn format_dvec2(value: DVec2) -> String {
 	let round = |x: f64| (x * 1e3).round() / 1e3;
 	format!("({} px, {} px)", round(value.x), round(value.y))
+}
+
+fn format_alpha_blending(value: AlphaBlending) -> String {
+	let round = |x: f32| (x * 1e3).round() / 1e3;
+	format!(
+		"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
+		value.blend_mode,
+		round(value.opacity * 100.),
+		round(value.fill * 100.),
+		if value.clip { "Yes" } else { "No" }
+	)
 }

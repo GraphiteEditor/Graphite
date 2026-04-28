@@ -20,7 +20,8 @@ use std::collections::HashMap;
 /// Generic over `Upstream` to avoid circular dependency with the Graphic type.
 /// - Use `Vector<()>` for basic vectors without upstream tracking
 /// - Use `Vector<Option<Table<Graphic>>>` in the graphic crate for vectors with upstream layers
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Vector<Upstream> {
 	pub style: PathStyle,
 
@@ -34,7 +35,7 @@ pub struct Vector<Upstream> {
 
 	/// Used to store the upstream group/folder of nested layers during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved for the child layers.
 	/// Without this, the tools would be working with a collapsed version of the data which has no reference to the original child layers that were booleaned together, resulting in the inner layers not being editable.
-	#[serde(alias = "upstream_group")]
+	#[cfg_attr(feature = "serde", serde(alias = "upstream_group"))]
 	pub upstream_data: Upstream,
 }
 unsafe impl<Upstream: 'static> StaticType for Vector<Upstream> {

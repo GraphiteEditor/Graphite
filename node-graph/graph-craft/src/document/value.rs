@@ -187,7 +187,6 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),

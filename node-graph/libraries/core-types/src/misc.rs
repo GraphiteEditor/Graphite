@@ -67,8 +67,8 @@ pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 	use no_std_types::color::Color;
 	use serde::Deserialize;
 
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum ColorFormat {
 		Color(Color),
 		OptionalColor(Option<Color>),

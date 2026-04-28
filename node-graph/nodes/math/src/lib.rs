@@ -866,10 +866,10 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: Table<GradientStops>) -> 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, position: Fraction) -> Table<Color> {
-	let Some(row) = gradient.get(0) else { return Table::new() };
+	let Some(gradient) = gradient.element(0) else { return Table::new() };
 
 	let position = position.clamp(0., 1.);
-	let color = row.element.evaluate(position);
+	let color = gradient.evaluate(position);
 	Table::new_from_element(color)
 }
 

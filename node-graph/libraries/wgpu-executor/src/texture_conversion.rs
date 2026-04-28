@@ -150,17 +150,12 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
 		let device = &executor.context.device;
 		let queue = &executor.context.queue;
 		let table = self
-			.iter()
+			.into_iter()
 			.map(|row| {
-				let image = row.element;
-				let texture = upload_to_texture(device, queue, image);
+				let (image, attributes) = row.into_parts();
+				let texture = upload_to_texture(device, queue, &image);
 
-				TableRow {
-					element: Raster::new_gpu(texture),
-					transform: *row.transform,
-					alpha_blending: *row.alpha_blending,
-					source_node_id: *row.source_node_id,
-				}
+				TableRow::from_parts(Raster::new_gpu(texture), attributes)
 			})
 			.collect();
 
@@ -204,14 +199,9 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 		let mut rows_meta = Vec::new();
 
 		for row in self {
-			let gpu_raster = row.element;
-			converters.push(RasterGpuToRasterCpuConverter::new(device, &mut encoder, gpu_raster));
-			rows_meta.push(TableRow {
-				element: (),
-				transform: row.transform,
-				alpha_blending: row.alpha_blending,
-				source_node_id: row.source_node_id,
-			});
+			let (element, attributes) = row.into_parts();
+			converters.push(RasterGpuToRasterCpuConverter::new(device, &mut encoder, element));
+			rows_meta.push(TableRow::from_parts((), attributes));
 		}
 
 		queue.submit([encoder.finish()]);
@@ -229,11 +219,9 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 		map_results
 			.into_iter()
 			.zip(rows_meta.into_iter())
-			.map(|(element, row)| TableRow {
-				element,
-				transform: row.transform,
-				alpha_blending: row.alpha_blending,
-				source_node_id: row.source_node_id,
+			.map(|(element, row)| {
+				let (_, attributes) = row.into_parts();
+				TableRow::from_parts(element, attributes)
 			})
 			.collect()
 	}
