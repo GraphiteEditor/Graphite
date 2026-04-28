@@ -80,6 +80,9 @@ fn regex_replace(
 /// Finds a regex match in the string and returns its components. The result is a list where the first element is the whole match (`$0`) and subsequent elements are the capture groups (`$1`, `$2`, etc., if any).
 ///
 /// The match index selects which non-overlapping occurrence to return (0 for the first match). Returns an empty list if no match is found at the given index.
+///
+/// Each row carries `start` and `end` byte-offset attributes pointing into the original string, plus a `name` attribute holding
+/// the capture group's name (empty for unnamed groups, and for index 0 which is the whole match).
 #[node_macro::node(category(""))]
 fn regex_find(
 	_: impl Ctx,
@@ -111,6 +114,9 @@ fn regex_find(
 		return Table::new();
 	};
 
+	// Capture group names indexed positionally; index 0 (the whole match) is always None.
+	let capture_names: Vec<Option<String>> = regex.capture_names().map(|name| name.map(str::to_string)).collect();
+
 	// Collect all matches since we need to support negative indexing
 	let matches: Vec<_> = regex.captures_iter(&string).filter_map(|c| c.ok()).collect();
 
@@ -131,12 +137,20 @@ fn regex_find(
 
 	// Index 0 is the whole match, 1+ are capture groups
 	(0..captures.len())
-		.map(|i| captures.get(i).map_or(String::new(), |m| m.as_str().to_string()))
-		.map(TableRow::new_from_element)
+		.map(|i| {
+			let captured = captures.get(i);
+			let text = captured.map_or(String::new(), |m| m.as_str().to_string());
+			let start = captured.map_or(0_u64, |m| m.start() as u64);
+			let end = captured.map_or(0_u64, |m| m.end() as u64);
+			let name = capture_names.get(i).cloned().flatten().unwrap_or_default();
+			TableRow::new_from_element(text).with_attribute("start", start).with_attribute("end", end).with_attribute("name", name)
+		})
 		.collect()
 }
 
 /// Finds all non-overlapping matches of a regular expression pattern in the string, returning a list of the matched substrings.
+///
+/// Each row carries `start` and `end` byte-offset attributes pointing into the original string.
 #[node_macro::node(category("Text: Regex"))]
 fn regex_find_all(
 	_: impl Ctx,
@@ -169,8 +183,11 @@ fn regex_find_all(
 	regex
 		.find_iter(&string)
 		.filter_map(|m| m.ok())
-		.map(|m| m.as_str().to_string())
-		.map(TableRow::new_from_element)
+		.map(|m| {
+			TableRow::new_from_element(m.as_str().to_string())
+				.with_attribute("start", m.start() as u64)
+				.with_attribute("end", m.end() as u64)
+		})
 		.collect()
 }
 
