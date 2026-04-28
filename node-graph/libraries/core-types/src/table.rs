@@ -447,6 +447,11 @@ impl AttributeColumns {
 		})
 	}
 
+	/// Returns a type-erased reference to the cell value at the given index in the column for the given key.
+	fn get_any_cell(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
+		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index) } else { None })
+	}
+
 	/// Returns an iterator over the keys of all stored attribute columns, in insertion order.
 	fn keys(&self) -> impl Iterator<Item = &str> {
 		self.columns.iter().map(|(key, _)| key.as_str())
@@ -662,6 +667,11 @@ impl<T> Table<T> {
 	/// Returns a debug-formatted display string for the attribute at the given row index and key.
 	pub fn attribute_display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
 		self.attributes.display_cell_value(key, index, overrides)
+	}
+
+	/// Returns a type-erased reference to the attribute value at the given row index and key, or `None` if absent.
+	pub fn attribute_any(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
+		self.attributes.get_any_cell(key, index)
 	}
 
 	// =====================
