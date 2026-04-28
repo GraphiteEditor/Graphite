@@ -1888,14 +1888,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 				}
 
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				})
 			}
 			NodeGraphMessage::ToggleLocked { node_id, network_path } => {
 				let locked = !network_interface.is_locked(&node_id, &network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::SetLocked { node_id, network_path, locked });
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] })
+				responses.add(NodeGraphMessage::SetLocked {
+					node_id,
+					network_path: network_path.clone(),
+					locked,
+				});
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path,
+				});
 			}
 			NodeGraphMessage::SetLocked { node_id, network_path, locked } => {
 				network_interface.set_locked(&node_id, &network_path, locked);
@@ -1914,7 +1924,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetPinned { node_id: *node_id, pinned });
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				});
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1934,14 +1947,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						visible,
 					});
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				});
 			}
 			NodeGraphMessage::ToggleVisibility { node_id, network_path } => {
 				let visible = !network_interface.is_visible(&node_id, &network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::SetVisibility { node_id, network_path, visible });
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
+				responses.add(NodeGraphMessage::SetVisibility {
+					node_id,
+					network_path: network_path.clone(),
+					visible,
+				});
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path,
+				});
 			}
 			NodeGraphMessage::SetPinned { node_id, pinned } => {
 				network_interface.set_pinned(&node_id, selection_network_path, pinned);
@@ -1949,8 +1972,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetVisibility { node_id, network_path, visible } => {
 				network_interface.set_visibility(&node_id, &network_path, visible);
 			}
-			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids } => {
-				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, selection_network_path)) {
+			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids, network_path } => {
+				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, &network_path)) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 				responses.add(NodeGraphMessage::UpdateActionButtons);

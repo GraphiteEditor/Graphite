@@ -231,6 +231,7 @@ pub enum NodeGraphMessage {
 	},
 	SetLockedOrVisibilitySideEffects {
 		node_ids: Vec<NodeId>,
+		network_path: Vec<NodeId>,
 	},
 	UpdateEdges,
 	UpdateBoxSelection,
