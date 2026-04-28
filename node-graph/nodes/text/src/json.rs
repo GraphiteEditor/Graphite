@@ -1,4 +1,5 @@
 use core_types::Ctx;
+use core_types::table::{Table, TableRow};
 use serde_json::Value;
 
 use crate::unescape_string;
@@ -237,15 +238,15 @@ fn query_json_all(
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
 	unquote_strings: bool,
-) -> Vec<String> {
+) -> Table<String> {
 	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Vec::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return Vec::new() };
+	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Table::new() };
+	let Some(segments) = parse_json_path(path.trim()) else { return Table::new() };
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
 
-	results
+	results.into_iter().map(TableRow::new_from_element).collect()
 }
 
 /// A parsed segment of a JSON access path.

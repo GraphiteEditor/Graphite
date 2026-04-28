@@ -491,8 +491,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::<Vec<f64>>::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::<graphene_std::table::Table<f64>>::INDEX);
+		let dash_lengths_table = stroke.dash_lengths.into_iter().map(graphene_std::table::TableRow::new_from_element).collect();
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Table(dash_lengths_table), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
@@ -579,7 +580,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_network_node_id("Brush", true) else {
 			return;
 		};
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		let strokes_table = strokes.into_iter().map(graphene_std::table::TableRow::new_from_element).collect();
+		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokeTable(strokes_table), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {

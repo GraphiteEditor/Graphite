@@ -169,12 +169,15 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
+		Table<String>,
+		Table<NodeId>,
+		Table<f64>,
+		Table<u8>,
 		GradientStops,
 		f64,
 		u32,
 		u64,
 		bool,
-		Vec<String>,
 		String,
 		Option<f64>,
 		DVec2,
@@ -211,46 +214,6 @@ trait TableRowLayout {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![]
-	}
-}
-
-impl<T: TableRowLayout> TableRowLayout for Vec<T> {
-	fn type_name() -> &'static str {
-		"Vec"
-	}
-	fn identifier(&self) -> String {
-		format!("Vec<{}> ({} element{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
-	}
-	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
-			match step {
-				PathStep::Element(index) => {
-					if let Some(row) = self.get(index) {
-						data.current_depth += 1;
-						let result = row.layout_with_breadcrumb(data);
-						data.current_depth -= 1;
-						return result;
-					} else {
-						warn!("Desired path truncated");
-						data.desired_path.truncate(data.current_depth);
-					}
-				}
-				PathStep::Attribute { .. } => {
-					warn!("Attribute path step inside a Vec is unsupported");
-					data.desired_path.truncate(data.current_depth);
-				}
-			}
-		}
-
-		let mut rows = self
-			.iter()
-			.enumerate()
-			.map(|(index, row)| vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), row.cell_widget(PathStep::Element(index))])
-			.collect::<Vec<_>>();
-
-		rows.insert(0, column_headings(&["", "element"]));
-
-		vec![LayoutGroup::table(rows, false)]
 	}
 }
 
@@ -616,6 +579,21 @@ impl TableRowLayout for f64 {
 	}
 }
 
+impl TableRowLayout for u8 {
+	fn type_name() -> &'static str {
+		"Byte"
+	}
+	fn identifier(&self) -> String {
+		format!("{self:02X}")
+	}
+	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+		TextLabel::new(self.identifier()).narrow(true).widget_instance()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+	}
+}
+
 impl TableRowLayout for u32 {
 	fn type_name() -> &'static str {
 		"Number (u32)"
@@ -774,6 +752,26 @@ impl TableRowLayout for AlphaBlending {
 	}
 }
 
+impl TableRowLayout for NodeId {
+	fn type_name() -> &'static str {
+		"NodeId"
+	}
+	fn identifier(&self) -> String {
+		format!("Node {self}")
+	}
+	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+		let node_id = *self;
+		TextButton::new("Go to Node")
+			.tooltip_description("Click to select the node with this ID in the graph.")
+			.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into())
+			.narrow(true)
+			.widget_instance()
+	}
+	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+	}
+}
+
 impl TableRowLayout for Option<NodeId> {
 	fn type_name() -> &'static str {
 		"NodeId"
@@ -812,8 +810,13 @@ macro_rules! known_table_row_types {
 			Table<Raster<GPU>>,
 			Table<Color>,
 			Table<GradientStops>,
+			Table<String>,
+			Table<NodeId>,
+			Table<f64>,
+			Table<u8>,
 			GradientStops,
 			Color,
+			NodeId,
 			Option<NodeId>,
 			AlphaBlending,
 			DAffine2,
@@ -822,11 +825,11 @@ macro_rules! known_table_row_types {
 			Vec2,
 			Option<f64>,
 			f64,
+			u8,
 			u32,
 			u64,
 			bool,
 			String,
-			Vec<String>,
 			Vector,
 			Raster<CPU>,
 			Raster<GPU>,

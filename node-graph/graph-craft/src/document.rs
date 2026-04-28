@@ -216,7 +216,7 @@ pub enum DocumentNodeMetadata {
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
-			DocumentNodeMetadata::DocumentNodePath => concrete!(Vec<NodeId>),
+			DocumentNodeMetadata::DocumentNodePath => concrete!(core_types::table::Table<NodeId>),
 		}
 	}
 }
@@ -930,7 +930,10 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodePath(path.to_vec()).into(), false),
+					DocumentNodeMetadata::DocumentNodePath => {
+						let table: core_types::table::Table<NodeId> = path.iter().copied().map(core_types::table::TableRow::new_from_element).collect();
+						(TaggedValue::NodeIdTable(table).into(), false)
+					}
 				},
 				previous_export => {
 					*export = previous_export;

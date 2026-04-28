@@ -4,28 +4,27 @@ use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
+use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graphic_types::Artboard;
-use graphic_types::Graphic;
-use graphic_types::Vector;
-use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::vector_types::vector;
-use graphic_types::vector_types::vector::ReferencePoint;
-use graphic_types::vector_types::vector::style::Fill;
-use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
+use graphic_types::vector_types::vector::{self, ReferencePoint};
+use graphic_types::{Artboard, Graphic, Vector};
+use raster_nodes::curve::Curve;
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use text_nodes::Font;
 use text_nodes::vector_types::GradientStop;
+use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
 
@@ -166,27 +165,14 @@ macro_rules! tagged_value {
 }
 
 tagged_value! {
-	// ===============
-	// PRIMITIVE TYPES
-	// ===============
-	F32(f32),
-	F64(f64),
-	U32(u32),
-	U64(u64),
-	Bool(bool),
-	String(String),
-	// ========================
-	// LISTS OF PRIMITIVE TYPES
-	// ========================
-	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
-	VecF64(Vec<f64>),
-	VecDVec2(Vec<DVec2>),
-	F64Array4([f64; 4]),
-	VecString(Vec<String>),
-	NodePath(Vec<NodeId>),
 	// ===========
 	// TABLE TYPES
 	// ===========
+	StringTable(Table<String>),
+	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
+	F64Table(Table<f64>),
+	NodeIdTable(Table<NodeId>),
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
@@ -205,24 +191,32 @@ tagged_value! {
 	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
+	#[serde(deserialize_with = "brush_nodes::migrations::migrate_brush_strokes_to_table")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "BrushStrokes")]
+	BrushStrokeTable(Table<BrushStroke>),
 	// ============
-	// STRUCT TYPES
+	// SCALAR TYPES
 	// ============
+	F32(f32),
+	F64(f64),
+	U32(u32),
+	U64(u64),
+	Bool(bool),
+	String(String),
 	FVec2(Vec2),
 	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Stroke(graphic_types::vector_types::vector::style::Stroke),
-	Gradient(graphic_types::vector_types::vector::style::Gradient),
-	Font(text_nodes::Font),
-	BrushStrokes(Vec<BrushStroke>),
+	Stroke(Stroke),
+	Gradient(Gradient),
+	Font(Font),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
-	Curve(raster_nodes::curve::Curve),
-	Footprint(core_types::transform::Footprint),
-	VectorModification(Box<vector::VectorModification>),
+	Curve(Curve),
+	Footprint(Footprint),
+	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	// ==========
 	// ENUM TYPES

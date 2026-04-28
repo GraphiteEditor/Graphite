@@ -192,7 +192,7 @@ async fn brush(
 	/// Optional raster content that may be drawn onto.
 	mut image: Table<Raster<CPU>>,
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
-	strokes: Vec<BrushStroke>,
+	strokes: Table<BrushStroke>,
 	/// Internal cache data used to accelerate rendering of the brush content.
 	cache: BrushCache,
 ) -> Table<Raster<CPU>> {
@@ -205,11 +205,15 @@ async fn brush(
 	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
 	let image_bbox = AxisAlignedBbox { start, end };
-	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
+	let stroke_bbox = strokes.iter_element_values().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
 	let background_bounds = bbox.to_transform();
 
-	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
+	let mut draw_strokes: Vec<_> = strokes
+		.iter_element_values()
+		.filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore))
+		.cloned()
+		.collect();
 
 	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
 
@@ -273,12 +277,12 @@ async fn brush(
 		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 
-	let has_erase_or_restore_strokes = strokes.iter().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
+	let has_erase_or_restore_strokes = strokes.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image)).with_attribute("transform", background_bounds);
 
-		for stroke in strokes {
+		for stroke in strokes.into_iter().map(|row| row.into_element()) {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
 			if brush_texture.is_none() {
 				let tex = create_brush_texture(&stroke.style).await;

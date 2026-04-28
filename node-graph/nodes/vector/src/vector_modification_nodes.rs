@@ -7,7 +7,7 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> Table<Vector> {
+async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Box<VectorModification>, node_path: Table<NodeId>) -> Table<Vector> {
 	use core_types::table::TableRow;
 
 	if vector.is_empty() {
@@ -15,8 +15,11 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 	}
 	modification.apply(vector.element_mut(0).expect("push should give one item"));
 
-	// Update the source node id
-	let this_node_path = node_path.iter().rev().nth(1).copied();
+	// Update the source node id (penultimate element in the path, identifying the user-facing layer node)
+	let this_node_path = {
+		let index = node_path.len().wrapping_sub(2);
+		node_path.element(index).copied()
+	};
 	let existing: Option<NodeId> = vector.attribute_cloned_or_default("editor:layer", 0);
 	vector.set_attribute("editor:layer", 0, existing.or(this_node_path));
 
