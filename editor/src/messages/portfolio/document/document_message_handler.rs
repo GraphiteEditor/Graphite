@@ -1686,6 +1686,12 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	/// Path to the subnetwork that the user's selection is currently scoped to.
+	/// Empty when the selection lives in the root document network.
+	pub fn selection_network_path(&self) -> &[NodeId] {
+		&self.selection_network_path
+	}
+
 	pub fn serialize_document(&self) -> String {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed

@@ -76,8 +76,10 @@ pub enum GraphRuntimeRequest {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
-	/// The node that should be temporary inspected during execution
-	pub(super) node_to_inspect: Option<NodeId>,
+	/// Full path from the root network to the node that should be temporarily inspected during execution.
+	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
+	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
+	pub(super) node_to_inspect: Vec<NodeId>,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -235,7 +237,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
 					// Insert the monitor node to manage the inspection
-					self.inspect_state = node_to_inspect.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
 
 					self.old_graph = Some(network.clone());
 
@@ -264,7 +266,7 @@ impl NodeRuntime {
 					self.update_thumbnails = false;
 
 					// Resolve the result from the inspection by accessing the monitor node
-					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
 
 					let (result, texture) = match result {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
@@ -408,7 +410,11 @@ impl NodeRuntime {
 
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip the inspect monitor node
-			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
+			if self
+				.inspect_state
+				.as_ref()
+				.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node))
+			{
 				continue;
 			}
 
@@ -540,16 +546,22 @@ pub async fn replace_application_io(application_io: PlatformApplicationIo) {
 }
 
 /// Which node is inspected and which monitor node is used (if any) for the current execution
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct InspectState {
 	inspect_node: NodeId,
 	monitor_node: NodeId,
+	/// Path of the subnetwork the monitor was inserted into (i.e., the parent of `inspect_node`).
+	/// Used to construct the full node path when introspecting the monitor's value.
+	monitor_parent_path: Vec<NodeId>,
 }
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
 pub struct InspectResult {
 	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	pub inspect_node: NodeId,
+	/// Full path from the root network to the inspected node, with the node itself as the last element.
+	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
+	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
+	pub inspect_node_path: Vec<NodeId>,
 }
 
 impl InspectResult {
@@ -561,17 +573,21 @@ impl InspectResult {
 // This is very ugly but is required to be inside a message
 impl PartialEq for InspectResult {
 	fn eq(&self, other: &Self) -> bool {
-		self.inspect_node == other.inspect_node
+		self.inspect_node_path == other.inspect_node_path
 	}
 }
 
 impl InspectState {
-	/// Insert the monitor node to manage the inspection
-	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_node: NodeId) -> Self {
+	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
+	/// Returns `None` if the path is empty or doesn't resolve to a node inside a reachable subnetwork.
+	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
+		let (inspect_node, parent_path) = inspect_path.split_last()?;
+		let inspect_node = *inspect_node;
+		let target_network = navigate_to_network_mut(network, parent_path)?;
 		let monitor_id = NodeId::new();
 
 		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
-		for input in network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut network.exports) {
+		for input in target_network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut target_network.exports) {
 			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
 			// We only care about the primary output of our inspect node
 			if *output_index != 0 || *node_id != inspect_node {
@@ -588,21 +604,39 @@ impl InspectState {
 			skip_deduplication: true,
 			..Default::default()
 		};
-		network.nodes.insert(monitor_id, monitor_node);
+		target_network.nodes.insert(monitor_id, monitor_node);
 
-		Self {
+		Some(Self {
 			inspect_node,
 			monitor_node: monitor_id,
-		}
+			monitor_parent_path: parent_path.to_vec(),
+		})
 	}
 	/// Resolve the result from the inspection by accessing the monitor node
 	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
+		// The executor's source map indexes by full path from root, so prepend the subnetwork path to the monitor ID.
+		let mut monitor_path = self.monitor_parent_path.clone();
+		monitor_path.push(self.monitor_node);
+		let introspected_data = executor.introspect(&monitor_path).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
 		// TODO: Consider displaying the error instead of ignoring it
 
-		Some(InspectResult {
-			inspect_node: self.inspect_node,
-			introspected_data,
-		})
+		let mut inspect_node_path = self.monitor_parent_path.clone();
+		inspect_node_path.push(self.inspect_node);
+		Some(InspectResult { inspect_node_path, introspected_data })
 	}
+}
+
+/// Walks `network` down through `path`, returning a mutable reference to the nested `NodeNetwork`
+/// at the end. Each path element must name a `DocumentNode` whose implementation is `Network(...)`.
+/// Returns `None` if any step is missing or doesn't refer to a subnetwork.
+fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) -> Option<&'a mut NodeNetwork> {
+	let mut current = network;
+	for node_id in path {
+		let node = current.nodes.get_mut(node_id)?;
+		current = match &mut node.implementation {
+			DocumentNodeImplementation::Network(nested) => nested,
+			_ => return None,
+		};
+	}
+	Some(current)
 }
