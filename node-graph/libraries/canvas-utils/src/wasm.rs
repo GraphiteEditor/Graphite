@@ -52,13 +52,20 @@ impl Canvas for CanvasHandle {
 }
 
 #[cfg(feature = "wgpu")]
-pub struct CanvasSurfaceHandle(CanvasHandle, Option<Arc<wgpu::Surface<'static>>>);
+struct SurfaceState {
+	surface: Arc<wgpu::Surface<'static>>,
+	format: wgpu::TextureFormat,
+	blitter: wgpu_executor::cached_blitter::CachedBlitter,
+}
+
+#[cfg(feature = "wgpu")]
+pub struct CanvasSurfaceHandle(CanvasHandle, Option<SurfaceState>);
 #[cfg(feature = "wgpu")]
 impl CanvasSurfaceHandle {
 	pub fn new() -> Self {
 		Self(CanvasHandle::new(), None)
 	}
-	fn surface(&mut self, executor: &WgpuExecutor) -> &wgpu::Surface<'_> {
+	fn state(&mut self, executor: &WgpuExecutor) -> &SurfaceState {
 		if self.1.is_none() {
 			let canvas = self.0.get().canvas.clone();
 			let surface = executor
@@ -66,7 +73,17 @@ impl CanvasSurfaceHandle {
 				.instance
 				.create_surface(wgpu::SurfaceTarget::Canvas(canvas))
 				.expect("Failed to create surface from canvas");
-			self.1 = Some(Arc::new(surface));
+
+			// Use the surface's preferred format (Firefox WebGL prefers Bgra8Unorm, Chrome prefers Rgba8Unorm)
+			let surface_caps = surface.get_capabilities(&executor.context.adapter);
+			let surface_format = surface_caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(surface_caps.formats[0]);
+			let blitter = wgpu_executor::cached_blitter::CachedBlitter::new(&executor.context.device, surface_format);
+
+			self.1 = Some(SurfaceState {
+				surface: Arc::new(surface),
+				format: surface_format,
+				blitter,
+			});
 		}
 		self.1.as_ref().unwrap()
 	}
@@ -87,23 +104,21 @@ impl Canvas for CanvasSurfaceHandle {
 impl CanvasSurface for CanvasSurfaceHandle {
 	fn present(&mut self, image_texture: &ImageTexture, executor: &WgpuExecutor) {
 		let source_texture: &wgpu::Texture = image_texture.as_ref();
+		let state = self.state(executor);
 
-		let surface = self.surface(executor);
-
-		// Blit the texture to the surface
 		let mut encoder = executor.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("Texture to Surface Blit"),
 		});
 
 		let size = source_texture.size();
 
-		// Configure the surface at physical resolution (for HiDPI displays)
-		let surface_caps = surface.get_capabilities(&executor.context.adapter);
-		surface.configure(
+		// Configure the surface at the detected preferred format
+		let surface_caps = state.surface.get_capabilities(&executor.context.adapter);
+		state.surface.configure(
 			&executor.context.device,
 			&wgpu::SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
-				format: wgpu::TextureFormat::Rgba8Unorm,
+				format: state.format,
 				width: size.width,
 				height: size.height,
 				present_mode: surface_caps.present_modes[0],
@@ -113,23 +128,30 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			},
 		);
 
-		let surface_texture = surface.get_current_texture().expect("Failed to get surface texture");
+		let surface_texture = state.surface.get_current_texture().expect("Failed to get surface texture");
 
-		encoder.copy_texture_to_texture(
-			wgpu::TexelCopyTextureInfoBase {
-				texture: source_texture,
-				mip_level: 0,
-				origin: Default::default(),
-				aspect: Default::default(),
-			},
-			wgpu::TexelCopyTextureInfoBase {
-				texture: &surface_texture.texture,
-				mip_level: 0,
-				origin: Default::default(),
-				aspect: Default::default(),
-			},
-			source_texture.size(),
-		);
+		// If the surface format matches the source, use a direct copy; otherwise use the cached blitter
+		// for format conversion (e.g., Rgba8Unorm source to Bgra8Unorm surface on Firefox)
+		if state.format == source_texture.format() {
+			encoder.copy_texture_to_texture(
+				wgpu::TexelCopyTextureInfoBase {
+					texture: source_texture,
+					mip_level: 0,
+					origin: Default::default(),
+					aspect: Default::default(),
+				},
+				wgpu::TexelCopyTextureInfoBase {
+					texture: &surface_texture.texture,
+					mip_level: 0,
+					origin: Default::default(),
+					aspect: Default::default(),
+				},
+				source_texture.size(),
+			);
+		} else {
+			let target_view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
+			state.blitter.copy(&executor.context.device, &mut encoder, source_texture, &target_view);
+		}
 
 		executor.context.queue.submit([encoder.finish()]);
 		surface_texture.present();
