@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
-use crate::messages::input_mapper::utility_types::input_mouse::MouseButton;
+use crate::messages::input_mapper::utility_types::input_pointer::MouseButton;
 use crate::messages::prelude::*;
 
 #[impl_message(Message, KeyMappingMessage, Lookup)]

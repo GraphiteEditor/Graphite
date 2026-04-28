@@ -736,7 +736,7 @@ impl PathToolData {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
 
-		self.drag_start_pos = input.mouse.position;
+		self.drag_start_pos = input.pointer.position;
 
 		if input.time - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
 			self.saved_points_before_anchor_convert_smooth_sharp.clear();
@@ -757,7 +757,7 @@ impl PathToolData {
 		// Don't select the points which are not shown currently in PathOverlayMode
 		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(
 			&document.network_interface,
-			input.mouse.position,
+			input.pointer.position,
 			SELECTION_THRESHOLD,
 			path_overlay_mode,
 			self.frontier_handles_info.as_ref(),
@@ -774,7 +774,7 @@ impl PathToolData {
 			if !(already_selected && extend_selection)
 				&& let Some(updated_selection_info) = shape_editor.change_point_selection(
 					&document.network_interface,
-					input.mouse.position,
+					input.pointer.position,
 					SELECTION_THRESHOLD,
 					extend_selection,
 					path_overlay_mode,
@@ -784,7 +784,7 @@ impl PathToolData {
 			}
 
 			if let Some(selected_points) = selection_info {
-				self.drag_start_pos = input.mouse.position;
+				self.drag_start_pos = input.pointer.position;
 
 				// If selected points contain only handles and there was some selection before, then it is stored and becomes restored upon release
 				let mut dragging_only_handles = true;
@@ -803,7 +803,7 @@ impl PathToolData {
 					shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 				}
 
-				if handle_drag_from_anchor && let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+				if handle_drag_from_anchor && let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.pointer.position, SELECTION_THRESHOLD) {
 					// Check that selected point is an anchor
 					if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
 						let handles = vector.all_connected(point_id).collect::<Vec<_>>();
@@ -827,7 +827,7 @@ impl PathToolData {
 				}
 
 				if let Some((Some(point), Some(vector), layer)) = shape_editor
-					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+					.find_nearest_point_indices(&document.network_interface, input.pointer.position, SELECTION_THRESHOLD)
 					.map(|(layer, point)| (point.as_anchor(), document.network_interface.compute_modified_vector(layer), layer))
 				{
 					let handles = vector
@@ -850,7 +850,7 @@ impl PathToolData {
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
 		// We didn't find a point nearby, so we will see if there is a segment to select or insert a point on
-		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.pointer.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
 			self.set_ghost_outline(shape_editor, document);
@@ -876,9 +876,9 @@ impl PathToolData {
 					// TODO: If the segment connected to one of the endpoints is also selected then select that point
 				}
 
-				self.drag_start_pos = input.mouse.position;
+				self.drag_start_pos = input.pointer.position;
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
-				self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position);
+				self.previous_mouse_position = viewport_to_document.transform_point2(input.pointer.position);
 
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Dragging(self.dragging_state)
@@ -899,22 +899,22 @@ impl PathToolData {
 			if shape_editor.selected_shape_state.is_empty() {
 				self.first_selected_with_single_click = true;
 				// This ensures we don't need to double click a second time to get the drill through to work
-				self.last_drill_through_click_position = Some(input.mouse.position);
+				self.last_drill_through_click_position = Some(input.pointer.position);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			}
 
 			self.started_drawing_from_inside = true;
 
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.drag_start_pos = input.pointer.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position);
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 			PathToolFsmState::Drawing { selection_shape }
 		}
 		// Start drawing
 		else {
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.drag_start_pos = input.pointer.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position);
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 			PathToolFsmState::Drawing { selection_shape }
@@ -956,7 +956,7 @@ impl PathToolData {
 		self.snap_cache = SnapCache { manipulators, unselected };
 
 		let viewport_to_document = document.metadata().document_to_viewport.inverse();
-		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
+		self.previous_mouse_position = viewport_to_document.transform_point2(input.pointer.position - selected_points.offset);
 	}
 
 	fn update_colinear(&mut self, equidistant: bool, toggle_colinear: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
@@ -1157,7 +1157,7 @@ impl PathToolData {
 
 	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Find the negative delta to take the point to the drag start position
-		let current_mouse = input.mouse.position;
+		let current_mouse = input.pointer.position;
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
@@ -1178,7 +1178,7 @@ impl PathToolData {
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Calculate the negative delta of the selection and move it back to the drag start
-		let current_mouse = input.mouse.position;
+		let current_mouse = input.pointer.position;
 		let drag_start = self.drag_start_pos;
 
 		let opposite_delta = drag_start - current_mouse;
@@ -1424,7 +1424,7 @@ impl PathToolData {
 
 		let document_to_viewport = document.metadata().document_to_viewport;
 		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
-		let current_mouse = input.mouse.position;
+		let current_mouse = input.pointer.position;
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
 		let snapped_delta = if let Some((handle_position, anchor_position, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
@@ -1468,7 +1468,7 @@ impl PathToolData {
 		let mut was_alt_dragging = false;
 
 		if self.snapping_axis.is_none() {
-			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD {
 				// Checking which direction the dragging begins
 				self.alt_dragging_from_anchor = true;
 				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
@@ -1490,7 +1490,7 @@ impl PathToolData {
 						return;
 					};
 
-					let delta = input.mouse.position - self.drag_start_pos;
+					let delta = input.pointer.position - self.drag_start_pos;
 					let handle = if delta.dot(tangent1) >= delta.dot(tangent2) {
 						segment1.to_manipulator_point()
 					} else {
@@ -1533,7 +1533,7 @@ impl PathToolData {
 		// Constantly checking and changing the snapping axis based on current mouse position
 		if snap_axis && self.snapping_axis.is_some() {
 			let Some(current_axis) = self.snapping_axis else { return };
-			let total_delta = self.drag_start_pos - input.mouse.position;
+			let total_delta = self.drag_start_pos - input.pointer.position;
 
 			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
 				self.stop_snap_along_axis(shape_editor, document, input, responses);
@@ -1573,7 +1573,7 @@ impl Fsm for PathToolFsmState {
 			..
 		} = tool_action_data;
 
-		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options, input.mouse.position);
+		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options, input.pointer.position);
 
 		let ToolMessage::Path(event) = event else { return self };
 
@@ -1711,7 +1711,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Overlays { context: mut overlay_context }) => {
 				// Set this to show ghost line only if drag actually happened
-				if matches!(self, Self::Dragging(_)) && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+				if matches!(self, Self::Dragging(_)) && tool_data.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD {
 					for (outline, layer) in &tool_data.ghost_outline {
 						let transform = document.metadata().transform_to_viewport(*layer);
 						overlay_context.outline(outline.iter(), transform, Some(COLOR_OVERLAY_GRAY));
@@ -1790,7 +1790,7 @@ impl Fsm for PathToolFsmState {
 					Self::Ready => {
 						tool_data.update_closest_segment(
 							shape_editor,
-							input.mouse.position,
+							input.pointer.position,
 							document,
 							tool_options.path_overlay_mode,
 							tool_options.path_editing_mode.point_editing_mode,
@@ -1804,7 +1804,7 @@ impl Fsm for PathToolFsmState {
 
 							let nearest_visible_point_indices = shape_editor.find_nearest_visible_point_indices(
 								&document.network_interface,
-								input.mouse.position,
+								input.pointer.position,
 								SELECTION_THRESHOLD,
 								tool_options.path_overlay_mode,
 								tool_data.frontier_handles_info.as_ref(),
@@ -1869,7 +1869,7 @@ impl Fsm for PathToolFsmState {
 						// Show outlines for hovered layers with appropriate highlighting
 						let currently_selected_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next();
 						let next_selected_index = tool_data.peek_drill_through_index();
-						let mouse_has_moved = tool_data.has_drill_through_mouse_moved(input.mouse.position);
+						let mouse_has_moved = tool_data.has_drill_through_mouse_moved(input.pointer.position);
 
 						for (index, &hovered_layer) in tool_data.hovered_layers.iter().enumerate() {
 							// Skip already highlighted selected layer
@@ -2048,13 +2048,13 @@ impl Fsm for PathToolFsmState {
 					segment_editing_modifier,
 				},
 			) => {
-				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position);
 
 				tool_data.started_drawing_from_inside = false;
 				tool_data.stored_selection = None;
 
 				if selection_shape == SelectionShapeType::Lasso {
-					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
+					extend_lasso(&mut tool_data.lasso_polygon, input.pointer.position);
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -2104,11 +2104,11 @@ impl Fsm for PathToolFsmState {
 				let selected_only_handles = !shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 				tool_data.stored_selection = None;
 
-				if !tool_data.saved_selection_before_handle_drag.is_empty() && (tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD) && (selected_only_handles) {
+				if !tool_data.saved_selection_before_handle_drag.is_empty() && (tool_data.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD) && (selected_only_handles) {
 					tool_data.handle_drag_toggle = true;
 				}
 
-				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+				if tool_data.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD {
 					tool_data.molding_segment = true;
 				}
 
@@ -2122,7 +2122,7 @@ impl Fsm for PathToolFsmState {
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						input.pointer.position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2207,7 +2207,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
 			(PathToolFsmState::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
-				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, shape_editor);
+				tool_data.slide_point(input.pointer.position, responses, &document.network_interface, shape_editor);
 				PathToolFsmState::SlidingPoint
 			}
 			(
@@ -2226,7 +2226,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.adjacent_anchor_offset = None;
 				tool_data.stored_selection = None;
 
-				if tool_data.has_drill_through_mouse_moved(input.mouse.position) {
+				if tool_data.has_drill_through_mouse_moved(input.pointer.position) {
 					tool_data.reset_drill_through_cycle();
 				}
 
@@ -2360,7 +2360,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
-				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
 
@@ -2459,13 +2459,13 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				tool_data.ghost_outline.clear();
 				let extend_selection = input.keyboard.get(extend_selection as usize);
-				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
+				let drag_occurred = tool_data.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD;
 				let mut segment_dissolved = false;
 				let mut point_inserted = false;
 
 				let nearest_point = shape_editor.find_nearest_visible_point_indices(
 					&document.network_interface,
-					input.mouse.position,
+					input.pointer.position,
 					SELECTION_THRESHOLD,
 					tool_options.path_overlay_mode,
 					tool_data.frontier_handles_info.as_ref(),
@@ -2590,7 +2590,7 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 				// Deselect all points if the user clicks the filled region of the shape
-				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+				else if tool_data.drag_start_pos.distance(input.pointer.position) <= DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
 				}
@@ -3025,7 +3025,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
-				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.pointer.position, SELECTION_THRESHOLD);
 
 				let mut get_drill_through_layer = || -> Option<LayerNodeIdentifier> {
 					let drill_through_layers = document.click_list_no_parents(input, viewport).collect::<Vec<LayerNodeIdentifier>>();
@@ -3034,7 +3034,7 @@ impl Fsm for PathToolFsmState {
 						None
 					} else {
 						tool_data.drill_through_cycle_count = drill_through_layers.len();
-						let cycle_index = tool_data.next_drill_through_cycle(input.mouse.position);
+						let cycle_index = tool_data.next_drill_through_cycle(input.pointer.position);
 						let layer = drill_through_layers.get(cycle_index);
 						if cycle_index == 0 { drill_through_layers.first().copied() } else { layer.copied() }
 					}
@@ -3042,7 +3042,7 @@ impl Fsm for PathToolFsmState {
 
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
-					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.pointer.position) <= DRAG_THRESHOLD {
 						responses.add(DocumentMessage::StartTransaction);
 
 						shape_editor.select_points_by_layer_and_id(&tool_data.saved_points_before_anchor_convert_smooth_sharp);
@@ -3087,7 +3087,7 @@ impl Fsm for PathToolFsmState {
 							// Select according to the selected editing mode
 							let point_editing_mode = tool_options.path_editing_mode.point_editing_mode;
 							let segment_editing_mode = tool_options.path_editing_mode.segment_editing_mode;
-							shape_editor.select_connected(document, *layer, input.mouse.position, point_editing_mode, segment_editing_mode);
+							shape_editor.select_connected(document, *layer, input.pointer.position, point_editing_mode, segment_editing_mode);
 
 							// Select all the other layers back again
 							if let Some(selection) = &tool_data.stored_selection {

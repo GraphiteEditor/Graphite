@@ -1,6 +1,6 @@
 use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
+use crate::messages::input_mapper::utility_types::input_pointer::{EditorPointerState, MouseKeys, ScrollDelta, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -99,7 +99,7 @@ impl EditorTestUtils {
 		self.move_mouse(position.x, position.y, modifier_keys, MouseKeys::empty()).await;
 
 		self.mousedown(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: position,
 				mouse_keys: button,
 				..Default::default()
@@ -109,7 +109,7 @@ impl EditorTestUtils {
 		.await;
 
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: position,
 				..Default::default()
 			},
@@ -128,7 +128,7 @@ impl EditorTestUtils {
 		self.move_mouse(x2, y2, modifier_keys, MouseKeys::LEFT).await;
 
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (x2, y2).into(),
 				mouse_keys: MouseKeys::empty(),
 				scroll_delta: ScrollDelta::default(),
@@ -148,7 +148,7 @@ impl EditorTestUtils {
 		self.move_mouse(100., 100., ModifierKeys::default(), MouseKeys::LEFT).await;
 
 		self.mousedown(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (100., 100.).into(),
 				mouse_keys: MouseKeys::LEFT | MouseKeys::RIGHT,
 				scroll_delta: ScrollDelta::default(),
@@ -176,20 +176,20 @@ impl EditorTestUtils {
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
-		let editor_mouse_state = EditorMouseState {
+		let editor_pointer_state = EditorPointerState {
 			editor_position: ViewportPosition::new(x, y),
 			mouse_keys,
 			..Default::default()
 		};
-		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }).await;
+		self.input(InputPreprocessorMessage::PointerMove { editor_pointer_state, modifier_keys }).await;
 	}
 
-	pub async fn mousedown(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
-		self.input(InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys }).await;
+	pub async fn mousedown(&mut self, editor_pointer_state: EditorPointerState, modifier_keys: ModifierKeys) {
+		self.input(InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys }).await;
 	}
 
-	pub async fn mouseup(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
-		self.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys }).await;
+	pub async fn mouseup(&mut self, editor_pointer_state: EditorPointerState, modifier_keys: ModifierKeys) {
+		self.handle_message(InputPreprocessorMessage::PointerUp { editor_pointer_state, modifier_keys }).await;
 	}
 
 	pub async fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
@@ -201,7 +201,7 @@ impl EditorTestUtils {
 
 	pub async fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
 		self.mousedown(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::LEFT,
 				scroll_delta: ScrollDelta::default(),
@@ -213,7 +213,7 @@ impl EditorTestUtils {
 
 	pub async fn left_mouseup(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::empty(),
 				scroll_delta: ScrollDelta::default(),
@@ -269,7 +269,7 @@ impl EditorTestUtils {
 
 	pub async fn double_click(&mut self, position: DVec2) {
 		self.handle_message(InputPreprocessorMessage::DoubleClick {
-			editor_mouse_state: EditorMouseState {
+			editor_pointer_state: EditorPointerState {
 				editor_position: position,
 				mouse_keys: MouseKeys::LEFT,
 				scroll_delta: ScrollDelta::default(),
@@ -293,7 +293,7 @@ impl EditorTestUtils {
 		}
 
 		self.mouseup(
-			EditorMouseState {
+			EditorPointerState {
 				editor_position: points[points.len() - 1],
 				mouse_keys: MouseKeys::empty(),
 				scroll_delta: ScrollDelta::default(),
@@ -347,7 +347,7 @@ pub mod test_prelude {
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
 	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
-	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+	pub use crate::messages::input_mapper::utility_types::input_pointer::MouseKeys;
 	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;

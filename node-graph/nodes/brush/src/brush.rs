@@ -1,5 +1,5 @@
 use crate::brush_cache::BrushCache;
-use crate::brush_stroke::{BrushStroke, BrushStyle};
+use crate::brush_stroke::{BrushOutputSample, BrushStroke, BrushStyle};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
@@ -81,11 +81,11 @@ fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f
 
 /// Used to efficiently paint brush strokes. Applies the same texture repeatedly at different positions with proper blending and boundary handling.
 #[node_macro::node(category(""), skip_impl)]
-fn blit<BlendFn>(mut target: Table<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> Table<Raster<CPU>>
+fn blit<BlendFn>(mut target: Table<Raster<CPU>>, texture: Raster<CPU>, samples: Vec<BrushOutputSample>, blend_mode: BlendFn) -> Table<Raster<CPU>>
 where
 	BlendFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color>,
 {
-	if positions.is_empty() {
+	if samples.is_empty() {
 		return target;
 	}
 
@@ -98,8 +98,8 @@ where
 
 		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * table_row.transform.inverse();
 
-		for position in &positions {
-			let start = document_to_target.transform_point2(*position).round();
+		for sample in &samples {
+			let start = document_to_target.transform_point2(sample.position).round();
 			let stop = start + texture_size;
 
 			// Half-open integer ranges [start, stop).
@@ -122,7 +122,7 @@ where
 				for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 					let src_pixel = texture.data[texture_index(x, y)];
 					let dst_pixel = &mut table_row.element.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
-					*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
+					*dst_pixel = blend_mode.eval((src_pixel.multiplied_alpha(sample.scale as f32), *dst_pixel));
 				}
 			}
 		}
@@ -230,8 +230,8 @@ async fn brush(
 
 		// Compute transformation from stroke texture space into layer space, and create the stroke texture.
 		let skip = if idx == 0 { brush_plan.first_stroke_point_skip } else { 0 };
-		let positions: Vec<_> = stroke.compute_blit_points().into_iter().skip(skip).collect();
-		let stroke_texture = if idx == 0 && positions.is_empty() {
+		let samples: Vec<_> = stroke.compute_blit_points().into_iter().skip(skip).collect();
+		let stroke_texture = if idx == 0 && samples.is_empty() {
 			core::mem::take(&mut brush_plan.first_stroke_texture)
 		} else {
 			let mut bbox = stroke.bounding_box();
@@ -239,14 +239,14 @@ async fn brush(
 			bbox.end = bbox.end.floor();
 			let stroke_size = bbox.size() + DVec2::splat(stroke.style.diameter);
 			// For numerical stability we want to place the first blit point at a stable, integer offset in layer space.
-			let snap_offset = positions[0].floor() - positions[0];
+			let snap_offset = samples[0].position.floor() - samples[0].position;
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
 			let normal_blend = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Normal, 1.));
 			let blit_node = BlitNode::new(
 				FutureWrapperNode::new(ClonedNode::new(brush_texture)),
-				FutureWrapperNode::new(ClonedNode::new(positions)),
+				FutureWrapperNode::new(ClonedNode::new(samples)),
 				FutureWrapperNode::new(ClonedNode::new(normal_blend)),
 			);
 			let blit_target = if idx == 0 {
@@ -288,7 +288,7 @@ async fn brush(
 				brush_texture = Some(tex);
 			}
 			let brush_texture = brush_texture.unwrap();
-			let positions: Vec<_> = stroke.compute_blit_points().into_iter().collect();
+			let samples: Vec<_> = stroke.compute_blit_points().into_iter().collect();
 
 			// For mask composition: Erase subtracts alpha, Restore adds alpha, and Draw acts like Restore to allow repainting erased areas.
 			let mask_blend_mode = match stroke.style.blend_mode {
@@ -300,7 +300,7 @@ async fn brush(
 			let blend_params = FnNode::new(move |(a, b)| blend_colors(a, b, mask_blend_mode, 1.));
 			let blit_node = BlitNode::new(
 				FutureWrapperNode::new(ClonedNode::new(brush_texture)),
-				FutureWrapperNode::new(ClonedNode::new(positions)),
+				FutureWrapperNode::new(ClonedNode::new(samples)),
 				FutureWrapperNode::new(ClonedNode::new(blend_params)),
 			);
 			erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
@@ -398,7 +398,10 @@ mod test {
 			(),
 			Table::new_from_element(Raster::new_cpu(Image::<Color>::default())),
 			vec![BrushStroke {
-				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
+				trace: vec![crate::brush_stroke::BrushInputSample {
+					position: DVec2::ZERO,
+					pressure: 1.0f64,
+				}],
 				style: BrushStyle {
 					color: Color::BLACK,
 					diameter: 20.,
