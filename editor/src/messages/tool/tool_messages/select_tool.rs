@@ -3,7 +3,7 @@
 use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -1179,7 +1179,13 @@ impl Fsm for SelectToolFsmState {
 				};
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+				let transform_ref = DefinitionIdentifier::Network("Transform".into());
+				let mut transformed_nodes = HashSet::new();
 				for layer in document.network_interface.shallowest_unique_layers(&[]) {
+					let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&transform_ref, layer, &document.network_interface);
+					if transform_node_id.is_some_and(|id| !transformed_nodes.insert(id)) {
+						continue;
+					}
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(mouse_delta),
