@@ -412,10 +412,10 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first row
 					if !table.is_empty() {
-						let source_node_id: Option<NodeId> = table.attribute_cloned_or_default("source_node_id", 0);
+						let layer: Option<NodeId> = table.attribute_cloned_or_default("editor:layer", 0);
 						let transform: DAffine2 = table.attribute_cloned_or_default("transform", 0);
 
-						metadata.first_element_source_id.insert(element_id, source_node_id);
+						metadata.first_element_source_id.insert(element_id, layer);
 						metadata.local_transforms.insert(element_id, transform);
 					}
 				}
@@ -655,8 +655,8 @@ impl Render for Table<Artboard> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let source_node_id: Option<NodeId> = self.attribute_cloned_or_default("source_node_id", index);
-			self.element(index).unwrap().collect_metadata(metadata, footprint, source_node_id);
+			let layer: Option<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			self.element(index).unwrap().collect_metadata(metadata, footprint, layer);
 		}
 	}
 
@@ -805,16 +805,16 @@ impl Render for Table<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let source_node_id: Option<NodeId> = self.attribute_cloned_or_default("source_node_id", index);
+			let layer: Option<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
 			let element = self.element(index).unwrap();
 
 			let mut footprint = footprint;
 			footprint.transform *= row_transform;
 
-			if let Some(element_id) = source_node_id {
+			if let Some(element_id) = layer {
 				element.collect_metadata(metadata, footprint, Some(element_id));
 			} else {
-				// Recurse through anonymous wrapper rows to reach nested content with source_node_ids
+				// Recurse through anonymous wrapper rows to reach nested content with editor:layer tags
 				element.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -860,9 +860,9 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, source_node_ids) = self.element_and_attribute_slices_mut::<Option<NodeId>>("source_node_id");
-		for (element, source_node_id) in elements.iter_mut().zip(source_node_ids.iter()) {
-			element.new_ids_from_hash(*source_node_id);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<Option<NodeId>>("editor:layer");
+		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
+			element.new_ids_from_hash(*layer);
 		}
 	}
 }
@@ -938,8 +938,7 @@ impl Render for Table<Vector> {
 				let vector_row = Table::new_from_row(
 					TableRow::new_from_element(cloned_vector)
 						.with_attribute("transform", multiplied_transform)
-						.with_attribute("alpha_blending", alpha_blending)
-						.with_attribute("source_node_id", None::<NodeId>),
+						.with_attribute("alpha_blending", alpha_blending),
 				);
 
 				(id, mask_type, vector_row)
@@ -1256,8 +1255,7 @@ impl Render for Table<Vector> {
 						let vector_table = Table::new_from_row(
 							TableRow::new_from_element(cloned_element)
 								.with_attribute("transform", row_transform)
-								.with_attribute("alpha_blending", alpha_blending)
-								.with_attribute("source_node_id", None::<NodeId>),
+								.with_attribute("alpha_blending", alpha_blending),
 						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
@@ -1329,10 +1327,10 @@ impl Render for Table<Vector> {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let source_node_id: Option<NodeId> = self.attribute_cloned_or_default("source_node_id", index);
+			let layer: Option<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
 
-			if let Some(element_id) = caller_element_id.or(source_node_id) {
-				// When recovering element_id from the row's source_node_id (because the caller
+			if let Some(element_id) = caller_element_id.or(layer) {
+				// When recovering element_id from the row's editor:layer tag (because the caller
 				// passed None), also store the transform metadata that Graphic::collect_metadata
 				// normally provides but skipped due to the None element_id.
 				if caller_element_id.is_none() {
@@ -1365,7 +1363,7 @@ impl Render for Table<Vector> {
 					.stroke_bezier_paths()
 					.map(fill)
 					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width).into())
-					.chain(single_anchors_targets.into_iter())
+					.chain(single_anchors_targets)
 					.collect::<Vec<_>>();
 
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
@@ -1373,7 +1371,11 @@ impl Render for Table<Vector> {
 				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
 			}
 
-			if let Some(upstream_nested_layers) = &vector.upstream_data {
+			// If this row carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
+			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
+			// surface the original child layers' click targets.
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", index);
+			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
 				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
@@ -1571,7 +1573,19 @@ impl Render for Table<Raster<CPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if !self.is_empty() {
-			metadata.local_transforms.insert(element_id, self.attribute_cloned_or_default("transform", 0));
+			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
+			metadata.local_transforms.insert(element_id, transform);
+
+			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
+			// which destructively merges its inputs into pixels), recurse into that snapshot so the editor can
+			// surface the original child layers' click targets (the same mechanism Boolean Operation uses).
+			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
+			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
+			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			if !upstream_nested_layers.is_empty() {
+				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+			}
 		}
 	}
 
@@ -1649,7 +1663,19 @@ impl Render for Table<Raster<GPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if !self.is_empty() {
-			metadata.local_transforms.insert(element_id, self.attribute_cloned_or_default("transform", 0));
+			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
+			metadata.local_transforms.insert(element_id, transform);
+
+			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
+			// which destructively merges its inputs into pixels), recurse into that snapshot so the editor can
+			// surface the original child layers' click targets (the same mechanism Boolean Operation uses).
+			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
+			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
+			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			if !upstream_nested_layers.is_empty() {
+				upstream_nested_layers.collect_metadata(metadata, footprint, None);
+			}
 		}
 	}
 

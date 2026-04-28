@@ -54,7 +54,7 @@ impl PointModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
 			add: vector.point_domain.ids().to_vec(),
 			remove: HashSet::new(),
@@ -211,7 +211,7 @@ impl SegmentModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		let point_id = |(&segment, &index)| (segment, vector.point_domain.ids()[index]);
 		Self {
 			add: vector.segment_domain.ids().to_vec(),
@@ -280,7 +280,7 @@ impl RegionModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
 			add: vector.region_domain.ids().to_vec(),
 			remove: HashSet::new(),
@@ -426,7 +426,7 @@ impl VectorModification {
 	}
 
 	/// Apply this modification to the specified [`Vector`].
-	pub fn apply<Upstream>(&self, vector: &mut Vector<Upstream>) {
+	pub fn apply(&self, vector: &mut Vector) {
 		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);
 		self.segments.apply(&mut vector.segment_domain, &vector.point_domain);
 		self.regions.apply(&mut vector.region_domain);
@@ -499,7 +499,7 @@ impl VectorModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
 			points: PointModification::create_from_vector(vector),
 			segments: SegmentModification::create_from_vector(vector),
@@ -581,7 +581,7 @@ where
 	deserializer.deserialize_seq(visitor)
 }
 
-pub struct AppendBezpath<'a, Upstream: 'static> {
+pub struct AppendBezpath<'a> {
 	first_point: Option<Point>,
 	last_point: Option<Point>,
 	first_point_index: Option<usize>,
@@ -590,11 +590,11 @@ pub struct AppendBezpath<'a, Upstream: 'static> {
 	last_segment_id: Option<SegmentId>,
 	point_id: PointId,
 	segment_id: SegmentId,
-	vector: &'a mut Vector<Upstream>,
+	vector: &'a mut Vector,
 }
 
-impl<'a, Upstream> AppendBezpath<'a, Upstream> {
-	fn new(vector: &'a mut Vector<Upstream>) -> Self {
+impl<'a> AppendBezpath<'a> {
+	fn new(vector: &'a mut Vector) -> Self {
 		Self {
 			first_point: None,
 			last_point: None,
@@ -676,7 +676,7 @@ impl<'a, Upstream> AppendBezpath<'a, Upstream> {
 		self.last_segment_id = None;
 	}
 
-	pub fn append_bezpath(vector: &'a mut Vector<Upstream>, bezpath: BezPath) {
+	pub fn append_bezpath(vector: &'a mut Vector, bezpath: BezPath) {
 		let mut this = Self::new(vector);
 		let mut elements = bezpath.elements().iter().peekable();
 
@@ -726,7 +726,7 @@ pub trait VectorExt {
 	fn append_bezpath(&mut self, bezpath: BezPath);
 }
 
-impl<Upstream: 'static> VectorExt for Vector<Upstream> {
+impl VectorExt for Vector {
 	fn append_bezpath(&mut self, bezpath: BezPath) {
 		AppendBezpath::append_bezpath(self, bezpath);
 	}
@@ -758,7 +758,7 @@ mod tests {
 
 	#[test]
 	fn modify_new() {
-		let vector: Vector<()> = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO)], false);
+		let vector: Vector = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO)], false);
 
 		let modify = VectorModification::create_from_vector(&vector);
 
@@ -780,7 +780,7 @@ mod tests {
 				false,
 			),
 		];
-		let mut vector: Vector<()> = Vector::from_subpaths(subpaths, false);
+		let mut vector: Vector = Vector::from_subpaths(subpaths, false);
 
 		let mut modify_new = VectorModification::create_from_vector(&vector);
 		let mut modify_original = VectorModification::default();
