@@ -202,7 +202,7 @@ impl ArtboardToolData {
 			points: &mut self.snap_candidates,
 			snap_data: SnapData::ignore(document, input, viewport, &ignore),
 		});
-		let (min, size) = movement.new_size(input.mouse.position, bounds.transform, center, constrain_square, snap);
+		let (min, size) = movement.new_size(input.pointer.position, bounds.transform, center, constrain_square, snap);
 		let max = min + size;
 		let position = min.min(max);
 		let size = (max - min).abs();
@@ -295,10 +295,10 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
 				let to_viewport = document.metadata().document_to_viewport;
 				let to_document = to_viewport.inverse();
-				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
-				tool_data.drag_current = to_document.transform_point2(input.mouse.position);
+				tool_data.drag_start = to_document.transform_point2(input.pointer.position);
+				tool_data.drag_current = to_document.transform_point2(input.pointer.position);
 
-				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
+				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.pointer.position) {
 					tool_data.start_resizing(selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
@@ -411,7 +411,7 @@ impl Fsm for ArtboardToolFsmState {
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false, false, None));
 
 				if cursor == MouseCursorIcon::Default && !hovered {
-					tool_data.draw.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+					tool_data.draw.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.pointer.position);
 					responses.add(OverlaysMessage::Draw);
 					cursor = MouseCursorIcon::Crosshair;
 				} else {

@@ -1,5 +1,5 @@
 use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
-use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
+use crate::messages::input_mapper::utility_types::input_pointer::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -189,10 +189,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 			}
 
-			*mouse_position = input.mouse.position;
-			*start_mouse = input.mouse.position;
+			*mouse_position = input.pointer.position;
+			*start_mouse = input.pointer.position;
 			*transform = document_to_viewport;
-			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position);
 
 			selected.original_transforms.clear();
 
@@ -357,8 +357,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.last_point = last_point;
 				self.handle = handle;
 				self.grs_pen_handle = true;
-				self.mouse_position = input.mouse.position;
-				self.start_mouse = input.mouse.position;
+				self.mouse_position = input.pointer.position;
+				self.start_mouse = input.pointer.position;
 
 				let top_left = DVec2::new(last_point.x, handle.y);
 				let bottom_right = DVec2::new(handle.x, last_point.y);
@@ -523,7 +523,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let old_ptz = self.ptz;
 				self.ptz = document.document_ptz;
 				if old_ptz != self.ptz {
-					self.mouse_position = input.mouse.position;
+					self.mouse_position = input.pointer.position;
 					return;
 				}
 
@@ -537,7 +537,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
-							let delta_pos = input.mouse.position - self.mouse_position;
+							let delta_pos = input.pointer.position - self.mouse_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
 							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
@@ -546,7 +546,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
-							let end_offset = self.state.pivot_viewport(document) - input.mouse.position;
+							let end_offset = self.state.pivot_viewport(document) - input.pointer.position;
 							let angle = start_offset.angle_to(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
@@ -557,7 +557,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
 							let to_mouse_final = self.mouse_position - self.state.pivot_viewport(document);
-							let to_mouse_final_old = input.mouse.position - self.state.pivot_viewport(document);
+							let to_mouse_final_old = input.pointer.position - self.state.pivot_viewport(document);
 							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
 							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
@@ -580,7 +580,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					};
 				}
 
-				self.mouse_position = input.mouse.position;
+				self.mouse_position = input.pointer.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();

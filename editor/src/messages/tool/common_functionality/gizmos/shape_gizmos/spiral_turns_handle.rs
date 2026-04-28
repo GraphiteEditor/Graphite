@@ -152,14 +152,14 @@ impl SpiralTurns {
 
 		let angle_delta = viewport
 			.inverse()
-			.transform_vector2(input.mouse.position - center)
+			.transform_vector2(input.pointer.position - center)
 			.angle_to(viewport.inverse().transform_vector2(self.previous_mouse_position - center))
 			.to_degrees();
 
 		// Skip update if angle calculation produced NaN or infinity (can happen when mouse is at center)
 		// Also skip very small angle changes to reduce jitter near center
 		if !angle_delta.is_finite() || angle_delta.abs() < 0.5 {
-			self.previous_mouse_position = input.mouse.position;
+			self.previous_mouse_position = input.pointer.position;
 			return;
 		}
 
@@ -222,6 +222,6 @@ impl SpiralTurns {
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 		self.total_angle_delta += angle_delta;
-		self.previous_mouse_position = input.mouse.position;
+		self.previous_mouse_position = input.pointer.position;
 	}
 }
