@@ -145,10 +145,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_boolean_data(&mut self, operation: graphene_std::vector::misc::BooleanOperation, layer: LayerNodeIdentifier) {
-		let boolean = resolve_network_node_type("Boolean Operation").expect("Boolean node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
-		]);
+		let boolean = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)
+			.expect("Boolean node does not exist")
+			.node_template_input_override([
+				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+				Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
+			]);
 
 		let boolean_id = NodeId::new();
 		self.network_interface.insert_node(boolean_id, boolean, &[]);

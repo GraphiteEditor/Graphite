@@ -1780,14 +1780,15 @@ async fn tangent_on_path(
 	if radians { angle } else { angle.to_degrees() }
 }
 
-#[node_macro::node(category(""), path(core_types::vector))]
-async fn poisson_disk_points(
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
+async fn scatter_points(
 	_: impl Ctx,
 	content: Table<Vector>,
 	#[unit(" px")]
 	#[default(10.)]
 	#[hard_min(0.01)]
-	separation_disk_diameter: f64,
+	#[range((1., 100.))]
+	separation: f64,
 	seed: SeedValue,
 ) -> Table<Vector> {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -1813,7 +1814,7 @@ async fn poisson_disk_points(
 					continue;
 				}
 
-				for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation_disk_diameter, || rng.random::<f64>()) {
+				for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation, || rng.random::<f64>()) {
 					result.point_domain.push(PointId::generate(), point);
 				}
 			}
@@ -3120,7 +3121,7 @@ mod test {
 	}
 	#[tokio::test]
 	async fn poisson() {
-		let poisson_points = super::poisson_disk_points(
+		let poisson_points = super::scatter_points(
 			Footprint::default(),
 			vector_node_from_bezpath(Ellipse::from_rect(Rect::new(-50., -50., 50., 50.)).to_path(DEFAULT_ACCURACY)),
 			10. * std::f64::consts::SQRT_2,
