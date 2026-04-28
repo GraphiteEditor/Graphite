@@ -35,9 +35,14 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					});
 					responses.add(NodeGraphMessage::SetDisplayNameImpl {
 						node_id,
+						network_path: Vec::new(),
 						alias: "Background".to_string(),
 					});
-					responses.add(NodeGraphMessage::SetLocked { node_id, locked: true });
+					responses.add(NodeGraphMessage::SetLocked {
+						node_id,
+						network_path: Vec::new(),
+						locked: true,
+					});
 				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
 					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {

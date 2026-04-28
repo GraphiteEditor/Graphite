@@ -236,7 +236,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// Derive the parent layer's NodeId from the document path
 							DocumentNode {
 								inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::parent_layer::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
 								..Default::default()
 							},
 							// Stamp each row of the content with the parent layer's NodeId via the `editor:layer` attribute,
@@ -299,7 +299,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 2: parent_layer
+								// 2: path_of_subgraph
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 1)),
@@ -371,7 +371,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							// Derive the parent layer's NodeId from the document path
 							DocumentNode {
 								inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::parent_layer::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
 								..Default::default()
 							},
 							// Stamp each row of the content with the parent layer's NodeId via the `editor:layer` attribute,
@@ -461,7 +461,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 1: parent_layer
+								// 1: path_of_subgraph
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),

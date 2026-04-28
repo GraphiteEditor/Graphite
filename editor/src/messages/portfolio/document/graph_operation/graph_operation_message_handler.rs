@@ -197,10 +197,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
+					network_path: Vec::new(),
 					alias: layer_alias.to_string(),
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: control_path_id,
+					network_path: Vec::new(),
 					alias: path_alias.to_string(),
 				});
 			}
@@ -245,6 +247,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
+					network_path: Vec::new(),
 					alias: "Boolean Operation".to_string(),
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -343,6 +346,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
+						network_path: Vec::new(),
 						alias: network_interface.display_name(&artboard.to_node(), &[]),
 						skip_adding_history_step: true,
 					});

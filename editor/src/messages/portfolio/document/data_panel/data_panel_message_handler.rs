@@ -51,6 +51,12 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 				self.active_vector_table_tab = VectorTableTab::default();
 				self.update_layout(responses, context);
 			}
+			DataPanelMessage::Refresh => {
+				// Re-render against the current network_interface without disturbing introspected_data or the breadcrumb path.
+				// Always re-renders, even when introspected_data is None, since the header still shows the inspected node's
+				// name/lock/visibility state from the network interface and that state can change independently of the data.
+				self.update_layout(responses, context);
+			}
 
 			DataPanelMessage::PushToElementPath { step } => {
 				self.element_path.push(step);
@@ -80,6 +86,8 @@ impl DataPanelMessageHandler {
 		let mut layout_data = LayoutData {
 			current_depth: 0,
 			desired_path: &mut self.element_path,
+			network_interface: &*network_interface,
+			node_lookup_network_path: Vec::new(),
 			breadcrumbs: Vec::new(),
 			vector_table_tab: self.active_vector_table_tab,
 		};
@@ -98,6 +106,7 @@ impl DataPanelMessageHandler {
 		if let Some((node_id, parent_path)) = self.introspected_node_path.split_last() {
 			let node_id = *node_id;
 			let is_layer = network_interface.is_layer(&node_id, parent_path);
+			let parent_path_owned = parent_path.to_vec();
 
 			widgets.extend([
 				if is_layer {
@@ -111,6 +120,7 @@ impl DataPanelMessageHandler {
 					.on_update(move |text_input| {
 						NodeGraphMessage::SetDisplayName {
 							node_id,
+							network_path: parent_path_owned.clone(),
 							alias: text_input.value.clone(),
 							skip_adding_history_step: false,
 						}
@@ -144,6 +154,11 @@ impl DataPanelMessageHandler {
 struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<PathStep>,
+	network_interface: &'a NodeNetworkInterface,
+	/// The `network_path` to use when resolving a `NodeId` cell or leaf page against the network interface.
+	/// Defaults to root (`&[]`); `Table<NodeId>` rendering temporarily sets it to the path's prefix so nested
+	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
+	node_lookup_network_path: Vec<NodeId>,
 	breadcrumbs: Vec<String>,
 	vector_table_tab: VectorTableTab,
 }
@@ -161,6 +176,11 @@ macro_rules! generate_layout_downcast {
 }
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
+	// `Table<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
+	// table where each row's NodeId resolves against the prefix made up of the rows above it.
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<NodeId>>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
+	}
 	generate_layout_downcast!(introspected_data, data, [
 		Table<Artboard>,
 		Table<Graphic>,
@@ -170,7 +190,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Color>,
 		Table<GradientStops>,
 		Table<String>,
-		Table<NodeId>,
 		Table<f64>,
 		Table<u8>,
 		GradientStops,
@@ -203,10 +222,12 @@ trait TableRowLayout {
 	}
 	/// Renders this value as a single inline widget inside a row of a Vec/Table.
 	/// `target` is the [`PathStep`] to push when the cell is clicked to drill into the value.
+	/// `data` provides shared context (notably `network_interface`) for types whose label or content
+	/// depends on lookup beyond their own value (e.g. `NodeId` resolving a node's display name).
 	/// The default is a button labeled with `identifier()`. Types whose values are best shown
 	/// inline (colors, transforms, primitives, etc.) override this to ignore `target` and
 	/// return a richer non-navigating widget.
-	fn cell_widget(&self, target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextButton::new(self.identifier())
 			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
 			.narrow(true)
@@ -258,10 +279,10 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		let mut rows = (0..self.len())
 			.map(|index| {
 				let element = self.element(index).unwrap();
-				let mut cells = vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), element.cell_widget(PathStep::Element(index))];
+				let mut cells = vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), element.cell_widget(PathStep::Element(index), data)];
 				for key in &attribute_keys {
 					let target = PathStep::Attribute { row: index, key: key.clone() };
-					let widget = self.attribute_any(key, index).and_then(|any| dispatch_cell_widget(any, target)).unwrap_or_else(|| {
+					let widget = self.attribute_any(key, index).and_then(|any| dispatch_cell_widget(any, target, data)).unwrap_or_else(|| {
 						let text = self.attribute_display_value(key, index, |_| None).unwrap_or_else(|| "-".to_string());
 						TextLabel::new(text).narrow(true).widget_instance()
 					});
@@ -531,7 +552,7 @@ impl TableRowLayout for Color {
 	fn identifier(&self) -> String {
 		format!("Color (#{})", self.to_gamma_srgb().to_rgba_hex_srgb())
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		ColorInput::new(FillChoice::Solid(*self))
 			.disabled(true)
 			.menu_direction(Some(MenuDirection::Top))
@@ -539,7 +560,7 @@ impl TableRowLayout for Color {
 			.widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![self.cell_widget(PathStep::Element(0))];
+		let widgets = vec![self.cell_widget(PathStep::Element(0), _data)];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -551,7 +572,7 @@ impl TableRowLayout for GradientStops {
 	fn identifier(&self) -> String {
 		format!("Gradient ({} stops)", self.len())
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		ColorInput::new(FillChoice::Gradient(self.clone()))
 			.menu_direction(Some(MenuDirection::Top))
 			.disabled(true)
@@ -559,7 +580,7 @@ impl TableRowLayout for GradientStops {
 			.widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![self.cell_widget(PathStep::Element(0))];
+		let widgets = vec![self.cell_widget(PathStep::Element(0), _data)];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -569,13 +590,13 @@ impl TableRowLayout for f64 {
 		"Number (f64)"
 	}
 	fn identifier(&self) -> String {
-		"Number (f64)".to_string()
+		format!("{self}")
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
-		NumberInput::new(Some(*self)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()
-	}
+	// Cells fall back to the default drill-in button (labeled with the value via `identifier`); the leaf page shows the rich `NumberInput`.
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![
+			NumberInput::new(Some(*self)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
+		])]
 	}
 }
 
@@ -586,11 +607,9 @@ impl TableRowLayout for u8 {
 	fn identifier(&self) -> String {
 		format!("{self:02X}")
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
-		TextLabel::new(self.identifier()).narrow(true).widget_instance()
-	}
+	// Cells fall back to the default drill-in button (labeled with the hex value via `identifier`); the leaf page shows the same hex value as a label.
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![TextLabel::new(self.identifier()).widget_instance()])]
 	}
 }
 
@@ -599,13 +618,13 @@ impl TableRowLayout for u32 {
 		"Number (u32)"
 	}
 	fn identifier(&self) -> String {
-		"Number (u32)".to_string()
+		format!("{self}")
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
-		NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()
-	}
+	// Cells fall back to the default drill-in button (labeled with the value via `identifier`); the leaf page shows the rich `NumberInput`.
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![
+			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
+		])]
 	}
 }
 
@@ -614,14 +633,14 @@ impl TableRowLayout for u64 {
 		"Number (u64)"
 	}
 	fn identifier(&self) -> String {
-		"Number (u64)".to_string()
+		format!("{self}")
 	}
+	// Cells fall back to the default drill-in button (labeled with the value via `identifier`); the leaf page shows the rich `NumberInput`.
 	// TODO: Make this robust for large u64 values that don't fit in f64 (above roughly 2^53). Perhaps using a bigint kind of approach through the widget's data flow.
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
-		NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance()
-	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![
+			NumberInput::new(Some(*self as f64)).disabled(true).max_width(220).display_decimal_places(20).widget_instance(),
+		])]
 	}
 }
 
@@ -632,11 +651,11 @@ impl TableRowLayout for bool {
 	fn identifier(&self) -> String {
 		"Bool".to_string()
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextLabel::new(self.to_string()).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -653,9 +672,7 @@ impl TableRowLayout for String {
 			format!("\"{}\"", first_line)
 		}
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
-		TextLabel::new(self.identifier()).narrow(true).widget_instance()
-	}
+	// Cells fall back to the default drill-in button (labeled with the truncated quoted preview via `identifier`); the leaf page shows the full multi-line text in a `TextAreaInput`.
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![TextAreaInput::new(self.to_string()).monospace(true).disabled(true).widget_instance()])]
 	}
@@ -668,11 +685,11 @@ impl TableRowLayout for Option<f64> {
 	fn identifier(&self) -> String {
 		"Option<f64>".to_string()
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -683,11 +700,11 @@ impl TableRowLayout for DVec2 {
 	fn identifier(&self) -> String {
 		"Vec2".to_string()
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextLabel::new(format_dvec2(*self)).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -698,11 +715,11 @@ impl TableRowLayout for Vec2 {
 	fn identifier(&self) -> String {
 		"Vec2".to_string()
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextLabel::new(format_dvec2(DVec2::new(self.x as f64, self.y as f64))).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -713,11 +730,11 @@ impl TableRowLayout for DAffine2 {
 	fn identifier(&self) -> String {
 		"Transform".to_string()
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextLabel::new(format_transform_matrix(*self)).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -728,12 +745,12 @@ impl TableRowLayout for Affine2 {
 	fn identifier(&self) -> String {
 		"Transform".to_string()
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
 		TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
 	}
 }
 
@@ -744,11 +761,21 @@ impl TableRowLayout for AlphaBlending {
 	fn identifier(&self) -> String {
 		format_alpha_blending(*self)
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	fn cell_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		TextLabel::new(format_alpha_blending(*self)).narrow(true).widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+/// Resolves the cell/breadcrumb label for a `NodeId` against `network_interface` at the given `network_path`,
+/// falling back to "Node {id}" if the node isn't present (e.g. an ID that no longer maps to a real node).
+fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> String {
+	if network_interface.node_metadata(&node_id, network_path).is_some() {
+		network_interface.display_name(&node_id, network_path)
+	} else {
+		format!("Node {node_id}")
 	}
 }
 
@@ -759,41 +786,108 @@ impl TableRowLayout for NodeId {
 	fn identifier(&self) -> String {
 		format!("Node {self}")
 	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
+	// Override so the breadcrumb uses the same resolved display name as the cell button, instead of the bare-ID fallback `identifier()` returns.
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		data.breadcrumbs.push(node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path));
+		self.element_page(data)
+	}
+	// Cell label resolves the node's display name via the network interface so the button reads as the name shown
+	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
+	// `Table<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
+	// signals layer-vs-node kind. Falls back to "Node {id}" with no icon if the lookup misses.
+	fn cell_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
+		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
+		let mut button = TextButton::new(label)
+			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
+			.narrow(true);
+		if data.network_interface.node_metadata(self, &data.node_lookup_network_path).is_some() {
+			let icon = if data.network_interface.is_layer(self, &data.node_lookup_network_path) { "Layer" } else { "Node" };
+			button = button.icon(icon);
+		}
+		button.widget_instance()
+	}
+	// The leaf page shows the node's kind, name (editable), lock/visibility toggles, and a "Select Layer/Node" action button.
+	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let node_id = *self;
-		TextButton::new("Go to Node")
-			.tooltip_description("Click to select the node with this ID in the graph.")
-			.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into())
-			.narrow(true)
-			.widget_instance()
-	}
-	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
-	}
-}
+		let network_path = data.node_lookup_network_path.clone();
+		let known = data.network_interface.node_metadata(&node_id, &network_path).is_some();
+		let is_layer = known && data.network_interface.is_layer(&node_id, &network_path);
+		let name = if known {
+			data.network_interface.display_name(&node_id, &network_path)
+		} else {
+			"(node not found)".to_string()
+		};
+		let kind_widget = if known {
+			IconLabel::new(if is_layer { "Layer" } else { "Node" }).widget_instance()
+		} else {
+			TextLabel::new("-").widget_instance()
+		};
+		let name_widget = if known {
+			let path_for_rename = network_path.clone();
+			TextInput::new(name)
+				.tooltip_description(if is_layer { "Name of this layer." } else { "Name of this node." })
+				.on_update(move |text_input| {
+					NodeGraphMessage::SetDisplayName {
+						node_id,
+						network_path: path_for_rename.clone(),
+						alias: text_input.value.clone(),
+						skip_adding_history_step: false,
+					}
+					.into()
+				})
+				.max_width(200)
+				.widget_instance()
+		} else {
+			TextLabel::new(name).widget_instance()
+		};
 
-impl TableRowLayout for Option<NodeId> {
-	fn type_name() -> &'static str {
-		"NodeId"
-	}
-	fn identifier(&self) -> String {
-		match self {
-			Some(node_id) => format!("Node {}", node_id),
-			None => "-".to_string(),
+		let mut header = vec![kind_widget, Separator::new(SeparatorStyle::Related).widget_instance(), name_widget];
+
+		if known {
+			let is_locked = data.network_interface.is_locked(&node_id, &network_path);
+			let is_visible = data.network_interface.is_visible(&node_id, &network_path);
+
+			let path_for_lock = network_path.clone();
+			let path_for_visibility = network_path.clone();
+
+			header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			header.push(
+				IconButton::new(if is_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+					.hover_icon(if is_locked { "PadlockUnlocked" } else { "PadlockLocked" })
+					.tooltip_label(if is_locked { "Unlock" } else { "Lock" })
+					.on_update(move |_| {
+						NodeGraphMessage::ToggleLocked {
+							node_id,
+							network_path: path_for_lock.clone(),
+						}
+						.into()
+					})
+					.widget_instance(),
+			);
+			header.push(
+				IconButton::new(if is_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+					.hover_icon(if is_visible { "EyeHide" } else { "EyeShow" })
+					.tooltip_label(if is_visible { "Hide" } else { "Show" })
+					.on_update(move |_| {
+						NodeGraphMessage::ToggleVisibility {
+							node_id,
+							network_path: path_for_visibility.clone(),
+						}
+						.into()
+					})
+					.widget_instance(),
+			);
 		}
-	}
-	fn cell_widget(&self, _target: PathStep) -> WidgetInstance {
-		match *self {
-			Some(node_id) => TextButton::new("Go to Node")
-				.tooltip_description("Click to select the node with this ID in the graph.")
+
+		header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		header.push(
+			TextButton::new(if is_layer { "Select Layer" } else { "Select Node" })
+				.tooltip_description(if is_layer { "Click to select this layer." } else { "Click to select this node." })
 				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into())
-				.narrow(true)
 				.widget_instance(),
-			None => TextLabel::new("-").narrow(true).widget_instance(),
-		}
-	}
-	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.cell_widget(PathStep::Element(0))])]
+		);
+
+		vec![LayoutGroup::row(header)]
 	}
 }
 
@@ -817,7 +911,6 @@ macro_rules! known_table_row_types {
 			GradientStops,
 			Color,
 			NodeId,
-			Option<NodeId>,
 			AlphaBlending,
 			DAffine2,
 			DVec2,
@@ -843,12 +936,12 @@ macro_rules! known_table_row_types {
 /// Delegates to [`TableRowLayout::cell_widget`] so the same widget code is shared between
 /// element-column rendering and attribute-column rendering. Returns `None` for unrecognized types so the
 /// caller can fall back to a debug-formatted [`TextLabel`].
-fn dispatch_cell_widget(any: &dyn Any, target: PathStep) -> Option<WidgetInstance> {
+fn dispatch_cell_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
 			$(
 				if let Some(value) = any.downcast_ref::<$ty>() {
-					return Some(value.cell_widget(target));
+					return Some(value.cell_widget(target, data));
 				}
 			)*
 		};
@@ -857,10 +950,54 @@ fn dispatch_cell_widget(any: &dyn Any, target: PathStep) -> Option<WidgetInstanc
 	None
 }
 
+/// Renders a `Table<NodeId>` as a path: the standard table view, but each row's `NodeId` cell is resolved
+/// against the network path made up of all preceding rows. So for a path `[outer, middle, leaf]`, row 0
+/// resolves at root, row 1 resolves at `[outer]`, and row 2 resolves at `[outer, middle]` — letting deeply
+/// nested layers display each step's correct name. Drilling into a row drops into that node's leaf page
+/// using the same prefix as `network_path`.
+fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut LayoutData) -> Vec<LayoutGroup> {
+	data.breadcrumbs.push(path.identifier());
+
+	if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
+		if let PathStep::Element(index) = step
+			&& let Some(node_id) = path.element(index)
+		{
+			let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
+			let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
+			data.current_depth += 1;
+			let result = node_id.layout_with_breadcrumb(data);
+			data.current_depth -= 1;
+			data.node_lookup_network_path = saved;
+			return result;
+		}
+		warn!("Desired path truncated");
+		data.desired_path.truncate(data.current_depth);
+	}
+
+	let mut rows = (0..path.len())
+		.map(|index| {
+			let node_id = path.element(index).unwrap();
+			let prefix: Vec<NodeId> = path.iter_element_values().take(index).copied().collect();
+			let saved = std::mem::replace(&mut data.node_lookup_network_path, prefix);
+			let widget = node_id.cell_widget(PathStep::Element(index), data);
+			data.node_lookup_network_path = saved;
+			vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), widget]
+		})
+		.collect::<Vec<_>>();
+	rows.insert(0, column_headings(&["", "element"]));
+
+	vec![LayoutGroup::table(rows, false)]
+}
+
 /// Type-dispatched recursion into an attribute value for the data panel breadcrumb navigation.
 /// Mirrors [`dispatch_cell_widget`] but routes to [`TableRowLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
+	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer` attribute), so each row's NodeId cell
+	// resolves against the prefix made up of preceding rows. Handled before the generic `Table<T>` blanket impl.
+	if let Some(path) = any.downcast_ref::<Table<NodeId>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
+	}
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
 			$(

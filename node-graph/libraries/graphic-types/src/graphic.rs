@@ -141,7 +141,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
 		for current_graphic_row in current_graphic_table.into_iter() {
-			let layer: Option<NodeId> = current_graphic_row.attribute_cloned_or_default("editor:layer");
+			let layer_path: Table<NodeId> = current_graphic_row.attribute_cloned_or_default("editor:layer");
 			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default("transform");
 			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default("alpha_blending");
 
@@ -168,7 +168,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 							attributes.insert("transform", current_transform * row_transform);
 							attributes.insert("alpha_blending", compose_alpha_blending(current_alpha_blending, row_alpha_blending));
-							attributes.insert("editor:layer", layer);
+							attributes.insert("editor:layer", layer_path.clone());
 
 							output.push(TableRow::from_parts(element, attributes));
 						}
