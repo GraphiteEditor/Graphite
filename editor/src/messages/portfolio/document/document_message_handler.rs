@@ -2144,7 +2144,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".into()))
+							.is_some_and(|reference| reference == DefinitionIdentifier::ProtoNode(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER))
 					})
 				});
 

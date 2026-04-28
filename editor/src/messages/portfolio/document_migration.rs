@@ -94,7 +94,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::transform::FreezeRealTimeNode",
 			"graphene_core::transform_nodes::BoundlessFootprintNode",
 			"graphene_core::transform_nodes::FreezeRealTimeNode",
-			// `subpath_segment_lengths` was inlined into the `sample_polyline` proto; old "Sample Polyline" subnetworks pass through unchanged.
 			"graphene_core::vector::SubpathSegmentLengthsNode",
 			"core_types::vector::SubpathSegmentLengthsNode",
 		],
@@ -910,8 +909,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::PointsToPolylineNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::poisson_disk_points::IDENTIFIER,
-		aliases: &["graphene_core::vector::PoissonDiskPointsNode"],
+		node: graphene_std::vector::scatter_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::PoissonDiskPointsNode", "core_types::vector::PoissonDiskPointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::position_on_path::IDENTIFIER,
@@ -2036,10 +2035,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 /// definition by its old reference name, swaps it to a still-supported implementation, and preserves the user's inputs.
 /// After this runs, the node's reference resolves cleanly so the rest of `migrate_node` proceeds normally.
 fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
-	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto.
-	// The proto now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
+	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto node.
+	// The proto node now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
 	// and `Memo` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
-	// old wrapper and the new proto.
+	// old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
 		&& name == "Sample Polyline"
 		&& node.inputs.len() == 7
@@ -2048,6 +2047,38 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		for (index, input) in old_inputs.iter().take(7).enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// Collapse the legacy "Scatter Points" wrapper network into the standalone `scatter_points` proto node.
+	// The wrapper's trailing `Memo` node is now produced automatically by the `memoize` attribute on the
+	// proto node, so the wrapper itself is redundant. The 3 user-facing inputs are positionally identical
+	// between the old wrapper and the new proto node.
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Scatter Points"
+		&& node.inputs.len() == 3
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::vector::scatter_points::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(3).enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// Collapse the legacy "Boolean Operation" wrapper network into the standalone `boolean_operation` proto node.
+	// The wrapper's trailing `Memo` node is now produced automatically by the `memoize` attribute on the
+	// proto node, so the wrapper itself is redundant. The 2 user-facing inputs are positionally identical
+	// between the old wrapper and the new proto node.
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Boolean Operation"
+		&& node.inputs.len() == 2
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
 			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
 		}
 	}
