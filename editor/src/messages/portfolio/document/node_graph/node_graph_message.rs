@@ -157,11 +157,15 @@ pub enum NodeGraphMessage {
 	},
 	SetDisplayName {
 		node_id: NodeId,
+		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
+		/// Lets the rename target a node at any nesting depth, independent of the current selection network.
+		network_path: Vec<NodeId>,
 		alias: String,
 		skip_adding_history_step: bool,
 	},
 	SetDisplayNameImpl {
 		node_id: NodeId,
+		network_path: Vec<NodeId>,
 		alias: String,
 	},
 	SetToNodeOrLayer {

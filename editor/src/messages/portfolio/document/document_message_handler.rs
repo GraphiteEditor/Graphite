@@ -699,6 +699,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
+						network_path: Vec::new(),
 						alias: name,
 						skip_adding_history_step: false,
 					});
@@ -756,6 +757,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
+						network_path: Vec::new(),
 						alias: name,
 						skip_adding_history_step: false,
 					});

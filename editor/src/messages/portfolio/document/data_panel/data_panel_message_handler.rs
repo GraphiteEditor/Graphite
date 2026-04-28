@@ -105,6 +105,7 @@ impl DataPanelMessageHandler {
 		if let Some((node_id, parent_path)) = self.introspected_node_path.split_last() {
 			let node_id = *node_id;
 			let is_layer = network_interface.is_layer(&node_id, parent_path);
+			let parent_path_owned = parent_path.to_vec();
 
 			widgets.extend([
 				if is_layer {
@@ -118,6 +119,7 @@ impl DataPanelMessageHandler {
 					.on_update(move |text_input| {
 						NodeGraphMessage::SetDisplayName {
 							node_id,
+							network_path: parent_path_owned.clone(),
 							alias: text_input.value.clone(),
 							skip_adding_history_step: false,
 						}

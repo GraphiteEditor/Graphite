@@ -659,6 +659,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: encapsulating_node_id,
+					network_path: selection_network_path.to_vec(),
 					alias: "Untitled Node".to_string(),
 				});
 
@@ -1816,13 +1817,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetDisplayName {
 				node_id,
+				network_path,
 				alias,
 				skip_adding_history_step,
 			} => {
 				if !skip_adding_history_step {
 					responses.add(DocumentMessage::StartTransaction);
 				}
-				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
+				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, network_path, alias });
 				if !skip_adding_history_step {
 					// Does not add a history step if the name was not changed
 					responses.add(DocumentMessage::EndTransaction);
@@ -1833,8 +1835,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(OverlaysMessage::Draw); // Redraw overlays to update artboard names
 				responses.add(DataPanelMessage::Refresh);
 			}
-			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
-				network_interface.set_display_name(&node_id, alias, selection_network_path);
+			NodeGraphMessage::SetDisplayNameImpl { node_id, network_path, alias } => {
+				network_interface.set_display_name(&node_id, alias, &network_path);
 			}
 			NodeGraphMessage::SetImportExportName { name, index } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -2399,6 +2401,7 @@ impl NodeGraphMessageHandler {
 					let mut properties = Vec::new();
 
 					if let [node_id] = *nodes.as_slice() {
+						let network_path = context.selection_network_path.to_vec();
 						properties.push(LayoutGroup::row(vec![
 							Separator::new(SeparatorStyle::Related).widget_instance(),
 							IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
@@ -2408,6 +2411,7 @@ impl NodeGraphMessageHandler {
 								.on_update(move |text_input| {
 									NodeGraphMessage::SetDisplayName {
 										node_id,
+										network_path: network_path.clone(),
 										alias: text_input.value.clone(),
 										skip_adding_history_step: false,
 									}
@@ -2470,6 +2474,7 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
+				let layer_network_path = context.selection_network_path.to_vec();
 				let mut layer_properties = vec![LayoutGroup::row(vec![
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
@@ -2479,6 +2484,7 @@ impl NodeGraphMessageHandler {
 						.on_update(move |text_input| {
 							NodeGraphMessage::SetDisplayName {
 								node_id: layer,
+								network_path: layer_network_path.clone(),
 								alias: text_input.value.clone(),
 								skip_adding_history_step: false,
 							}

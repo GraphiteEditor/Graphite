@@ -775,6 +775,7 @@ impl EditorWrapper {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
+			network_path: Vec::new(),
 			alias: name,
 			skip_adding_history_step: false,
 		};

@@ -35,6 +35,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					});
 					responses.add(NodeGraphMessage::SetDisplayNameImpl {
 						node_id,
+						network_path: Vec::new(),
 						alias: "Background".to_string(),
 					});
 					responses.add(NodeGraphMessage::SetLocked { node_id, locked: true });
