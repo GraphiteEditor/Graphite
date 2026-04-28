@@ -23,15 +23,15 @@ wasm = [
 # Local dependencies
 dyn-any = { workspace = true }
 graphene-hash = { workspace = true }
-core-types = { workspace = true }
-brush-nodes = { workspace = true }
-graphene-core = { workspace = true }
-graphene-application-io = { workspace = true }
-rendering = { workspace = true }
-raster-nodes = { workspace = true }
-vector-nodes = { workspace = true }
-graphic-types = { workspace = true }
-text-nodes = { workspace = true }
+core-types = { workspace = true, features = ["serde"] }
+brush-nodes = { workspace = true, features = ["serde"] }
+graphene-core = { workspace = true, features = ["serde"] }
+graphene-application-io = { workspace = true, features = ["serde"] }
+rendering = { workspace = true, features = ["serde"] }
+raster-nodes = { workspace = true, features = ["serde"] }
+vector-nodes = { workspace = true, features = ["serde"] }
+graphic-types = { workspace = true, features = ["serde"] }
+text-nodes = { workspace = true, features = ["serde"] }
 
 # Workspace dependencies
 log = { workspace = true }

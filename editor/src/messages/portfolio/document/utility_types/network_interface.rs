@@ -5521,11 +5521,11 @@ impl NodeNetworkInterface {
 
 		match post_node_input {
 			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
-				// First child in the stack — wire layer output to the post_node input
+				// First child in the stack: wire layer output to the post_node input
 				self.set_input_for_import(&post_node, layer_output, network_path);
 			}
 			NodeInput::Node { .. } => {
-				// Subsequent child — insert layer between post_node and its current upstream:
+				// Subsequent child: insert layer between post_node and its current upstream...
 				// 1. Disconnect old upstream from post_node, wire layer output to post_node
 				self.set_input_for_import(&post_node, layer_output, network_path);
 				// 2. Wire old upstream into layer's primary (stack) input

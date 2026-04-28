@@ -646,10 +646,12 @@ mod test_artboard {
 
 	/// Check if all of the artboards exist in any ordering
 	async fn has_artboards(editor: &mut EditorTestUtils, mut expected: Vec<ArtboardLayoutDocument>) {
-		let artboards = get_artboards(editor)
-			.await
-			.iter()
-			.map(|row| ArtboardLayoutDocument::new(row.element.location, row.element.dimensions))
+		let artboards = get_artboards(editor).await;
+		let artboards = (0..artboards.len())
+			.map(|index| {
+				let element = artboards.element(index).unwrap();
+				ArtboardLayoutDocument::new(element.location, element.dimensions)
+			})
 			.collect::<Vec<_>>();
 		assert_eq!(artboards.len(), expected.len(), "incorrect len: actual {:?}, expected {:?}", artboards, expected);
 

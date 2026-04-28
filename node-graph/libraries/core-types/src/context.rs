@@ -130,7 +130,8 @@ impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
 // ================
 
 // Public enum for flexible node macro codegen
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ContextFeature {
 	ExtractFootprint,
 	ExtractRealTime,
@@ -151,7 +152,8 @@ pub enum ContextFeature {
 // Internal bitflags for fast compiler analysis
 use bitflags::bitflags;
 bitflags! {
-	#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
+	#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct ContextFeatures: u32 {
 		const FOOTPRINT = 1 << 0;
 		const REAL_TIME = 1 << 1;
@@ -188,7 +190,8 @@ impl ContextFeatures {
 // CONTEXT DEPENDENCIES
 // ====================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,

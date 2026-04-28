@@ -104,7 +104,7 @@ impl DocumentMetadata {
 				.any(|upstream| Some(upstream) == source)
 		{
 			use_local = false;
-			info!("Local transform is invalid — using the identity for the local transform instead")
+			info!("Local transform is invalid. Using the identity for the local transform instead.");
 		}
 		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 

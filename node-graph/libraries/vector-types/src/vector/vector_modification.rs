@@ -9,11 +9,12 @@ use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
 
 /// Represents a procedural change to the [`PointDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	delta: HashMap<PointId, DVec2>,
 }
 
@@ -74,19 +75,20 @@ impl PointModification {
 }
 
 /// Represents a procedural change to the [`SegmentDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	start_point: HashMap<SegmentId, PointId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	end_point: HashMap<SegmentId, PointId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	handle_primary: HashMap<SegmentId, Option<DVec2>>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	handle_end: HashMap<SegmentId, Option<DVec2>>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	stroke: HashMap<SegmentId, StrokeId>,
 }
 
@@ -244,13 +246,14 @@ impl SegmentModification {
 }
 
 /// Represents a procedural change to the [`RegionDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	fill: HashMap<RegionId, FillId>,
 }
 
@@ -288,7 +291,8 @@ impl RegionModification {
 }
 
 /// Represents a procedural change to the [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
@@ -298,7 +302,8 @@ pub struct VectorModification {
 }
 
 /// A modification type that can be added to a [`VectorModification`].
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VectorModificationType {
 	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
 	InsertPoint { id: PointId, position: DVec2 },

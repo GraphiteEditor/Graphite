@@ -50,8 +50,7 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 
 	let dimensions = dimensions.abs();
 
-	let background: Option<Color> = background.into();
-	let background = background.unwrap_or(Color::WHITE);
+	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
 	Table::new_from_element(Artboard {
 		content,
