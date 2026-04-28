@@ -2,7 +2,7 @@ mod benchmark_util;
 
 use benchmark_util::setup_network;
 use graphene_std::application_io::RenderConfig;
-use iai_callgrind::{library_benchmark, library_benchmark_group, main};
+use gungraun::prelude::*;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::hint::black_box;
 
