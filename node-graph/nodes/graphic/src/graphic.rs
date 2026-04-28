@@ -68,10 +68,47 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	let index = index as i32;
 
 	if index < 0 {
-		collection.omit_index_from_end(-index as usize)
+		collection.omit_index_from_end(index.unsigned_abs() as usize)
 	} else {
 		collection.omit_index(index as usize)
 	}
+}
+
+/// Returns the bare element (without its row attributes) at the specified index in a table.
+/// Use this when downstream nodes want just the inner value rather than a single-row table.
+/// If no value exists at that index, the element type's default is returned.
+#[node_macro::node(category("General"))]
+pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The table of data to extract from.
+	#[implementations(
+		Table<String>,
+		Table<f64>,
+		Table<u8>,
+		Table<NodeId>,
+		Table<Color>,
+		Table<GradientStops>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Graphic>,
+		Table<Artboard>,
+	)]
+	table: Table<T>,
+	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	index: SignedInteger,
+) -> T {
+	let len = table.len();
+	let index = index as i32;
+	let resolved = if index < 0 {
+		let from_end = index.unsigned_abs() as usize;
+		if from_end > len {
+			return T::default();
+		}
+		len - from_end
+	} else {
+		index as usize
+	};
+	table.element(resolved).cloned().unwrap_or_default()
 }
 
 #[node_macro::node(category("General"))]

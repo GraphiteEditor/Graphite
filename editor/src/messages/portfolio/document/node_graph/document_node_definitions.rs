@@ -1545,11 +1545,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![
 							// Primary output: the whole match (String)
 							NodeInput::node(NodeId(1), 0),
-							// Secondary output: capture groups (Vec<String>)
+							// Secondary output: capture groups (Table<String>), each row carries `start`/`end`/`name` attributes from `regex_find`
 							NodeInput::node(NodeId(2), 0),
 						],
 						nodes: [
-							// Node 0: regex_find proto node — returns Vec<String> of [whole_match, ...capture_groups]
+							// Node 0: regex_find proto node — returns Table<String> of [whole_match, ...capture_groups]
 							DocumentNode {
 								inputs: vec![
 									NodeInput::import(concrete!(String), 0),
@@ -1561,13 +1561,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 1: index_elements at index 0 — extracts the whole match as a String
+							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the row's start/end/name attributes since the unwrapped String can't carry them)
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::index_elements::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::extract_element::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 2: omit_element at index 0 — returns capture groups as Vec<String>
+							// Node 2: omit_element at index 0, returns the capture group rows as a Table<String>, preserving each row's start/end/name attributes
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
