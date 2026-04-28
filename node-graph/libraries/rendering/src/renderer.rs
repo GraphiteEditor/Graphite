@@ -850,14 +850,14 @@ impl Render for Table<Graphic> {
 impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
-			let multiplied_transform = *row.transform;
 			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*row.transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+
+			let element_transform = set_stroke_transform.map(|stroke_transform| *row.transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
@@ -868,6 +868,7 @@ impl Render for Table<Vector> {
 			let mut path = String::new();
 
 			for mut bezpath in row.element.stroke_bezpath_iter() {
+				// Only affects layers with upstream transforms (from stroke node)
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 				path.push_str(bezpath.to_svg().as_str());
 			}
@@ -952,6 +953,7 @@ impl Render for Table<Vector> {
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
+				// Affects all layers regardless of upstream/downstream transforms (from the stroke node)
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
@@ -1038,7 +1040,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
+		use graphic_types::vector_types::vector::style::GradientType;
 
 		for row in self.iter() {
 			use graphic_types::vector_types::vector;
@@ -1188,23 +1190,13 @@ impl Render for Table<Vector> {
 						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 						None => peniko::Color::TRANSPARENT,
 					};
-					let cap = match stroke.cap {
-						StrokeCap::Butt => Cap::Butt,
-						StrokeCap::Round => Cap::Round,
-						StrokeCap::Square => Cap::Square,
-					};
-					let join = match stroke.join {
-						StrokeJoin::Miter => Join::Miter,
-						StrokeJoin::Bevel => Join::Bevel,
-						StrokeJoin::Round => Join::Round,
-					};
 					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
-						join,
-						start_cap: cap,
-						end_cap: cap,
+						join: stroke.join.to_kurbo(),
+						start_cap: stroke.cap.to_kurbo(),
+						end_cap: stroke.cap.to_kurbo(),
 						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};

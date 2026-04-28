@@ -237,6 +237,22 @@ impl StrokeCap {
 			StrokeCap::Square => "square",
 		}
 	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			StrokeCap::Butt => String::from("butt"),
+			StrokeCap::Round => String::from("round"),
+			StrokeCap::Square => String::from("square"),
+		}
+	}
+
+	pub fn to_kurbo(&self) -> kurbo::Cap {
+		match self {
+			StrokeCap::Butt => kurbo::Cap::Butt,
+			StrokeCap::Round => kurbo::Cap::Round,
+			StrokeCap::Square => kurbo::Cap::Square,
+		}
+	}
 }
 
 #[repr(C)]
@@ -256,6 +272,22 @@ impl StrokeJoin {
 			StrokeJoin::Bevel => "bevel",
 			StrokeJoin::Miter => "miter",
 			StrokeJoin::Round => "round",
+		}
+	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			StrokeJoin::Bevel => String::from("bevel"),
+			StrokeJoin::Miter => String::from("miter"),
+			StrokeJoin::Round => String::from("round"),
+		}
+	}
+
+	pub fn to_kurbo(&self) -> kurbo::Join {
+		match self {
+			StrokeJoin::Bevel => kurbo::Join::Bevel,
+			StrokeJoin::Miter => kurbo::Join::Miter,
+			StrokeJoin::Round => kurbo::Join::Round,
 		}
 	}
 }
@@ -335,6 +367,18 @@ impl Stroke {
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
 			paint_order: PaintOrder::StrokeAbove,
+		}
+	}
+
+	pub fn to_kurbo(&self) -> kurbo::Stroke {
+		kurbo::Stroke {
+			width: self.weight,
+			join: self.join.to_kurbo(),
+			miter_limit: self.join_miter_limit,
+			start_cap: self.cap.to_kurbo(),
+			end_cap: self.cap.to_kurbo(),
+			dash_offset: self.dash_offset,
+			..Default::default()
 		}
 	}
 

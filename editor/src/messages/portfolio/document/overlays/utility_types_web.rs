@@ -11,15 +11,18 @@ use crate::messages::viewport::ViewportMessageHandler;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::style::{PaintOrder, Stroke, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
+use js_sys::{Array, Reflect};
 use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
+use web_sys::{CanvasPattern, DomMatrix, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -38,19 +41,32 @@ pub enum GizmoEmphasis {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysType {
+	// =======
+	// General
+	// =======
 	ArtboardName,
-	CompassRose,
-	QuickMeasurement,
 	TransformMeasurement,
+	// ===========
+	// Select Tool
+	// ===========
+	QuickMeasurement,
 	TransformCage,
+	CompassRose,
+	Pivot,
+	Origin,
 	HoverOutline,
 	SelectionOutline,
 	LayerOriginCross,
-	Pivot,
-	Origin,
+	// ================
+	// Pen & Path Tools
+	// ================
 	Path,
 	Anchors,
 	Handles,
+	// =========
+	// Fill Tool
+	// =========
+	FillableIndicator,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -59,18 +75,19 @@ pub enum OverlaysType {
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
-	pub compass_rose: bool,
-	pub quick_measurement: bool,
 	pub transform_measurement: bool,
+	pub quick_measurement: bool,
 	pub transform_cage: bool,
+	pub compass_rose: bool,
+	pub pivot: bool,
+	pub origin: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub layer_origin_cross: bool,
-	pub pivot: bool,
-	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub fillable_indicator: bool,
 }
 
 impl Default for OverlaysVisibilitySettings {
@@ -78,18 +95,19 @@ impl Default for OverlaysVisibilitySettings {
 		Self {
 			all: true,
 			artboard_name: true,
-			compass_rose: true,
-			quick_measurement: true,
 			transform_measurement: true,
+			quick_measurement: true,
 			transform_cage: true,
+			compass_rose: true,
+			pivot: true,
+			origin: true,
 			hover_outline: true,
 			selection_outline: true,
 			layer_origin_cross: true,
-			pivot: true,
-			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
+			fillable_indicator: true,
 		}
 	}
 }
@@ -149,6 +167,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn fillable_indicator(&self) -> bool {
+		self.all && self.fillable_indicator
 	}
 }
 
@@ -851,8 +873,7 @@ impl OverlayContext {
 		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
-	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	pub fn draw_path_from_vector_data(&mut self, vector: &Vector, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -864,6 +885,12 @@ impl OverlayContext {
 			self.bezier_command(bezier, transform, move_to);
 		}
 
+		self.end_dpi_aware_transform();
+	}
+
+	/// Used by the Pen and Path tools to outline the path of the shape.
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+		self.draw_path_from_vector_data(vector, transform);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 
@@ -928,39 +955,39 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
-		self.start_dpi_aware_transform();
-
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, auto_close: bool, stroke_transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
-			let subpath = subpath.borrow();
-			let mut curves = subpath.iter().peekable();
+			let subpath = subpath.borrow().clone();
+			let mut bezpath = subpath.to_bezpath();
+			bezpath.apply_affine(Affine::new((stroke_transform).to_cols_array()));
+			let mut curves = bezpath.segments().peekable();
 
 			let Some(&first) = curves.peek() else {
 				continue;
 			};
 
-			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
+			let start_point = point_to_dvec2(first.start());
 			self.render_context.move_to(start_point.x, start_point.y);
 
 			for curve in curves {
 				match curve {
 					PathSeg::Line(line) => {
-						let a = transform.transform_point2(point_to_dvec2(line.p1));
+						let a = point_to_dvec2(line.p1);
 						let a = a.round() - DVec2::splat(0.5);
 						self.render_context.line_to(a.x, a.y);
 					}
 					PathSeg::Quad(quad_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
+						let a = point_to_dvec2(quad_bez.p1);
+						let b = point_to_dvec2(quad_bez.p2);
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y);
 					}
 					PathSeg::Cubic(cubic_bez) => {
-						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
-						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
-						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
+						let a = point_to_dvec2(cubic_bez.p1);
+						let b = point_to_dvec2(cubic_bez.p2);
+						let c = point_to_dvec2(cubic_bez.p3);
 						let a = a.round() - DVec2::splat(0.5);
 						let b = b.round() - DVec2::splat(0.5);
 						let c = c.round() - DVec2::splat(0.5);
@@ -969,16 +996,16 @@ impl OverlayContext {
 				}
 			}
 
-			if subpath.closed() {
+			if subpath.closed() && auto_close {
 				self.render_context.close_path();
 			}
 		}
-
-		self.end_dpi_aware_transform();
 	}
 
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		self.render_context.save();
+		self.start_dpi_aware_transform();
 		let mut subpaths: Vec<Subpath<PointId>> = vec![];
 
 		target_types.for_each(|target_type| match target_type.borrow() {
@@ -989,27 +1016,19 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			self.push_path(subpaths.iter(), transform);
+			self.draw_path_from_subpaths(subpaths.iter(), true, transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
 			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
+		self.end_dpi_aware_transform();
+		self.render_context.restore();
 	}
 
-	/// Fills the area inside the path. Assumes `color` is in gamma space.
-	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.push_path(subpaths, transform);
-
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
-	}
-
-	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
-	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	/// Default canvas pattern used for filling stroke or fill of a path.
+	fn fill_canvas_pattern(&self, color: &Color) -> web_sys::CanvasPattern {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -1025,7 +1044,7 @@ impl OverlayContext {
 		// 4x4 pixels, 4 components (RGBA) per pixel
 		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-		let rgba = hex_to_rgba_u8(color);
+		let rgba = color.to_rgba8_srgb();
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
@@ -1040,12 +1059,171 @@ impl OverlayContext {
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
 		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
+
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+		let dom_matrix = self.render_context.get_transform().unwrap().inverse();
+		let set_pattern_transform = |pattern: &CanvasPattern, matrix: &DomMatrix| {
+			// Get the JS function: pattern.setTransform
+			let func = Reflect::get(pattern, &JsValue::from_str("setTransform"))?;
+			// Pass it the matrix
+			Reflect::apply(&func.into(), pattern, &Array::of1(matrix))?;
+			Ok::<(), JsValue>(())
+		};
+		set_pattern_transform(&pattern, &dom_matrix);
 
-		self.push_path(subpaths, transform);
+		return pattern;
+	}
 
-		self.render_context.set_fill_style_canvas_pattern(&pattern);
+	/// Used by the Pen tool to show the path being closed.
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		self.draw_path_from_subpaths(subpaths, true, transform);
+
+		self.render_context.set_fill_style_str(color);
 		self.render_context.fill();
+	}
+
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		// Render for elements with fill
+		// Render for elements with fill only
+		// Render for elements with fill and stroke
+		//----PaintOrder
+		//----StrokeAlign
+
+		self.render_context.save();
+		self.start_dpi_aware_transform();
+
+		if let Some(stroke) = stroke {
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
+			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+
+			let [a, b, c, d, e, f] = element_transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
+
+			// For layers with open subpaths, stroke align is ignored and set to default
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+
+			let do_fill = || {
+				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+				self.render_context.fill();
+			};
+			let do_stroke = |stroke_weight: f64| {
+				self.render_context.set_line_width(stroke_weight);
+				self.render_context.set_stroke_style_str(&"#000000");
+				self.render_context.stroke();
+			};
+			let composite_mode = |composite_operation: &str| {
+				self.render_context
+					.set_global_composite_operation(composite_operation)
+					.expect("Failed to set global composite operation");
+			};
+
+			match (stroke_align, stroke.paint_order) {
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+					do_fill();
+					composite_mode("destination-out");
+					do_stroke(stroke.weight() * 2.);
+				}
+				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => do_fill(),
+				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+					do_fill();
+					composite_mode("destination-out");
+					do_stroke(stroke.weight());
+				}
+				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+					do_fill();
+				}
+				// Paint order does not affect this
+				(StrokeAlign::Outside, _) => {
+					do_fill();
+				}
+			}
+		} else {
+			self.draw_path_from_subpaths(subpaths, false, transform);
+			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+			self.render_context.fill();
+		}
+
+		self.end_dpi_aware_transform();
+		self.render_context.restore();
+	}
+
+	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// WARN: Don't use source-in, destination-atop, destination-in, copy
+	///       on the main canvas as it will erase the existing overlays
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+		// Render for elements with stroke
+		//----StrokeAlign
+		// Render for elements with stroke only
+		// Render for elements with stroke and fill
+		//----PaintOrder
+
+		self.render_context.save();
+		self.start_dpi_aware_transform();
+
+		if let Some(stroke) = stroke {
+			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
+			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
+			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
+
+			let [a, b, c, d, e, f] = element_transform.to_cols_array();
+			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
+
+			// For layers with open subpaths, stroke align is ignored and set to default
+			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
+
+			let do_stroke = |stroke_weight: f64| {
+				self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
+				self.render_context.set_line_width(stroke_weight);
+				self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
+				self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
+				self.render_context.set_miter_limit(stroke.join_miter_limit);
+				self.render_context.stroke();
+			};
+			let do_fill = || {
+				self.render_context.set_fill_style_str(&"#000000");
+				self.render_context.fill();
+			};
+			let composite_mode = |composite_operation: &str| {
+				self.render_context
+					.set_global_composite_operation(composite_operation)
+					.expect("Failed to set global composite operation");
+			};
+
+			match (stroke_align, stroke.paint_order) {
+				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+					// Clips away the stroke lying outside the path drawn from the subpaths
+					self.render_context.clip();
+					do_stroke(stroke.weight() * 2.);
+				}
+				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
+				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+					do_stroke(stroke.weight());
+				}
+				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+					do_stroke(stroke.weight());
+					composite_mode("destination-out");
+					do_fill();
+				}
+				// Paint order does not affect this
+				(StrokeAlign::Outside, _) => {
+					do_stroke(stroke.weight() * 2.);
+					composite_mode("destination-out");
+					do_fill();
+				}
+			}
+		}
+
+		self.end_dpi_aware_transform();
+		self.render_context.restore();
+	}
+
+	pub fn get_width(&self, text: &str) -> f64 {
+		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

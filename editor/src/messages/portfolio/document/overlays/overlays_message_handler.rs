@@ -50,13 +50,6 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				canvas_context.clear_rect(0., 0., width, height);
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays {
-						context: OverlayContext {
-							render_context: canvas_context.clone(),
-							visibility_settings: visibility_settings.clone(),
-							viewport: *viewport,
-						},
-					});
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
@@ -64,6 +57,13 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							viewport: *viewport,
 						}));
 					}
+					responses.add(DocumentMessage::GridOverlays {
+						context: OverlayContext {
+							render_context: canvas_context.clone(),
+							visibility_settings: visibility_settings.clone(),
+							viewport: *viewport,
+						},
+					});
 				}
 			}
 			#[cfg(all(not(target_family = "wasm"), not(test)))]
@@ -73,11 +73,10 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let overlay_context = OverlayContext::new(*viewport, visibility_settings);
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
-
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));
 					}
+					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
 				}
 				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}

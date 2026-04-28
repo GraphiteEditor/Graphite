@@ -495,6 +495,16 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
 
+	pub fn stroke_color_set(&mut self, color: Option<Color>) {
+		let Some(stroke_node_id) = self.existing_proto_node_id(graphene_std::vector::stroke::IDENTIFIER, false) else {
+			return;
+		};
+
+		let stroke_color = if let Some(color) = color { Table::new_from_element(color) } else { Table::new() };
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(stroke_color), false), false);
+	}
+
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.
 	/// A new Transform node is created if one does not exist, unless it would be given the identity transform.
 	pub fn transform_change_with_parent(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {

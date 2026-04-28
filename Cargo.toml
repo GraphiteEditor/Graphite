@@ -137,6 +137,8 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlCanvasElement",
 	"CanvasRenderingContext2d",
 	"CanvasPattern",
+	"DomMatrix",
+	"SvgMatrix",
 	"OffscreenCanvas",
 	"OffscreenCanvasRenderingContext2d",
 	"TextMetrics",
