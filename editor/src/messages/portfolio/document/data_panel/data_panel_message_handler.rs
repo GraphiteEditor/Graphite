@@ -855,14 +855,26 @@ impl TableRowLayout for NodeId {
 				IconButton::new(if is_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(if is_locked { "PadlockUnlocked" } else { "PadlockLocked" })
 					.tooltip_label(if is_locked { "Unlock" } else { "Lock" })
-					.on_update(move |_| NodeGraphMessage::ToggleLocked { node_id, network_path: path_for_lock.clone() }.into())
+					.on_update(move |_| {
+						NodeGraphMessage::ToggleLocked {
+							node_id,
+							network_path: path_for_lock.clone(),
+						}
+						.into()
+					})
 					.widget_instance(),
 			);
 			header.push(
 				IconButton::new(if is_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 					.hover_icon(if is_visible { "EyeHide" } else { "EyeShow" })
 					.tooltip_label(if is_visible { "Hide" } else { "Show" })
-					.on_update(move |_| NodeGraphMessage::ToggleVisibility { node_id, network_path: path_for_visibility.clone() }.into())
+					.on_update(move |_| {
+						NodeGraphMessage::ToggleVisibility {
+							node_id,
+							network_path: path_for_visibility.clone(),
+						}
+						.into()
+					})
 					.widget_instance(),
 			);
 		}

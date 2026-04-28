@@ -910,13 +910,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Toggle visibility of clicked node and return
 				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility, network_path: selection_network_path.to_vec() });
+					responses.add(NodeGraphMessage::ToggleVisibility {
+						node_id: clicked_visibility,
+						network_path: selection_network_path.to_vec(),
+					});
 					return;
 				}
 
 				// Toggle lock of clicked node and return
 				if let Some(clicked_lock) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Lock, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleLocked { node_id: clicked_lock, network_path: selection_network_path.to_vec() });
+					responses.add(NodeGraphMessage::ToggleLocked {
+						node_id: clicked_lock,
+						network_path: selection_network_path.to_vec(),
+					});
 					return;
 				}
 
@@ -1875,7 +1881,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 
 				for node_id in &node_ids {
-					responses.add(NodeGraphMessage::SetLocked { node_id: *node_id, network_path: selection_network_path.to_vec(), locked });
+					responses.add(NodeGraphMessage::SetLocked {
+						node_id: *node_id,
+						network_path: selection_network_path.to_vec(),
+						locked,
+					});
 				}
 
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
@@ -1918,7 +1928,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
-					responses.add(NodeGraphMessage::SetVisibility { node_id: *node_id, network_path: selection_network_path.to_vec(), visible });
+					responses.add(NodeGraphMessage::SetVisibility {
+						node_id: *node_id,
+						network_path: selection_network_path.to_vec(),
+						visible,
+					});
 				}
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
 			}

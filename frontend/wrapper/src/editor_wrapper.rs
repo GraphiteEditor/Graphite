@@ -932,7 +932,10 @@ impl EditorWrapper {
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, node_id: u64) {
-		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id), network_path: Vec::new() };
+		let message = NodeGraphMessage::ToggleLocked {
+			node_id: NodeId(node_id),
+			network_path: Vec::new(),
+		};
 		self.dispatch(message);
 	}
 
