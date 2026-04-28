@@ -50,6 +50,7 @@ pub enum PortfolioMessage {
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
+	LoadFontCatalog,
 	FontCatalogLoaded {
 		catalog: FontCatalog,
 	},
