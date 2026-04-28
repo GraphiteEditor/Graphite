@@ -2567,7 +2567,7 @@ pub mod choice {
 					if let Some(icon) = var_meta.icon { entry.icon(icon) } else { entry.label(var_meta.label) }
 				})
 				.collect();
-			RadioInput::new(items).selected_index(Some(current.as_u32())).widget_instance()
+			RadioInput::new(items).selected_index(Some(current.as_u32())).disabled(self.disabled).widget_instance()
 		}
 	}
 

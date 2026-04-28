@@ -92,14 +92,46 @@ impl TextContext {
 			return Table::new_from_element(Vector::default());
 		};
 
+		let alignment_width = typesetting.max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
+		let last_line_correction = typesetting.align.last_line_correction();
+
 		let mut path_builder = PathBuilder::new(per_glyph_instances, layout.scale() as f64);
 
 		for line in layout.lines() {
+			let range = line.text_range();
+			let is_last_para_line = range.end == text.len() || text.get(range.clone()).map(|s| s.ends_with('\n')).unwrap_or(false) || text.as_bytes().get(range.end) == Some(&b'\n');
+
+			let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+				let metrics = line.metrics();
+				let content_advance = metrics.advance - metrics.trailing_whitespace;
+				let free_space = alignment_width - content_advance;
+
+				match correction {
+					parley::Alignment::Center => (free_space as f64 * 0.5, 0_f32),
+					parley::Alignment::Right => (free_space as f64, 0_f32),
+					parley::Alignment::Justify => {
+						let line_text = text.get(range.clone()).unwrap_or("");
+						let trailing_len = line_text.len() - line_text.trim_end().len();
+						let visible_end_index = range.end - trailing_len;
+
+						let space_count: usize = line
+							.runs()
+							.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
+							.sum();
+						let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
+						(0_f64, extra)
+					}
+					_ => (0_f64, 0_f32),
+				}
+			} else {
+				(0_f64, 0_f32)
+			};
+
 			for item in line.items() {
 				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
 					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
 				{
-					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
+					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances, x_offset, space_extra);
 				}
 			}
 		}
