@@ -913,7 +913,7 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		let message = NodeGraphMessage::ToggleVisibility { node_id, network_path: Vec::new() };
 		self.dispatch(message);
 	}
 
@@ -932,7 +932,7 @@ impl EditorWrapper {
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, node_id: u64) {
-		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
+		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id), network_path: Vec::new() };
 		self.dispatch(message);
 	}
 

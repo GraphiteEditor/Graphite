@@ -53,9 +53,9 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 			}
 			DataPanelMessage::Refresh => {
 				// Re-render against the current network_interface without disturbing introspected_data or the breadcrumb path.
-				if self.introspected_data.is_some() {
-					self.update_layout(responses, context);
-				}
+				// Always re-renders, even when introspected_data is None, since the header still shows the inspected node's
+				// name/lock/visibility state from the network interface and that state can change independently of the data.
+				self.update_layout(responses, context);
 			}
 
 			DataPanelMessage::PushToElementPath { step } => {
@@ -847,19 +847,22 @@ impl TableRowLayout for NodeId {
 			let is_locked = data.network_interface.is_locked(&node_id, &network_path);
 			let is_visible = data.network_interface.is_visible(&node_id, &network_path);
 
+			let path_for_lock = network_path.clone();
+			let path_for_visibility = network_path.clone();
+
 			header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			header.push(
 				IconButton::new(if is_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(if is_locked { "PadlockUnlocked" } else { "PadlockLocked" })
 					.tooltip_label(if is_locked { "Unlock" } else { "Lock" })
-					.on_update(move |_| NodeGraphMessage::ToggleLocked { node_id }.into())
+					.on_update(move |_| NodeGraphMessage::ToggleLocked { node_id, network_path: path_for_lock.clone() }.into())
 					.widget_instance(),
 			);
 			header.push(
 				IconButton::new(if is_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 					.hover_icon(if is_visible { "EyeHide" } else { "EyeShow" })
 					.tooltip_label(if is_visible { "Hide" } else { "Show" })
-					.on_update(move |_| NodeGraphMessage::ToggleVisibility { node_id }.into())
+					.on_update(move |_| NodeGraphMessage::ToggleVisibility { node_id, network_path: path_for_visibility.clone() }.into())
 					.widget_instance(),
 			);
 		}

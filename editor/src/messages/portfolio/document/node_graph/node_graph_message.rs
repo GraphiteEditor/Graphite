@@ -203,15 +203,22 @@ pub enum NodeGraphMessage {
 	ToggleSelectedLocked,
 	ToggleLocked {
 		node_id: NodeId,
+		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
+		/// Lets the toggle target a node at any nesting depth, independent of the current selection network.
+		network_path: Vec<NodeId>,
 	},
 	SetLocked {
 		node_id: NodeId,
+		network_path: Vec<NodeId>,
 		locked: bool,
 	},
 	ToggleSelectedIsPinned,
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,
+		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
+		/// Lets the toggle target a node at any nesting depth, independent of the current selection network.
+		network_path: Vec<NodeId>,
 	},
 	SetPinned {
 		node_id: NodeId,
@@ -219,6 +226,7 @@ pub enum NodeGraphMessage {
 	},
 	SetVisibility {
 		node_id: NodeId,
+		network_path: Vec<NodeId>,
 		visible: bool,
 	},
 	SetLockedOrVisibilitySideEffects {
