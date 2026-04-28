@@ -30,7 +30,6 @@ async fn context_modification<T>(
 		Context -> Option<NodeId>,
 		Context -> Vec<NodeId>,
 		Context -> Vec<f64>,
-		Context -> Vec<f32>,
 		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,

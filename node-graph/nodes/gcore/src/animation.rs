@@ -1,6 +1,5 @@
 use core_types::table::Table;
 use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
@@ -74,10 +73,7 @@ async fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
 		Context -> Vec<f64>,
-		Context -> Vec<f32>,
 		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
@@ -117,10 +113,7 @@ async fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
 		Context -> Vec<f64>,
-		Context -> Vec<f32>,
 		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
