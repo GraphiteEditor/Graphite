@@ -195,26 +195,26 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHas
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The table whose rows will gain or replace the named attribute column.
 	#[implementations(
-		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
-		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
-		Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>,
-		Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>,
-		Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>,
-		Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>,
-		Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>,
+		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
+		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
+		Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>,
+		Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>,
+		Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>,
+		Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>,
+		Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>,
 	)]
 	mut content: Table<T>,
 	/// The attribute name (column key) to write or replace.
 	name: String,
 	/// The node that produces the per-row value. Called once per row with the row index in context.
 	#[implementations(
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
+		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Vec<String>, Context -> DVec2, Context -> DAffine2, Context -> Option<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
 	)]
 	value: impl Node<'n, Context<'static>, Output = U>,
 ) -> Table<T> {
