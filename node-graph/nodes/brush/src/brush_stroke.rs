@@ -1,3 +1,4 @@
+use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::math::bbox::AxisAlignedBbox;
@@ -9,7 +10,7 @@ use std::{
 };
 
 /// The style of a brush.
-#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushStyle {
 	pub color: Color,
 	pub diameter: f64,
@@ -32,17 +33,6 @@ impl Default for BrushStyle {
 	}
 }
 
-impl Hash for BrushStyle {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.color.hash(state);
-		self.diameter.to_bits().hash(state);
-		self.hardness.to_bits().hash(state);
-		self.flow.to_bits().hash(state);
-		self.spacing.to_bits().hash(state);
-		self.blend_mode.hash(state);
-	}
-}
-
 impl Eq for BrushStyle {}
 
 impl PartialEq for BrushStyle {
@@ -57,10 +47,8 @@ impl PartialEq for BrushStyle {
 }
 
 /// A single sample of brush parameters across the brush stroke.
-#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushInputSample {
-	// The position of the sample in layer space, in pixels.
-	// The origin of layer space is not specified.
 	pub position: DVec2,
 	pub pressure: f64,
 	// Future work: stylus angle, etc.
@@ -87,7 +75,7 @@ pub struct BrushOutputSample {
 }
 
 /// The parameters for a single stroke brush.
-#[derive(Clone, Debug, PartialEq, Hash, Default, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, core_types::CacheHash, Default, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushStroke {
 	pub style: BrushStyle,
 	pub trace: Vec<BrushInputSample>,

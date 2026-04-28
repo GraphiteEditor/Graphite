@@ -5,7 +5,6 @@ use core_types::Color;
 use core_types::color::float_to_srgb_u8;
 use core_types::table::{Table, TableRow};
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
-use core::hash::{Hash, Hasher};
 use core_types::color::*;
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
@@ -64,8 +63,10 @@ impl<P: Pixel + PartialEq> PartialEq for Image<P> {
 #[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransformImage(pub DAffine2);
 
-impl Hash for TransformImage {
-	fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+impl core_types::CacheHash for TransformImage {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		core_types::CacheHash::cache_hash(&self.0, state);
+	}
 }
 
 impl<P: Pixel + std::fmt::Debug> std::fmt::Debug for Image<P> {
@@ -109,11 +110,11 @@ impl<P: Copy + Pixel> BitmapMut for Image<P> {
 	}
 }
 
-impl<P: Hash + Pixel> Hash for Image<P> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.width.hash(state);
-		self.height.hash(state);
-		self.data.hash(state);
+impl<P: core_types::CacheHash + Pixel> core_types::CacheHash for Image<P> {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		core_types::CacheHash::cache_hash(&self.width, state);
+		core_types::CacheHash::cache_hash(&self.height, state);
+		core_types::CacheHash::cache_hash(&self.data, state);
 	}
 }
 
@@ -220,7 +221,7 @@ impl<P: Pixel> IntoIterator for Image<P> {
 pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny)]
 	enum RasterFrame {
 		ImageFrame(Table<Image<Color>>),
 	}
@@ -237,7 +238,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		}
 	}
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
 		GraphicGroup(Table<GraphicElement>),
 		RasterFrame(RasterFrame),
@@ -372,7 +373,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<TableRow<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	#[derive(Clone, Debug, PartialEq, DynAny)]
 	enum RasterFrame {
 		/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
 		ImageFrame(Table<Image<Color>>),
@@ -390,7 +391,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		}
 	}
 
-	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 		GraphicGroup(Table<GraphicElement>),

@@ -26,7 +26,7 @@ pub struct GradientOptions {
 
 #[impl_message(Message, ToolMessage, Gradient)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GradientToolMessage {
 	// Standard messages
 	Abort,

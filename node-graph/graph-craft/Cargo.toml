@@ -22,6 +22,7 @@ wasm = [
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
+graphene-hash = { workspace = true }
 core-types = { workspace = true }
 brush-nodes = { workspace = true }
 graphene-core = { workspace = true }

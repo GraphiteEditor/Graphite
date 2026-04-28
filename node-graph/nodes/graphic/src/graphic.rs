@@ -80,7 +80,7 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 }
 
 #[node_macro::node(category("General"))]
-async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
+async fn map<Item: AnyHash + Send + Sync + core_types::CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Table<Graphic>,

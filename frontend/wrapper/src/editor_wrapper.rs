@@ -22,6 +22,7 @@ use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCata
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::graphene_hash::CacheHashWrapper;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::GradientStops;
 use serde::Serialize;
@@ -131,7 +132,7 @@ impl EditorWrapper {
 	// Sends a FrontendMessage to JavaScript
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			let new_hash = calculate_hash(image_data);
+			let new_hash = calculate_hash(&CacheHashWrapper(image_data));
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
 
 			if new_hash != prev_hash {

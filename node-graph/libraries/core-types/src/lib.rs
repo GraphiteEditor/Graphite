@@ -21,6 +21,8 @@ pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use graphene_hash;
+pub use graphene_hash::CacheHash;
 pub use memo::MemoHash;
 pub use no_std_types::AsU32;
 pub use no_std_types::blending;

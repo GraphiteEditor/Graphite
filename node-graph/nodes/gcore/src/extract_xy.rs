@@ -1,4 +1,4 @@
-use core_types::Ctx;
+use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::{DVec2, IVec2, UVec2};
 
@@ -15,7 +15,7 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 
 /// The X or Y component of a vec2.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum XY {
 	#[default]

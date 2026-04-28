@@ -1,5 +1,6 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
+use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color};
@@ -10,6 +11,7 @@ use core_types::transform::{Footprint, Transform};
 use core_types::uuid::{NodeId, generate_uuid};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_hash::CacheHashWrapper;
 use graphic_types::Vector;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -21,7 +23,6 @@ use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
@@ -95,7 +96,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: HashMap<Image<Color>, u64>,
+	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
 	indent: usize,
 }
 
@@ -191,7 +192,7 @@ pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::ImageBrush, wgpu::Texture)>,
 }
 
-#[derive(Default, Clone, Copy, Hash)]
+#[derive(Default, Clone, Copy, Hash, graphene_hash::CacheHash)]
 pub enum RenderOutputType {
 	#[default]
 	Svg,
@@ -199,12 +200,13 @@ pub enum RenderOutputType {
 }
 
 /// Static state used whilst rendering
-#[derive(Default, Clone)]
+#[derive(Default, Clone, CacheHash)]
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
 	/// Ratio of physical pixels to logical pixels. `scale := physical_pixels / logical_pixels`
 	/// Ignored when rendering to SVG.
+	#[cache_hash(skip)]
 	pub scale: f64,
 	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
@@ -221,25 +223,6 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
-}
-
-impl Hash for RenderParams {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.render_mode.hash(state);
-		self.footprint.hash(state);
-		self.render_output_type.hash(state);
-		self.thumbnail.hash(state);
-		self.hide_artboards.hash(state);
-		self.for_export.hash(state);
-		self.for_mask.hash(state);
-		if let Some(x) = self.alignment_parent_transform {
-			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-		self.aligned_strokes.hash(state);
-		self.override_paint_order.hash(state);
-		self.artboard_background.hash(state);
-		self.viewport_zoom.to_bits().hash(state);
-	}
 }
 
 impl RenderParams {
@@ -1426,7 +1409,7 @@ impl Render for Table<Raster<CPU>> {
 			if render_params.to_canvas() {
 				let mut image_copy = image.clone();
 				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
-				let id = *render.image_data.entry(image_copy.into_data()).or_insert_with(generate_uuid);
+				let id = *render.image_data.entry(CacheHashWrapper(image_copy.into_data())).or_insert_with(generate_uuid);
 
 				render.parent_tag(
 					"foreignObject",

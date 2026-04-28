@@ -46,15 +46,14 @@ impl ImplResourceHandler for ResourceHandlerImpl {
 		if let Some(response) = response {
 			if self.reader.is_some() {
 				if let Some(mimetype) = &self.mimetype {
-					let cef_mime = CefString::from(mimetype.as_str());
-					response.set_mime_type(Some(&cef_mime));
+					response.set_mime_type(Some(&mimetype.as_str().into()));
 				} else {
 					response.set_mime_type(None);
 				}
 				response.set_status(200);
 			} else {
 				response.set_status(404);
-				response.set_mime_type(Some(&CefString::from("text/plain")));
+				response.set_mime_type(Some(&"text/plain".into()));
 			}
 		}
 	}

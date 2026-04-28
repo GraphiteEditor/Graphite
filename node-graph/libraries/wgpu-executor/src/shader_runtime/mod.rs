@@ -3,7 +3,7 @@ use crate::shader_runtime::per_pixel_adjust_runtime::PerPixelAdjustShaderRuntime
 
 pub mod per_pixel_adjust_runtime;
 
-pub const FULLSCREEN_VERTEX_SHADER_NAME: &str = "fullscreen_vertexfullscreen_vertex";
+pub const FULLSCREEN_VERTEX_SHADER_NAME: &str = "fullscreen_vertex_fullscreen_vertex";
 
 pub struct ShaderRuntime {
 	context: WgpuContext,
