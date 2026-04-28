@@ -1326,7 +1326,7 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 }
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
-#[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"))]
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
 async fn sample_polyline(
 	_: impl Ctx,
 	content: Table<Vector>,

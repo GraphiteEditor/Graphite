@@ -52,7 +52,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
-	// Add more attributes as needed
+	/// Whether the preprocessor should add a Memo node after this node in the generated subnetwork
+	pub(crate) memoize: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -259,6 +260,7 @@ impl Parse for NodeFnAttributes {
 		let mut cfg = None;
 		let mut shader_node = None;
 		let mut serialize = None;
+		let mut memoize = false;
 
 		let content = input;
 		// let content;
@@ -377,13 +379,25 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
 					serialize = Some(parsed_path);
 				}
+				// Instructs the preprocessor to insert a Memo node after this node in the generated subnetwork,
+				// caching its output across evaluations with identical inputs.
+				//
+				// Example usage:
+				// #[node_macro::node(..., memoize, ...)]
+				"memoize" => {
+					let path = meta.require_path_only()?;
+					if memoize {
+						return Err(Error::new_spanned(path, "Multiple 'memoize' attributes are not allowed"));
+					}
+					memoize = true;
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', and 'serialize'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', and 'memoize'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -415,6 +429,7 @@ impl Parse for NodeFnAttributes {
 			cfg,
 			shader_node,
 			serialize,
+			memoize,
 		})
 	}
 }
@@ -1020,6 +1035,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1088,6 +1104,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1170,6 +1187,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1234,6 +1252,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1310,6 +1329,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1374,6 +1394,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1438,6 +1459,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
+				memoize: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
