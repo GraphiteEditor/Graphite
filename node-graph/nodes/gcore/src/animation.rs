@@ -73,7 +73,6 @@ async fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Table<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
@@ -81,6 +80,8 @@ async fn quantize_real_time<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
+		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
@@ -112,7 +113,6 @@ async fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Table<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
@@ -120,6 +120,8 @@ async fn quantize_animation_time<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
+		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,

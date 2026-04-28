@@ -16,7 +16,6 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
-		Table<String>,
 		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
@@ -24,6 +23,10 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
+		Table<String>,
+		Table<f64>,
+		Table<u8>,
+		Table<NodeId>,
 	)]
 	collection: T,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.

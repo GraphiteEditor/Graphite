@@ -2864,7 +2864,9 @@ async fn count_elements<I: Count>(
 		Table<Color>,
 		Table<GradientStops>,
 		Table<String>,
+		Table<f64>,
 		Table<u8>,
+		Table<NodeId>,
 	)]
 	content: I,
 ) -> f64 {
