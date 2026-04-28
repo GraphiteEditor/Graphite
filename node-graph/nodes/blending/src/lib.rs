@@ -192,7 +192,7 @@ fn blend_mode<T: SetBlendMode>(
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: BlendMode,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or TableRow<T>) rather than applying to each item in its own table, which produces the undesired result
 	content.set_blend_mode(blend_mode);
 	content
 }
@@ -216,7 +216,7 @@ fn opacity<T: MultiplyAlpha>(
 	#[default(100.)]
 	opacity: Percentage,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or TableRow<T>) rather than applying to each item in its own table, which produces the undesired result
 	content.multiply_alpha(opacity / 100.);
 	content
 }
@@ -247,7 +247,7 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	/// Whether the content inherits the alpha of the content beneath it.
 	clip: bool,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or TableRow<T>) rather than applying to each item in its own table, which produces the undesired result
 	content.set_blend_mode(blend_mode);
 	content.multiply_alpha(opacity / 100.);
 	content.multiply_fill(fill / 100.);

@@ -215,7 +215,7 @@ fn query_json(
 
 /// Extracts every matched value from a JSON string using a path expression (see that parameter's description for its syntax). A list of zero or more resultant strings is produced. The `[]` path accessor is used to read more than one value.
 ///
-/// Each row carries a `type` attribute holding the matched value's JSON type (`"string"`, `"number"`, `"bool"`, `"null"`, `"object"`, or `"array"`).
+/// Each item carries a `type` attribute holding the matched value's JSON type (`"string"`, `"number"`, `"bool"`, `"null"`, `"object"`, or `"array"`).
 ///
 /// This is useful in conjunction with the nodes:
 /// • **Index Elements**: access the `N`th query result.

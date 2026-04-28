@@ -27,7 +27,7 @@
 		ancestorOfSelected: boolean;
 		parentsVisible: boolean;
 		parentsUnlocked: boolean;
-		instancePath: bigint[];
+		treePath: bigint[];
 	};
 
 	type DraggingData = {
@@ -140,10 +140,10 @@
 		editor.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClickWithModifiers(e: MouseEvent, instancePath: bigint[]) {
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, treePath: bigint[]) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.toggleLayerExpansion(BigUint64Array.from(instancePath), collapseRecursive);
+		editor.toggleLayerExpansion(BigUint64Array.from(treePath), collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -514,7 +514,7 @@
 		// Build the new layer hierarchy
 		const recurse = (children: LayerStructureEntry[], depth: number, parentId: bigint | undefined, parentPath: bigint[], parentsVisible: boolean, parentsUnlocked: boolean) => {
 			children.forEach((item, index) => {
-				const instancePath = [...parentPath, item.layerId];
+				const treePath = [...parentPath, item.layerId];
 				const mapping = layerCache.get(String(item.layerId));
 
 				if (mapping) {
@@ -531,14 +531,14 @@
 						ancestorOfSelected: item.descendantSelected,
 						parentsVisible,
 						parentsUnlocked,
-						instancePath,
+						treePath,
 					});
 				}
 
 				// Call self recursively, propagating this layer's visibility/lock state to its children
 				const childParentsVisible = parentsVisible && (mapping?.visible ?? true);
 				const childParentsUnlocked = parentsUnlocked && (mapping?.unlocked ?? true);
-				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, instancePath, childParentsVisible, childParentsUnlocked);
+				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, treePath, childParentsVisible, childParentsUnlocked);
 			});
 		};
 		recurse(layerStructure, 1, undefined, [], true, true);
@@ -605,7 +605,7 @@
 								: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
 								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
 							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.instancePath)}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.treePath)}
 							tabindex="0"
 						></button>
 					{:else}

@@ -392,7 +392,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
-		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
+		// TODO: Allow the 'Path' node to operate on `Table` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
 			if layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) {
@@ -604,7 +604,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions.into()), false), false);
 	}
 
-	/// Set the input, refresh the properties panel, and run the document graph if skip_rerender is false
+	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
 		self.network_interface.set_input(&input_connector, input, &[]);
 		self.responses.add(PropertiesPanelMessage::Refresh);

@@ -450,7 +450,7 @@ mod test_freehand {
 	}
 
 	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
-		assert_eq!(vector_and_transform_list.len(), 1, "There should be one row of Vector geometry");
+		assert_eq!(vector_and_transform_list.len(), 1, "There should be one item of Vector geometry");
 
 		let (vector, transform) = vector_and_transform_list
 			.iter()

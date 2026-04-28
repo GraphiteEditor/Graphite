@@ -44,7 +44,7 @@ macro_rules! define_layout_target {
 	};
 }
 define_layout_target!(
-	/// The spreadsheet panel allows for the visualisation of data in the graph.
+	/// The Data panel visualizes the output data flowing through the selected node in the graph.
 	DataPanel,
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
 	DialogButtons,
@@ -785,7 +785,7 @@ pub enum Widget {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WidgetDiff {
 	/// A path to the change
-	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
+	/// e.g. [0, 1, 2] in the Properties panel is the first section, second row and third widget.
 	/// An empty path [] shows that the entire panel has changed and is sent when the UI is first created.
 	#[serde(rename = "widgetPath")]
 	pub widget_path: Vec<usize>,

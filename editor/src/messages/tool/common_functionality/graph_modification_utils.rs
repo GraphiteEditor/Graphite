@@ -417,7 +417,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::TextAlign(align)) = inputs[graphene_std::text::text::AlignInput::INDEX].as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(per_glyph_instances)) = inputs[graphene_std::text::text::SeparateGlyphElementsInput::INDEX].as_value() else {
+	let Some(&TaggedValue::Bool(per_glyph_items)) = inputs[graphene_std::text::text::SeparateGlyphElementsInput::INDEX].as_value() else {
 		return None;
 	};
 
@@ -430,7 +430,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		tilt,
 		align,
 	};
-	Some((text, font, typesetting, per_glyph_instances))
+	Some((text, font, typesetting, per_glyph_items))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {

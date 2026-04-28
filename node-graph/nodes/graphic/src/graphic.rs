@@ -9,12 +9,12 @@ use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::{GradientStop, GradientStops, ReferencePoint};
 
-/// Returns the value at the specified index in the collection.
+/// Returns the value at the specified index in the list.
 /// If no value exists at that index, the type's default value is returned.
 #[node_macro::node(category("General"))]
 pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 	_: impl Ctx,
-	/// The collection of data, such as a list or table.
+	/// The list of data.
 	#[implementations(
 		Table<Artboard>,
 		Table<Graphic>,
@@ -28,8 +28,8 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 		Table<u8>,
 		Table<NodeId>,
 	)]
-	collection: T,
-	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	list: T,
+	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
 ) -> T::Output
 where
@@ -37,20 +37,15 @@ where
 {
 	let index = index as i32;
 
-	if index < 0 {
-		collection.at_index_from_end(-index as usize)
-	} else {
-		collection.at_index(index as usize)
-	}
-	.unwrap_or_default()
+	if index < 0 { list.at_index_from_end(-index as usize) } else { list.at_index(index as usize) }.unwrap_or_default()
 }
 
-/// Returns the collection with the element at the specified index removed.
-/// If no value exists at that index, the collection is returned unchanged.
+/// Returns the list with the element at the specified index removed.
+/// If no value exists at that index, the list is returned unchanged.
 #[node_macro::node(category("General"))]
 pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
-	/// The collection of data, such as a list or table.
+	/// The list of data.
 	#[implementations(
 		Table<String>,
 		Table<Artboard>,
@@ -61,26 +56,26 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 		Table<Color>,
 		Table<GradientStops>,
 	)]
-	collection: T,
-	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	list: T,
+	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
 ) -> T {
 	let index = index as i32;
 
 	if index < 0 {
-		collection.omit_index_from_end(index.unsigned_abs() as usize)
+		list.omit_index_from_end(index.unsigned_abs() as usize)
 	} else {
-		collection.omit_index(index as usize)
+		list.omit_index(index as usize)
 	}
 }
 
-/// Returns the bare element (without its row attributes) at the specified index in a table.
-/// Use this when downstream nodes want just the inner value rather than a single-row table.
+/// Returns the bare element (without the item's attributes) at the specified index in a `Table`.
+/// Use this when downstream nodes want just the inner value rather than a `Table` containing a single item.
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"))]
 pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
-	/// The table of data to extract from.
+	/// The `Table` of data to extract from.
 	#[implementations(
 		Table<String>,
 		Table<f64>,
@@ -94,7 +89,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		Table<Artboard>,
 	)]
 	table: Table<T>,
-	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
 ) -> T {
 	let len = table.len();
@@ -192,14 +187,14 @@ where
 
 	let mut result_table = Table::new();
 
-	// Add original instance depending on the keep_original flag
+	// Add original items depending on the keep_original flag
 	if keep_original {
-		for instance in content.clone().into_iter() {
-			result_table.push(instance);
+		for item in content.clone().into_iter() {
+			result_table.push(item);
 		}
 	}
 
-	// Create and add mirrored instance
+	// Create and add mirrored items
 	for mut row in content.into_iter() {
 		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 		row.set_attribute("transform", reflected_transform * current_transform);
@@ -212,7 +207,7 @@ where
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
 /// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
 /// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
-/// Used as the value source for stamping the `editor:layer` attribute on each row of a layer's output, which lets
+/// Used as the value source for stamping the `editor:layer` attribute on each item of a layer's output, which lets
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
@@ -221,14 +216,14 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> 
 	node_path.into_iter().take(len.saturating_sub(1)).collect()
 }
 
-/// Writes a per-row attribute column on the input table. The value-producing input is evaluated once per row,
-/// with the row's element index and the row itself (as a single-row table vararg) passed via context, so the
-/// upstream pipeline can return a different value per row that may be derived from the row's own data.
-/// If the column already exists, its values are replaced; if not, the column is created.
+/// Writes a named attribute on each item of the input `Table`. The value-producing input is evaluated once per item,
+/// with the item's index and the item itself (as a `Table` containing only that item, passed as a vararg) provided via
+/// context, so the upstream pipeline can return a different value per item that may be derived from the item's own data.
+/// If the attribute already exists, its values are replaced; if not, the attribute is added.
 #[node_macro::node(category("General"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
-	/// The table whose rows will gain or replace the named attribute column.
+	/// The `Table` whose items will gain or have replaced the named attribute.
 	#[implementations(
 		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
 		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
@@ -239,9 +234,9 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHas
 		Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>,
 	)]
 	mut content: Table<T>,
-	/// The attribute name (column key) to write or replace.
+	/// The attribute name (key) to write or replace.
 	name: String,
-	/// The node that produces the per-row value. Called once per row with the row index in context.
+	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
 	#[implementations(
 		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
 		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
@@ -262,14 +257,14 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHas
 	content
 }
 
-/// Joins two tables of the same type, extending the base table with the rows of the new table.
+/// Joins two `Table`s of the same type, extending the base `Table` with the items from the new `Table`.
 #[node_macro::node(category("General"))]
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	/// The table whose rows will appear at the start of the extended table.
+	/// The `Table` whose items will appear at the start of the extended `Table`.
 	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	base: Table<T>,
-	/// The table whose rows will appear at the end of the extended table.
+	/// The `Table` whose items will appear at the end of the extended `Table`.
 	#[expose]
 	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	new: Table<T>,
@@ -327,8 +322,8 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	Table::new_from_element(content.into())
 }
 
-/// Converts a table of graphical content into a graphic table by placing it into an element of a new wrapper graphic table.
-/// If it is already a graphic table, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
+/// Converts a `Table` of graphical content into a `Table<Graphic>` by placing it into an element of a new wrapper `Table<Graphic>`.
+/// If it is already a `Table<Graphic>`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
 #[node_macro::node(category("General"))]
 pub async fn to_graphic<T: IntoGraphicTable + 'n>(
 	_: impl Ctx,
@@ -345,7 +340,7 @@ pub async fn to_graphic<T: IntoGraphicTable + 'n>(
 	content.into_graphic_table()
 }
 
-/// Removes a level of nesting from a graphic table, or all nesting if "Fully Flatten" is enabled.
+/// Removes a level of nesting from a `Table<Graphic>`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
 pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
@@ -367,7 +362,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 
 					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
 				}
-				// Push any leaf Graphic elements we encounter, which can be either Graphic table elements beyond the recursion depth, or table elements other than Graphic tables
+				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`)
 				_ => {
 					let attributes = current_graphic_table.clone_row_attributes(index);
 					output_graphic_table.push(TableRow::from_parts(current_element, attributes));
@@ -382,31 +377,31 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 	output
 }
 
-/// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
+/// Converts a `Table<Graphic>` into a `Table<Vector>` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
 pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	content.into_flattened_table()
 }
 
-/// Converts a graphic table into a raster table by deeply flattening any raster content it contains, and discarding any non-raster content.
+/// Converts a `Table<Graphic>` into a `Table<Raster>` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
 pub async fn flatten_raster<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Raster<CPU>>)] content: T) -> Table<Raster<CPU>> {
 	content.into_flattened_table()
 }
 
-/// Converts a graphic table into a color table by deeply flattening any color content it contains, and discarding any non-color content.
+/// Converts a `Table<Graphic>` into a `Table<Color>` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
 pub async fn flatten_color<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] content: T) -> Table<Color> {
 	content.into_flattened_table()
 }
 
-/// Converts a graphic table into a gradient table by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+/// Converts a `Table<Graphic>` into a `Table<GradientStops>` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
 pub async fn flatten_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<GradientStops>)] content: T) -> Table<GradientStops> {
 	content.into_flattened_table()
 }
 
-/// Constructs a gradient from a table of colors, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
+/// Constructs a gradient from a `Table<Color>`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
 fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> Table<GradientStops> {
 	let colors = colors.into_flattened_table::<Color>();

@@ -109,7 +109,7 @@ trait AttributeColumn: std::any::Any + Send + Sync {
 	fn display_at(&self, index: usize) -> Option<String>;
 
 	/// Clones a single value from this column into a boxed scalar attribute value.
-	fn clone_cell(&self, index: usize) -> Option<Box<dyn AttributeValue>>;
+	fn clone_value(&self, index: usize) -> Option<Box<dyn AttributeValue>>;
 
 	/// Drains all values out of this column into a Vec of scalar attribute values.
 	fn drain(self: Box<Self>) -> Vec<Box<dyn AttributeValue>>;
@@ -191,7 +191,7 @@ impl<T: Clone + Send + Sync + Default + Debug + 'static> AttributeColumn for Col
 	}
 
 	/// Clones the value at the given index into a boxed scalar attribute value.
-	fn clone_cell(&self, index: usize) -> Option<Box<dyn AttributeValue>> {
+	fn clone_value(&self, index: usize) -> Option<Box<dyn AttributeValue>> {
 		self.0.get(index).map(|v| Box::new(v.clone()) as Box<dyn AttributeValue>)
 	}
 
@@ -346,8 +346,8 @@ impl AttributeColumns {
 		// Push values into existing columns, or a default if the row lacks that attribute
 		for (column_key, column) in &mut self.columns {
 			if let Some(position) = row_entries.iter().position(|(k, _)| k == column_key) {
-				let (_, cell_value) = row_entries.swap_remove(position);
-				column.push(cell_value);
+				let (_, value) = row_entries.swap_remove(position);
+				column.push(value);
 			} else {
 				column.push_default();
 			}
@@ -389,8 +389,8 @@ impl AttributeColumns {
 		self.len += other_len;
 	}
 
-	/// Gets a reference to a cell value at the given index from the column for the given key.
-	fn get_cell<T: 'static>(&self, key: &str, index: usize) -> Option<&T> {
+	/// Gets a reference to the value at the given index from the column for the given key.
+	fn get_value<T: 'static>(&self, key: &str, index: usize) -> Option<&T> {
 		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index)?.downcast_ref::<T>() } else { None })
 	}
 
@@ -415,28 +415,28 @@ impl AttributeColumns {
 		}
 	}
 
-	/// Gets a mutable reference to a cell value at the given index, creating the column if it doesn't exist or has the wrong type.
-	fn get_or_insert_default_cell<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str, index: usize) -> &mut T {
+	/// Gets a mutable reference to the value at the given index, creating the column if it doesn't exist or has the wrong type.
+	fn get_or_insert_default_value<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str, index: usize) -> &mut T {
 		let column_position = self.find_or_create_column::<T>(key);
 		let column = (*self.columns[column_position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
 		&mut column.0[index]
 	}
 
-	/// Sets a cell value at the given index in the column for the given key.
+	/// Sets the value at the given index in the column for the given key.
 	/// Creates the column with defaults if it doesn't exist.
-	fn set_cell<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
+	fn set_value<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
 		let key = key.into();
 		let column_position = self.find_or_create_column::<T>(&key);
 		let column = (*self.columns[column_position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
 		column.0[index] = value;
 	}
 
-	/// Returns a debug-formatted string for a cell at the given index in the column for the given key.
-	fn display_cell_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
+	/// Returns a debug-formatted string for the value at the given index in the column for the given key.
+	fn display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
 		self.columns.iter().find_map(|(k, column)| {
 			if k == key {
-				if let Some(cell) = column.get_any(index)
-					&& let Some(text) = overrides(cell)
+				if let Some(value) = column.get_any(index)
+					&& let Some(text) = overrides(value)
 				{
 					return Some(text);
 				}
@@ -447,8 +447,8 @@ impl AttributeColumns {
 		})
 	}
 
-	/// Returns a type-erased reference to the cell value at the given index in the column for the given key.
-	fn get_any_cell(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
+	/// Returns a type-erased reference to the value at the given index in the column for the given key.
+	fn get_any_value(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
 		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index) } else { None })
 	}
 
@@ -487,8 +487,8 @@ impl AttributeColumns {
 		let mut attributes = AttributeValues::new();
 
 		for (key, column) in &self.columns {
-			if let Some(cell) = column.clone_cell(index) {
-				attributes.0.push((key.clone(), cell));
+			if let Some(value) = column.clone_value(index) {
+				attributes.0.push((key.clone(), value));
 			}
 		}
 
@@ -500,8 +500,8 @@ impl AttributeColumns {
 		let mut rows: Vec<AttributeValues> = (0..self.len).map(|_| AttributeValues::new()).collect();
 
 		for (key, column) in self.columns {
-			for (i, cell) in column.drain().into_iter().enumerate() {
-				rows[i].0.push((key.clone(), cell));
+			for (i, value) in column.drain().into_iter().enumerate() {
+				rows[i].0.push((key.clone(), value));
 			}
 		}
 
@@ -640,38 +640,38 @@ impl<T> Table<T> {
 
 	/// Returns a shared reference to the attribute value at the given row index and key, if it exists and can be downcast to the requested type.
 	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
-		self.attributes.get_cell(key, index)
+		self.attributes.get_value(key, index)
 	}
 
 	/// Returns a clone of the attribute value at the given row index and key, or `U::default()` if absent or of a different type.
 	pub fn attribute_cloned_or_default<U: Clone + Default + 'static>(&self, key: &str, index: usize) -> U {
-		self.attributes.get_cell::<U>(key, index).cloned().unwrap_or_default()
+		self.attributes.get_value::<U>(key, index).cloned().unwrap_or_default()
 	}
 
 	/// Returns a clone of the attribute value at the given row index and key, or the provided default if absent or of a different type.
 	pub fn attribute_cloned_or<U: Clone + 'static>(&self, key: &str, index: usize, default: U) -> U {
-		self.attributes.get_cell::<U>(key, index).cloned().unwrap_or(default)
+		self.attributes.get_value::<U>(key, index).cloned().unwrap_or(default)
 	}
 
 	/// Sets the attribute value at the given row index and key, creating the column with defaults if it doesn't exist.
 	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
-		self.attributes.set_cell(key, index, value);
+		self.attributes.set_value(key, index, value);
 	}
 
 	/// Runs the given closure on a mutable reference to the attribute value at the given row index,
 	/// creating the column with defaults if it doesn't exist, and returns the closure's result.
 	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, index: usize, f: F) -> R {
-		f(self.attributes.get_or_insert_default_cell::<U>(key, index))
+		f(self.attributes.get_or_insert_default_value::<U>(key, index))
 	}
 
 	/// Returns a debug-formatted display string for the attribute at the given row index and key.
 	pub fn attribute_display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
-		self.attributes.display_cell_value(key, index, overrides)
+		self.attributes.display_value(key, index, overrides)
 	}
 
 	/// Returns a type-erased reference to the attribute value at the given row index and key, or `None` if absent.
 	pub fn attribute_any(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
-		self.attributes.get_any_cell(key, index)
+		self.attributes.get_any_value(key, index)
 	}
 
 	// =====================

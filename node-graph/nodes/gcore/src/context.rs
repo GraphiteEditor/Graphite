@@ -60,7 +60,7 @@ async fn read_position(
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-/// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Instance Repeat*.
+/// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Repeat*.
 ///
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
 #[node_macro::node(category("Context"), path(core_types::vector))]

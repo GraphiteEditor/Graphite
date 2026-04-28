@@ -7,7 +7,7 @@ use graphic_types::{
 use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
-/// Constructs a new single artboard table with the chosen properties.
+/// Constructs a new single-item `Table<Artboard>` with the chosen properties.
 #[node_macro::node(category(""))]
 pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,

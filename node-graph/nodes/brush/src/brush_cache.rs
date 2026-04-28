@@ -64,7 +64,7 @@ impl BrushCacheImpl {
 		background = std::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		// Transform is set to ZERO (not the default IDENTITY) as a sentinel to mark this row as uninitialized.
+		// Transform is set to ZERO (not the default IDENTITY) as a sentinel to mark this item as uninitialized.
 		let mut first_stroke_texture = TableRow::new_from_element(Raster::<CPU>::default()).with_attribute("transform", glam::DAffine2::ZERO);
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
