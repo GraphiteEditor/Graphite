@@ -180,6 +180,11 @@
 			clickAction={(tabIndex) => editor.selectDocument($portfolio.documents[tabIndex].id)}
 			closeAction={(tabIndex) => editor.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 			reorderAction={(oldIndex, newIndex) => editor.reorderDocument($portfolio.documents[oldIndex].id, newIndex)}
+			renameAction={(tabIndex, newName) => {
+				// Ensure the target document is the active one before renaming, since `RenameDocument` operates on the active document
+				editor.selectDocument($portfolio.documents[tabIndex].id);
+				editor.renameDocument(newName);
+			}}
 			tabActiveIndex={$portfolio.activeDocumentIndex}
 			groupDropAction={groupDrop}
 			splitDropAction={splitDrop}
