@@ -155,6 +155,11 @@ pub enum NodeGraphMessage {
 		input_connector: InputConnector,
 		input: NodeInput,
 	},
+	/// Asks the frontend to enter inline-rename mode for the given layer's display name in the graph view.
+	/// Triggered by double-clicking the layer's name area.
+	BeginEditLayerName {
+		node_id: NodeId,
+	},
 	SetDisplayName {
 		node_id: NodeId,
 		/// The path to the network containing `node_id`. Empty for nodes at the root document network.
