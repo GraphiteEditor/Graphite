@@ -5,6 +5,11 @@ use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
 use std::fmt::Debug;
 
+/// Attribute key under which each row of an editor-aware layer stores a `Table<NodeId>` describing the
+/// path (from the root document network) to the layer node that owns the row. Editor tools use this to
+/// route clicks/selection back to the originating layer at any nesting depth.
+pub const EDITOR_LAYER_PATH: &str = "editor:layer_path";
+
 // =====================
 // TRAIT: AttributeValue
 // =====================

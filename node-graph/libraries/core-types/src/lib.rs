@@ -33,6 +33,7 @@ pub use num_traits;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
+pub use table::EDITOR_LAYER_PATH;
 #[cfg(feature = "wasm")]
 pub use tsify;
 pub use types::Cow;

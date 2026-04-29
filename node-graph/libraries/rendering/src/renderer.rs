@@ -2,6 +2,7 @@ use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
 use core_types::AlphaBlending;
 use core_types::CacheHash;
+use core_types::EDITOR_LAYER_PATH;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color};
@@ -412,7 +413,7 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
-						let layer_path: Table<NodeId> = table.attribute_cloned_or_default("editor:layer", 0);
+						let layer_path: Table<NodeId> = table.attribute_cloned_or_default(EDITOR_LAYER_PATH, 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
 						let transform: DAffine2 = table.attribute_cloned_or_default("transform", 0);
 
@@ -656,7 +657,7 @@ impl Render for Table<Artboard> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			self.element(index).unwrap().collect_metadata(metadata, footprint, layer);
 		}
@@ -807,7 +808,7 @@ impl Render for Table<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -817,7 +818,7 @@ impl Render for Table<Graphic> {
 			if let Some(element_id) = layer {
 				element.collect_metadata(metadata, footprint, Some(element_id));
 			} else {
-				// Recurse through anonymous wrapper items to reach nested content with editor:layer tags
+				// Recurse through anonymous wrapper items to reach nested content with editor:layer_path tags
 				element.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -863,7 +864,7 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>("editor:layer");
+		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>(EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
 			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
@@ -1330,11 +1331,11 @@ impl Render for Table<Vector> {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
-				// When recovering element_id from the item's editor:layer tag (because the caller
+				// When recovering element_id from the item's editor:layer_path tag (because the caller
 				// passed None), also store the transform metadata that Graphic::collect_metadata
 				// normally provides but skipped due to the None element_id.
 				if caller_element_id.is_none() {

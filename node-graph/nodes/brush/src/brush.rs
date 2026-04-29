@@ -1,5 +1,6 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
+use core_types::EDITOR_LAYER_PATH;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
@@ -314,12 +315,12 @@ async fn brush(
 
 	let transform: DAffine2 = actual_image.attribute_cloned_or_default("transform");
 	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default("alpha_blending");
-	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default("editor:layer");
+	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default(EDITOR_LAYER_PATH);
 
 	*image.element_mut(0).unwrap() = actual_image.into_element();
 	image.set_attribute("transform", 0, transform);
 	image.set_attribute("alpha_blending", 0, alpha_blending);
-	image.set_attribute("editor:layer", 0, layer);
+	image.set_attribute(EDITOR_LAYER_PATH, 0, layer);
 
 	image
 }

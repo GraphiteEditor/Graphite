@@ -319,7 +319,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		Table::new_from_element(Raster::new_cpu(table.element(0).unwrap().clone()))
 	}
 
-	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
 	fn old_table_to_new_table<T>(old_table: OldTable<T>) -> Table<T> {
 		old_table.element.into_iter().map(TableRow::new_from_element).collect()
@@ -430,7 +430,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		RasterTableRow(TableRow<Raster<CPU>>),
 	}
 
-	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 	// to recover the element. Per-item attribute values are populated at runtime by the node graph.
 	Ok(match FormatVersions::deserialize(deserializer)? {
 		FormatVersions::Image(image) => TableRow::new_from_element(Raster::new_cpu(image)),

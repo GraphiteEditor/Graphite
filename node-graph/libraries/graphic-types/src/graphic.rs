@@ -1,4 +1,3 @@
-use core_types::Color;
 use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
@@ -6,6 +5,7 @@ use core_types::ops::TableConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
+use core_types::{Color, EDITOR_LAYER_PATH};
 use dyn_any::DynAny;
 use glam::DAffine2;
 use raster_types::{CPU, GPU, Raster};
@@ -141,7 +141,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
 		for current_graphic_row in current_graphic_table.into_iter() {
-			let layer_path: Table<NodeId> = current_graphic_row.attribute_cloned_or_default("editor:layer");
+			let layer_path: Table<NodeId> = current_graphic_row.attribute_cloned_or_default(EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default("transform");
 			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default("alpha_blending");
 
@@ -168,7 +168,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 							attributes.insert("transform", current_transform * row_transform);
 							attributes.insert("alpha_blending", compose_alpha_blending(current_alpha_blending, row_alpha_blending));
-							attributes.insert("editor:layer", layer_path.clone());
+							attributes.insert(EDITOR_LAYER_PATH, layer_path.clone());
 
 							output.push(TableRow::from_parts(element, attributes));
 						}
@@ -504,7 +504,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 		Table(serde_json::Value),
 	}
 
-	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
 	Ok(match GraphicFormat::deserialize(deserializer)? {
 		GraphicFormat::OldGraphicGroup(old) => old.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)).collect(),

@@ -1,6 +1,6 @@
-use core_types::Ctx;
 use core_types::table::Table;
 use core_types::uuid::NodeId;
+use core_types::{Ctx, EDITOR_LAYER_PATH};
 use glam::DAffine2;
 use graphic_types::Vector;
 use vector_types::vector::VectorModification;
@@ -21,8 +21,8 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 		let len = node_path.len();
 		node_path.into_iter().take(len.saturating_sub(1)).collect()
 	};
-	let existing: Table<NodeId> = vector.attribute_cloned_or_default("editor:layer", 0);
-	vector.set_attribute("editor:layer", 0, if existing.is_empty() { subgraph_path } else { existing });
+	let existing: Table<NodeId> = vector.attribute_cloned_or_default(EDITOR_LAYER_PATH, 0);
+	vector.set_attribute(EDITOR_LAYER_PATH, 0, if existing.is_empty() { subgraph_path } else { existing });
 
 	if vector.len() > 1 {
 		warn!("The path modify ran on {} vector items. Only the first can be modified.", vector.len());

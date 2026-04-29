@@ -1,6 +1,6 @@
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AlphaBlending, Color, Ctx};
+use core_types::{AlphaBlending, Color, Ctx, EDITOR_LAYER_PATH};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -188,7 +188,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 						TableRow::new_from_element(element)
 							.with_attribute("alpha_blending", alpha_blending)
-							.with_attribute("editor:layer", layer)
+							.with_attribute(EDITOR_LAYER_PATH, layer)
 					};
 
 					// Apply the parent graphic's transform to each raster element, preserving each item's layer
@@ -197,7 +197,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
-							let layer: Table<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
+							let layer: Table<NodeId> = image.attribute_cloned_or_default(EDITOR_LAYER_PATH, i);
 							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
 							make_row(parent_transform * row_transform, layer, alpha_blending)
 						})
@@ -214,7 +214,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 						TableRow::new_from_element(element)
 							.with_attribute("alpha_blending", alpha_blending)
-							.with_attribute("editor:layer", layer)
+							.with_attribute(EDITOR_LAYER_PATH, layer)
 					};
 
 					// Apply the parent graphic's transform to each raster element, preserving each item's layer
@@ -223,7 +223,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default("transform", i);
-							let layer: Table<NodeId> = image.attribute_cloned_or_default("editor:layer", i);
+							let layer: Table<NodeId> = image.attribute_cloned_or_default(EDITOR_LAYER_PATH, i);
 							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default("alpha_blending", i);
 							make_row(parent_transform * row_transform, layer, alpha_blending)
 						})

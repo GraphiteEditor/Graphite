@@ -113,7 +113,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		alpha_blending: Vec<AlphaBlending>,
 	}
 
-	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
 	Ok(match ArtboardFormat::deserialize(deserializer)? {
 		ArtboardFormat::ArtboardGroup(artboard_group) => artboard_group.artboards.into_iter().map(|(artboard, _)| TableRow::new_from_element(artboard)).collect(),

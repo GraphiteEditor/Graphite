@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, EDITOR_LAYER_PATH, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
@@ -207,7 +207,7 @@ where
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
 /// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
 /// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
-/// Used as the value source for stamping the `editor:layer` attribute on each item of a layer's output, which lets
+/// Used as the value source for stamping the `editor:layer_path` attribute on each item of a layer's output, which lets
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
@@ -296,7 +296,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute("editor:layer", layer);
+		row.set_attribute(EDITOR_LAYER_PATH, layer);
 		base.push(row);
 	}
 
