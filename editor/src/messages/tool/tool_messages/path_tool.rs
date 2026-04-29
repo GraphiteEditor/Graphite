@@ -3,7 +3,7 @@ use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
 	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
-	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	SELECTION_THRESHOLD, SELECTION_TOLERANCE, SNAP_DAMPENING_START_MULTIPLIER,
 };
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -13,6 +13,7 @@ use crate::messages::portfolio::document::overlays::utility_functions::{path_ove
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::misc::{PathSnapTarget, SnapTarget};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
@@ -22,7 +23,7 @@ use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoT
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
-use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
@@ -1152,7 +1153,35 @@ impl PathToolData {
 
 		self.snap_manager.update_indicator(snap_result.clone());
 
+		let snap_result = self.reduce_snap_weight(snap_result, new_handle_position, anchor_position);
+
 		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
+	}
+
+	fn reduce_snap_weight(&mut self, mut snap_result: SnappedPoint, new_handle_position: DVec2, anchor_position: DVec2) -> SnappedPoint {
+		if !matches!(snap_result.target, SnapTarget::Path(PathSnapTarget::AlongPath)) {
+			return snap_result;
+		}
+
+		let selection_status = &self.selection_status;
+		if selection_status.angle() != Some(ManipulatorAngle::Colinear) {
+			return snap_result;
+		}
+
+		let anchor_distance = snap_result.snapped_point_document.distance(anchor_position);
+		let dampening_start = snap_result.tolerance * SNAP_DAMPENING_START_MULTIPLIER;
+		if anchor_distance >= dampening_start {
+			return snap_result;
+		}
+
+		// 1 -> full snap; 0 -> no snap
+		let t: f64 = (anchor_distance / dampening_start).clamp(0.0, 1.0);
+		// smoothstep function: 3 * t ^ 2 - 2 * t ^ 3
+		let weight = t * t * (3.0 - 2.0 * t);
+		//linear interpolation
+		snap_result.snapped_point_document = new_handle_position.lerp(snap_result.snapped_point_document, weight);
+
+		snap_result
 	}
 
 	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
