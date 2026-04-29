@@ -14,7 +14,7 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use raster_nodes::curve::Curve;
 use rendering::RenderMetadata;
 use std::fmt::Display;
@@ -184,7 +184,7 @@ tagged_value! {
 	Graphic(Table<Graphic>),
 	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
-	Artboard(Table<Artboard>),
+	Artboard(Table<Table<Graphic>>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),

@@ -4571,32 +4571,7 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		node_metadata.persistent_metadata.display_name.clone_from(&display_name);
-
-		// Keep the alias in sync with the `ToArtboard` name input
-		if self
-			.reference(node_id, network_path)
-			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
-		{
-			let Some(nested_network) = self.network_mut(network_path) else {
-				return;
-			};
-			let Some(artboard_node) = nested_network.nodes.get_mut(node_id) else {
-				return;
-			};
-			let DocumentNodeImplementation::Network(network) = &mut artboard_node.implementation else {
-				return;
-			};
-			// Keep this in sync with the definition
-			let Some(to_artboard) = network.nodes.get_mut(&NodeId(0)) else {
-				return;
-			};
-
-			let label_index = 1;
-			let label = if !display_name.is_empty() { display_name } else { "Artboard".to_string() };
-			let label_input = NodeInput::value(TaggedValue::String(label), false);
-			to_artboard.inputs[label_index] = label_input;
-		}
+		node_metadata.persistent_metadata.display_name = display_name;
 
 		self.transaction_modified();
 		self.try_unload_layer_width(node_id, network_path);

@@ -3,7 +3,7 @@ use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 const DAY: f64 = 1000. * 3600. * 24.;
@@ -78,7 +78,7 @@ async fn quantize_real_time<T>(
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<GradientStops>,
 		Context -> Table<String>,
 		Context -> Table<f64>,
@@ -118,7 +118,7 @@ async fn quantize_animation_time<T>(
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<GradientStops>,
 		Context -> Table<String>,
 		Context -> Table<f64>,

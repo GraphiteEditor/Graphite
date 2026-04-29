@@ -354,13 +354,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(4), 0)],
 						nodes: [
-							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
 								inputs: vec![
 									NodeInput::import(concrete!(TaggedValue), 1),
-									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
 									NodeInput::import(concrete!(TaggedValue), 2),
 									NodeInput::import(concrete!(TaggedValue), 3),
 									NodeInput::import(concrete!(TaggedValue), 4),
@@ -396,7 +394,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(Table<Artboard>))), 0),
+									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(Table<Table<Graphic>>))), 0),
 									NodeInput::node(NodeId(3), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),

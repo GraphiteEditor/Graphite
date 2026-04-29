@@ -7,6 +7,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
 use graphene_std::Context;
+use graphene_std::Graphic;
 use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -14,7 +15,6 @@ use graphene_std::table::Table;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, FillChoice};
 use graphene_std::{AlphaBlending, Color};
-use graphene_std::{Artboard, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -182,7 +182,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
-		Table<Artboard>,
+		Table<Table<Graphic>>,
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
@@ -297,18 +297,6 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		rows.insert(0, column_headings(&column_names));
 
 		vec![LayoutGroup::table(rows, false)]
-	}
-}
-
-impl TableRowLayout for Artboard {
-	fn type_name() -> &'static str {
-		"Artboard"
-	}
-	fn identifier(&self) -> String {
-		self.label.clone()
-	}
-	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.content.value_page(data)
 	}
 }
 
@@ -652,7 +640,7 @@ impl TableRowLayout for bool {
 		"Bool".to_string()
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+		CheckboxInput::new(*self).disabled(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
@@ -897,7 +885,7 @@ impl TableRowLayout for NodeId {
 macro_rules! known_table_row_types {
 	($apply:ident) => {
 		$apply!(
-			Table<Artboard>,
+			Table<Table<Graphic>>,
 			Table<Graphic>,
 			Table<Vector>,
 			Table<Raster<CPU>>,
@@ -926,7 +914,6 @@ macro_rules! known_table_row_types {
 			Vector,
 			Raster<CPU>,
 			Raster<GPU>,
-			Artboard,
 			Graphic,
 		);
 	};

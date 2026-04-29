@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-use glam::{IVec2, UVec2};
+use glam::UVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 
@@ -47,7 +47,10 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
-						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
+						location: glam::DVec2::ZERO,
+						dimensions: self.dimensions.as_dvec2(),
+						background: Color::WHITE,
+						clip: true,
 					});
 					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
 				}

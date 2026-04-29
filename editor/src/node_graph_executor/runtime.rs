@@ -20,7 +20,7 @@ use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic};
+use graphene_std::{Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
@@ -439,7 +439,7 @@ impl NodeRuntime {
 				}
 			}
 			// Artboard table: thumbnail
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Table<Graphic>>>>() {
 				if update_thumbnails {
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
 				}
