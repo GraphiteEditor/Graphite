@@ -10,7 +10,9 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_LOCATION, ATTR_TRANSFORM};
+use core_types::{
+	ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -285,6 +287,10 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	let cols = transform.to_cols_array();
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
+}
+
+fn to_point(p: DVec2) -> kurbo::Point {
+	kurbo::Point::new(p.x, p.y)
 }
 
 fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::Color) {
@@ -1088,7 +1094,6 @@ impl Render for Table<Vector> {
 			}
 			let layer_bounds = element.bounding_box().unwrap_or_default();
 
-			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 			let mut path = kurbo::BezPath::new();
 			for mut bezpath in element.stroke_bezpath_iter() {
 				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
@@ -1749,16 +1754,35 @@ impl Render for Table<Color> {
 }
 
 impl Render for Table<GradientStops> {
-	// TODO: Fix infinite gradient rendering
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
+		// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
+		let thumbnail_rect = if render_params.thumbnail {
+			let truncated_size = render_params.footprint.resolution.as_dvec2();
+			let margin = DVec2::ONE;
+			Some((render_params.footprint.transform.translation - margin / 2., truncated_size + margin))
+		} else {
+			None
+		};
+
 		for index in 0..self.len() {
 			let Some(gradient) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
-			render.leaf_tag("rect", |attributes| {
-				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
-				let max = u64::MAX;
-				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
+			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
+			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
+			render.leaf_tag(tag, |attributes| {
+				if let Some((min, size)) = thumbnail_rect {
+					attributes.push("x", min.x.to_string());
+					attributes.push("y", min.y.to_string());
+					attributes.push("width", size.x.to_string());
+					attributes.push("height", size.y.to_string());
+				} else {
+					// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
+					let max = u64::MAX;
+					attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+				}
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in gradient.interpolated_samples() {
@@ -1772,7 +1796,8 @@ impl Render for Table<GradientStops> {
 					stop_string.push_str(" />");
 				}
 
-				let gradient_transform = render_params.footprint.transform * transform;
+				// render_thumbnail already added the footprint transform
+				let gradient_transform = if render_params.thumbnail { transform } else { render_params.footprint.transform * transform };
 				let gradient_transform_matrix = format_transform_matrix(gradient_transform);
 				let gradient_transform_attribute = if gradient_transform_matrix.is_empty() {
 					String::new()
@@ -1781,24 +1806,24 @@ impl Render for Table<GradientStops> {
 				};
 
 				let gradient_id = generate_uuid();
-				let start = DVec2::ZERO;
-				let end = DVec2::X;
+				let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
+					String::new()
+				} else {
+					format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+				};
 
-				match GradientType::Radial {
+				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
+				match gradient_type {
 					GradientType::Linear => {
-						let (x1, y1) = (start.x, start.y);
-						let (x2, y2) = (end.x, end.y);
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
 					GradientType::Radial => {
-						let (cx, cy) = (start.x, start.y);
-						let r = start.distance(end);
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="{cx}" cy="{cy}" r="{r}"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 						);
 					}
 				}
@@ -1817,28 +1842,82 @@ impl Render for Table<GradientStops> {
 		}
 	}
 
-	// TODO: Fix infinite gradient rendering
-	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		for (gradient, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
+		if let RenderMode::Outline = render_params.render_mode {
+			return;
+		}
+
+		for ((((gradient, transform), alpha_blending), spread_method), gradient_type) in self
+			.iter_element_values()
+			.zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM))
+			.zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING))
+			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
+			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
+		{
+			let gradient_transform = parent_transform * transform;
+
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let color = gradient.color.first().copied().unwrap_or(Color::MAGENTA);
-			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+			let mut stops: peniko::ColorStops = peniko::ColorStops::new();
+			for (position, color, _) in gradient.interpolated_samples() {
+				stops.push(peniko::ColorStop {
+					offset: position as f32,
+					color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+				})
+			}
 
+			let extend = match spread_method {
+				GradientSpreadMethod::Pad => peniko::Extend::Pad,
+				GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+				GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+			};
+
+			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
+			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
+			let kind = match gradient_type {
+				GradientType::Linear => peniko::LinearGradientPosition {
+					start: to_point(DVec2::ZERO),
+					end: to_point(DVec2::X),
+				}
+				.into(),
+				GradientType::Radial => peniko::RadialGradientPosition {
+					start_center: to_point(DVec2::ZERO),
+					start_radius: 0.,
+					end_center: to_point(DVec2::ZERO),
+					end_radius: 1.,
+				}
+				.into(),
+			};
+
+			let fill = peniko::Brush::Gradient(peniko::Gradient {
+				kind,
+				stops,
+				extend,
+				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+				..Default::default()
+			});
+			let brush_transform = kurbo::Affine::new((gradient_transform).to_cols_array());
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				// See implemenation in `Table<Color>` for more detail
+				// See implementation in `Table<Color>` for more detail
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
+			// Encode shape and brush manually instead of Scene.fill(), which would multiply brush_transform by the path transform
+			scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&kurbo::Affine::scale(f64::INFINITY)));
+			scene.encoding_mut().encode_fill_style(peniko::Fill::NonZero);
+			scene.encoding_mut().encode_shape(&rect, true);
+
+			scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&brush_transform));
+			scene.encoding_mut().swap_last_path_tags();
+			scene.encoding_mut().encode_brush(&fill, 1.);
 
 			if layer {
 				scene.pop_layer();

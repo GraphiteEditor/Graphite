@@ -4441,6 +4441,7 @@ dependencies = [
  "usvg",
  "vector-types",
  "vello",
+ "vello_encoding",
 ]
 
 [[package]]

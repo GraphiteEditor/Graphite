@@ -13,9 +13,8 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
-use graphene_std::vector::{PointId, VectorModification, VectorModificationType};
+use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -459,6 +458,15 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let input_connector = InputConnector::node(blend_node_id, 3);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
+	}
+
+	pub fn gradient_table_set(&mut self, gradient_table: Table<GradientStops>) {
+		let Some(gradient_node_id) = self.existing_proto_node_id(graphene_std::math_nodes::gradient_value::IDENTIFIER, true) else {
+			return;
+		};
+
+		let input_connector = InputConnector::node(gradient_node_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientTable(gradient_table), false), false);
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {

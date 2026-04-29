@@ -57,6 +57,14 @@ pub const ATTR_BACKGROUND: &str = "background";
 /// Attribute key for an artboard row's `bool` flag indicating whether content is clipped to the artboard bounds.
 pub const ATTR_CLIP: &str = "clip";
 
+/// Attribute key for a `Table<GradientStops>` row's `GradientSpreadMethod`, controlling the gradient's behavior
+/// outside the start/end stops (`Pad` clamps to the boundary colors, `Reflect` mirrors, `Repeat` tiles).
+pub const ATTR_SPREAD_METHOD: &str = "spread_method";
+
+/// Attribute key for a `Table<GradientStops>` row's `GradientType`, choosing between a linear gradient (color
+/// transitions along the gradient line) or a radial gradient (color transitions outward from the line's start).
+pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+
 // =====================
 // TRAIT: AttributeValue
 // =====================
@@ -824,12 +832,12 @@ impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for Table<T> {
 }
 
 impl<T: BoundingBox> BoundingBox for Table<T> {
-	/// Computes the combined bounding box of all rows, composing each row's transform attribute with the given transform.
+	/// Computes the combined bounding box of all items, composing each item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.bounding_box(transform * row_transform, include_stroke) {
+		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
+			match element.bounding_box(transform * item_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -842,6 +850,29 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 		match combined_bounds {
 			Some(bounds) => RenderBoundingBox::Rectangle(bounds),
 			None => RenderBoundingBox::None,
+		}
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
+		// `Infinite` items are skipped here (rather than propagating outward as in `bounding_box`) so a finite sibling in a mixed group dictates the framing
+		let mut combined_bounds = None;
+		let mut any_infinite = false;
+
+		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
+			match element.thumbnail_bounding_box(transform * item_transform, include_stroke) {
+				RenderBoundingBox::None => continue,
+				RenderBoundingBox::Infinite => any_infinite = true,
+				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
+					Some(existing) => combined_bounds = Some(Quad::combine_bounds(existing, bounds)),
+					None => combined_bounds = Some(bounds),
+				},
+			}
+		}
+
+		match (combined_bounds, any_infinite) {
+			(Some(bounds), _) => RenderBoundingBox::Rectangle(bounds),
+			(None, true) => RenderBoundingBox::Infinite,
+			(None, false) => RenderBoundingBox::None,
 		}
 	}
 }
@@ -897,14 +928,14 @@ impl<T: PartialEq> PartialEq for Table<T> {
 }
 
 impl<T> ApplyTransform for Table<T> {
-	/// Right-multiplies the modification into each row's transform attribute.
+	/// Right-multiplies the modification into each item's transform attribute.
 	fn apply_transform(&mut self, modification: &DAffine2) {
 		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 			*transform *= *modification;
 		}
 	}
 
-	/// Left-multiplies the modification into each row's transform attribute.
+	/// Left-multiplies the modification into each item's transform attribute.
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
 		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 			*transform = *modification * *transform;

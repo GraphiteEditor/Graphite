@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -8,7 +8,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::bounds::RenderBoundingBox;
+use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -435,13 +435,16 @@ impl NodeRuntime {
 			// Graphic table: thumbnail
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					let bounds = io.output.thumbnail_bounding_box(DAffine2::IDENTITY, true);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
-			// Artboard table: thumbnail
+			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
+			// clips content to those rectangles so anything outside isn't visible
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Table<Graphic>>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					let bounds = artboard_clip_bounds(&io.output);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
 			// Vector table: vector modifications
@@ -457,7 +460,13 @@ impl NodeRuntime {
 	}
 
 	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn render_thumbnail(thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>, parent_network_node_id: NodeId, graphic: &impl Render, responses: &mut VecDeque<FrontendMessage>) {
+	fn render_thumbnail(
+		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
+		parent_network_node_id: NodeId,
+		graphic: &impl Render,
+		bounds: RenderBoundingBox,
+		responses: &mut VecDeque<FrontendMessage>,
+	) {
 		// Skip thumbnails if the layer is too complex (for performance)
 		if graphic.render_complexity() > 1000 {
 			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
@@ -471,12 +480,13 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
-			RenderBoundingBox::None => None,
-			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
-			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
+		// Fall back to a 1×1 rectangle if no caller offered finite bounds, then aspect-correct to the panel's 3:2 ratio
+		let raw_bounds = match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+			_ => [DVec2::ZERO, DVec2::ONE],
 		};
-		let new_thumbnail_svg = if let Some(bounds) = bounds {
+		let bounds = expand_to_thumbnail_aspect(raw_bounds);
+		let new_thumbnail_svg = {
 			let footprint = Footprint {
 				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
 				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
@@ -496,8 +506,6 @@ impl NodeRuntime {
 			render.format_svg(bounds[0], bounds[1]);
 
 			render.svg
-		} else {
-			Vec::new()
 		};
 
 		// Update frontend thumbnail
@@ -510,6 +518,41 @@ impl NodeRuntime {
 			*old_thumbnail_svg = new_thumbnail_svg;
 		}
 	}
+}
+
+/// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
+/// framing matches what's actually visible after clipping rather than the unclipped content extents.
+fn artboard_clip_bounds(artboards: &Table<Table<Graphic>>) -> RenderBoundingBox {
+	let mut combined: Option<[DVec2; 2]> = None;
+	for index in 0..artboards.len() {
+		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
+		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+		let bounds = [location, location + dimensions];
+		combined = Some(match combined {
+			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],
+			None => bounds,
+		});
+	}
+	match combined {
+		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+		None => RenderBoundingBox::None,
+	}
+}
+
+/// Expands an AABB outward (centered) to match the Layers panel thumbnail's 3:2 aspect ratio, padding the smaller axis
+/// so the input's extent is always preserved.
+fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
+	const THUMBNAIL_ASPECT_RATIO: f64 = 1.5;
+
+	let size = bounds[1] - bounds[0];
+	let center = (bounds[0] + bounds[1]) / 2.;
+	let (width, height) = if size.x >= size.y * THUMBNAIL_ASPECT_RATIO {
+		(size.x, size.x / THUMBNAIL_ASPECT_RATIO)
+	} else {
+		(size.y * THUMBNAIL_ASPECT_RATIO, size.y)
+	};
+	let half = DVec2::new(width, height) / 2.;
+	[center - half, center + half]
 }
 
 pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
