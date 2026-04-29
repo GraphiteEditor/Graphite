@@ -6,7 +6,8 @@ use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelati
 use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{
-	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, STACK_VERTICAL_GAP,
+	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, HALF_GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH,
+	STACK_VERTICAL_GAP,
 };
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
@@ -2503,7 +2504,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let node_top_left = node_position.as_dvec2() * 24.;
+		let node_top_left = node_position.as_dvec2() * GRID_SIZE as f64;
 		let mut port_click_targets = Ports::new();
 		let document_node_click_targets = if !node_metadata.persistent_metadata.is_layer() {
 			// Create input/output click targets
@@ -2528,9 +2529,10 @@ impl NodeNetworkInterface {
 				port_click_targets.insert_node_output(output_index, node_top_left);
 			}
 
-			let height = input_row_count.max(number_of_outputs).max(1) as u32 * crate::consts::GRID_SIZE;
-			let width = 5 * crate::consts::GRID_SIZE;
-			let node_click_target_top_left = node_top_left + DVec2::new(0., 12.);
+			let height = input_row_count.max(number_of_outputs).max(1) as u32 * GRID_SIZE;
+			let width = 5 * GRID_SIZE;
+			// Offset down by half a grid so the click target sits below the top connector strip.
+			let node_click_target_top_left = node_top_left + DVec2::new(0., HALF_GRID_SIZE as f64);
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
 			let radius = 3.;
@@ -2554,37 +2556,90 @@ impl NodeNetworkInterface {
 				log::error!("Could not get layer width in load_node_click_targets");
 				0
 			});
-			let width = layer_width_cells * crate::consts::GRID_SIZE;
-			let height = 2 * crate::consts::GRID_SIZE;
+			let width = layer_width_cells * GRID_SIZE;
+			let height = 2 * GRID_SIZE;
 			let locked = self.is_locked(node_id, network_path);
 
+			// The layer is `2 * GRID_SIZE` tall, so its vertical center sits one grid unit below `node_top_left.y`.
+			// Visibility/lock buttons fill a 1-grid-cell square (so half-extents of HALF_GRID_SIZE each side of center).
+			const LAYER_VERTICAL_CENTER: f64 = GRID_SIZE as f64;
+			const ICON_HALF_EXTENT: f64 = HALF_GRID_SIZE as f64;
+
 			// Update visibility button click target
-			let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
-			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
+			let visibility_offset = node_top_left + DVec2::new(width as f64, LAYER_VERTICAL_CENTER);
+			let subpath = Subpath::new_rounded_rectangle(
+				DVec2::new(-ICON_HALF_EXTENT, -ICON_HALF_EXTENT) + visibility_offset,
+				DVec2::new(ICON_HALF_EXTENT, ICON_HALF_EXTENT) + visibility_offset,
+				[3.; 4],
+			);
 			let visibility_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			// Update lock button click target, positioned one grid unit to the left of the visibility button (only when locked)
 			let lock_click_target = if locked {
-				let lock_offset = node_top_left + DVec2::new(width as f64 - GRID_SIZE as f64, 24.);
-				let subpath = Subpath::new_rounded_rectangle(DVec2::new(-12., -12.) + lock_offset, DVec2::new(12., 12.) + lock_offset, [3.; 4]);
+				let lock_offset = node_top_left + DVec2::new(width as f64 - GRID_SIZE as f64, LAYER_VERTICAL_CENTER);
+				let subpath = Subpath::new_rounded_rectangle(
+					DVec2::new(-ICON_HALF_EXTENT, -ICON_HALF_EXTENT) + lock_offset,
+					DVec2::new(ICON_HALF_EXTENT, ICON_HALF_EXTENT) + lock_offset,
+					[3.; 4],
+				);
 				Some(ClickTarget::new_with_subpath(subpath, 0.))
 			} else {
 				None
 			};
 
-			// Update grip button click target, which is positioned to the left of the leftmost icon
+			// Update grip button click target, which is positioned to the left of the leftmost icon.
+			// The grip is 8px wide but spans the full layer-vertical-center band.
+			const GRIP_WIDTH: f64 = 8.;
 			let icons_width = if locked { GRID_SIZE as f64 } else { 0. };
-			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - (GRID_SIZE as f64) / 2. - icons_width, 24.);
-			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
+			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - ICON_HALF_EXTENT - icons_width, LAYER_VERTICAL_CENTER);
+			let subpath = Subpath::new_rounded_rectangle(
+				DVec2::new(-GRIP_WIDTH, -ICON_HALF_EXTENT) + grip_offset_right_edge,
+				DVec2::new(0., ICON_HALF_EXTENT) + grip_offset_right_edge,
+				[0.; 4],
+			);
 			let grip_click_target = ClickTarget::new_with_subpath(subpath, 0.);
+
+			// Update display-name text click target, used to detect double-click rename. Sized to the text bounds
+			// (not the surrounding `.details` area) so the rest of the layer still drills into the subgraph on double-click.
+
+			/// `.layer` margin-left (= 12), for chain layers the negative margin-left and positive padding-left cancel out, keeping content at this same offset
+			const LAYER_LEFT_MARGIN: f64 = HALF_GRID_SIZE as f64;
+			/// `.thumbnail` (70px) + its 1px side margins (= 72)
+			const THUMBNAIL_BLOCK_WIDTH: f64 = 3. * GRID_SIZE as f64;
+			/// `.details` margin-left
+			const DETAILS_LEFT_MARGIN: f64 = 8.;
+			const NAME_LEFT_OFFSET: f64 = LAYER_LEFT_MARGIN + THUMBNAIL_BLOCK_WIDTH + DETAILS_LEFT_MARGIN;
+			/// Distance from layer's right edge to visibility's left edge (= 12)
+			const VISIBILITY_INSET_FROM_LAYER_RIGHT: f64 = HALF_GRID_SIZE as f64;
+			const FONT_SIZE: f64 = 14.;
+
+			let display_name = self.display_name(node_id, network_path);
+			let name_click_target = if display_name.is_empty() {
+				None
+			} else {
+				let name_left = node_top_left.x + NAME_LEFT_OFFSET;
+				let icons_reserve = VISIBILITY_INSET_FROM_LAYER_RIGHT + icons_width + GRIP_WIDTH;
+				let name_right_max = node_top_left.x + width as f64 - icons_reserve;
+				let text_w = crate::messages::portfolio::document::overlays::utility_functions::text_width(&display_name, FONT_SIZE);
+				let name_right = (name_left + text_w).min(name_right_max);
+				if name_right > name_left {
+					// The 1-grid-tall name strip is centered vertically in the 2-grid-tall layer.
+					let name_top = node_top_left.y + HALF_GRID_SIZE as f64;
+					let name_bottom = node_top_left.y + GRID_SIZE as f64 + HALF_GRID_SIZE as f64;
+					let subpath = Subpath::new_rounded_rectangle(DVec2::new(name_left, name_top), DVec2::new(name_right, name_bottom), [3.; 4]);
+					Some(ClickTarget::new_with_subpath(subpath, 0.))
+				} else {
+					None
+				}
+			};
 
 			// Create layer click target, which is contains the layer and the chain background
 			let chain_width_grid_spaces = self.chain_width(node_id, network_path);
 
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
-			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.);
-			let radius = 10.;
-			let subpath = Subpath::new_rounded_rectangle(chain_top_left, node_bottom_right, [radius; 4]);
+			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * GRID_SIZE) as f64, 0.);
+			const CORNER_RADIUS: f64 = 10.;
+			let subpath = Subpath::new_rounded_rectangle(chain_top_left, node_bottom_right, [CORNER_RADIUS; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -2594,6 +2649,7 @@ impl NodeNetworkInterface {
 					visibility_click_target,
 					lock_click_target,
 					grip_click_target,
+					name_click_target,
 				}),
 			}
 		};
@@ -2932,6 +2988,7 @@ impl NodeNetworkInterface {
 							LayerClickTargetTypes::Visibility => layer.visibility_click_target.intersect_point_no_stroke(point).then_some(*node_id),
 							LayerClickTargetTypes::Lock => layer.lock_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
 							LayerClickTargetTypes::Grip => layer.grip_click_target.intersect_point_no_stroke(point).then_some(*node_id),
+							LayerClickTargetTypes::Name => layer.name_click_target.as_ref().and_then(|target| target.intersect_point_no_stroke(point).then_some(*node_id)),
 						}
 					} else {
 						None
@@ -6602,6 +6659,10 @@ pub struct LayerClickTargets {
 	pub lock_click_target: Option<ClickTarget>,
 	/// Cache for the grip icon, which is next to the visibility button.
 	pub grip_click_target: ClickTarget,
+	/// Cache for the layer's display-name text bounds. Used to detect double-click rename and
+	/// to skip the drill-into-subgraph behavior when the click lands on the name itself.
+	/// `None` for layers whose display name is empty.
+	pub name_click_target: Option<ClickTarget>,
 	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
 	// preview_click_target: ClickTarget,
 }
@@ -6610,6 +6671,7 @@ pub enum LayerClickTargetTypes {
 	Visibility,
 	Lock,
 	Grip,
+	Name,
 	// Preview,
 }
 

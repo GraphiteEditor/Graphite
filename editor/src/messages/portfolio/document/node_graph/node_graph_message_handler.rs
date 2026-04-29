@@ -405,9 +405,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				{
 					return;
 				};
+				// Double-clicking the layer's name area triggers inline rename instead of drilling into the subgraph.
+				if let Some(layer_id) = network_interface.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Name, selection_network_path) {
+					responses.add(NodeGraphMessage::BeginEditLayerName { node_id: layer_id });
+					return;
+				}
 				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
+			}
+			NodeGraphMessage::BeginEditLayerName { node_id } => {
+				responses.add(FrontendMessage::TriggerEditLayerNameInGraph { node_id });
 			}
 			NodeGraphMessage::ExposeInput {
 				input_connector,
