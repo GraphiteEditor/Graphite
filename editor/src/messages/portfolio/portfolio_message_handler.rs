@@ -1125,8 +1125,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 								responses.add(GraphOperationMessage::ResizeArtboard {
 									layer: item_id,
-									location: new_artboard_origin_doc.round().as_ivec2(),
-									dimensions: dimensions_doc.round().as_ivec2(),
+									location: new_artboard_origin_doc.round(),
+									dimensions: dimensions_doc.round(),
 								});
 							}
 						} else {

@@ -7,7 +7,6 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
-pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicTable, TryFromGraphic, Vector};
 
 pub mod migrations {

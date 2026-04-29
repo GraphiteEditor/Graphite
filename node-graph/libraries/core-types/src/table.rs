@@ -44,6 +44,18 @@ pub const ATTR_NAME: &str = "name";
 /// `json_query_all` text node alongside each extracted value.
 pub const ATTR_TYPE: &str = "type";
 
+/// Attribute key for an artboard row's `DVec2` top-left corner location in document coordinates.
+pub const ATTR_LOCATION: &str = "location";
+
+/// Attribute key for an artboard row's `DVec2` width and height.
+pub const ATTR_DIMENSIONS: &str = "dimensions";
+
+/// Attribute key for an artboard row's `Color` background fill.
+pub const ATTR_BACKGROUND: &str = "background";
+
+/// Attribute key for an artboard row's `bool` flag indicating whether content is clipped to the artboard bounds.
+pub const ATTR_CLIP: &str = "clip";
+
 // =====================
 // TRAIT: AttributeValue
 // =====================

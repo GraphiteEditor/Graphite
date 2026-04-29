@@ -5,7 +5,7 @@ use core_types::transform::Footprint;
 use core_types::{Color, Ctx, num_traits};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -753,7 +753,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> u64,
 		Context -> DVec2,
 		Context -> DAffine2,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
@@ -772,7 +772,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> u64,
 		Context -> DVec2,
 		Context -> DAffine2,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,

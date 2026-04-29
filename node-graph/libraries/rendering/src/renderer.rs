@@ -8,19 +8,19 @@ use core_types::color::{Alpha, Color};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
-use core_types::transform::{Footprint, Transform};
+use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
+use core_types::{ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_LOCATION, ATTR_TRANSFORM};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
+use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
-use graphic_types::{Artboard, Graphic};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
@@ -500,172 +500,172 @@ impl Render for Graphic {
 	}
 }
 
-impl Render for Artboard {
+/// Reads the artboard metadata for the row at `index` from a `Table<Table<Graphic>>` of artboards.
+fn read_artboard_attributes(table: &Table<Table<Graphic>>, index: usize) -> (DVec2, DVec2, Color, bool) {
+	let location: DVec2 = table.attribute_cloned_or_default(ATTR_LOCATION, index);
+	let dimensions: DVec2 = table.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
+	let background: Color = table.attribute_cloned_or_default(ATTR_BACKGROUND, index);
+	let clip: bool = table.attribute_cloned_or_default(ATTR_CLIP, index);
+	(location, dimensions, background, clip)
+}
+
+impl Render for Table<Table<Graphic>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let x = self.location.x.min(self.location.x + self.dimensions.x);
-		let y = self.location.y.min(self.location.y + self.dimensions.y);
-		let width = self.dimensions.x.abs();
-		let height = self.dimensions.y.abs();
+		for index in 0..self.len() {
+			let Some(content) = self.element(index) else { continue };
+			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
-		// Rectangle for the artboard
-		if !render_params.hide_artboards {
-			// Transparency checkerboard behind the artboard background (viewport only)
-			let show_checkerboard = self.background.alpha() < 1. && render_params.to_canvas();
-			if show_checkerboard && render_params.viewport_zoom > 0. {
-				let checker_id = format!("checkered-artboard-{}", generate_uuid());
-				let cell_size = 8. / render_params.viewport_zoom;
-				let pattern_size = cell_size * 2.;
+			let x = location.x.min(location.x + dimensions.x);
+			let y = location.y.min(location.y + dimensions.y);
+			let width = dimensions.x.abs();
+			let height = dimensions.y.abs();
 
-				// Anchor pattern at this artboard's top-left corner (x, y), not the document origin
-				let _ = write!(
-					&mut render.svg_defs,
-					r##"<pattern id="{checker_id}" x="{x}" y="{y}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#fff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#ccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#ccc" /></pattern>"##
-				);
+			// Rectangle for the artboard
+			if !render_params.hide_artboards {
+				// Transparency checkerboard behind the artboard background (viewport only)
+				let show_checkerboard = background.alpha() < 1. && render_params.to_canvas();
+				if show_checkerboard && render_params.viewport_zoom > 0. {
+					let checker_id = format!("checkered-artboard-{}", generate_uuid());
+					let cell_size = 8. / render_params.viewport_zoom;
+					let pattern_size = cell_size * 2.;
 
+					// Anchor pattern at this artboard's top-left corner (x, y), not the document origin
+					let _ = write!(
+						&mut render.svg_defs,
+						r##"<pattern id="{checker_id}" x="{x}" y="{y}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#fff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#ccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#ccc" /></pattern>"##
+					);
+
+					render.leaf_tag("rect", |attributes| {
+						attributes.push("x", x.to_string());
+						attributes.push("y", y.to_string());
+						attributes.push("width", width.to_string());
+						attributes.push("height", height.to_string());
+						attributes.push("fill", format!("url(#{checker_id})"));
+					});
+				}
+
+				// Background
 				render.leaf_tag("rect", |attributes| {
+					attributes.push("fill", format!("#{}", background.to_rgb_hex_srgb_from_gamma()));
+					if background.a() < 1. {
+						attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
+					}
 					attributes.push("x", x.to_string());
 					attributes.push("y", y.to_string());
 					attributes.push("width", width.to_string());
 					attributes.push("height", height.to_string());
-					attributes.push("fill", format!("url(#{checker_id})"));
 				});
 			}
 
-			// Background
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
-				if self.background.a() < 1. {
-					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
-				}
-				attributes.push("x", x.to_string());
-				attributes.push("y", y.to_string());
-				attributes.push("width", width.to_string());
-				attributes.push("height", height.to_string());
-			});
+			// Artwork
+			render.parent_tag(
+				// SVG group tag
+				"g",
+				// Group tag attributes
+				|attributes| {
+					let matrix = format_transform_matrix(DAffine2::from_translation(location));
+					if !matrix.is_empty() {
+						attributes.push(ATTR_TRANSFORM, matrix);
+					}
+
+					if clip {
+						let id = format!("artboard-{}", generate_uuid());
+						let selector = format!("url(#{id})");
+
+						write!(
+							&mut attributes.0.svg_defs,
+							r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
+							dimensions.x, dimensions.y,
+						)
+						.unwrap();
+						attributes.push("clip-path", selector);
+					}
+				},
+				// Artwork content
+				|render| {
+					let mut render_params = render_params.clone();
+					render_params.artboard_background = Some(background);
+					content.render_svg(render, &render_params);
+				},
+			);
 		}
-
-		// Artwork
-		render.parent_tag(
-			// SVG group tag
-			"g",
-			// Group tag attributes
-			|attributes| {
-				let matrix = format_transform_matrix(self.transform());
-				if !matrix.is_empty() {
-					attributes.push(ATTR_TRANSFORM, matrix);
-				}
-
-				if self.clip {
-					let id = format!("artboard-{}", generate_uuid());
-					let selector = format!("url(#{id})");
-
-					write!(
-						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" /></clipPath>"##,
-						self.dimensions.x, self.dimensions.y,
-					)
-					.unwrap();
-					attributes.push("clip-path", selector);
-				}
-			},
-			// Artwork content
-			|render| {
-				let mut render_params = render_params.clone();
-				render_params.artboard_background = Some(self.background);
-				self.content.render_svg(render, &render_params);
-			},
-		);
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
-		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+		for index in 0..self.len() {
+			let Some(content) = self.element(index) else { continue };
+			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
-		// Render background
-		if !render_params.hide_artboards {
-			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+			let [a, b] = [location, location + dimensions];
+			let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-			// Transparency checkerboard behind the artboard background (viewport only)
-			let show_checkerboard = self.background.alpha() < 1. && render_params.to_canvas();
-			if show_checkerboard && render_params.viewport_zoom > 0. {
-				// Anchor pattern at THIS artboard's top-left corner
-				// brush_transform is an image placement transform: it maps brush pixel coords → shape coords
-				// scale(1/zoom) sets each brush pixel to 1/zoom document units (constant CSS size after viewport transform)
-				// then_translate places the brush origin at the artboard corner
-				let brush_transform = kurbo::Affine::scale(1. / render_params.viewport_zoom).then_translate(kurbo::Vec2::new(rect.x0, rect.y0));
-				scene.fill(peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
+			// Render background
+			if !render_params.hide_artboards {
+				let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+
+				// Transparency checkerboard behind the artboard background (viewport only)
+				let show_checkerboard = background.alpha() < 1. && render_params.to_canvas();
+				if show_checkerboard && render_params.viewport_zoom > 0. {
+					// Anchor pattern at THIS artboard's top-left corner
+					// brush_transform is an image placement transform: it maps brush pixel coords → shape coords
+					// scale(1/zoom) sets each brush pixel to 1/zoom document units (constant CSS size after viewport transform)
+					// then_translate places the brush origin at the artboard corner
+					let brush_transform = kurbo::Affine::scale(1. / render_params.viewport_zoom).then_translate(kurbo::Vec2::new(rect.x0, rect.y0));
+					scene.fill(peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
+				}
+
+				let color = peniko::Color::new([background.r(), background.g(), background.b(), background.a()]);
+				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
+				scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
+				scene.pop_layer();
 			}
 
-			let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
-			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
-			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
-			scene.pop_layer();
-		}
-
-		if self.clip {
-			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
-		}
-
-		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
-		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		let mut render_params = render_params.clone();
-		render_params.artboard_background = Some(self.background);
-		self.content.render_to_vello(scene, child_transform, context, &render_params);
-		if self.clip {
-			scene.pop_layer();
-		}
-	}
-
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
-			metadata.upstream_footprints.insert(element_id, footprint);
-			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
-			if self.clip {
-				metadata.clip_targets.insert(element_id);
+			if clip {
+				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
 			}
-		}
-		footprint.transform *= self.transform();
-		self.content.collect_metadata(metadata, footprint, None);
-	}
 
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
-		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
-	}
-
-	fn contains_artboard(&self) -> bool {
-		true
-	}
-}
-
-impl Render for Table<Artboard> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for element in self.iter_element_values() {
-			element.render_svg(render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for element in self.iter_element_values() {
-			element.render_to_vello(scene, transform, context, render_params);
+			// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
+			let child_transform = transform * DAffine2::from_translation(location);
+			let mut render_params = render_params.clone();
+			render_params.artboard_background = Some(background);
+			content.render_to_vello(scene, child_transform, context, &render_params);
+			if clip {
+				scene.pop_layer();
+			}
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
+			let Some(content) = self.element(index) else { continue };
+			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
+
 			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
-			let layer = layer_path.iter_element_values().next_back().copied();
-			self.element(index).unwrap().collect_metadata(metadata, footprint, layer);
+			let element_id = layer_path.iter_element_values().next_back().copied();
+
+			if let Some(element_id) = element_id {
+				let subpath = Subpath::new_rectangle(DVec2::ZERO, dimensions);
+				metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
+				metadata.upstream_footprints.insert(element_id, footprint);
+				metadata.local_transforms.insert(element_id, DAffine2::from_translation(location));
+				if clip {
+					metadata.clip_targets.insert(element_id);
+				}
+			}
+
+			let mut child_footprint = footprint;
+			child_footprint.transform *= DAffine2::from_translation(location);
+			content.collect_metadata(metadata, child_footprint, None);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for element in self.iter_element_values() {
-			element.add_upstream_click_targets(click_targets);
+		for index in 0..self.len() {
+			let dimensions: DVec2 = self.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
+			let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, dimensions);
+			click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
 		}
 	}
 
