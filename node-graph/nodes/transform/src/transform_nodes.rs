@@ -2,7 +2,7 @@ use core::f64;
 use core_types::color::Color;
 use core_types::table::Table;
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl, TRANSFORM};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -66,7 +66,7 @@ fn reset_transform<T>(
 	reset_rotation: bool,
 	reset_scale: bool,
 ) -> Table<T> {
-	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
 		if reset_translation {
 			row_transform.translation = DVec2::ZERO;
 		}
@@ -102,7 +102,7 @@ fn replace_transform<T>(
 	mut content: Table<T>,
 	transform: DAffine2,
 ) -> Table<T> {
-	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
 		*row_transform = transform.transform();
 	}
 	content
@@ -123,7 +123,7 @@ async fn extract_transform<T>(
 	)]
 	content: Table<T>,
 ) -> DAffine2 {
-	content.attribute_cloned_or_default::<DAffine2>("transform", 0)
+	content.attribute_cloned_or_default::<DAffine2>(TRANSFORM, 0)
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.

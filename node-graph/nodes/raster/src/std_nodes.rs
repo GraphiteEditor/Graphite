@@ -6,6 +6,7 @@ use core_types::context::{Ctx, ExtractFootprint};
 use core_types::math::bbox::Bbox;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
+use core_types::{ALPHA_BLENDING, TRANSFORM};
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -34,7 +35,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 	image_frame
 		.into_iter()
 		.filter_map(|row| {
-			let image_frame_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+			let image_frame_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
 			let (image, mut attributes) = row.into_parts();
 
 			// Resize the image using the image crate
@@ -86,7 +87,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 			// we need to adjust the offset if we truncate the offset calculation
 
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-			attributes.insert("transform", new_transform);
+			attributes.insert(TRANSFORM, new_transform);
 
 			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
 		})
@@ -194,7 +195,7 @@ pub fn mask(
 		.into_iter()
 		.filter_map(|mut row| {
 			let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
-			let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default("transform");
+			let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(TRANSFORM);
 			let mask_size = stencil_transform.scale_magnitudes();
 
 			if mask_size == DVec2::ZERO {
@@ -202,7 +203,7 @@ pub fn mask(
 			}
 
 			// Transforms a point from the background image to the foreground image
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default("transform");
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
 			let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
 			let stencil_transform_inverse = stencil_transform.inverse();
 
@@ -230,7 +231,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 	image
 		.into_iter()
 		.map(|mut row| {
-			let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
+			let row_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
 			let image_aabb = Bbox::unit().affine_transform(row_transform).to_axis_aligned_bbox();
 			let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 			if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
@@ -267,7 +268,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 			let new_texture_to_layer_space = row_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
 			*row.element_mut() = Raster::new_cpu(new_image);
-			row.set_attribute("transform", new_texture_to_layer_space);
+			row.set_attribute(TRANSFORM, new_texture_to_layer_space);
 			row
 		})
 		.collect()
@@ -282,8 +283,8 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 	let image = Image::new(width, height, color);
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
-	result_table.set_attribute("transform", 0, transform);
-	result_table.set_attribute("alpha_blending", 0, AlphaBlending::default());
+	result_table.set_attribute(TRANSFORM, 0, transform);
+	result_table.set_attribute(ALPHA_BLENDING, 0, AlphaBlending::default());
 
 	// Callers of empty_image can safely unwrap on returned `Table`
 	result_table
@@ -378,7 +379,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute("transform", transform));
+			return Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -436,7 +437,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute("transform", transform))
+	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
@@ -481,7 +482,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 			data,
 			..Default::default()
 		}))
-		.with_attribute("transform", DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
+		.with_attribute(TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
 	)
 }
 

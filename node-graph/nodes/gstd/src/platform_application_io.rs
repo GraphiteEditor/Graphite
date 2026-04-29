@@ -3,15 +3,13 @@ use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
 #[cfg(target_family = "wasm")]
-use core_types::EDITOR_MERGED_LAYERS;
-#[cfg(target_family = "wasm")]
-use core_types::WasmNotSend;
-#[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
 use core_types::table::{Table, TableRow};
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx};
+#[cfg(target_family = "wasm")]
+use core_types::{EDITOR_MERGED_LAYERS, TRANSFORM, WasmNotSend};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 use graphene_application_io::ApplicationIo;
@@ -212,7 +210,7 @@ where
 		..Default::default()
 	};
 
-	for transform in data.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+	for transform in data.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
 		*transform = DAffine2::from_translation(-aabb.start) * *transform;
 	}
 	data.render_svg(&mut render, &render_params);
@@ -239,7 +237,7 @@ where
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	Table::new_from_row(
 		TableRow::new_from_element(Raster::new_cpu(image))
-			.with_attribute("transform", footprint.transform)
+			.with_attribute(TRANSFORM, footprint.transform)
 			.with_attribute(EDITOR_MERGED_LAYERS, upstream_graphic_table),
 	)
 }

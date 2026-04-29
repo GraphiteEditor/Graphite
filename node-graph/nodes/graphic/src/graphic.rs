@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, EDITOR_LAYER_PATH, ExtractAll, OwnedContextImpl};
+use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, EDITOR_LAYER_PATH, ExtractAll, OwnedContextImpl, TRANSFORM};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
@@ -196,8 +196,8 @@ where
 
 	// Create and add mirrored items
 	for mut row in content.into_iter() {
-		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-		row.set_attribute("transform", reflected_transform * current_transform);
+		let current_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+		row.set_attribute(TRANSFORM, reflected_transform * current_transform);
 		result_table.push(row);
 	}
 
@@ -348,7 +348,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 		for index in 0..current_graphic_table.len() {
 			let Some(current_element) = current_graphic_table.element(index) else { continue };
 			let current_element = current_element.clone();
-			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default("transform", index);
+			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default(TRANSFORM, index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -356,7 +356,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
 						*graphic_transform = current_transform * *graphic_transform;
 					}
 

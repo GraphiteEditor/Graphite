@@ -1,6 +1,6 @@
 use core_types::table::Table;
 use core_types::uuid::NodeId;
-use core_types::{Ctx, EDITOR_LAYER_PATH};
+use core_types::{Ctx, EDITOR_LAYER_PATH, TRANSFORM};
 use glam::DAffine2;
 use graphic_types::Vector;
 use vector_types::vector::VectorModification;
@@ -33,7 +33,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 /// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
 async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vector> {
-	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>("transform");
+	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>(TRANSFORM);
 	for (element, transform) in elements.iter_mut().zip(transforms.iter_mut()) {
 		for (_, point) in element.point_domain.positions_mut() {
 			*point = transform.transform_point2(*point);

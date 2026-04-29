@@ -1,9 +1,8 @@
 use crate::raster_types::{CPU, Raster};
 use crate::{Bitmap, BitmapMut};
-use core_types::AlphaBlending;
-use core_types::Color;
 use core_types::color::float_to_srgb_u8;
 use core_types::table::{Table, TableRow};
+use core_types::{ALPHA_BLENDING, AlphaBlending, Color, TRANSFORM};
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core_types::color::*;
 use dyn_any::{DynAny, StaticType};
@@ -339,8 +338,8 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::Image(image) => Table::new_from_element(Raster::new_cpu(image)),
 		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
 			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
-			image_frame_table.set_attribute("transform", 0, transform);
-			image_frame_table.set_attribute("alpha_blending", 0, alpha_blending);
+			image_frame_table.set_attribute(TRANSFORM, 0, transform);
+			image_frame_table.set_attribute(ALPHA_BLENDING, 0, alpha_blending);
 			image_frame_table
 		}
 		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),

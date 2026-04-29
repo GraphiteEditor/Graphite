@@ -10,6 +10,7 @@ use crate::messages::prelude::ViewportMessageHandler;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_std::TRANSFORM;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
@@ -1170,7 +1171,7 @@ impl OverlayContextInternal {
 			// Use the existing bezier_to_path infrastructure to convert Vector to BezPath
 			let mut path = BezPath::new();
 			let mut last_point = None;
-			let transform: DAffine2 = text_table.attribute_cloned_or_default("transform", index);
+			let transform: DAffine2 = text_table.attribute_cloned_or_default(TRANSFORM, index);
 
 			let Some(element) = text_table.element(index) else { continue };
 			for (_, bezier, start_id, end_id) in element.segment_iter() {

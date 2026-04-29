@@ -1,6 +1,6 @@
-use core_types::Ctx;
 use core_types::registry::types::SignedInteger;
 use core_types::table::{Table, TableRow};
+use core_types::{Ctx, TEXT_REGEX_END, TEXT_REGEX_NAME, TEXT_REGEX_START};
 
 /// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.
 #[node_macro::node(category("Text: Regex"))]
@@ -143,7 +143,10 @@ fn regex_find(
 			let start = captured.map_or(0_u64, |m| m.start() as u64);
 			let end = captured.map_or(0_u64, |m| m.end() as u64);
 			let name = capture_names.get(i).cloned().flatten().unwrap_or_default();
-			TableRow::new_from_element(text).with_attribute("start", start).with_attribute("end", end).with_attribute("name", name)
+			TableRow::new_from_element(text)
+				.with_attribute(TEXT_REGEX_START, start)
+				.with_attribute(TEXT_REGEX_END, end)
+				.with_attribute(TEXT_REGEX_NAME, name)
 		})
 		.collect()
 }
@@ -185,8 +188,8 @@ fn regex_find_all(
 		.filter_map(|m| m.ok())
 		.map(|m| {
 			TableRow::new_from_element(m.as_str().to_string())
-				.with_attribute("start", m.start() as u64)
-				.with_attribute("end", m.end() as u64)
+				.with_attribute(TEXT_REGEX_START, m.start() as u64)
+				.with_attribute(TEXT_REGEX_END, m.end() as u64)
 		})
 		.collect()
 }

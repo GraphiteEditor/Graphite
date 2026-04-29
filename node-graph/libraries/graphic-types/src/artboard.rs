@@ -1,5 +1,4 @@
 use crate::graphic::Graphic;
-use core_types::Color;
 use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::math::quad::Quad;
@@ -7,6 +6,7 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
+use core_types::{Color, TRANSFORM};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
 use graphene_hash::CacheHash;
@@ -52,7 +52,7 @@ impl BoundingBox for Artboard {
 
 		let mut combined_bounds = None;
 
-		for (element, row_transform) in self.content.iter_element_values().zip(self.content.iter_attribute_values_or_default::<DAffine2>("transform")) {
+		for (element, row_transform) in self.content.iter_element_values().zip(self.content.iter_attribute_values_or_default::<DAffine2>(TRANSFORM)) {
 			match element.bounding_box(transform * row_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,

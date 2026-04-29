@@ -5,7 +5,7 @@ use core_types::ops::TableConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{Color, EDITOR_LAYER_PATH};
+use core_types::{ALPHA_BLENDING, Color, EDITOR_LAYER_PATH, TRANSFORM};
 use dyn_any::DynAny;
 use glam::DAffine2;
 use raster_types::{CPU, GPU, Raster};
@@ -142,18 +142,18 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
 		for current_graphic_row in current_graphic_table.into_iter() {
 			let layer_path: Table<NodeId> = current_graphic_row.attribute_cloned_or_default(EDITOR_LAYER_PATH);
-			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default("transform");
-			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default("alpha_blending");
+			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default(TRANSFORM);
+			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default(ALPHA_BLENDING);
 
 			match current_graphic_row.into_element() {
 				// Recurse into nested `Table<Graphic>` items, composing the parent's transform onto each child
 				Graphic::Graphic(mut sub_table) => {
 					for index in 0..sub_table.len() {
-						let child_transform: DAffine2 = sub_table.attribute_cloned_or_default("transform", index);
-						let child_alpha_blending: AlphaBlending = sub_table.attribute_cloned_or_default("alpha_blending", index);
+						let child_transform: DAffine2 = sub_table.attribute_cloned_or_default(TRANSFORM, index);
+						let child_alpha_blending: AlphaBlending = sub_table.attribute_cloned_or_default(ALPHA_BLENDING, index);
 
-						sub_table.set_attribute("transform", index, current_transform * child_transform);
-						sub_table.set_attribute("alpha_blending", index, compose_alpha_blending(current_alpha_blending, child_alpha_blending));
+						sub_table.set_attribute(TRANSFORM, index, current_transform * child_transform);
+						sub_table.set_attribute(ALPHA_BLENDING, index, compose_alpha_blending(current_alpha_blending, child_alpha_blending));
 					}
 
 					flatten_recursive(output, sub_table, extract_variant);
@@ -162,12 +162,12 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 				other => {
 					if let Some(typed_table) = extract_variant(other) {
 						for row in typed_table.into_iter() {
-							let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-							let row_alpha_blending: AlphaBlending = row.attribute_cloned_or_default("alpha_blending");
+							let row_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+							let row_alpha_blending: AlphaBlending = row.attribute_cloned_or_default(ALPHA_BLENDING);
 							let (element, mut attributes) = row.into_parts();
 
-							attributes.insert("transform", current_transform * row_transform);
-							attributes.insert("alpha_blending", compose_alpha_blending(current_alpha_blending, row_alpha_blending));
+							attributes.insert(TRANSFORM, current_transform * row_transform);
+							attributes.insert(ALPHA_BLENDING, compose_alpha_blending(current_alpha_blending, row_alpha_blending));
 							attributes.insert(EDITOR_LAYER_PATH, layer_path.clone());
 
 							output.push(TableRow::from_parts(element, attributes));
@@ -321,7 +321,7 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		fn all_clipped<T>(table: &Table<T>) -> bool {
-			table.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending").all(|a| a.clip)
+			table.iter_attribute_values_or_default::<AlphaBlending>(ALPHA_BLENDING).all(|a| a.clip)
 		}
 		match self {
 			Graphic::Vector(table) => all_clipped(table),
@@ -337,7 +337,7 @@ impl Graphic {
 		match self {
 			Graphic::Vector(vector) => vector
 				.iter_element_values()
-				.zip(vector.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending"))
+				.zip(vector.iter_attribute_values_or_default::<AlphaBlending>(ALPHA_BLENDING))
 				.all(|(element, alpha_blending)| {
 					(alpha_blending.opacity > 1. - f32::EPSILON) && element.style.fill().is_opaque() && element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
 				}),

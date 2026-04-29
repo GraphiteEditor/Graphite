@@ -5,6 +5,18 @@ use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
 use std::fmt::Debug;
 
+// =====================================================================
+// Standard attribute keys used across the data flow
+// =====================================================================
+
+/// Attribute key for a row's `DAffine2` transformation, applied when rendering and when accumulating
+/// transforms through nested compositions.
+pub const TRANSFORM: &str = "transform";
+
+/// Attribute key for a row's `AlphaBlending` (blend mode + opacity + fill + clip), composed
+/// multiplicatively through nested compositions.
+pub const ALPHA_BLENDING: &str = "alpha_blending";
+
 /// Attribute key under which each row of an editor-aware layer stores a `Table<NodeId>` describing the
 /// path (from the root document network) to the layer node that owns the row. Editor tools use this to
 /// route clicks/selection back to the originating layer at any nesting depth.
@@ -15,6 +27,22 @@ pub const EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// recurses into this snapshot during metadata collection so the editor can still surface click targets
 /// for the original child layers after their content has been collapsed into a single output.
 pub const EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
+
+/// Attribute key for the byte offset where a regex match begins in the input string, set by the
+/// `regex_find_all` and `regex_capture` text nodes.
+pub const TEXT_REGEX_START: &str = "start";
+
+/// Attribute key for the byte offset where a regex match ends in the input string, set by the
+/// `regex_find_all` and `regex_capture` text nodes.
+pub const TEXT_REGEX_END: &str = "end";
+
+/// Attribute key for a regex named-capture-group's name (empty for unnamed groups), set by the
+/// `regex_capture` text node.
+pub const TEXT_REGEX_NAME: &str = "name";
+
+/// Attribute key for a JSON value's type (`"string"`, `"number"`, `"object"`, etc.), set by the
+/// `json_query_all` text node alongside each extracted value.
+pub const TEXT_JSON_TYPE: &str = "type";
 
 // =====================
 // TRAIT: AttributeValue
@@ -758,7 +786,7 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>("transform")) {
+		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(TRANSFORM)) {
 			match element.bounding_box(transform * row_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
@@ -804,10 +832,10 @@ impl<T: graphene_hash::CacheHash> graphene_hash::CacheHash for Table<T> {
 		for element in self.iter_element_values() {
 			element.cache_hash(state);
 		}
-		for transform in self.iter_attribute_values_or_default::<DAffine2>("transform") {
+		for transform in self.iter_attribute_values_or_default::<DAffine2>(TRANSFORM) {
 			graphene_hash::CacheHash::cache_hash(&transform, state);
 		}
-		for alpha_blending in self.iter_attribute_values_or_default::<crate::AlphaBlending>("alpha_blending") {
+		for alpha_blending in self.iter_attribute_values_or_default::<crate::AlphaBlending>(ALPHA_BLENDING) {
 			alpha_blending.cache_hash(state);
 		}
 	}
@@ -822,14 +850,14 @@ impl<T: PartialEq> PartialEq for Table<T> {
 impl<T> ApplyTransform for Table<T> {
 	/// Right-multiplies the modification into each row's transform attribute.
 	fn apply_transform(&mut self, modification: &DAffine2) {
-		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
 			*transform *= *modification;
 		}
 	}
 
 	/// Left-multiplies the modification into each row's transform attribute.
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
-		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
 			*transform = *modification * *transform;
 		}
 	}
