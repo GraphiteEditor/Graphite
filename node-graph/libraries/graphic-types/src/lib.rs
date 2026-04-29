@@ -72,7 +72,7 @@ pub mod migrations {
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
 			VectorFormat::Vector(vector) => Table::new_from_element(vector),
-			// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+			// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 			// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
 			VectorFormat::OldVectorData(old) => Table::new_from_element(Vector {
 				style: old.style,

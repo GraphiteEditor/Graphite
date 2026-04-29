@@ -239,12 +239,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
 								..Default::default()
 							},
-							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer` attribute,
+							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
 							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
 							DocumentNode {
 								inputs: vec![
 									NodeInput::node(NodeId(1), 0),
-									NodeInput::value(TaggedValue::String(String::from("editor:layer")), false),
+									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
 									NodeInput::node(NodeId(2), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
@@ -374,12 +374,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
 								..Default::default()
 							},
-							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer` attribute,
+							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
 							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
 							DocumentNode {
 								inputs: vec![
 									NodeInput::node(NodeId(0), 0),
-									NodeInput::value(TaggedValue::String(String::from("editor:layer")), false),
+									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
 									NodeInput::node(NodeId(1), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),

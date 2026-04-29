@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
@@ -196,8 +196,8 @@ where
 
 	// Create and add mirrored items
 	for mut row in content.into_iter() {
-		let current_transform: DAffine2 = row.attribute_cloned_or_default("transform");
-		row.set_attribute("transform", reflected_transform * current_transform);
+		let current_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+		row.set_attribute(ATTR_TRANSFORM, reflected_transform * current_transform);
 		result_table.push(row);
 	}
 
@@ -207,7 +207,7 @@ where
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
 /// with its own trailing entry dropped. The terminating element of the returned path is the document node whose
 /// encapsulated network we live in, so the path doubles as a unique reference to that node at any nesting depth.
-/// Used as the value source for stamping the `editor:layer` attribute on each item of a layer's output, which lets
+/// Used as the value source for stamping the `editor:layer_path` attribute on each item of a layer's output, which lets
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
@@ -296,7 +296,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 
 	let mut base = base;
 	for mut row in new.into_iter() {
-		row.set_attribute("editor:layer", layer);
+		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer);
 		base.push(row);
 	}
 
@@ -348,7 +348,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 		for index in 0..current_graphic_table.len() {
 			let Some(current_element) = current_graphic_table.element(index) else { continue };
 			let current_element = current_element.clone();
-			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default("transform", index);
+			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -356,7 +356,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// If we're allowed to recurse, flatten any graphics we encounter
 				Graphic::Graphic(mut current_element) if recurse => {
 					// Apply the parent graphic's transform to all child elements
-					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
+					for graphic_transform in current_element.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*graphic_transform = current_transform * *graphic_transform;
 					}
 

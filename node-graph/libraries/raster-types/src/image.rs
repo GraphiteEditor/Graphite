@@ -1,9 +1,8 @@
 use crate::raster_types::{CPU, Raster};
 use crate::{Bitmap, BitmapMut};
-use core_types::AlphaBlending;
-use core_types::Color;
 use core_types::color::float_to_srgb_u8;
 use core_types::table::{Table, TableRow};
+use core_types::{ATTR_ALPHA_BLENDING, ATTR_TRANSFORM, AlphaBlending, Color};
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core_types::color::*;
 use dyn_any::{DynAny, StaticType};
@@ -319,7 +318,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		Table::new_from_element(Raster::new_cpu(table.element(0).unwrap().clone()))
 	}
 
-	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
 	fn old_table_to_new_table<T>(old_table: OldTable<T>) -> Table<T> {
 		old_table.element.into_iter().map(TableRow::new_from_element).collect()
@@ -339,8 +338,8 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::Image(image) => Table::new_from_element(Raster::new_cpu(image)),
 		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
 			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
-			image_frame_table.set_attribute("transform", 0, transform);
-			image_frame_table.set_attribute("alpha_blending", 0, alpha_blending);
+			image_frame_table.set_attribute(ATTR_TRANSFORM, 0, transform);
+			image_frame_table.set_attribute(ATTR_ALPHA_BLENDING, 0, alpha_blending);
 			image_frame_table
 		}
 		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),
@@ -430,7 +429,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 		RasterTableRow(TableRow<Raster<CPU>>),
 	}
 
-	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
+	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
 	// to recover the element. Per-item attribute values are populated at runtime by the node graph.
 	Ok(match FormatVersions::deserialize(deserializer)? {
 		FormatVersions::Image(image) => TableRow::new_from_element(Raster::new_cpu(image)),
