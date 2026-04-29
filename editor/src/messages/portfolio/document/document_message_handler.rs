@@ -784,7 +784,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
-				self.name = new_name.clone();
+				self.name = new_name.trim().to_string();
 
 				self.path = None;
 				self.set_save_state(false);
