@@ -10,6 +10,12 @@ use std::fmt::Debug;
 /// route clicks/selection back to the originating layer at any nesting depth.
 pub const EDITOR_LAYER_PATH: &str = "editor:layer_path";
 
+/// Attribute key under which a row stores a `Table<Graphic>` snapshot of the upstream content that fed
+/// into a destructive merge (Boolean Operation, Flatten Path, Morph, Rasterize, etc.). The renderer
+/// recurses into this snapshot during metadata collection so the editor can still surface click targets
+/// for the original child layers after their content has been collapsed into a single output.
+pub const EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
+
 // =====================
 // TRAIT: AttributeValue
 // =====================

@@ -3,6 +3,8 @@ use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
 #[cfg(target_family = "wasm")]
+use core_types::EDITOR_MERGED_LAYERS;
+#[cfg(target_family = "wasm")]
 use core_types::WasmNotSend;
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
@@ -238,6 +240,6 @@ where
 	Table::new_from_row(
 		TableRow::new_from_element(Raster::new_cpu(image))
 			.with_attribute("transform", footprint.transform)
-			.with_attribute("editor:merged_layers", upstream_graphic_table),
+			.with_attribute(EDITOR_MERGED_LAYERS, upstream_graphic_table),
 	)
 }

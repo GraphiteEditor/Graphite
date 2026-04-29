@@ -7,7 +7,7 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::table::{Table, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::{CloneVarArgs, Color, Context, Ctx, EDITOR_LAYER_PATH, ExtractAll, OwnedContextImpl};
+use core_types::{CloneVarArgs, Color, Context, Ctx, EDITOR_LAYER_PATH, EDITOR_MERGED_LAYERS, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -1313,7 +1313,7 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Preserve a reference to the original upstream `Table<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
-	output_table.set_attribute("editor:merged_layers", 0, graphic_table);
+	output_table.set_attribute(EDITOR_MERGED_LAYERS, 0, graphic_table);
 
 	// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
 	if !flattened.is_empty() {
@@ -2373,7 +2373,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 
 		let mut attributes = content.clone_row_attributes(endpoint_index);
 		attributes.insert("transform", lerped_transform);
-		attributes.insert("editor:merged_layers", graphic_table_content);
+		attributes.insert(EDITOR_MERGED_LAYERS, graphic_table_content);
 
 		return Table::new_from_row(TableRow::from_parts(endpoint_element.clone(), attributes));
 	}
@@ -2536,7 +2536,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 			.with_attribute("transform", lerped_transform)
 			.with_attribute("alpha_blending", vector_alpha_blending)
 			.with_attribute(EDITOR_LAYER_PATH, layer_path)
-			.with_attribute("editor:merged_layers", graphic_table_content),
+			.with_attribute(EDITOR_MERGED_LAYERS, graphic_table_content),
 	)
 }
 

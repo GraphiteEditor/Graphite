@@ -1,6 +1,6 @@
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{AlphaBlending, Color, Ctx, EDITOR_LAYER_PATH};
+use core_types::{AlphaBlending, Color, Ctx, EDITOR_LAYER_PATH, EDITOR_MERGED_LAYERS};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -49,7 +49,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
-		result_vector_table.set_attribute("editor:merged_layers", 0, content.clone());
+		result_vector_table.set_attribute(EDITOR_MERGED_LAYERS, 0, content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_table.attribute_cloned_or_default("transform", 0);

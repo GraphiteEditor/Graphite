@@ -2,7 +2,6 @@ use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
 use core_types::AlphaBlending;
 use core_types::CacheHash;
-use core_types::EDITOR_LAYER_PATH;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color};
@@ -11,6 +10,7 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::{NodeId, generate_uuid};
+use core_types::{EDITOR_LAYER_PATH, EDITOR_MERGED_LAYERS};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -1379,7 +1379,7 @@ impl Render for Table<Vector> {
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
 			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", index);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
@@ -1587,7 +1587,7 @@ impl Render for Table<Raster<CPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1677,7 +1677,7 @@ impl Render for Table<Raster<GPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
