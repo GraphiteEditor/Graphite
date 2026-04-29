@@ -8,11 +8,11 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStops, GradientType};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient, GradientSpreadMethod, GradientStops, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -48,6 +48,7 @@ pub enum GradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
+	UpdateStops { stops: GradientStops },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
@@ -117,6 +118,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					responses.add(PropertiesPanelMessage::Refresh);
 				}
 			}
+			ToolMessage::Gradient(GradientToolMessage::UpdateStops { stops }) => {
+				apply_stops_update(&mut self.data, context, responses, stops);
+			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
 					responses.add(DocumentMessage::EndTransaction);
@@ -127,27 +131,48 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 			_ => {
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 
-				let has_gradient = has_gradient_on_selected_layers(context.document);
-				if has_gradient != self.data.has_selected_gradient {
-					self.data.has_selected_gradient = has_gradient;
-					responses.add(ToolMessage::RefreshToolOptions);
+				// Reading from the layer (not from the in-progress drag state) keeps the control bar widgets current across selection changes, not just drags
+				let (current_layer, current_gradient) = current_layer_and_gradient(context.document);
+
+				let mut needs_refresh = false;
+				if let Some(gradient) = &current_gradient {
+					if self.options.gradient_type != gradient.gradient_type {
+						self.options.gradient_type = gradient.gradient_type;
+						needs_refresh = true;
+					}
+					if self.options.spread_method != gradient.spread_method {
+						self.options.spread_method = gradient.spread_method;
+						needs_refresh = true;
+					}
 				}
 
-				// Sync tool options with the selected layer's gradient
-				if has_gradient && let Some(gradient) = get_gradient_on_selected_layer(context.document) {
-					let type_differs = self.options.gradient_type != gradient.gradient_type;
-					let spread_method_differs = self.options.spread_method != gradient.spread_method;
+				let has_gradient = current_gradient.is_some();
+				if has_gradient != self.data.has_selected_gradient {
+					self.data.has_selected_gradient = has_gradient;
+					needs_refresh = true;
+				}
 
-					if type_differs {
-						self.options.gradient_type = gradient.gradient_type;
+				let new_stops = current_gradient.as_ref().map(|gradient| gradient.stops.clone());
+				if self.data.current_gradient_stops != new_stops {
+					self.data.current_gradient_stops = new_stops;
+					needs_refresh = true;
+				}
+
+				let new_orientation = match (current_layer, &current_gradient) {
+					(Some(layer), Some(gradient)) => {
+						let transform = gradient_space_transform(layer, context.document);
+						graph_modification_utils::gradient_orientation_rightward(gradient.start, gradient.end, transform)
 					}
-					if spread_method_differs {
-						self.options.spread_method = gradient.spread_method;
-					}
-					if type_differs || spread_method_differs {
-						responses.add(ToolMessage::RefreshToolOptions);
-					}
+					_ => true,
 				};
+				if new_orientation != self.data.gradient_orientation_rightward {
+					self.data.gradient_orientation_rightward = new_orientation;
+					needs_refresh = true;
+				}
+
+				if needs_refresh {
+					responses.add(ToolMessage::RefreshToolOptions);
+				}
 			}
 		}
 	}
@@ -183,7 +208,23 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
-		widgets.extend([gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance()]);
+		let stops_value = self
+			.data
+			.current_gradient_stops
+			.clone()
+			.map(FillChoice::Gradient)
+			.unwrap_or(FillChoice::Gradient(GradientStops::default()));
+		let stops_widget = ColorInput::new(stops_value)
+			.allow_none(false)
+			.disabled(!self.data.has_selected_gradient)
+			.tooltip_label("Gradient Stops")
+			.tooltip_description("Edit the gradient's color stops.")
+			.on_update(|input: &ColorInput| {
+				let stops = input.value.as_gradient().cloned().unwrap_or_default();
+				GradientToolMessage::UpdateStops { stops }.into()
+			})
+			.on_commit(|_| DocumentMessage::AddTransaction.into())
+			.widget_instance();
 
 		let reverse_stops = IconButton::new("Reverse", 24)
 			.tooltip_label("Reverse Stops")
@@ -220,39 +261,34 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some(self.options.spread_method as u32))
 		.widget_instance();
 
-		widgets.extend([spread_method, Separator::new(SeparatorStyle::Unrelated).widget_instance(), reverse_stops]);
+		let reverse_direction_icon = if self.data.gradient_orientation_rightward {
+			"ReverseRadialGradientToRight"
+		} else {
+			"ReverseRadialGradientToLeft"
+		};
+		let reverse_direction = IconButton::new(reverse_direction_icon, 24)
+			.tooltip_label("Reverse Direction")
+			.tooltip_description("Reverse which end the gradient radiates from.")
+			.disabled(!self.data.has_selected_gradient)
+			.on_update(|_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::ReverseDirection,
+				}
+				.into()
+			})
+			.widget_instance();
 
-		if self.options.gradient_type == GradientType::Radial {
-			let orientation = self
-				.data
-				.selected_gradient
-				.as_ref()
-				.map(|selected_gradient| {
-					let (start, end) = (selected_gradient.gradient.start, selected_gradient.gradient.end);
-					if (end.x - start.x).abs() > f64::EPSILON * 1e6 {
-						end.x > start.x
-					} else {
-						(start.x + start.y) < (end.x + end.y)
-					}
-				})
-				.unwrap_or(true);
-
-			let icon = if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" };
-			let reverse_direction = IconButton::new(icon, 24)
-				.tooltip_label("Reverse Direction")
-				.tooltip_description("Reverse which end the gradient radiates from.")
-				.disabled(!self.data.has_selected_gradient)
-				.on_update(|_| {
-					GradientToolMessage::UpdateOptions {
-						options: GradientOptionsUpdate::ReverseDirection,
-					}
-					.into()
-				})
-				.widget_instance();
-
-			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
-			widgets.push(reverse_direction);
-		}
+		widgets.extend([
+			stops_widget,
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			reverse_stops,
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			gradient_type,
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			spread_method,
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			reverse_direction,
+		]);
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -273,30 +309,9 @@ impl Default for GradientToolFsmState {
 	}
 }
 
-/// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
+/// Computes the transform from gradient space to viewport space (where gradient space is 0..1).
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	// TODO: Drop the `is_gradient_table` branch once all gradients are `Table<GradientStops>`
-	let is_gradient_table = is_layer_fed_by_node_of_name(
-		layer,
-		&document.network_interface,
-		&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER),
-	);
-
-	if is_gradient_table {
-		// Table<GradientStops> layers use the item's transform from gradient space to document space,
-		// so we cannot use `transform_to_viewport` here as it would apply the transform twice.
-		return document
-			.metadata()
-			.upstream_footprints
-			.get(&layer.to_node())
-			.map(|footprint| footprint.transform)
-			.unwrap_or(document.metadata().document_to_viewport);
-	}
-
-	let multiplied = document.metadata().transform_to_viewport(layer);
-	let bounds = document.metadata().nonzero_bounding_box(layer);
-	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-	multiplied * bound_transform
+	graph_modification_utils::gradient_space_transform(layer, &document.network_interface)
 }
 
 // TODO: Remove this whole function once all gradients are `Table<GradientStops>`
@@ -749,6 +764,12 @@ struct GradientToolData {
 	auto_pan_shift: DVec2,
 	gradient_angle: f64,
 	has_selected_gradient: bool,
+	/// Cached stops of the currently selected layer's gradient, mirrored into the control-bar widget. Independent of any
+	/// in-progress drag (which uses `selected_gradient`) so it stays current after selection changes too.
+	current_gradient_stops: Option<GradientStops>,
+	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
+	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
+	gradient_orientation_rightward: bool,
 	color_picker_editing_color_stop: Option<usize>,
 	color_picker_transaction_open: bool,
 }
@@ -1725,6 +1746,50 @@ fn apply_gradient_update(
 	responses.add(PropertiesPanelMessage::Refresh);
 	data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
 	responses.add(ToolMessage::RefreshToolOptions);
+}
+
+/// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
+/// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
+/// single undo entry by the surrounding 'on_commit' callback.
+fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, stops: GradientStops) {
+	let selected_layers: Vec<_> = context
+		.document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&context.document.network_interface)
+		.collect();
+
+	for layer in selected_layers {
+		if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+			continue;
+		}
+
+		if get_gradient_table(layer, &context.document.network_interface).is_some() {
+			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: stops.clone() });
+		} else if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
+			gradient.stops = stops.clone();
+			responses.add(GraphOperationMessage::FillSet {
+				layer,
+				fill: Fill::Gradient(gradient),
+			});
+		}
+	}
+
+	if let Some(selected_gradient) = &mut data.selected_gradient {
+		selected_gradient.gradient.stops = stops;
+	}
+
+	responses.add(PropertiesPanelMessage::Refresh);
+}
+
+/// Find the first selected visible layer that has a gradient and return both the layer ID and its resolved gradient.
+fn current_layer_and_gradient(document: &DocumentMessageHandler) -> (Option<LayerNodeIdentifier>, Option<Gradient>) {
+	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+		if let Some(gradient) = get_gradient(layer, &document.network_interface) {
+			return (Some(layer), Some(gradient));
+		}
+	}
+	(None, None)
 }
 
 fn get_gradient_on_selected_layer(document: &DocumentMessageHandler) -> Option<Gradient> {
