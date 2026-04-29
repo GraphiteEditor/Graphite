@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onDestroy, onMount } from "svelte";
+	import { getContext, onDestroy, onMount, tick } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
@@ -70,13 +70,10 @@
 		editingNameExportIndex = index;
 	}
 
-	function focusInput(currentName: string) {
+	async function focusInput(currentName: string) {
 		editingNameText = currentName;
-		setTimeout(() => {
-			if (inputElement) {
-				inputElement.focus();
-			}
-		}, 0);
+		await tick();
+		inputElement?.focus();
 	}
 
 	function setEditingImportName(event: Event) {
@@ -97,33 +94,26 @@
 		}
 	}
 
-	function setEditingNodeName(nodeId: bigint, currentName: string) {
-		editingNameText = currentName;
-		editingNameNodeId = nodeId;
-		// Wait for the input to mount before focusing and selecting its contents.
-		setTimeout(() => {
-			inputElement?.focus();
-			inputElement?.select();
-		}, 0);
-	}
-
 	function commitEditingNodeName(event: Event) {
-		if (editingNameNodeId === undefined) return;
-		if (!(event.target instanceof HTMLInputElement)) return;
+		if (editingNameNodeId === undefined || !(event.target instanceof HTMLInputElement)) return;
+
 		editor.setLayerName(editingNameNodeId, event.target.value);
 		editingNameNodeId = undefined;
 	}
 
-	function cancelEditingNodeName() {
-		editingNameNodeId = undefined;
-	}
-
 	onMount(() => {
-		// Backend dispatches this when the user double-clicks a layer's name area or presses F2 with one layer selected.
-		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", (data) => {
+		// Backend dispatches this when the user double-clicks a layer's name area
+		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", async (data) => {
 			const node = $nodeGraph.nodes.get(data.nodeId);
 			if (!node) return;
-			setEditingNodeName(data.nodeId, node.displayName);
+
+			editingNameText = node.displayName;
+			editingNameNodeId = data.nodeId;
+
+			await tick();
+
+			inputElement?.focus();
+			inputElement?.select();
 		});
 	});
 
@@ -640,10 +630,17 @@
 							bind:value={editingNameText}
 							on:pointerdown|stopPropagation
 							on:dblclick|stopPropagation
-							on:blur={cancelEditingNodeName}
+							on:blur={commitEditingNodeName}
 							on:keydown={(e) => {
-								if (e.key === "Enter") commitEditingNodeName(e);
-								else if (e.key === "Escape") cancelEditingNodeName();
+								// Stop propagation when we handle the key ourselves so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
+								// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
+								if (e.key === "Enter") {
+									commitEditingNodeName(e);
+									e.stopPropagation();
+								} else if (e.key === "Escape") {
+									editingNameNodeId = undefined;
+									e.stopPropagation();
+								}
 							}}
 						/>
 					{:else}
@@ -1316,6 +1313,9 @@
 					height: 24px;
 					border-radius: 2px;
 					field-sizing: content;
+					// Stack above the absolutely-positioned grip/lock/visibility siblings, which can otherwise overlap the input's right edge and hijack clicks there.
+					position: relative;
+					z-index: 1;
 				}
 			}
 
