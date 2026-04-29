@@ -244,7 +244,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								inputs: vec![
 									NodeInput::node(NodeId(1), 0),
-									NodeInput::value(TaggedValue::String(graphene_std::EDITOR_LAYER_PATH.to_string()), false),
+									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
 									NodeInput::node(NodeId(2), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
@@ -379,7 +379,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								inputs: vec![
 									NodeInput::node(NodeId(0), 0),
-									NodeInput::value(TaggedValue::String(graphene_std::EDITOR_LAYER_PATH.to_string()), false),
+									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
 									NodeInput::node(NodeId(1), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),

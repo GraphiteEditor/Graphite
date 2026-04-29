@@ -1,5 +1,5 @@
 use core_types::table::{Table, TableRow};
-use core_types::{Ctx, TEXT_JSON_TYPE};
+use core_types::{ATTR_TYPE, Ctx};
 use serde_json::Value;
 
 use crate::unescape_string;
@@ -250,7 +250,7 @@ fn query_json_all(
 
 	results
 		.into_iter()
-		.map(|(text, ty)| TableRow::new_from_element(text).with_attribute(TEXT_JSON_TYPE, ty.to_string()))
+		.map(|(text, ty)| TableRow::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string()))
 		.collect()
 }
 

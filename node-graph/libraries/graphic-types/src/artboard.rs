@@ -6,7 +6,7 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
-use core_types::{Color, TRANSFORM};
+use core_types::{ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
 use graphene_hash::CacheHash;
@@ -52,7 +52,7 @@ impl BoundingBox for Artboard {
 
 		let mut combined_bounds = None;
 
-		for (element, row_transform) in self.content.iter_element_values().zip(self.content.iter_attribute_values_or_default::<DAffine2>(TRANSFORM)) {
+		for (element, row_transform) in self.content.iter_element_values().zip(self.content.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
 			match element.bounding_box(transform * row_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,

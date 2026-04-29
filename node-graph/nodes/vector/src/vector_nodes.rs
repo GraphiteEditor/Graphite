@@ -7,7 +7,7 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::table::{Table, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::{ALPHA_BLENDING, CloneVarArgs, Color, Context, Ctx, EDITOR_LAYER_PATH, EDITOR_MERGED_LAYERS, ExtractAll, OwnedContextImpl, TRANSFORM};
+use core_types::{ATTR_ALPHA_BLENDING, CloneVarArgs, Color, Context, Ctx, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ExtractAll, OwnedContextImpl, ATTR_TRANSFORM};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -41,7 +41,7 @@ impl VectorTableIterMut for Table<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
 		for graphic in self.iter_element_values_mut() {
 			let Some(vector_table) = graphic.as_vector_mut() else { continue };
-			let (elements, transforms) = vector_table.element_and_attribute_slices_mut::<DAffine2>(TRANSFORM);
+			let (elements, transforms) = vector_table.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 			for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
 				f(vector, *transform);
 			}
@@ -55,7 +55,7 @@ impl VectorTableIterMut for Table<Graphic> {
 
 impl VectorTableIterMut for Table<Vector> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, DAffine2)) {
-		let (elements, transforms) = self.element_and_attribute_slices_mut::<DAffine2>(TRANSFORM);
+		let (elements, transforms) = self.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 		for (vector, transform) in elements.iter_mut().zip(transforms.iter()) {
 			f(vector, *transform);
 		}
@@ -288,7 +288,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 		let do_scale = random_scale_difference.abs() > 1e-6;
 		let do_rotation = random_rotation.abs() > 1e-6;
 
-		let points_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+		let points_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		for &point in row.element().point_domain.positions() {
 			let translation = points_transform.transform_point2(point);
 
@@ -317,8 +317,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 
 			for row_index in 0..content.len() {
 				let Some(mut row) = content.clone_row(row_index) else { continue };
-				let row_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
-				row.set_attribute(TRANSFORM, transform * row_transform);
+				let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+				row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
 
 				result_table.push(row);
 			}
@@ -349,7 +349,7 @@ async fn round_corners(
 ) -> Table<Vector> {
 	(0..source.len())
 		.map(|index| {
-			let source_transform: DAffine2 = source.attribute_cloned_or_default(TRANSFORM, index);
+			let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let source_transform_inverse = source_transform.inverse();
 			let attributes = source.clone_row_attributes(index);
 			let source = source.element(index).unwrap();
@@ -455,7 +455,7 @@ pub fn merge_by_distance(
 		MergeByDistanceAlgorithm::Spatial => content
 			.into_iter()
 			.map(|mut row| {
-				let transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+				let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 				row.element_mut().merge_by_distance_spatial(transform, distance);
 				row
 			})
@@ -678,12 +678,12 @@ async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joini
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>) -> Table<Vector> {
 	let Some(target) = rectangle.element(0).cloned() else { return content };
-	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(TRANSFORM, 0);
+	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let vector = std::mem::take(row.element_mut());
 
 			// Get the bounding box of the source vector geometry
@@ -743,7 +743,7 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 
 			// Add this to the `Table` and reset the transform since we've applied it directly to the points
 			*row.element_mut() = result;
-			row.set_attribute(TRANSFORM, DAffine2::IDENTITY);
+			row.set_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY);
 			row
 		})
 		.collect()
@@ -852,8 +852,8 @@ where
 				RowsOrColumns::Rows => DVec2::new(strip.along_position, strip.cross_position),
 				RowsOrColumns::Columns => DVec2::new(strip.cross_position, strip.along_position),
 			};
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
-			row.set_attribute(TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
+			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			row.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
 
 			strip.along_position += along + separation;
 		} else {
@@ -864,8 +864,8 @@ where
 				RowsOrColumns::Rows => DVec2::new(0., new_cross),
 				RowsOrColumns::Columns => DVec2::new(new_cross, 0.),
 			};
-			let row_transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
-			row.set_attribute(TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
+			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			row.set_attribute(ATTR_TRANSFORM, DAffine2::from_translation(target_position - top_left) * row_transform);
 
 			strips.push(Strip {
 				along_position: along + separation,
@@ -896,7 +896,7 @@ async fn auto_tangents(
 ) -> Table<Vector> {
 	(0..source.len())
 		.map(|index| {
-			let transform: DAffine2 = source.attribute_cloned_or_default(TRANSFORM, index);
+			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let attributes = source.clone_row_attributes(index);
 			let source = source.element(index).unwrap();
 
@@ -1063,7 +1063,7 @@ async fn bounding_box(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn dimensions(_: impl Ctx, content: Table<Vector>) -> DVec2 {
 	(0..content.len())
-		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default(TRANSFORM, index)))
+		.filter_map(|index| content.element(index).unwrap().bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM, index)))
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default()
@@ -1115,7 +1115,7 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let transform = Affine::new(transform_attribute.to_cols_array());
 			let vector = std::mem::take(row.element_mut());
 
@@ -1296,14 +1296,14 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
 		let Some(element) = flattened.element(index) else { continue };
-		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default(EDITOR_LAYER_PATH, index);
+		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
 		(index, node_id).hash(&mut hasher);
 		let collision_hash_seed = hasher.finish();
 
-		output.concat(element, flattened.attribute_cloned_or_default(TRANSFORM, index), collision_hash_seed);
+		output.concat(element, flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index), collision_hash_seed);
 
 		// TODO: Make this instead use the first encountered style
 		// Use the last encountered style as the output style
@@ -1313,13 +1313,13 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	// Preserve a reference to the original upstream `Table<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
-	output_table.set_attribute(EDITOR_MERGED_LAYERS, 0, graphic_table);
+	output_table.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_table);
 
 	// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
 	if !flattened.is_empty() {
 		let primary = flattened.len() - 1;
-		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default(EDITOR_LAYER_PATH, primary);
-		output_table.set_attribute(EDITOR_LAYER_PATH, 0, layer_path);
+		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary);
+		output_table.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
 	}
 
 	output_table
@@ -1365,12 +1365,12 @@ async fn sample_polyline(
 				style: std::mem::take(&mut row.element_mut().style),
 			};
 			// Transfer the stroke transform from the input vector content to the result.
-			result.style.set_stroke_transform(row.attribute_cloned_or_default(TRANSFORM));
+			result.style.set_stroke_transform(row.attribute_cloned_or_default(ATTR_TRANSFORM));
 
 			for local_bezpath in row.element().stroke_bezpath_iter() {
 				// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
 				let mut world_bezpath = local_bezpath.clone();
-				let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+				let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 				world_bezpath.apply_affine(Affine::new(transform_attribute.to_cols_array()));
 
 				// Per-segment perimeter lengths (transform-baked) for distance-based spacing
@@ -1431,7 +1431,7 @@ async fn simplify(
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let transform = Affine::new(transform_attribute.to_cols_array());
 			let inverse_transform = transform.inverse();
 
@@ -1527,7 +1527,7 @@ async fn decimate(
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let transform = Affine::new(transform_attribute.to_cols_array());
 			let inverse_transform = transform.inverse();
 
@@ -1710,7 +1710,7 @@ async fn position_on_path(
 
 	let mut bezpaths: Vec<_> = (0..content.len())
 		.flat_map(|index| {
-			let transform: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, index);
+			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
 		})
 		.collect();
@@ -1750,7 +1750,7 @@ async fn tangent_on_path(
 
 	let mut bezpaths: Vec<_> = (0..content.len())
 		.flat_map(|index| {
-			let transform: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, index);
+			let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			content.element(index).unwrap().stroke_bezpath_iter().map(move |bezpath| (bezpath, transform)).collect::<Vec<_>>()
 		})
 		.collect();
@@ -1948,7 +1948,7 @@ async fn jitter_points(
 		.into_iter()
 		.map(|mut row| {
 			let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
 			let deltas: Vec<_> = (0..row.element().point_domain.positions().len())
@@ -1969,7 +1969,7 @@ async fn jitter_points(
 				})
 				.collect();
 
-			let transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			apply_point_deltas(row.element_mut(), &deltas, transform);
 
 			row
@@ -1992,7 +1992,7 @@ async fn offset_points(
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
 			let deltas: Vec<_> = (0..row.element().point_domain.positions().len())
@@ -2005,7 +2005,7 @@ async fn offset_points(
 				})
 				.collect();
 
-			let transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			apply_point_deltas(row.element_mut(), &deltas, transform);
 
 			row
@@ -2146,7 +2146,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let default_polyline = || {
 		let mut default_path = BezPath::new();
 		for index in 0..content.len() {
-			let transform_attribute: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, index);
+			let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let origin = transform_attribute.translation;
 			let point = kurbo::Point::new(origin.x, origin.y);
 			if index == 0 {
@@ -2164,7 +2164,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		// User-provided path: collect all subpaths with transforms applied
 		let paths: Vec<BezPath> = (0..path.len())
 			.flat_map(|index| {
-				let transform: DAffine2 = path.attribute_cloned_or_default(TRANSFORM, index);
+				let transform: DAffine2 = path.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				path.element(index)
 					.unwrap()
 					.stroke_bezpath_iter()
@@ -2238,8 +2238,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 					if content.element(source_index).is_none() || content.element(target_index).is_none() {
 						return 0.;
 					}
-					let source_transform: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, source_index);
-					let target_transform: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, target_index);
+					let source_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, source_index);
+					let target_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, target_index);
 					let (s_angle, s_scale, s_skew) = source_transform.decompose_rotation_scale_skew();
 					let (t_angle, t_scale, t_skew) = target_transform.decompose_rotation_scale_skew();
 
@@ -2311,8 +2311,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	};
 
 	// Lerp styles
-	let source_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ALPHA_BLENDING, source_index);
-	let target_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ALPHA_BLENDING, target_index);
+	let source_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, source_index);
+	let target_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, target_index);
 	let vector_alpha_blending = source_alpha_blending.lerp(&target_alpha_blending, time as f32);
 
 	// Evaluate the spatial position on the control path for the translation component.
@@ -2330,8 +2330,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// This decomposition must match the one used in Stroke::lerp so the renderer's stroke_transform.inverse()
 	// correctly cancels the element transform, keeping the stroke uniform when Stroke is after Transform.
 	let lerped_transform = {
-		let source_transform: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, source_index);
-		let target_transform: DAffine2 = content.attribute_cloned_or_default(TRANSFORM, target_index);
+		let source_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, source_index);
+		let target_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM, target_index);
 		let (s_angle, s_scale, s_skew) = source_transform.decompose_rotation_scale_skew();
 		let (t_angle, t_scale, t_skew) = target_transform.decompose_rotation_scale_skew();
 
@@ -2360,7 +2360,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// in which case we skip pre-compensation to avoid propagating NaN through merged_layers transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
 		let lerped_inverse = lerped_transform.inverse();
-		for transform in graphic_table_content.iter_attribute_values_mut_or_default::<DAffine2>(TRANSFORM) {
+		for transform in graphic_table_content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 			*transform = lerped_inverse * *transform;
 		}
 	}
@@ -2372,8 +2372,8 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		let endpoint_element = content.element(endpoint_index).unwrap();
 
 		let mut attributes = content.clone_row_attributes(endpoint_index);
-		attributes.insert(TRANSFORM, lerped_transform);
-		attributes.insert(EDITOR_MERGED_LAYERS, graphic_table_content);
+		attributes.insert(ATTR_TRANSFORM, lerped_transform);
+		attributes.insert(ATTR_EDITOR_MERGED_LAYERS, graphic_table_content);
 
 		return Table::new_from_row(TableRow::from_parts(endpoint_element.clone(), attributes));
 	}
@@ -2529,14 +2529,14 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	// The result is a synthesis of source and target, so adopt whichever endpoint the result is closer to as
 	// the click-target identity (so the editor can route clicks back to one of the contributing layers)
 	let primary_index = if time < 0.5 { source_index } else { target_index };
-	let layer_path: Table<NodeId> = content.attribute_cloned_or_default(EDITOR_LAYER_PATH, primary_index);
+	let layer_path: Table<NodeId> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
 
 	Table::new_from_row(
 		TableRow::new_from_element(vector)
-			.with_attribute(TRANSFORM, lerped_transform)
-			.with_attribute(ALPHA_BLENDING, vector_alpha_blending)
-			.with_attribute(EDITOR_LAYER_PATH, layer_path)
-			.with_attribute(EDITOR_MERGED_LAYERS, graphic_table_content),
+			.with_attribute(ATTR_TRANSFORM, lerped_transform)
+			.with_attribute(ATTR_ALPHA_BLENDING, vector_alpha_blending)
+			.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_table_content),
 	)
 }
 
@@ -2815,7 +2815,7 @@ fn bevel(_: impl Ctx, source: Table<Vector>, #[default(10.)] distance: Length) -
 	source
 		.into_iter()
 		.map(|row| {
-			let transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let (element, attributes) = row.into_parts();
 
 			TableRow::from_parts(bevel_algorithm(element, transform, distance), attributes)
@@ -2837,7 +2837,7 @@ fn close_path(_: impl Ctx, source: Table<Vector>) -> Table<Vector> {
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 	source.into_iter().any(|row| {
-		let transform: DAffine2 = row.attribute_cloned_or_default(TRANSFORM);
+		let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		row.element().check_point_inside_shape(transform, point)
 	})
 }
@@ -2918,7 +2918,7 @@ async fn index_points(
 async fn path_length(_: impl Ctx, source: Table<Vector>) -> f64 {
 	(0..source.len())
 		.map(|index| {
-			let transform: DAffine2 = source.attribute_cloned_or_default(TRANSFORM, index);
+			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			source
 				.element(index)
@@ -2940,7 +2940,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Cont
 
 	(0..vector.len())
 		.map(|index| {
-			let transform: DAffine2 = vector.attribute_cloned_or_default(TRANSFORM, index);
+			let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let area_scale = transform.matrix2.determinant().abs();
 			vector.element(index).unwrap().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>()
 		})
@@ -2969,7 +2969,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 				CentroidType::Length => subpath.length_centroid_and_length(None, true),
 			};
 			if let Some((subpath_centroid, area_or_length)) = partial {
-				let transform: DAffine2 = vector.attribute_cloned_or_default(TRANSFORM, index);
+				let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let subpath_centroid = transform.transform_point2(subpath_centroid);
 
 				sum += area_or_length;
@@ -2987,7 +2987,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 
 		let summed_positions = (0..vector.len())
 			.flat_map(|index| {
-				let transform: DAffine2 = vector.attribute_cloned_or_default(TRANSFORM, index);
+				let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				vector
 					.element(index)
 					.unwrap()
@@ -3032,7 +3032,7 @@ mod test {
 	fn create_vector_row(bezpath: BezPath, transform: DAffine2) -> TableRow<Vector> {
 		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
-		TableRow::new_from_element(row).with_attribute(TRANSFORM, transform)
+		TableRow::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
 	}
 
 	#[tokio::test]
@@ -3054,7 +3054,7 @@ mod test {
 		// Test a rectangular path with non-zero rotation
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = Table::new_from_element(square);
-		square.with_attribute_mut_or_default(TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
+		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
 		let bounding_box = BoundingBoxNode { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
 		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.region_manipulator_groups().count(), 1);
@@ -3157,7 +3157,7 @@ mod test {
 	async fn morph() {
 		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
 		let mut second_rectangle = rectangles.clone_row(0).unwrap();
-		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
+		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 
 		let morphed = super::morph(Footprint::default(), rectangles, 0.5, false, InterpolationDistribution::default(), Table::default()).await;
@@ -3168,7 +3168,7 @@ mod test {
 			vec![DVec2::new(0., 0.), DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]
 		);
 		// The interpolated transform carries the midpoint translation (approximate due to arc-length parameterization)
-		assert!((morphed.attribute_cloned_or_default::<DAffine2>(TRANSFORM, 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
+		assert!((morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
 	}
 
 	#[track_caller]
@@ -3244,7 +3244,7 @@ mod test {
 		let vector = Vector::from_bezpath(source);
 		let mut vector_table = Table::new_from_element(vector.clone());
 
-		vector_table.set_attribute(TRANSFORM, 0, DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
+		vector_table.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.)));
 
 		let beveled = super::bevel((), Table::new_from_element(vector), 2_f64.sqrt() * 10.);
 		let beveled = beveled.element(0).unwrap();

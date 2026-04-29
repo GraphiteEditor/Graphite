@@ -1,4 +1,4 @@
-use core_types::TRANSFORM;
+use core_types::ATTR_TRANSFORM;
 use core_types::table::{Table, TableRow};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
@@ -53,7 +53,7 @@ impl PathBuilder {
 
 		if per_glyph_items {
 			self.vector_table
-				.push(TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute(TRANSFORM, DAffine2::from_translation(glyph_offset)));
+				.push(TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset)));
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item

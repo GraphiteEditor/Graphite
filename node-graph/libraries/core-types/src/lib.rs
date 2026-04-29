@@ -33,7 +33,7 @@ pub use num_traits;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
-pub use table::{ALPHA_BLENDING, EDITOR_LAYER_PATH, EDITOR_MERGED_LAYERS, TEXT_JSON_TYPE, TEXT_REGEX_END, TEXT_REGEX_NAME, TEXT_REGEX_START, TRANSFORM};
+pub use table::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_END, ATTR_NAME, ATTR_START, ATTR_TRANSFORM, ATTR_TYPE};
 #[cfg(feature = "wasm")]
 pub use tsify;
 pub use types::Cow;
