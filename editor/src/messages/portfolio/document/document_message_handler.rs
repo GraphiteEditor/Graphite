@@ -28,7 +28,7 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
@@ -1396,11 +1396,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// When artboard_canvas is provided (SVG file-open flow), use the declared canvas origin and dimensions;
 				// no content-shift Transform node needed since the SVG was already placed at its natural coordinates.
 				let (artboard_location, artboard_dimensions, content_shift) = if let Some((origin, dimensions)) = artboard_canvas {
-					(origin, dimensions, DVec2::ZERO)
+					(origin.as_dvec2(), dimensions.as_dvec2(), DVec2::ZERO)
 				} else {
 					// No declared canvas (image or clipboard paste): derive location and dimensions from the content bounding box.
-					let location = if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() };
-					(location, (bounds[1] - bounds[0]).round().as_ivec2(), -bounds[0].round())
+					let location = if place_artboard_at_origin { DVec2::ZERO } else { bounds[0].round() };
+					(location, (bounds[1] - bounds[0]).round(), -bounds[0].round())
 				};
 
 				// Create an artboard and set its dimensions to the bounding box size and location

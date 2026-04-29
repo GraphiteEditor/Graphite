@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-use glam::{DAffine2, IVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
@@ -16,7 +16,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModification, VectorModificationType};
-use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
+use graphene_std::{Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -130,15 +130,15 @@ impl<'a> ModifyInputsContext<'a> {
 		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
-	/// Creates an artboard as the primary export for the document network
-	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
+	/// Creates an artboard as the primary export for the document network.
+	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: DVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_network_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
 			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::DVec2(artboard.location.into()), false)),
-			Some(NodeInput::value(TaggedValue::DVec2(artboard.dimensions.into()), false)),
-			Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(artboard.background)), false)),
-			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
+			Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(background)), false)),
+			Some(NodeInput::value(TaggedValue::Bool(clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
 		LayerNodeIdentifier::new(new_id, self.network_interface)
@@ -584,7 +584,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokeTable(strokes_table), false), false);
 	}
 
-	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
+	pub fn resize_artboard(&mut self, location: DVec2, dimensions: DVec2) {
 		let Some(artboard_node_id) = self.existing_network_node_id("Artboard", true) else {
 			return;
 		};
@@ -592,16 +592,16 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut dimensions = dimensions;
 		let mut location = location;
 
-		if dimensions.x < 0 {
-			dimensions.x *= -1;
+		if dimensions.x < 0. {
+			dimensions.x = -dimensions.x;
 			location.x -= dimensions.x;
 		}
-		if dimensions.y < 0 {
-			dimensions.y *= -1;
+		if dimensions.y < 0. {
+			dimensions.y = -dimensions.y;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location.into()), false), false);
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions.into()), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location), false), false);
+		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions), false), false);
 	}
 
 	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false

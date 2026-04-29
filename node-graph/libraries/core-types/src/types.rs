@@ -172,7 +172,9 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 		| "grahpene_core::instances::Instances<grahpene_core::vector::vector_data::VectorData>"
 		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::VectorData>"
 		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::Vector>" => "grahpene_core::table::Table<grahpene_core::vector::vector_types::Vector>".to_string(),
-		"grahpene_core::instances::Instances<grahpene_core::graphic_element::Artboard>" => "grahpene_core::table::Table<grahpene_core::artboard::Artboard>".to_string(),
+		"grahpene_core::instances::Instances<grahpene_core::graphic_element::Artboard>"
+		| "grahpene_core::table::Table<grahpene_core::artboard::Artboard>"
+		| "grahpene_core::table::Table<grahpene_core::graphic_element::Artboard>" => "grahpene_core::table::Table<grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>>".to_string(),
 		"grahpene_core::vector::vector_data::modification::VectorModification" => "grahpene_core::vector::vector_modification::VectorModification".to_string(),
 		"grahpene_core::table::Table<grahpene_core::graphic_element::Graphic>" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
 		_ => name,

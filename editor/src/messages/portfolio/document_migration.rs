@@ -1313,14 +1313,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
-	// Upgrade artboard name being passed as hidden value input to "Create Artboard"
-	if reference == DefinitionIdentifier::Network("Artboard".into()) && reset_node_definitions_on_open {
-		let label = document.network_interface.display_name(node_id, network_path);
-		document
-			.network_interface
-			.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
-	}
-
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) && inputs_count == 1 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);

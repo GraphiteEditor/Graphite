@@ -11,7 +11,7 @@ pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
 pub use graphic_nodes;
-pub use graphic_types::{Artboard, Graphic, Vector};
+pub use graphic_types::{Graphic, Vector};
 pub use math_nodes;
 pub use path_bool_nodes;
 pub use raster_nodes;
@@ -44,7 +44,6 @@ pub mod vector {
 
 pub mod graphic {
 	pub use graphic_nodes::graphic::*;
-	pub use graphic_types::Artboard;
 	pub use graphic_types::graphic::*;
 }
 

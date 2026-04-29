@@ -108,11 +108,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				network_interface.force_set_upstream_to_chain(&first_chain_node, &[]);
 			}
-			GraphOperationMessage::NewArtboard { id, artboard } => {
+			GraphOperationMessage::NewArtboard {
+				id,
+				location,
+				dimensions,
+				background,
+				clip,
+			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				let artboard_location = artboard.location;
-				let artboard_layer = modify_inputs.create_artboard(id, artboard);
+				let artboard_layer = modify_inputs.create_artboard(id, location, dimensions, background, clip);
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
@@ -138,7 +143,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 							// Apply a translation to prevent the content from shifting
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
-								transform: DAffine2::from_translation(-artboard_location.as_dvec2()),
+								transform: DAffine2::from_translation(-location),
 								transform_in: TransformIn::Local,
 								skip_rerender: true,
 							});
