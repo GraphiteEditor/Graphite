@@ -10,6 +10,7 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::{NodeId, generate_uuid};
+use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -412,9 +413,9 @@ impl Render for Graphic {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
-						let layer_path: Table<NodeId> = table.attribute_cloned_or_default("editor:layer", 0);
+						let layer_path: Table<NodeId> = table.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
-						let transform: DAffine2 = table.attribute_cloned_or_default("transform", 0);
+						let transform: DAffine2 = table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
 						metadata.first_element_source_id.insert(element_id, layer);
 						metadata.local_transforms.insert(element_id, transform);
@@ -425,7 +426,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
+						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
 				Graphic::RasterGPU(table) => {
@@ -433,7 +434,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
+						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
 				Graphic::Color(table) => {
@@ -441,7 +442,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
+						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
 				Graphic::Gradient(table) => {
@@ -449,7 +450,7 @@ impl Render for Graphic {
 
 					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
+						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
 			}
@@ -551,7 +552,7 @@ impl Render for Artboard {
 			|attributes| {
 				let matrix = format_transform_matrix(self.transform());
 				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
+					attributes.push(ATTR_TRANSFORM, matrix);
 				}
 
 				if self.clip {
@@ -656,7 +657,7 @@ impl Render for Table<Artboard> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			self.element(index).unwrap().collect_metadata(metadata, footprint, layer);
 		}
@@ -678,8 +679,8 @@ impl Render for Table<Graphic> {
 		let mut mask_state = None;
 
 		for index in 0..self.len() {
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 			let element = self.element(index).unwrap();
 
 			render.parent_tag(
@@ -687,7 +688,7 @@ impl Render for Table<Graphic> {
 				|attributes| {
 					let matrix = format_transform_matrix(transform);
 					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
+						attributes.push(ATTR_TRANSFORM, matrix);
 					}
 
 					let opacity = alpha_blending.opacity(render_params.for_mask);
@@ -732,9 +733,9 @@ impl Render for Table<Graphic> {
 		let mut mask_element_and_transform = None;
 
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
+			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let transform = transform * row_transform;
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 			let element = self.element(index).unwrap();
 
 			let mut layer = false;
@@ -806,8 +807,8 @@ impl Render for Table<Graphic> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -817,7 +818,7 @@ impl Render for Table<Graphic> {
 			if let Some(element_id) = layer {
 				element.collect_metadata(metadata, footprint, Some(element_id));
 			} else {
-				// Recurse through anonymous wrapper items to reach nested content with editor:layer tags
+				// Recurse through anonymous wrapper items to reach nested content with editor:layer_path tags
 				element.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -826,7 +827,7 @@ impl Render for Table<Graphic> {
 			let mut all_upstream_click_targets = Vec::new();
 
 			for index in 0..self.len() {
-				let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
+				let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let element = self.element(index).unwrap();
 				let mut new_click_targets = Vec::new();
 				element.add_upstream_click_targets(&mut new_click_targets);
@@ -844,7 +845,7 @@ impl Render for Table<Graphic> {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
+			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
 			let mut new_click_targets = Vec::new();
 
@@ -863,7 +864,7 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>("editor:layer");
+		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
 			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
@@ -874,8 +875,8 @@ impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
-			let multiplied_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let multiplied_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
@@ -915,7 +916,7 @@ impl Render for Table<Vector> {
 					attributes.push("d", path.clone());
 					let matrix = format_transform_matrix(element_transform);
 					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
+						attributes.push(ATTR_TRANSFORM, matrix);
 					}
 					let mut style = vector.style.clone();
 					style.clear_stroke();
@@ -940,8 +941,8 @@ impl Render for Table<Vector> {
 
 				let vector_row = Table::new_from_row(
 					TableRow::new_from_element(cloned_vector)
-						.with_attribute("transform", multiplied_transform)
-						.with_attribute("alpha_blending", alpha_blending),
+						.with_attribute(ATTR_TRANSFORM, multiplied_transform)
+						.with_attribute(ATTR_ALPHA_BLENDING, alpha_blending),
 				);
 
 				(id, mask_type, vector_row)
@@ -957,7 +958,7 @@ impl Render for Table<Vector> {
 						attributes.push("d", face_d.clone());
 						let matrix = format_transform_matrix(element_transform);
 						if !matrix.is_empty() {
-							attributes.push("transform", matrix);
+							attributes.push(ATTR_TRANSFORM, matrix);
 						}
 						let mut style = vector.style.clone();
 						style.clear_stroke();
@@ -978,7 +979,7 @@ impl Render for Table<Vector> {
 				attributes.push("d", path.clone());
 				let matrix = format_transform_matrix(element_transform);
 				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
+					attributes.push(ATTR_TRANSFORM, matrix);
 				}
 
 				let defs = &mut attributes.0.svg_defs;
@@ -1043,7 +1044,7 @@ impl Render for Table<Vector> {
 					attributes.push("d", path);
 					let matrix = format_transform_matrix(element_transform);
 					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
+						attributes.push(ATTR_TRANSFORM, matrix);
 					}
 					let mut style = vector.style.clone();
 					style.clear_stroke();
@@ -1068,8 +1069,8 @@ impl Render for Table<Vector> {
 			use graphic_types::vector_types::vector;
 
 			let Some(element) = self.element(index) else { continue };
-			let row_transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 			let multiplied_transform = parent_transform * row_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -1257,8 +1258,8 @@ impl Render for Table<Vector> {
 
 						let vector_table = Table::new_from_row(
 							TableRow::new_from_element(cloned_element)
-								.with_attribute("transform", row_transform)
-								.with_attribute("alpha_blending", alpha_blending),
+								.with_attribute(ATTR_TRANSFORM, row_transform)
+								.with_attribute(ATTR_ALPHA_BLENDING, alpha_blending),
 						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
@@ -1329,12 +1330,12 @@ impl Render for Table<Vector> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default("editor:layer", index);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
-				// When recovering element_id from the item's editor:layer tag (because the caller
+				// When recovering element_id from the item's editor:layer_path tag (because the caller
 				// passed None), also store the transform metadata that Graphic::collect_metadata
 				// normally provides but skipped due to the None element_id.
 				if caller_element_id.is_none() {
@@ -1378,7 +1379,7 @@ impl Render for Table<Vector> {
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
 			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", index);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
@@ -1390,7 +1391,7 @@ impl Render for Table<Vector> {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 			let filled = vector.style.fill() != &Fill::None;
@@ -1435,8 +1436,8 @@ impl Render for Table<Raster<CPU>> {
 		for index in 0..self.len() {
 			let Some(image) = self.element(index) else { continue };
 
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 
 			if image.data.is_empty() {
 				continue;
@@ -1457,7 +1458,7 @@ impl Render for Table<Raster<CPU>> {
 						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
 						let matrix = format_transform_matrix(matrix);
 						if !matrix.is_empty() {
-							attributes.push("transform", matrix);
+							attributes.push(ATTR_TRANSFORM, matrix);
 						}
 
 						attributes.push("width", size.x.to_string());
@@ -1500,7 +1501,7 @@ impl Render for Table<Raster<CPU>> {
 					attributes.push("href", base64_string);
 					let matrix = format_transform_matrix(transform);
 					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
+						attributes.push(ATTR_TRANSFORM, matrix);
 					}
 
 					let opacity = alpha_blending.opacity(render_params.for_mask);
@@ -1522,7 +1523,7 @@ impl Render for Table<Raster<CPU>> {
 				continue;
 			}
 
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 
 			let opacity = alpha_blending.opacity(render_params.for_mask);
@@ -1537,7 +1538,7 @@ impl Render for Table<Raster<CPU>> {
 				layer = true;
 			}
 
-			let transform_attribute: DAffine2 = self.attribute_cloned_or_default("transform", index);
+			let transform_attribute: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			if let RenderMode::Outline = render_params.render_mode {
 				let outline_transform: DAffine2 = transform * transform_attribute;
@@ -1577,7 +1578,7 @@ impl Render for Table<Raster<CPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
 		if !self.is_empty() {
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 			metadata.local_transforms.insert(element_id, transform);
 
 			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
@@ -1586,7 +1587,7 @@ impl Render for Table<Raster<CPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1609,7 +1610,7 @@ impl Render for Table<Raster<GPU>> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(raster) = self.element(index) else { continue };
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
 				_ => alpha_blending.blend_mode.to_peniko(),
@@ -1626,7 +1627,7 @@ impl Render for Table<Raster<GPU>> {
 				layer = true;
 			}
 
-			let transform_attribute: DAffine2 = self.attribute_cloned_or_default("transform", index);
+			let transform_attribute: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			if let RenderMode::Outline = render_params.render_mode {
 				let outline_transform = transform * transform_attribute;
@@ -1667,7 +1668,7 @@ impl Render for Table<Raster<GPU>> {
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
 		if !self.is_empty() {
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 			metadata.local_transforms.insert(element_id, transform);
 
 			// If this raster carries a snapshot of upstream graphic content (e.g. it was produced by Rasterize,
@@ -1676,7 +1677,7 @@ impl Render for Table<Raster<GPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1697,7 +1698,7 @@ impl Render for Table<Raster<GPU>> {
 // later replace with the current viewport transform before each render.
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending")) {
+		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
 			render.leaf_tag("polyline", |attributes| {
 				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
 				let max = u64::MAX;
@@ -1723,7 +1724,7 @@ impl Render for Table<Color> {
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending")) {
+		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
@@ -1752,8 +1753,8 @@ impl Render for Table<GradientStops> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(gradient) = self.element(index) else { continue };
-			let transform: DAffine2 = self.attribute_cloned_or_default("transform", index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default("alpha_blending", index);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
 			render.leaf_tag("rect", |attributes| {
 				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
 				let max = u64::MAX;
@@ -1820,7 +1821,7 @@ impl Render for Table<GradientStops> {
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		for (gradient, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>("alpha_blending")) {
+		for (gradient, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 

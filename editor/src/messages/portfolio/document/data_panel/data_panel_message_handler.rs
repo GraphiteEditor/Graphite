@@ -993,7 +993,7 @@ fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut La
 /// Mirrors [`dispatch_value_widget`] but routes to [`TableRowLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer` attribute), so each item's NodeId value
+	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
 	// resolves against the prefix made up of preceding items. Handled before the generic `Table<T>` blanket impl.
 	if let Some(path) = any.downcast_ref::<Table<NodeId>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(path, data));

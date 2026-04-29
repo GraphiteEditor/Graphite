@@ -1,6 +1,7 @@
 //! Contains stylistic options for SVG elements.
 
 pub use crate::gradient::*;
+use core_types::ATTR_ALPHA_BLENDING;
 use core_types::AlphaBlending;
 use core_types::Color;
 use core_types::color::Alpha;
@@ -135,7 +136,7 @@ impl From<Option<Color>> for Fill {
 
 impl From<Table<Color>> for Fill {
 	fn from(color: Table<Color>) -> Fill {
-		let alpha = color.attribute_cloned_or_default::<AlphaBlending>("alpha_blending", 0).opacity;
+		let alpha = color.attribute_cloned_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING, 0).opacity;
 		let color = color.element(0).copied();
 		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha)))
 	}

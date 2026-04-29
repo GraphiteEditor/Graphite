@@ -10,6 +10,7 @@ use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::value::ClonedNode;
+use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM};
 use core_types::{AlphaBlending, Ctx, Node};
 use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
@@ -90,7 +91,7 @@ where
 		return target;
 	}
 
-	let (elements, transforms) = target.element_and_attribute_slices_mut::<DAffine2>("transform");
+	let (elements, transforms) = target.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 	for (element, transform_attribute) in elements.iter_mut().zip(transforms.iter()) {
 		let target_width = element.width;
 		let target_height = element.height;
@@ -280,7 +281,7 @@ async fn brush(
 	let has_erase_or_restore_strokes = strokes.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image)).with_attribute("transform", background_bounds);
+		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image)).with_attribute(ATTR_TRANSFORM, background_bounds);
 
 		for stroke in strokes.into_iter().map(|row| row.into_element()) {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -312,14 +313,14 @@ async fn brush(
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
-	let transform: DAffine2 = actual_image.attribute_cloned_or_default("transform");
-	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default("alpha_blending");
-	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default("editor:layer");
+	let transform: DAffine2 = actual_image.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default(ATTR_ALPHA_BLENDING);
+	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 
 	*image.element_mut(0).unwrap() = actual_image.into_element();
-	image.set_attribute("transform", 0, transform);
-	image.set_attribute("alpha_blending", 0, alpha_blending);
-	image.set_attribute("editor:layer", 0, layer);
+	image.set_attribute(ATTR_TRANSFORM, 0, transform);
+	image.set_attribute(ATTR_ALPHA_BLENDING, 0, alpha_blending);
+	image.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer);
 
 	image
 }
@@ -329,8 +330,8 @@ pub fn blend_image_closure(foreground: TableRow<Raster<CPU>>, mut background: Ta
 	let background_size = DVec2::new(background.element().width as f64, background.element().height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let foreground_transform: DAffine2 = foreground.attribute_cloned_or_default("transform");
-	let background_transform: DAffine2 = background.attribute_cloned_or_default("transform");
+	let foreground_transform: DAffine2 = foreground.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let background_transform: DAffine2 = background.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let background_to_foreground = DAffine2::from_scale(foreground_size) * foreground_transform.inverse() * background_transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
@@ -361,7 +362,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 	let background_size = DVec2::new(background.element().width as f64, background.element().height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let background_transform: DAffine2 = background.attribute_cloned_or_default("transform");
+	let background_transform: DAffine2 = background.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let background_to_foreground = background_transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
