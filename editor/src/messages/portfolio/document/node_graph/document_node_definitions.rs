@@ -239,7 +239,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
 								..Default::default()
 							},
-							// Stamp each row of the content with the parent layer's NodeId via the `editor:layer` attribute,
+							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer` attribute,
 							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
 							DocumentNode {
 								inputs: vec![
@@ -343,7 +343,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Merges the provided content as a new element in the graphic table that represents a layer compositing stack."),
+			description: Cow::Borrowed("Merges the provided content as a new item in the layer's compositing stack."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -374,7 +374,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
 								..Default::default()
 							},
-							// Stamp each row of the content with the parent layer's NodeId via the `editor:layer` attribute,
+							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer` attribute,
 							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
 							DocumentNode {
 								inputs: vec![
@@ -697,7 +697,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 4: Multiply (total instances)
+								// 4: Multiply (total items)
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 1)),
@@ -1545,7 +1545,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![
 							// Primary output: the whole match (String)
 							NodeInput::node(NodeId(1), 0),
-							// Secondary output: capture groups (Table<String>), each row carries `start`/`end`/`name` attributes from `regex_find`
+							// Secondary output: capture groups (Table<String>), each item carries `start`/`end`/`name` attributes from `regex_find`
 							NodeInput::node(NodeId(2), 0),
 						],
 						nodes: [
@@ -1561,13 +1561,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the row's start/end/name attributes since the unwrapped String can't carry them)
+							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extract_element::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 2: omit_element at index 0, returns the capture group rows as a Table<String>, preserving each row's start/end/name attributes
+							// Node 2: omit_element at index 0, returns the capture group items as a Table<String>, preserving each item's start/end/name attributes
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
@@ -1880,7 +1880,7 @@ type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesCont
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sync::Lazy::new(static_node_properties);
 
-/// Defines the logic for inputs to display a custom properties panel widget.
+/// Defines the logic for inputs to display a custom Properties panel widget.
 fn static_node_properties() -> NodeProperties {
 	let mut map: NodeProperties = HashMap::new();
 	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
@@ -1909,7 +1909,7 @@ type InputProperties = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodeProper
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 static INPUT_OVERRIDES: once_cell::sync::Lazy<InputProperties> = once_cell::sync::Lazy::new(static_input_properties);
 
-/// Defines the logic for inputs to display a custom properties panel widget.
+/// Defines the logic for inputs to display a custom Properties panel widget.
 fn static_input_properties() -> InputProperties {
 	let mut map: InputProperties = HashMap::new();
 	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));

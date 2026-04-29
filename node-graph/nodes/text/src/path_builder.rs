@@ -19,11 +19,11 @@ pub struct PathBuilder {
 }
 
 impl PathBuilder {
-	pub fn new(per_glyph_instances: bool, scale: f64) -> Self {
+	pub fn new(per_glyph_items: bool, scale: f64) -> Self {
 		Self {
 			current_subpath: Subpath::new(Vec::new(), false),
 			glyph_subpaths: Vec::new(),
-			vector_table: if per_glyph_instances { Table::new() } else { Table::new_from_element(Vector::default()) },
+			vector_table: if per_glyph_items { Table::new() } else { Table::new_from_element(Vector::default()) },
 			scale,
 			id: PointId::ZERO,
 			origin: DVec2::default(),
@@ -35,7 +35,7 @@ impl PathBuilder {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2, per_glyph_instances: bool) {
+	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], glyph_offset: DVec2, style_skew: Option<DAffine2>, skew: DAffine2, per_glyph_items: bool) {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
 		glyph.draw(settings, self).unwrap();
@@ -50,18 +50,18 @@ impl PathBuilder {
 			glyph_subpath.apply_transform(skew);
 		}
 
-		if per_glyph_instances {
+		if per_glyph_items {
 			self.vector_table
 				.push(TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute("transform", DAffine2::from_translation(glyph_offset)));
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
-				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element
+				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item
 				self.vector_table.element_mut(0).unwrap().append_subpath(subpath, false);
 			}
 		}
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool) {
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, tilt: f64, per_glyph_items: bool) {
 		let mut run_x = glyph_run.offset();
 		let run_y = glyph_run.baseline();
 
@@ -69,7 +69,7 @@ impl PathBuilder {
 
 		// User-requested tilt applied around baseline to avoid vertical displacement
 		// Translation ensures rotation point is at the baseline, not origin
-		let skew = if per_glyph_instances {
+		let skew = if per_glyph_items {
 			DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.])
 		} else {
 			DAffine2::from_translation(DVec2::new(0., run_y as f64))
@@ -82,7 +82,7 @@ impl PathBuilder {
 		// Font synthesis (e.g., synthetic italic) applied separately from user transforms
 		// This preserves the distinction between font styling and user transformations
 		let style_skew = synthesis.skew().map(|angle| {
-			if per_glyph_instances {
+			if per_glyph_items {
 				DAffine2::from_cols_array(&[1., 0., -angle.to_radians().tan() as f64, 1., 0., 0.])
 			} else {
 				DAffine2::from_translation(DVec2::new(0., run_y as f64))
@@ -107,10 +107,10 @@ impl PathBuilder {
 
 			let glyph_id = GlyphId::from(glyph.id);
 			if let Some(glyph_outline) = outlines.get(glyph_id) {
-				if !per_glyph_instances {
+				if !per_glyph_items {
 					self.origin = glyph_offset;
 				}
-				self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_instances);
+				self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_items);
 			}
 		}
 	}

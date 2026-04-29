@@ -199,7 +199,7 @@ pub enum DocumentMessage {
 		undo_count: usize,
 	},
 	ToggleLayerExpansion {
-		instance_path: Vec<NodeId>,
+		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
 	ToggleSelectedVisibility,

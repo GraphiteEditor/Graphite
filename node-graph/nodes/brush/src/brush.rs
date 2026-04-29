@@ -199,8 +199,8 @@ async fn brush(
 	if image.is_empty() {
 		image.push(TableRow::default());
 	}
-	// TODO: Find a way to handle more than one row
-	let table_row = image.clone_row(0).expect("Expected the one row we just pushed");
+	// TODO: Find a way to handle more than one item
+	let table_row = image.clone_row(0).expect("Expected the one item we just pushed");
 
 	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
@@ -217,7 +217,7 @@ async fn brush(
 
 	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
 
-	// TODO: Find a way to handle more than one row
+	// TODO: Find a way to handle more than one item
 	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).into_iter().next() else {
 		return Table::new();
 	};

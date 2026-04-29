@@ -112,13 +112,13 @@ pub fn combine_channels(
 		.zip(blue)
 		.zip(alpha)
 		.filter_map(|(((red, green), blue), alpha)| {
-			// Turn any default zero-sized image rows into None
+			// Turn any default zero-sized image items into None
 			let red = red.filter(|i| i.element().width > 0 && i.element().height > 0);
 			let green = green.filter(|i| i.element().width > 0 && i.element().height > 0);
 			let blue = blue.filter(|i| i.element().width > 0 && i.element().height > 0);
 			let alpha = alpha.filter(|i| i.element().width > 0 && i.element().height > 0);
 
-			// Get this row's transform and alpha blending mode from the first non-empty channel
+			// Get this item's transform and alpha blending mode from the first non-empty channel
 			let attributes = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| i.attributes().clone())?;
 
 			// Get the common width and height of the channels, which must have equal dimensions
@@ -183,7 +183,7 @@ pub fn mask(
 	#[expose]
 	stencil: Table<Raster<CPU>>,
 ) -> Table<Raster<CPU>> {
-	// TODO: Figure out what it means to support multiple stencil rows?
+	// TODO: Figure out what it means to support multiple stencil items?
 	let Some(stencil) = stencil.into_iter().next() else {
 		// No stencil provided so we return the original image
 		return image;
@@ -285,7 +285,7 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 	result_table.set_attribute("transform", 0, transform);
 	result_table.set_attribute("alpha_blending", 0, AlphaBlending::default());
 
-	// Callers of empty_image can safely unwrap on returned table
+	// Callers of empty_image can safely unwrap on returned `Table`
 	result_table
 }
 

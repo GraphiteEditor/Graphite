@@ -87,7 +87,7 @@ fn reset_transform<T>(
 	content
 }
 
-/// Overwrites the transform of each element in the input table with the specified transform.
+/// Overwrites the transform of each item in the input `Table` with the specified transform.
 #[node_macro::node(category("Math: Transform"))]
 fn replace_transform<T>(
 	_: impl Ctx + InjectFootprint,
@@ -109,7 +109,7 @@ fn replace_transform<T>(
 }
 
 // TODO: Figure out how this node should behave once #2982 is implemented.
-/// Obtains the transform of the first element in the input table, if present.
+/// Obtains the transform of the first item in the input `Table`, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
 async fn extract_transform<T>(
 	_: impl Ctx,

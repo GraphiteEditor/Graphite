@@ -27,7 +27,7 @@ pub struct GraphOperationMessageContext<'a> {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct GraphOperationMessageHandler {}
 
-// GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.
+// GraphOperationMessageHandler always modified the document network. This is so changes to the Layers panel will only affect the document network.
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
 #[message_handler_data]
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for GraphOperationMessageHandler {

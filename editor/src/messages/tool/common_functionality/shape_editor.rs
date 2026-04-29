@@ -1281,7 +1281,7 @@ impl ShapeState {
 			};
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
-			// Make a new collection of anchor points which needs to be moved
+			// Make a new set of anchor points which needs to be moved
 			let mut affected_points = state.selected_points.clone();
 
 			for (segment_id, _, start, end) in vector.segment_bezier_iter() {

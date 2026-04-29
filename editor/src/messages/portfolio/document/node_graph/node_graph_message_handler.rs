@@ -2402,7 +2402,7 @@ impl NodeGraphMessageHandler {
 		self.widgets[1] = LayoutGroup::row(widgets);
 	}
 
-	/// Collate the properties panel sections for a node graph
+	/// Collate the Properties panel sections for a node graph
 	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(selected_nodes) = context.network_interface.selected_nodes_in_nested_network(context.selection_network_path) else {
@@ -2468,7 +2468,7 @@ impl NodeGraphMessageHandler {
 				}
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
-				// This may require store a separate path for the properties panel
+				// This may require store a separate path for the Properties panel
 				let mut properties = vec![LayoutGroup::row(vec![
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),

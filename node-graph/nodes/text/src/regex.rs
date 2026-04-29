@@ -77,11 +77,11 @@ fn regex_replace(
 	}
 }
 
-/// Finds a regex match in the string and returns its components. The result is a list where the first element is the whole match (`$0`) and subsequent elements are the capture groups (`$1`, `$2`, etc., if any).
+/// Finds a regex match in the string and returns its components. The result is a list where the first item is the whole match (`$0`) and subsequent items are the capture groups (`$1`, `$2`, etc., if any).
 ///
 /// The match index selects which non-overlapping occurrence to return (0 for the first match). Returns an empty list if no match is found at the given index.
 ///
-/// Each row carries `start` and `end` byte-offset attributes pointing into the original string, plus a `name` attribute holding
+/// Each item carries `start` and `end` byte-offset attributes pointing into the original string, plus a `name` attribute holding
 /// the capture group's name (empty for unnamed groups, and for index 0 which is the whole match).
 #[node_macro::node(category(""))]
 fn regex_find(
@@ -150,7 +150,7 @@ fn regex_find(
 
 /// Finds all non-overlapping matches of a regular expression pattern in the string, returning a list of the matched substrings.
 ///
-/// Each row carries `start` and `end` byte-offset attributes pointing into the original string.
+/// Each item carries `start` and `end` byte-offset attributes pointing into the original string.
 #[node_macro::node(category("Text: Regex"))]
 fn regex_find_all(
 	_: impl Ctx,

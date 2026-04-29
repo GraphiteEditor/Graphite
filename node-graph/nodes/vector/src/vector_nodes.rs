@@ -29,7 +29,7 @@ use vector_types::vector::misc::{
 use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 
-/// Implemented for types that contain vector rows reachable via mutable access.
+/// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `Table<Graphic>` or `Table<Vector>`.
 trait VectorTableIterMut {
 	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
@@ -255,13 +255,13 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	/// Artwork to be copied and placed at each point.
 	#[expose]
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)]
-	instance: Table<I>,
-	/// Minimum range of randomized sizes given to each instance.
+	content: Table<I>,
+	/// Minimum range of randomized sizes given to each placed copy.
 	#[default(1)]
 	#[range((0., 2.))]
 	#[unit("x")]
 	random_scale_min: Multiplier,
-	/// Maximum range of randomized sizes given to each instance.
+	/// Maximum range of randomized sizes given to each placed copy.
 	#[default(1)]
 	#[range((0., 2.))]
 	#[unit("x")]
@@ -269,12 +269,12 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
 	#[range((-50., 50.))]
 	random_scale_bias: f64,
-	/// Seed to determine unique variations on all the randomized instance sizes.
+	/// Seed to determine unique variations on all the randomized copy sizes.
 	random_scale_seed: SeedValue,
-	/// Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise.
+	/// Range of randomized angles given to each placed copy, in degrees ranging from furthest clockwise to counterclockwise.
 	#[range((0., 360.))]
 	random_rotation: Angle,
-	/// Seed to determine unique variations on all the randomized instance angles.
+	/// Seed to determine unique variations on all the randomized copy angles.
 	random_rotation_seed: SeedValue,
 ) -> Table<I> {
 	let mut result_table = Table::new();
@@ -315,8 +315,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 
 			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
 
-			for row_index in 0..instance.len() {
-				let Some(mut row) = instance.clone_row(row_index) else { continue };
+			for row_index in 0..content.len() {
+				let Some(mut row) = content.clone_row(row_index) else { continue };
 				let row_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 				row.set_attribute("transform", transform * row_transform);
 
@@ -741,7 +741,7 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 
 			result.style.set_stroke_transform(DAffine2::IDENTITY);
 
-			// Add this to the table and reset the transform since we've applied it directly to the points
+			// Add this to the `Table` and reset the transform since we've applied it directly to the points
 			*row.element_mut() = result;
 			row.set_attribute("transform", DAffine2::IDENTITY);
 			row
@@ -797,7 +797,7 @@ where
 	let mut items: Vec<(f64, f64, DVec2, TableRow<T>)> = elements
 		.into_iter()
 		.map(|row| {
-			// Single-element table to query its bounding box
+			// Single-item `Table` to query its bounding box
 			let single = Table::new_from_row(row.clone());
 			let (w, h, top_left) = match single.bounding_box(DAffine2::IDENTITY, false) {
 				RenderBoundingBox::Rectangle([min, max]) => {
@@ -1210,7 +1210,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				solidified_stroke.style.set_fill(Fill::solid_or_none(stroke.color));
 			}
 
-			// If the original vector has a fill, preserve it as a separate row with the stroke cleared.
+			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
 			let has_fill = !vector.style.fill().is_none();
 			let fill_row = has_fill.then(|| {
 				vector.style.clear_stroke();
@@ -1219,7 +1219,7 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			let stroke_row = TableRow::from_parts(solidified_stroke, attributes);
 
-			// Ordering based on the paint order. The first row in the table is rendered below the second.
+			// Ordering based on the paint order. The first item in the `Table` is rendered below the second.
 			match paint_order {
 				PaintOrder::StrokeAbove => fill_row.into_iter().chain(std::iter::once(stroke_row)).collect::<Vec<_>>(),
 				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
@@ -1289,7 +1289,7 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 	let graphic_table = content.into_graphic_table();
 	let flattened = graphic_table.clone().into_flattened_table::<Vector>();
 
-	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
+	// Create a `Table` with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
 	let output = output_table.element_mut(0).unwrap();
 
@@ -1310,12 +1310,12 @@ pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implem
 		output.style = element.style.clone();
 	}
 
-	// Preserve a reference to the original upstream graphic table so the renderer can recurse into it
+	// Preserve a reference to the original upstream `Table<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
 	// This is the same mechanism Boolean Operation uses to keep its inputs editable after the merge.
 	output_table.set_attribute("editor:merged_layers", 0, graphic_table);
 
-	// Adopt the last input row's layer so the editor can also bucket clicks under a contributing child layer
+	// Adopt the last input item's layer so the editor can also bucket clicks under a contributing child layer
 	if !flattened.is_empty() {
 		let primary = flattened.len() - 1;
 		let layer_path: Table<NodeId> = flattened.attribute_cloned_or_default("editor:layer", primary);
@@ -2130,7 +2130,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		}
 	}
 
-	// Preserve original graphic table as upstream data so this group layer's nested layers can be edited by the tools.
+	// Preserve original `Table<Graphic>` as upstream data so this group layer's nested layers can be edited by the tools.
 	let mut graphic_table_content = content.clone().into_graphic_table();
 
 	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
@@ -2191,7 +2191,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let control_bezpath = &control_bezpaths[subpath_index];
 	let segment_count = control_bezpath.segments().count();
 
-	// If the control path has no segments, return the first element
+	// If the control path has no segments, return the first item
 	if segment_count == 0 {
 		return content.into_iter().next().into_iter().collect();
 	}
@@ -2352,7 +2352,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	};
 
 	// Pre-compensate merged_layers transforms so that when collect_metadata applies
-	// the row transform (which will be group_transform * lerped_transform after the
+	// the item transform (which will be group_transform * lerped_transform after the
 	// pipeline's Transform node runs), the lerped_transform cancels out and children
 	// get the correct footprint: parent * group_transform * child_transform.
 	// Only pre-compensate if the lerped transform is invertible (non-zero determinant).
@@ -2878,7 +2878,7 @@ async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
 	content.iter_element_values().map(|vector| vector.point_domain.positions().len() as f64).sum()
 }
 
-/// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
+/// Retrieves the vec2 position (in local space) of the anchor point at the specified index in a `Table` of vector elements.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn index_points(
