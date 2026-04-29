@@ -25,7 +25,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 	vector.set_attribute("editor:layer", 0, if existing.is_empty() { subgraph_path } else { existing });
 
 	if vector.len() > 1 {
-		warn!("The path modify ran on {} vector rows. Only the first can be modified.", vector.len());
+		warn!("The path modify ran on {} vector items. Only the first can be modified.", vector.len());
 	}
 	vector
 }

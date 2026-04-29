@@ -3284,7 +3284,7 @@ impl NodeNetworkInterface {
 		self.document_metadata.local_transforms = local_transforms;
 	}
 
-	/// Update the cached first instance source id of the layers
+	/// Update the cached first item's source id of the layers
 	pub fn update_first_element_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
 		self.document_metadata.first_element_source_ids = new;
 	}
@@ -6636,11 +6636,11 @@ pub enum NodeTypeTransientMetadata {
 
 #[derive(Debug, Default, Clone)]
 pub struct LayerTransientMetadata {
-	// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the left end of the node
+	// Stores the width in grid units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the left end of the node
 	/// This is necessary since calculating the layer width through web_sys is very slow
 	pub layer_width: TransientMetadata<u32>,
 	// Should not be a performance concern to calculate when needed with chain_width.
-	// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail to the end of the chain
+	// Stores the width in grid units for layer nodes from the left edge of the thumbnail to the end of the chain
 	// chain_width: u32,
 }
 

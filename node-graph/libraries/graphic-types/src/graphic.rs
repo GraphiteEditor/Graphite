@@ -127,8 +127,8 @@ impl From<Table<GradientStops>> for Graphic {
 	}
 }
 
-/// Deeply flattens a graphic table, collecting only elements matching a specific variant (extracted by `extract_variant`)
-/// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-tables composes transforms and opacity.
+/// Deeply flattens a `Table<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
+/// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`Table`s composes transforms and opacity.
 fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) -> Table<T> {
 	fn compose_alpha_blending(parent: AlphaBlending, child: AlphaBlending) -> AlphaBlending {
 		AlphaBlending {
@@ -146,7 +146,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default("alpha_blending");
 
 			match current_graphic_row.into_element() {
-				// Recurse into nested graphic tables, composing the parent's transform onto each child
+				// Recurse into nested `Table<Graphic>` items, composing the parent's transform onto each child
 				Graphic::Graphic(mut sub_table) => {
 					for index in 0..sub_table.len() {
 						let child_transform: DAffine2 = sub_table.attribute_cloned_or_default("transform", index);
@@ -158,7 +158,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 
 					flatten_recursive(output, sub_table, extract_variant);
 				}
-				// Try to extract the target variant; if it matches, push its rows with composed transform and opacity
+				// Try to extract the target variant; if it matches, push its items with composed transform and opacity
 				other => {
 					if let Some(typed_table) = extract_variant(other) {
 						for row in typed_table.into_iter() {
@@ -184,7 +184,7 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
-/// enabling type-directed casting of typed tables from a `Graphic` value.
+/// enabling type-directed casting of typed `Table`s from a `Graphic` value.
 pub trait TryFromGraphic: Clone + Sized {
 	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>>;
 }
@@ -217,7 +217,7 @@ impl TryFromGraphic for GradientStops {
 pub trait IntoGraphicTable {
 	fn into_graphic_table(self) -> Table<Graphic>;
 
-	/// Deeply flattens any content of type `T` within a graphic table, discarding all other content, and returning a flat table of only `T` elements.
+	/// Deeply flattens any content of type `T` within a `Table<Graphic>`, discarding all other content, and returning a flat `Table<T>`.
 	fn into_flattened_table<T: TryFromGraphic>(self) -> Table<T>
 	where
 		Self: std::marker::Sized,
@@ -505,7 +505,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 	}
 
 	// Attributes (transform, alpha_blending, editor:layer) are not serialized, so migration only needs
-	// to recover the elements. Per-row attribute values are populated at runtime by the node graph.
+	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
 	Ok(match GraphicFormat::deserialize(deserializer)? {
 		GraphicFormat::OldGraphicGroup(old) => old.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)).collect(),
 		GraphicFormat::OlderTableOldGraphicGroup(old) => old
@@ -524,7 +524,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
 			.collect(),
 		GraphicFormat::Table(value) => {
-			// Try to deserialize as either table format
+			// Try to deserialize as either `Table` format
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut graphic_table = Table::new();
 				for index in 0..old_table.len() {

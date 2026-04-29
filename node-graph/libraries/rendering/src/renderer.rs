@@ -410,7 +410,7 @@ impl Render for Graphic {
 				}
 				Graphic::Vector(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
-					// TODO: Find a way to handle more than the first row
+					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
 						let layer_path: Table<NodeId> = table.attribute_cloned_or_default("editor:layer", 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
@@ -423,7 +423,7 @@ impl Render for Graphic {
 				Graphic::RasterCPU(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
-					// TODO: Find a way to handle more than the first row
+					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
 						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
 					}
@@ -431,7 +431,7 @@ impl Render for Graphic {
 				Graphic::RasterGPU(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
-					// TODO: Find a way to handle more than the first row
+					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
 						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
 					}
@@ -439,7 +439,7 @@ impl Render for Graphic {
 				Graphic::Color(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
-					// TODO: Find a way to handle more than the first row
+					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
 						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
 					}
@@ -447,7 +447,7 @@ impl Render for Graphic {
 				Graphic::Gradient(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
-					// TODO: Find a way to handle more than the first row
+					// TODO: Find a way to handle more than the first item
 					if !table.is_empty() {
 						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default("transform", 0));
 					}
@@ -817,7 +817,7 @@ impl Render for Table<Graphic> {
 			if let Some(element_id) = layer {
 				element.collect_metadata(metadata, footprint, Some(element_id));
 			} else {
-				// Recurse through anonymous wrapper rows to reach nested content with editor:layer tags
+				// Recurse through anonymous wrapper items to reach nested content with editor:layer tags
 				element.collect_metadata(metadata, footprint, None);
 			}
 		}
@@ -1334,7 +1334,7 @@ impl Render for Table<Vector> {
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
-				// When recovering element_id from the row's editor:layer tag (because the caller
+				// When recovering element_id from the item's editor:layer tag (because the caller
 				// passed None), also store the transform metadata that Graphic::collect_metadata
 				// normally provides but skipped due to the None element_id.
 				if caller_element_id.is_none() {
@@ -1375,7 +1375,7 @@ impl Render for Table<Vector> {
 				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
 			}
 
-			// If this row carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
+			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
 			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
 			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>("editor:merged_layers", index);
@@ -1575,7 +1575,7 @@ impl Render for Table<Raster<CPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one row of the raster table
+		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
 		if !self.is_empty() {
 			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
 			metadata.local_transforms.insert(element_id, transform);
@@ -1665,7 +1665,7 @@ impl Render for Table<Raster<GPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one row of the raster table
+		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
 		if !self.is_empty() {
 			let transform: DAffine2 = self.attribute_cloned_or_default("transform", 0);
 			metadata.local_transforms.insert(element_id, transform);

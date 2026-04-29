@@ -1599,10 +1599,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
 	}
 
-	// Migrate from the old source/target v1 "Morph" node to the new vector table based v2 "Morph" node.
-	// This doesn't produce exactly equivalent results in cases involving input vector tables with multiple rows.
-	// The old version would zip the source and target table rows, interpoleating each pair together.
-	// The migrated version will instead deeply flatten both merged tables and morph sequentially between all source vectors and all target vector elements.
+	// Migrate from the old source/target v1 "Morph" node to the new `Table<Vector>`-based v2 "Morph" node.
+	// This doesn't produce exactly equivalent results in cases involving input `Table<Vector>` values with multiple items.
+	// The old version would zip the source and target items, interpolating each pair together.
+	// The migrated version will instead deeply flatten both merged `Table`s and morph sequentially between all source vectors and all target vector elements.
 	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && (inputs_count == 3 || inputs_count == 4) {
 		// 3 inputs - old signature (#3405):
@@ -1669,7 +1669,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Create Count Elements node: counts content table rows → N
+		// Create Count Elements node: counts content `Table` items → N
 		let Some(count_elements_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
 			log::error!("Could not get count_elements node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);

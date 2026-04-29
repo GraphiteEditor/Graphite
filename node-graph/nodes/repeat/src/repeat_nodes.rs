@@ -18,7 +18,7 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)]
 	#[hard_min(1)]
 	count: u32,
@@ -34,9 +34,9 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let index = if reverse { count - index - 1 } else { index };
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-		for generated_row in generated_instance.into_iter() {
+		for generated_row in generated_content.into_iter() {
 			result_table.push(generated_row);
 		}
 	}
@@ -54,7 +54,7 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -75,10 +75,10 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-		for row_index in 0..generated_instance.len() {
-			let Some(mut row) = generated_instance.clone_row(row_index) else { continue };
+		for row_index in 0..generated_content.len() {
+			let Some(mut row) = generated_content.clone_row(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 			let local_translation = DAffine2::from_translation(local_transform.translation);
@@ -102,7 +102,7 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	start_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -121,10 +121,10 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let transform = angle * translation;
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-		for row_index in 0..generated_instance.len() {
-			let Some(mut row) = generated_instance.clone_row(row_index) else { continue };
+		for row_index in 0..generated_content.len() {
+			let Some(mut row) = generated_content.clone_row(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default("transform");
 			let local_translation = DAffine2::from_translation(local_transform.translation);
@@ -149,7 +149,7 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
 ) -> Table<T> {
 	let mut result_table = Table::new();
@@ -162,9 +162,9 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(transformed_point);
-			let generated_instance = instance.eval(new_ctx.into_context()).await;
+			let generated_content = content.eval(new_ctx.into_context()).await;
 
-			for mut generated_row in generated_instance.into_iter() {
+			for mut generated_row in generated_content.into_iter() {
 				generated_row.attribute_mut_or_insert_default::<DAffine2>("transform").translation = transformed_point;
 				result_table.push(generated_row);
 			}

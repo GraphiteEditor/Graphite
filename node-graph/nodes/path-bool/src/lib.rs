@@ -14,14 +14,14 @@ use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, 
 pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
-// TODO: since before we used a Vec of single-row tables and now we use a single table
-// TODO: with multiple rows while still assuming a single row for the boolean operations.
+// TODO: since before we used a Vec of single-item `Table`s and now we use a single `Table`
+// TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
 async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clone>(
 	_: impl Ctx,
-	/// The table of vector paths to perform the boolean operation on. Nested tables are automatically flattened.
+	/// The `Table` of vector paths to perform the boolean operation on. Nested `Table`s are automatically flattened.
 	#[implementations(Table<Graphic>, Table<Vector>)]
 	content: I,
 	/// Which boolean operation to perform on the paths.
@@ -47,7 +47,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 		Vector::transform(result_vector, transform);
 		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
 
-		// Snapshot the input layers as the `editor:merged_layers` row attribute so the renderer can recurse into them
+		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
 		result_vector_table.set_attribute("editor:merged_layers", 0, content.clone());
 
@@ -125,7 +125,7 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 	};
 	let mut row = if let Some(index) = copy_from_index {
 		let mut attributes = vector.clone_row_attributes(index);
-		// The boolean op bakes input transforms into the output geometry, so the result row carries no transform of its own
+		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert("transform", DAffine2::IDENTITY);
 		let copy_from = vector.element(index).unwrap();
 		let element = Vector {
@@ -166,7 +166,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 			let graphic = graphic_table.element(index).unwrap();
 			match graphic.clone() {
 				Graphic::Vector(vector) => {
-					// Apply the parent graphic's transform to each element of the vector table
+					// Apply the parent graphic's transform to each element of the `Table<Vector>`
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
 					vector
 						.into_iter()
@@ -191,7 +191,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 							.with_attribute("editor:layer", layer)
 					};
 
-					// Apply the parent graphic's transform to each raster element, preserving each row's layer
+					// Apply the parent graphic's transform to each raster element, preserving each item's layer
 					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
 					// back to the originating raster layer
 					(0..image.len())
@@ -217,7 +217,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 							.with_attribute("editor:layer", layer)
 					};
 
-					// Apply the parent graphic's transform to each raster element, preserving each row's layer
+					// Apply the parent graphic's transform to each raster element, preserving each item's layer
 					// and alpha_blending so the boolean op downstream can route clicks (and inherit blending state)
 					// back to the originating raster layer
 					(0..image.len())
@@ -231,12 +231,12 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				}
 				Graphic::Graphic(mut graphic) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default("transform", index);
-					// Apply the parent graphic's transform to each element of inner table
+					// Apply the parent graphic's transform to each element of the inner `Table`
 					for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>("transform") {
 						*transform = parent_transform * *transform;
 					}
 
-					// Recursively flatten the inner table into the output vector table
+					// Recursively flatten the inner `Table` into the output `Table<Vector>`
 					let flattened = flatten_vector(&graphic);
 					let unioned = boolean_operation_on_vector_table(&flattened, BooleanOperation::Union);
 

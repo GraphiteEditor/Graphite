@@ -26,8 +26,8 @@ pub enum DataPanelMessage {
 	},
 }
 
-/// One hop in the breadcrumb path through nested data the data panel is displaying.
-/// Drilling into a row's element produces an `Element` step; drilling into one of a row's attributes produces an `Attribute` step.
+/// One hop in the breadcrumb path through nested data the Data panel is displaying.
+/// Drilling into an item's element produces an `Element` step; drilling into one of an item's attributes produces an `Attribute` step.
 #[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PathStep {
 	Element(usize),
