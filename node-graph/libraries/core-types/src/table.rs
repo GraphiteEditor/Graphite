@@ -824,12 +824,12 @@ impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for Table<T> {
 }
 
 impl<T: BoundingBox> BoundingBox for Table<T> {
-	/// Computes the combined bounding box of all rows, composing each row's transform attribute with the given transform.
+	/// Computes the combined bounding box of all items, composing each item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.bounding_box(transform * row_transform, include_stroke) {
+		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
+			match element.bounding_box(transform * item_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -848,8 +848,8 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for (element, row_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.thumbnail_bounding_box(transform * row_transform, include_stroke) {
+		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
+			match element.thumbnail_bounding_box(transform * item_transform, include_stroke) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -917,14 +917,14 @@ impl<T: PartialEq> PartialEq for Table<T> {
 }
 
 impl<T> ApplyTransform for Table<T> {
-	/// Right-multiplies the modification into each row's transform attribute.
+	/// Right-multiplies the modification into each item's transform attribute.
 	fn apply_transform(&mut self, modification: &DAffine2) {
 		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 			*transform *= *modification;
 		}
 	}
 
-	/// Left-multiplies the modification into each row's transform attribute.
+	/// Left-multiplies the modification into each item's transform attribute.
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
 		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 			*transform = *modification * *transform;

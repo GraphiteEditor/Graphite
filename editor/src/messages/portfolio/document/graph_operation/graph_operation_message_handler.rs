@@ -45,9 +45,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.blending_fill_set(fill);
 				}
 			}
-			GraphOperationMessage::GradientTableSet { layer, stops, transform } => {
+			GraphOperationMessage::GradientTableSet { layer, gradient_table } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_table_set(stops, transform);
+					modify_inputs.gradient_table_set(gradient_table);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {

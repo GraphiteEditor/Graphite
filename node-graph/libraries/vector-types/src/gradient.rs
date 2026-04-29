@@ -2,8 +2,10 @@ use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-pub const GRADIENT_TABLE_START: DVec2 = DVec2::ZERO;
-pub const GRADIENT_TABLE_END: DVec2 = DVec2::X;
+/// Default scale applied to a freshly-created `Table<GradientStops>` item's transform — places the unit gradient line
+/// (the +X unit vector in local space, before the item's transform) inside a 100×100 document-space box so the
+/// gradient is visible at a sensible size by default.
+pub const GRADIENT_TABLE_DEFAULT_SCALE: f64 = 100.;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]

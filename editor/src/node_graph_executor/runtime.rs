@@ -8,7 +8,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::bounds::RenderBoundingBox;
+use graphene_std::bounds::{DEFAULT_THUMBNAIL_BOUNDS, RenderBoundingBox};
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -473,7 +473,7 @@ impl NodeRuntime {
 
 		let bounds = match graphic.thumbnail_bounding_box(DAffine2::IDENTITY, true) {
 			RenderBoundingBox::None => None,
-			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
+			RenderBoundingBox::Infinite => Some(DEFAULT_THUMBNAIL_BOUNDS),
 			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		};
 		let new_thumbnail_svg = if let Some(bounds) = bounds {

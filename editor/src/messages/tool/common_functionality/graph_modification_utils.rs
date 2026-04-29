@@ -282,10 +282,8 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 
 /// Get the gradient table of a layer.
 pub fn get_gradient_table(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Table<GradientStops>> {
-	let gradient_table_index = 1;
-
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))?;
-	let TaggedValue::GradientTable(gradient_table) = inputs.get(gradient_table_index)?.as_value()? else {
+	let TaggedValue::GradientTable(gradient_table) = inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(gradient_table.clone())

@@ -8,12 +8,11 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-use crate::messages::tool::tool_messages::gradient_tool::graph_modification_utils::is_layer_fed_by_node_of_name;
 use graphene_std::ATTR_TRANSFORM;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::gradient::{GRADIENT_TABLE_END, GRADIENT_TABLE_START};
+use graphene_std::table::{Table, TableRow};
 use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStops, GradientType};
 
 #[derive(Default, ExtractField)]
@@ -130,6 +129,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 
 				let has_gradient = has_gradient_on_selected_layers(context.document);
+				// TODO: Drop this detection (and the `is_gradient_table` field) once all gradients are `Table<GradientStops>`
 				let is_gradient_table = context
 					.document
 					.network_interface
@@ -185,6 +185,7 @@ impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let mut widgets: Vec<WidgetInstance> = Vec::new();
 
+		// TODO: Drop the `is_gradient_table` guard once `Table<GradientStops>` rows can store the gradient type, as currently only legacy `Fill::Gradient` exposes Linear/Radial
 		if !self.data.is_gradient_table {
 			let gradient_type = RadioInput::new(vec![
 				RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
@@ -203,35 +204,7 @@ impl LayoutHolder for GradientTool {
 			.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 			.widget_instance();
 
-			let spread_method = RadioInput::new(vec![
-				RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad").on_update(move |_| {
-					GradientToolMessage::UpdateOptions {
-						options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
-					}
-					.into()
-				}),
-				RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
-					GradientToolMessage::UpdateOptions {
-						options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
-					}
-					.into()
-				}),
-				RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
-					GradientToolMessage::UpdateOptions {
-						options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
-					}
-					.into()
-				}),
-			])
-			.selected_index(Some(self.options.spread_method as u32))
-			.widget_instance();
-
-			widgets.extend([
-				gradient_type,
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				spread_method,
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			]);
+			widgets.extend([gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance()]);
 		}
 
 		let reverse_stops = IconButton::new("Reverse", 24)
@@ -247,19 +220,19 @@ impl LayoutHolder for GradientTool {
 			.widget_instance();
 
 		let spread_method = RadioInput::new(vec![
-			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad").on_update(move |_| {
+			RadioEntryData::new("Pad").label("Pad").tooltip_label("Pad Spread Method").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Pad),
 				}
 				.into()
 			}),
-			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect").on_update(move |_| {
+			RadioEntryData::new("Reflect").label("Reflect").tooltip_label("Reflect Spread Method").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
 				}
 				.into()
 			}),
-			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat").on_update(move |_| {
+			RadioEntryData::new("Repeat").label("Repeat").tooltip_label("Repeat Spread Method").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Repeat),
 				}
@@ -271,6 +244,7 @@ impl LayoutHolder for GradientTool {
 
 		widgets.extend([spread_method, Separator::new(SeparatorStyle::Unrelated).widget_instance(), reverse_stops]);
 
+		// TODO: Drop the `!is_gradient_table` guard once `Table<GradientStops>` supports radial gradients
 		if self.options.gradient_type == GradientType::Radial && !self.data.is_gradient_table {
 			let orientation = self
 				.data
@@ -323,6 +297,7 @@ impl Default for GradientToolFsmState {
 
 /// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
+	// TODO: Drop the `is_gradient_table` branch once all gradients are `Table<GradientStops>`, only the upstream-footprint path will remain
 	let is_gradient_table = is_layer_fed_by_node_of_name(
 		layer,
 		&document.network_interface,
@@ -330,8 +305,8 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 	);
 
 	if is_gradient_table {
-		// Table<GradientStops> layers use the table's row transform from gradient space to document space,
-		// so we cannot use transform_to_viewport here as it would apply the transform twice.
+		// Table<GradientStops> layers use the item's transform from gradient space to document space,
+		// so we cannot use `transform_to_viewport` here as it would apply the transform twice.
 		return document
 			.metadata()
 			.upstream_footprints
@@ -346,8 +321,19 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 	multiplied * bound_transform
 }
 
-// TODO: This conversion is a temporary solution, this should be removed after migration to Table<GradientStops> for all gradient use.
-// TODO: We only support linear gradient with pad spread method since there is no place to store the gradient type in the table row currently.
+/// Builds the item transform that maps the unit gradient line (the +X unit vector in local space) to
+/// the segment from `start` to `end` in document space. The perpendicular column is forced to the same magnitude
+/// as the `start`..`end` direction so the matrix stays invertible (linear gradients ignore the perpendicular axis,
+/// but click detection uses the full inverse).
+// TODO: Apply a separate scale on the perpendicular axis when we support elliptical gradients.
+fn gradient_item_transform(start: DVec2, end: DVec2) -> DAffine2 {
+	let delta = end - start;
+	let perp = DVec2::new(-delta.y, delta.x);
+	DAffine2::from_cols_array(&[delta.x, delta.y, perp.x, perp.y, start.x, start.y])
+}
+
+// TODO: Remove this whole function once all gradients are `Table<GradientStops>`, callers will read the table directly
+// TODO: Until then, only Linear + `Pad` spread are produced from a table since rows can't carry the gradient type or spread method yet
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	match (get_gradient_table(layer, network_interface), graph_modification_utils::get_gradient(layer, network_interface)) {
 		(Some(gradient_graphic), _) => {
@@ -357,8 +343,8 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 				stops,
 				gradient_type: GradientType::Linear,
 				spread_method: GradientSpreadMethod::Pad,
-				start: transform.transform_point2(GRADIENT_TABLE_START),
-				end: transform.transform_point2(GRADIENT_TABLE_END),
+				start: transform.transform_point2(DVec2::ZERO),
+				end: transform.transform_point2(DVec2::X),
 			};
 			Some(gradient)
 		}
@@ -390,6 +376,7 @@ struct SelectedGradient {
 	gradient: Gradient,
 	dragging: GradientDragTarget,
 	initial_gradient: Gradient,
+	// TODO: Remove (and the matching branches in `render_gradient` / pointer-up) once `Table<GradientStops>` replaces legacy `Fill::Gradient`
 	is_gradient_table: bool,
 }
 
@@ -657,17 +644,11 @@ impl SelectedGradient {
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(layer) = self.layer {
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
 			if self.is_gradient_table {
-				let delta = self.gradient.end - self.gradient.start;
-				// TODO: Apply scale here when we support elliptical gradients
-				let perp = DVec2::new(-delta.y, delta.x);
-				let transform = DAffine2::from_cols_array(&[delta.x, delta.y, perp.x, perp.y, self.gradient.start.x, self.gradient.start.y]);
-
-				responses.add(GraphOperationMessage::GradientTableSet {
-					layer,
-					stops: self.gradient.stops.clone(),
-					transform,
-				});
+				let gradient_table =
+					Table::new_from_row(TableRow::new_from_element(self.gradient.stops.clone()).with_attribute(ATTR_TRANSFORM, gradient_item_transform(self.gradient.start, self.gradient.end)));
+				responses.add(GraphOperationMessage::GradientTableSet { layer, gradient_table });
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
 					layer,
@@ -707,6 +688,7 @@ struct GradientToolData {
 	has_selected_gradient: bool,
 	color_picker_editing_color_stop: Option<usize>,
 	color_picker_transaction_open: bool,
+	// TODO: Remove (and the conditionals it gates in `LayoutHolder::layout`) once `Table<GradientStops>` replaces legacy `Fill::Gradient`
 	is_gradient_table: bool,
 }
 
@@ -1055,6 +1037,7 @@ impl Fsm for GradientToolFsmState {
 				};
 
 				// The gradient has only one point and so should become a fill
+				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `Table<GradientStops>`, the table just retains the single stop
 				if selected_gradient.gradient.stops.len() == 1 {
 					if selected_gradient.is_gradient_table {
 						selected_gradient.render_gradient(responses);
@@ -1635,8 +1618,6 @@ fn apply_gradient_update(
 
 	let mut transaction_started = false;
 	for layer in selected_layers {
-		let gradient_table_transform = get_gradient_table(layer, &context.document.network_interface).map(|t| t.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0));
-
 		if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
 			continue;
 		}
@@ -1650,18 +1631,18 @@ fn apply_gradient_update(
 			}
 			update(&mut gradient);
 
-			if let Some(transform) = gradient_table_transform {
-				responses.add(GraphOperationMessage::GradientTableSet {
-					layer,
-					stops: gradient.stops.clone(),
-					transform,
-				});
+			// Only check for the gradient table once we know we'll write back, since this is a graph traversal per layer.
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`, the lookup will then be unconditional
+			if let Some(existing_table) = get_gradient_table(layer, &context.document.network_interface) {
+				let transform = existing_table.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+				let gradient_table = Table::new_from_row(TableRow::new_from_element(gradient.stops.clone()).with_attribute(ATTR_TRANSFORM, transform));
+				responses.add(GraphOperationMessage::GradientTableSet { layer, gradient_table });
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
 					layer,
 					fill: Fill::Gradient(gradient),
 				});
-			};
+			}
 		}
 	}
 
@@ -2209,25 +2190,25 @@ mod test_gradient {
 		// Create original transform for the control geometry and apply it
 		let initial_start = DVec2::new(10., 50.);
 		let initial_end = DVec2::new(200., 50.);
-		let delta = initial_end - initial_start;
-		let perp = DVec2::new(-delta.y, delta.x);
-		let initial_row_transform = DAffine2::from_cols_array(&[delta.x, delta.y, perp.x, perp.y, initial_start.x, initial_start.y]);
+		let initial_item_transform = super::gradient_item_transform(initial_start, initial_end);
 		editor
 			.handle_message(GraphOperationMessage::GradientTableSet {
 				layer,
-				stops: GradientStops::new([
-					GradientStop {
-						position: 0.,
-						midpoint: 0.5,
-						color: Color::RED,
-					},
-					GradientStop {
-						position: 1.,
-						midpoint: 0.5,
-						color: Color::BLUE,
-					},
-				]),
-				transform: initial_row_transform,
+				gradient_table: Table::new_from_row(
+					TableRow::new_from_element(GradientStops::new([
+						GradientStop {
+							position: 0.,
+							midpoint: 0.5,
+							color: Color::RED,
+						},
+						GradientStop {
+							position: 1.,
+							midpoint: 0.5,
+							color: Color::BLUE,
+						},
+					]))
+					.with_attribute(ATTR_TRANSFORM, initial_item_transform),
+				),
 			})
 			.await;
 
@@ -2299,14 +2280,11 @@ mod test_gradient {
 		]);
 		let initial_start = DVec2::new(10., 50.);
 		let initial_end = DVec2::new(200., 50.);
-		let delta = initial_end - initial_start;
-		let perp = DVec2::new(-delta.y, delta.x);
-		let initial_row_transform = DAffine2::from_cols_array(&[delta.x, delta.y, perp.x, perp.y, initial_start.x, initial_start.y]);
+		let initial_item_transform = super::gradient_item_transform(initial_start, initial_end);
 		editor
 			.handle_message(GraphOperationMessage::GradientTableSet {
 				layer,
-				stops: original_stops.clone(),
-				transform: initial_row_transform,
+				gradient_table: Table::new_from_row(TableRow::new_from_element(original_stops.clone()).with_attribute(ATTR_TRANSFORM, initial_item_transform)),
 			})
 			.await;
 

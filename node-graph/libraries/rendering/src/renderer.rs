@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-use vector_types::gradient::{GRADIENT_TABLE_END, GRADIENT_TABLE_START, GradientSpreadMethod};
+use vector_types::gradient::GradientSpreadMethod;
 use vello::*;
 
 /// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
@@ -1784,25 +1784,20 @@ impl Render for Table<GradientStops> {
 				};
 
 				let gradient_id = generate_uuid();
-				let start = GRADIENT_TABLE_START;
-				let end = GRADIENT_TABLE_END;
 
-				// Linear gradient only for now
+				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
+				// TODO: Currently only linear gradient is hooked up
 				match GradientType::Linear {
 					GradientType::Linear => {
-						let (x1, y1) = (start.x, start.y);
-						let (x2, y2) = (end.x, end.y);
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
 					GradientType::Radial => {
-						let (cx, cy) = (start.x, start.y);
-						let r = start.distance(end);
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="{cx}" cy="{cy}" r="{r}"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 						);
 					}
 				}
@@ -1848,8 +1843,9 @@ impl Render for Table<GradientStops> {
 
 			let fill = peniko::Brush::Gradient(peniko::Gradient {
 				kind: peniko::LinearGradientPosition {
-					start: to_point(GRADIENT_TABLE_START),
-					end: to_point(GRADIENT_TABLE_END),
+					// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
+					start: to_point(DVec2::ZERO),
+					end: to_point(DVec2::X),
 				}
 				.into(),
 				stops,

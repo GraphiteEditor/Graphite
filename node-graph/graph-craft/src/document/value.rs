@@ -12,6 +12,7 @@ pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::vector_types::gradient::GRADIENT_TABLE_DEFAULT_SCALE;
 use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Graphic, Vector};
@@ -119,7 +120,7 @@ macro_rules! tagged_value {
 							// Table-wrapped types need a single-item default with the element's default, not an empty table
 							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
 							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_row(
-								TableRow::new_from_element(GradientStops::default()).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(100.))),
+								TableRow::new_from_element(GradientStops::default()).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(GRADIENT_TABLE_DEFAULT_SCALE))),
 							)),
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
