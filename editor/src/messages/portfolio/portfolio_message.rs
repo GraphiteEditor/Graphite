@@ -168,6 +168,9 @@ pub enum PortfolioMessage {
 	SelectDocument {
 		document_id: DocumentId,
 	},
+	RenameDocument {
+		new_name: String,
+	},
 	SubmitDocumentExport {
 		name: String,
 		file_type: FileType,

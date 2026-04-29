@@ -784,7 +784,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
-				self.name = new_name.clone();
+				let new_name = new_name.trim().to_string();
+
+				// No-op when the resolved name is unchangedL committing the rename field without edits (or with
+				// only whitespace edits) shouldn't dissociate the document from its file on disk or mark it unsaved.
+				if new_name == self.name {
+					return;
+				}
+
+				self.name = new_name;
 
 				self.path = None;
 				self.set_save_state(false);
