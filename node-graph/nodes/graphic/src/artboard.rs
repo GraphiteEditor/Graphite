@@ -47,10 +47,10 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	let content = content.eval(new_ctx.into_context()).await.into_graphic_table();
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
-	// dimensions to represent dragging from the opposite corner).
-	let dimensions_clamped = dimensions.max(DVec2::ONE);
-	let normalized_location = location.min(location + dimensions_clamped);
-	let normalized_dimensions = dimensions_clamped.abs();
+	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
+	// dimensions before clamping, otherwise negative inputs collapse to the original corner instead of inverting.
+	let normalized_location = location.min(location + dimensions);
+	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
 	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
