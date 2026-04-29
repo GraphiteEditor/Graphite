@@ -1,6 +1,6 @@
 use core_types::table::Table;
 use core_types::uuid::NodeId;
-use core_types::{Ctx, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
 use graphic_types::Vector;
 use vector_types::vector::VectorModification;

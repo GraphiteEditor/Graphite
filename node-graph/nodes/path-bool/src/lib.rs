@@ -1,6 +1,6 @@
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_ALPHA_BLENDING, AlphaBlending, Color, Ctx, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
+use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AlphaBlending, Color, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;

@@ -2,7 +2,7 @@ use core::f64;
 use core_types::color::Color;
 use core_types::table::Table;
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl, ATTR_TRANSFORM};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
