@@ -221,7 +221,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> 
 /// context, so the upstream pipeline can return a different value per item that may be derived from the item's own data.
 /// If the attribute already exists, its values are replaced; if not, the attribute is added.
 #[node_macro::node(category("General"))]
-async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + CacheHash + 'static>(
+async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The `Table` whose items will gain or have replaced the named attribute.
 	#[implementations(
