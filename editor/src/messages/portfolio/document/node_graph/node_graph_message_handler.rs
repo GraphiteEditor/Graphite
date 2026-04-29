@@ -2475,7 +2475,7 @@ impl NodeGraphMessageHandler {
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					TextInput::new(context.document_name)
 						.tooltip_description("Name of the current document.")
-						.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
+						.on_update(|text_input| PortfolioMessage::RenameDocument { new_name: text_input.value.clone() }.into())
 						.widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 				])];

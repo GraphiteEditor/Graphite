@@ -410,7 +410,7 @@ impl EditorWrapper {
 	/// Rename the currently active document.
 	#[wasm_bindgen(js_name = renameDocument)]
 	pub fn rename_document(&self, new_name: String) {
-		let message = DocumentMessage::RenameDocument { new_name };
+		let message = PortfolioMessage::RenameDocument { new_name };
 		self.dispatch(message);
 	}
 
