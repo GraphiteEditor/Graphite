@@ -10,7 +10,9 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_LOCATION, ATTR_TRANSFORM};
+use core_types::{
+	ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -1767,6 +1769,8 @@ impl Render for Table<GradientStops> {
 			let Some(gradient) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
+			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 			render.leaf_tag(tag, |attributes| {
 				if let Some((min, size)) = thumbnail_rect {
@@ -1802,20 +1806,24 @@ impl Render for Table<GradientStops> {
 				};
 
 				let gradient_id = generate_uuid();
+				let spread_method_attribute = if spread_method == GradientSpreadMethod::Pad {
+					String::new()
+				} else {
+					format!(r#" spreadMethod="{}""#, spread_method.svg_name())
+				};
 
 				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
-				// TODO: Currently only linear gradient is hooked up
-				match GradientType::Linear {
+				match gradient_type {
 					GradientType::Linear => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_transform_attribute}>{stop_string}</linearGradient>"#
+							r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
 						);
 					}
 					GradientType::Radial => {
 						let _ = write!(
 							&mut attributes.0.svg_defs,
-							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+							r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 						);
 					}
 				}
@@ -1841,10 +1849,12 @@ impl Render for Table<GradientStops> {
 			return;
 		}
 
-		for ((gradient, transform), alpha_blending) in self
+		for ((((gradient, transform), alpha_blending), spread_method), gradient_type) in self
 			.iter_element_values()
 			.zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM))
 			.zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING))
+			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
+			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
 		{
 			let gradient_transform = parent_transform * transform;
 
@@ -1859,14 +1869,33 @@ impl Render for Table<GradientStops> {
 				})
 			}
 
-			let fill = peniko::Brush::Gradient(peniko::Gradient {
-				kind: peniko::LinearGradientPosition {
-					// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
+			let extend = match spread_method {
+				GradientSpreadMethod::Pad => peniko::Extend::Pad,
+				GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+				GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+			};
+
+			// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
+			// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
+			let kind = match gradient_type {
+				GradientType::Linear => peniko::LinearGradientPosition {
 					start: to_point(DVec2::ZERO),
 					end: to_point(DVec2::X),
 				}
 				.into(),
+				GradientType::Radial => peniko::RadialGradientPosition {
+					start_center: to_point(DVec2::ZERO),
+					start_radius: 0.,
+					end_center: to_point(DVec2::ZERO),
+					end_radius: 1.,
+				}
+				.into(),
+			};
+
+			let fill = peniko::Brush::Gradient(peniko::Gradient {
+				kind,
 				stops,
+				extend,
 				interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 				..Default::default()
 			});

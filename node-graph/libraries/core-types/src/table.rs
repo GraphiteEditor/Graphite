@@ -57,6 +57,14 @@ pub const ATTR_BACKGROUND: &str = "background";
 /// Attribute key for an artboard row's `bool` flag indicating whether content is clipped to the artboard bounds.
 pub const ATTR_CLIP: &str = "clip";
 
+/// Attribute key for a `Table<GradientStops>` row's `GradientSpreadMethod`, controlling the gradient's behavior
+/// outside the start/end stops (`Pad` clamps to the boundary colors, `Reflect` mirrors, `Repeat` tiles).
+pub const ATTR_SPREAD_METHOD: &str = "spread_method";
+
+/// Attribute key for a `Table<GradientStops>` row's `GradientType`, choosing between a linear gradient (color
+/// transitions along the gradient line) or a radial gradient (color transitions outward from the line's start).
+pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+
 // =====================
 // TRAIT: AttributeValue
 // =====================

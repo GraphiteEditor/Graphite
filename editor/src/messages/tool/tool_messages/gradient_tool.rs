@@ -10,10 +10,10 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-use graphene_std::ATTR_TRANSFORM;
 use graphene_std::raster::color::Color;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStops, GradientType};
+use graphene_std::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -129,31 +129,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 
 				let has_gradient = has_gradient_on_selected_layers(context.document);
-				// TODO: Drop this detection (and the `is_gradient_table` field) once all gradients are `Table<GradientStops>`
-				let is_gradient_table = context
-					.document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_layers(&context.document.network_interface)
-					.any(|layer| get_gradient_table(layer, &context.document.network_interface).is_some());
-
-				let mut options_changed = false;
-
 				if has_gradient != self.data.has_selected_gradient {
 					self.data.has_selected_gradient = has_gradient;
-					options_changed = true;
-				}
-				if is_gradient_table != self.data.is_gradient_table {
-					self.data.is_gradient_table = is_gradient_table;
-					options_changed = true;
-				}
-
-				if options_changed {
 					responses.add(ToolMessage::RefreshToolOptions);
 				}
 
 				// Sync tool options with the selected layer's gradient
-				if has_gradient && let Some(gradient) = get_gradient_on_selected_layer(&context.document) {
+				if has_gradient && let Some(gradient) = get_gradient_on_selected_layer(context.document) {
 					let type_differs = self.options.gradient_type != gradient.gradient_type;
 					let spread_method_differs = self.options.spread_method != gradient.spread_method;
 
@@ -185,27 +167,24 @@ impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let mut widgets: Vec<WidgetInstance> = Vec::new();
 
-		// TODO: Drop the `is_gradient_table` guard once `Table<GradientStops>` rows can store the gradient type
-		if !self.data.is_gradient_table {
-			let gradient_type = RadioInput::new(vec![
-				RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
-					GradientToolMessage::UpdateOptions {
-						options: GradientOptionsUpdate::Type(GradientType::Linear),
-					}
-					.into()
-				}),
-				RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
-					GradientToolMessage::UpdateOptions {
-						options: GradientOptionsUpdate::Type(GradientType::Radial),
-					}
-					.into()
-				}),
-			])
-			.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
-			.widget_instance();
+		let gradient_type = RadioInput::new(vec![
+			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::Type(GradientType::Linear),
+				}
+				.into()
+			}),
+			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::Type(GradientType::Radial),
+				}
+				.into()
+			}),
+		])
+		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
+		.widget_instance();
 
-			widgets.extend([gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance()]);
-		}
+		widgets.extend([gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance()]);
 
 		let reverse_stops = IconButton::new("Reverse", 24)
 			.tooltip_label("Reverse Stops")
@@ -244,8 +223,7 @@ impl LayoutHolder for GradientTool {
 
 		widgets.extend([spread_method, Separator::new(SeparatorStyle::Unrelated).widget_instance(), reverse_stops]);
 
-		// TODO: Drop the `!is_gradient_table` guard once `Table<GradientStops>` supports radial gradients
-		if self.options.gradient_type == GradientType::Radial && !self.data.is_gradient_table {
+		if self.options.gradient_type == GradientType::Radial {
 			let orientation = self
 				.data
 				.selected_gradient
@@ -333,16 +311,17 @@ fn gradient_item_transform(start: DVec2, end: DVec2) -> DAffine2 {
 }
 
 // TODO: Remove this whole function once all gradients are `Table<GradientStops>`
-// TODO: Until then, only Linear + `Pad` spread are produced from a table (rows can't carry type/spread yet)
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	match (get_gradient_table(layer, network_interface), graph_modification_utils::get_gradient(layer, network_interface)) {
 		(Some(gradient_graphic), _) => {
 			let stops = gradient_graphic.element(0)?.clone();
 			let transform: DAffine2 = gradient_graphic.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+			let spread_method: GradientSpreadMethod = gradient_graphic.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+			let gradient_type: GradientType = gradient_graphic.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
 			let gradient = Gradient {
 				stops,
-				gradient_type: GradientType::Linear,
-				spread_method: GradientSpreadMethod::Pad,
+				gradient_type,
+				spread_method,
 				start: transform.transform_point2(DVec2::ZERO),
 				end: transform.transform_point2(DVec2::X),
 			};
@@ -646,8 +625,12 @@ impl SelectedGradient {
 		if let Some(layer) = self.layer {
 			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
 			if self.is_gradient_table {
-				let gradient_table =
-					Table::new_from_row(TableRow::new_from_element(self.gradient.stops.clone()).with_attribute(ATTR_TRANSFORM, gradient_item_transform(self.gradient.start, self.gradient.end)));
+				let gradient_table = Table::new_from_row(
+					TableRow::new_from_element(self.gradient.stops.clone())
+						.with_attribute(ATTR_TRANSFORM, gradient_item_transform(self.gradient.start, self.gradient.end))
+						.with_attribute(ATTR_SPREAD_METHOD, self.gradient.spread_method)
+						.with_attribute(ATTR_GRADIENT_TYPE, self.gradient.gradient_type),
+				);
 				responses.add(GraphOperationMessage::GradientTableSet { layer, gradient_table });
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -688,8 +671,6 @@ struct GradientToolData {
 	has_selected_gradient: bool,
 	color_picker_editing_color_stop: Option<usize>,
 	color_picker_transaction_open: bool,
-	// TODO: Remove (and the conditionals it gates in `LayoutHolder::layout`) once `Table<GradientStops>` replaces legacy `Fill::Gradient`
-	is_gradient_table: bool,
 }
 
 impl Fsm for GradientToolFsmState {
@@ -1633,9 +1614,14 @@ fn apply_gradient_update(
 
 			// Only check for the gradient table once we know we'll write back, since this is a graph traversal per layer
 			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
-			if let Some(existing_table) = get_gradient_table(layer, &context.document.network_interface) {
-				let transform = existing_table.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
-				let gradient_table = Table::new_from_row(TableRow::new_from_element(gradient.stops.clone()).with_attribute(ATTR_TRANSFORM, transform));
+			if get_gradient_table(layer, &context.document.network_interface).is_some() {
+				// Rebuild the item transform from the (possibly mutated) start/end so updates like `ReverseDirection` that only swap endpoints are reflected in the stored attribute
+				let gradient_table = Table::new_from_row(
+					TableRow::new_from_element(gradient.stops.clone())
+						.with_attribute(ATTR_TRANSFORM, gradient_item_transform(gradient.start, gradient.end))
+						.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method)
+						.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type),
+				);
 				responses.add(GraphOperationMessage::GradientTableSet { layer, gradient_table });
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
