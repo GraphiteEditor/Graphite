@@ -123,6 +123,7 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (e.pointerType == "pen" && e.isPrimary) {
+		// "Shake" is not an ergonomic gesture for pen input, so we don't attempt to detect it.
 		editor.onPointerMove(e.clientX, e.clientY, e.pressure, e.tangentialPressure, e.azimuthAngle, e.altitudeAngle, e.twist, e.buttons, modifiers);
 	} else {
 		if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);

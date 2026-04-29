@@ -97,34 +97,41 @@ impl BrushStroke {
 	pub fn compute_blit_points(&self) -> Vec<BrushOutputSample> {
 		// We always travel in a straight line towards the next user input,
 		// placing a blit point every time we travelled our spacing distance.
-		let spacing_dist = self.style.spacing / 100. * self.style.diameter;
+		let spacing_dist = (self.style.spacing / 100.) * self.style.diameter;
 		if self.trace.is_empty() {
 			return Vec::new();
 		};
 
+		// We currently treat all input samples as blit points, so capture the very first input
 		let mut result = vec![BrushOutputSample {
 			position: self.trace[0].position,
 			scale: self.trace[0].pressure,
 		}];
 
+		// We iterate over all input points in a sliding pair window. We take uniform
+		// steps of length equal to our spacing distance between the input points, and
+		// linearly interpolate pressure.
 		for samples in self.trace.windows(2) {
 			let position_delta = (samples[1].position - samples[0].position).length();
-			let unit_step = (samples[1].position - samples[0].position).normalize();
+			if position_delta < f64::EPSILON {
+				continue;
+			}
+			let unit_step = (samples[1].position - samples[0].position).normalize() * spacing_dist;
 			let pressure_delta = samples[1].pressure - samples[0].pressure;
 			let mut current_position = samples[0].position + unit_step;
 			loop {
-				let step = (samples[1].position - current_position).length();
-				if step < spacing_dist {
+				let remaining = (samples[1].position - current_position).length();
+				if remaining < spacing_dist {
 					break;
 				}
-				// let t64 = t as f64;
 				result.push(BrushOutputSample {
 					position: current_position,
-					scale: samples[1].pressure - (step / position_delta) * pressure_delta,
+					scale: samples[1].pressure - (remaining / position_delta) * pressure_delta,
 				});
 				current_position += unit_step;
 			}
 
+			// We currently treat all input samples as blit points, so append the second of each pair
 			result.push(BrushOutputSample {
 				position: samples[1].position,
 				scale: samples[1].pressure,
