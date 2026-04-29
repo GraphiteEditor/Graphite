@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
@@ -107,7 +107,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 }
 
 #[node_macro::node(category("General"))]
-async fn map<Item: AnyHash + Send + Sync + core_types::CacheHash>(
+async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Table<Graphic>,
@@ -221,7 +221,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> 
 /// context, so the upstream pipeline can return a different value per item that may be derived from the item's own data.
 /// If the attribute already exists, its values are replaced; if not, the attribute is added.
 #[node_macro::node(category("General"))]
-async fn write_attribute<T: AnyHash + Clone + Send + Sync + core_types::CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + 'static>(
+async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + CacheHash + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The `Table` whose items will gain or have replaced the named attribute.
 	#[implementations(

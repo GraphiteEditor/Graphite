@@ -3,6 +3,7 @@ use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
 use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
+use graphene_hash::CacheHash;
 use std::fmt::Debug;
 
 // =====================================================================
@@ -83,7 +84,7 @@ trait AttributeValue: std::any::Any + Send + Sync {
 	fn into_column(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AttributeColumn>;
 }
 
-impl<T: Clone + Send + Sync + Default + Sized + Debug + 'static> AttributeValue for T {
+impl<T: Clone + Send + Sync + Default + Sized + Debug + CacheHash + 'static> AttributeValue for T {
 	/// Clones this value into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AttributeValue> {
 		Box::new(self.clone())
@@ -164,6 +165,21 @@ trait AttributeColumn: std::any::Any + Send + Sync {
 
 	/// Drains all values out of this column into a Vec of scalar attribute values.
 	fn drain(self: Box<Self>) -> Vec<Box<dyn AttributeValue>>;
+
+	/// Hashes every value in this column into the given hasher (object-safe wrapper around `CacheHash`).
+	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher);
+}
+
+/// Adapts a `&mut dyn Hasher` so generic `CacheHash::cache_hash<H>` calls (which require `H: Sized + Hasher`) can
+/// drive a trait-object hasher. Forwards both `Hasher` methods to the inner `dyn Hasher`.
+struct DynHasher<'a>(&'a mut dyn core::hash::Hasher);
+impl core::hash::Hasher for DynHasher<'_> {
+	fn finish(&self) -> u64 {
+		self.0.finish()
+	}
+	fn write(&mut self, bytes: &[u8]) {
+		self.0.write(bytes)
+	}
 }
 
 impl Clone for Box<dyn AttributeColumn> {
@@ -179,7 +195,7 @@ impl Clone for Box<dyn AttributeColumn> {
 /// Wraps a Vec<T> for column-major attribute storage in a Table.
 struct Column<T>(Vec<T>);
 
-impl<T: Clone + Send + Sync + Default + Debug + 'static> AttributeColumn for Column<T> {
+impl<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static> AttributeColumn for Column<T> {
 	/// Clones this column into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AttributeColumn> {
 		Box::new(Column(self.0.clone()))
@@ -250,6 +266,13 @@ impl<T: Clone + Send + Sync + Default + Debug + 'static> AttributeColumn for Col
 	fn drain(self: Box<Self>) -> Vec<Box<dyn AttributeValue>> {
 		self.0.into_iter().map(|v| Box::new(v) as Box<dyn AttributeValue>).collect()
 	}
+
+	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
+		let mut wrapped = DynHasher(state);
+		for value in &self.0 {
+			value.cache_hash(&mut wrapped);
+		}
+	}
 }
 
 // ===============
@@ -278,7 +301,7 @@ impl AttributeValues {
 	}
 
 	/// Inserts an attribute with the given key and value, replacing any existing entry with the same key.
-	pub fn insert<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, value: T) {
+	pub fn insert<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: impl Into<String>, value: T) {
 		let key = key.into();
 
 		for (existing_key, existing_value) in &mut self.0 {
@@ -309,7 +332,7 @@ impl AttributeValues {
 	}
 
 	/// Gets a mutable reference to the value, inserting a default if it doesn't exist or has the wrong type.
-	pub fn get_or_insert_default_mut<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> &mut T {
+	pub fn get_or_insert_default_mut<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str) -> &mut T {
 		let needs_insert = match self.0.iter().position(|(existing_key, _)| existing_key == key) {
 			Some(index) => {
 				if (*self.0[index].1).as_any().downcast_ref::<T>().is_some() {
@@ -448,7 +471,7 @@ impl AttributeColumns {
 	/// Finds or creates a column for the given key and type, returning its position.
 	/// If a column with the key exists but has the wrong type, it is removed and replaced with a new column of the correct type, padded with defaults.
 	/// A newly created column is filled with `T::default()` for all existing rows.
-	fn find_or_create_column<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> usize {
+	fn find_or_create_column<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str) -> usize {
 		match self.columns.iter().position(|(k, _)| k == key) {
 			Some(position) => {
 				if (*self.columns[position].1).as_any().downcast_ref::<Column<T>>().is_some() {
@@ -467,7 +490,7 @@ impl AttributeColumns {
 	}
 
 	/// Gets a mutable reference to the value at the given index, creating the column if it doesn't exist or has the wrong type.
-	fn get_or_insert_default_value<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str, index: usize) -> &mut T {
+	fn get_or_insert_default_value<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str, index: usize) -> &mut T {
 		let column_position = self.find_or_create_column::<T>(key);
 		let column = (*self.columns[column_position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
 		&mut column.0[index]
@@ -475,7 +498,7 @@ impl AttributeColumns {
 
 	/// Sets the value at the given index in the column for the given key.
 	/// Creates the column with defaults if it doesn't exist.
-	fn set_value<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
+	fn set_value<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
 		let key = key.into();
 		let column_position = self.find_or_create_column::<T>(&key);
 		let column = (*self.columns[column_position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
@@ -527,7 +550,7 @@ impl AttributeColumns {
 	}
 
 	/// Returns a mutable typed slice of the column for the given key, creating a new column filled with defaults if it doesn't exist.
-	fn get_or_create_column_slice_mut<T: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> &mut [T] {
+	fn get_or_create_column_slice_mut<T: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str) -> &mut [T] {
 		let position = self.find_or_create_column::<T>(key);
 		let column = (*self.columns[position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
 		&mut column.0
@@ -667,7 +690,7 @@ impl<T> Table<T> {
 	}
 
 	/// Returns a mutable iterator over a typed attribute column, creating the column with default values if it doesn't exist or has the wrong type.
-	pub fn iter_attribute_values_mut_or_default<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> std::slice::IterMut<'_, U> {
+	pub fn iter_attribute_values_mut_or_default<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str) -> std::slice::IterMut<'_, U> {
 		self.attributes.get_or_create_column_slice_mut::<U>(key).iter_mut()
 	}
 
@@ -705,13 +728,13 @@ impl<T> Table<T> {
 	}
 
 	/// Sets the attribute value at the given row index and key, creating the column with defaults if it doesn't exist.
-	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
+	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
 		self.attributes.set_value(key, index, value);
 	}
 
 	/// Runs the given closure on a mutable reference to the attribute value at the given row index,
 	/// creating the column with defaults if it doesn't exist, and returns the closure's result.
-	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, index: usize, f: F) -> R {
+	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, index: usize, f: F) -> R {
 		f(self.attributes.get_or_insert_default_value::<U>(key, index))
 	}
 
@@ -732,7 +755,7 @@ impl<T> Table<T> {
 	/// Returns disjoint mutable references to the element slice and a typed attribute column slice,
 	/// creating the column with defaults if it doesn't exist. This enables simultaneous mutable
 	/// access to elements and a single attribute column without borrowing conflicts.
-	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
+	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
 		let Self { element, attributes } = self;
 		let column_position = attributes.find_or_create_column::<U>(key);
 		let column = (*attributes.columns[column_position].1).as_any_mut().downcast_mut::<Column<U>>().unwrap();
@@ -839,16 +862,15 @@ impl<T> Default for Table<T> {
 	}
 }
 
-impl<T: graphene_hash::CacheHash> graphene_hash::CacheHash for Table<T> {
+impl<T: CacheHash> CacheHash for Table<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		for element in self.iter_element_values() {
 			element.cache_hash(state);
 		}
-		for transform in self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM) {
-			graphene_hash::CacheHash::cache_hash(&transform, state);
-		}
-		for alpha_blending in self.iter_attribute_values_or_default::<crate::AlphaBlending>(ATTR_ALPHA_BLENDING) {
-			alpha_blending.cache_hash(state);
+
+		for (key, column) in &self.attributes.columns {
+			std::hash::Hash::hash(key.as_str(), state);
+			column.cache_hash_dyn(state);
 		}
 	}
 }
@@ -1016,17 +1038,17 @@ impl<T> TableRow<T> {
 	}
 
 	/// Returns a mutable reference to the attribute value for the given key, inserting a default value if absent or of a different type.
-	pub fn attribute_mut_or_insert_default<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: &str) -> &mut U {
+	pub fn attribute_mut_or_insert_default<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: &str) -> &mut U {
 		self.attributes.get_or_insert_default_mut(key)
 	}
 
 	/// Sets the attribute value for the given key, replacing any existing entry with the same key.
-	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + 'static>(&mut self, key: impl Into<String>, value: U) {
+	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(&mut self, key: impl Into<String>, value: U) {
 		self.attributes.insert(key, value);
 	}
 
 	/// Sets the attribute value for the given key and returns the row, enabling builder-style chaining.
-	pub fn with_attribute<U: Clone + Send + Sync + Default + Debug + 'static>(mut self, key: impl Into<String>, value: U) -> Self {
+	pub fn with_attribute<U: Clone + Send + Sync + Default + Debug + CacheHash + 'static>(mut self, key: impl Into<String>, value: U) -> Self {
 		self.set_attribute(key, value);
 		self
 	}
