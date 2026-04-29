@@ -1753,14 +1753,32 @@ impl Render for Table<Color> {
 
 impl Render for Table<GradientStops> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
+		// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
+		let thumbnail_rect = if render_params.thumbnail {
+			let truncated_size = render_params.footprint.resolution.as_dvec2();
+			let margin = DVec2::ONE;
+			Some((render_params.footprint.transform.translation - margin / 2., truncated_size + margin))
+		} else {
+			None
+		};
+
 		for index in 0..self.len() {
 			let Some(gradient) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
-			render.leaf_tag("polyline", |attributes| {
-				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
-				let max = u64::MAX;
-				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
+			render.leaf_tag(tag, |attributes| {
+				if let Some((min, size)) = thumbnail_rect {
+					attributes.push("x", min.x.to_string());
+					attributes.push("y", min.y.to_string());
+					attributes.push("width", size.x.to_string());
+					attributes.push("height", size.y.to_string());
+				} else {
+					// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
+					let max = u64::MAX;
+					attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+				}
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in gradient.interpolated_samples() {
@@ -1785,7 +1803,7 @@ impl Render for Table<GradientStops> {
 
 				let gradient_id = generate_uuid();
 
-				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
+				// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
 				// TODO: Currently only linear gradient is hooked up
 				match GradientType::Linear {
 					GradientType::Linear => {
@@ -1843,7 +1861,7 @@ impl Render for Table<GradientStops> {
 
 			let fill = peniko::Brush::Gradient(peniko::Gradient {
 				kind: peniko::LinearGradientPosition {
-					// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
+					// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
 					start: to_point(DVec2::ZERO),
 					end: to_point(DVec2::X),
 				}
@@ -1863,14 +1881,14 @@ impl Render for Table<GradientStops> {
 				layer = true;
 			}
 
-			// Encode shape and brush manually instead of Scene.fill(), which would multiply brush_transform by the path transform.
+			// Encode shape and brush manually instead of Scene.fill(), which would multiply brush_transform by the path transform
 			scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&kurbo::Affine::scale(f64::INFINITY)));
 			scene.encoding_mut().encode_fill_style(peniko::Fill::NonZero);
 			scene.encoding_mut().encode_shape(&rect, true);
 
 			scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&brush_transform));
 			scene.encoding_mut().swap_last_path_tags();
-			scene.encoding_mut().encode_brush(&fill, 1.0);
+			scene.encoding_mut().encode_brush(&fill, 1.);
 
 			if layer {
 				scene.pop_layer();

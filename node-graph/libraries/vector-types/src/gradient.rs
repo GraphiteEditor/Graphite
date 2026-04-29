@@ -2,9 +2,8 @@ use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-/// Default scale applied to a freshly-created `Table<GradientStops>` item's transform — places the unit gradient line
-/// (the +X unit vector in local space, before the item's transform) inside a 100×100 document-space box so the
-/// gradient is visible at a sensible size by default.
+/// Default scale applied to a freshly-created `Table<GradientStops>` item's transform.
+/// Places the unit gradient line (the +X unit vector in local space) inside a 100×100 document-space box.
 pub const GRADIENT_TABLE_DEFAULT_SCALE: f64 = 100.;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -495,10 +494,10 @@ impl core_types::bounds::BoundingBox for GradientStops {
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|vec| transform.transform_point2(vec));
-		let min = corners.iter().fold(DVec2::MAX, |acc, &p| acc.min(p));
-		let max = corners.iter().fold(DVec2::MIN, |acc, &p| acc.max(p));
-
-		core_types::bounds::RenderBoundingBox::Rectangle([min, max])
+		// AABB of the gradient line itself, leaving aspect padding and sub-pixel fallbacks to the runtime so this stays
+		// a clean per-item geometric bound that combines naturally with siblings
+		let start = transform.transform_point2(DVec2::ZERO);
+		let end = transform.transform_point2(DVec2::X);
+		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
 	}
 }

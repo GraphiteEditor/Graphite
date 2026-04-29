@@ -185,7 +185,7 @@ impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let mut widgets: Vec<WidgetInstance> = Vec::new();
 
-		// TODO: Drop the `is_gradient_table` guard once `Table<GradientStops>` rows can store the gradient type, as currently only legacy `Fill::Gradient` exposes Linear/Radial
+		// TODO: Drop the `is_gradient_table` guard once `Table<GradientStops>` rows can store the gradient type
 		if !self.data.is_gradient_table {
 			let gradient_type = RadioInput::new(vec![
 				RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
@@ -297,7 +297,7 @@ impl Default for GradientToolFsmState {
 
 /// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	// TODO: Drop the `is_gradient_table` branch once all gradients are `Table<GradientStops>`, only the upstream-footprint path will remain
+	// TODO: Drop the `is_gradient_table` branch once all gradients are `Table<GradientStops>`
 	let is_gradient_table = is_layer_fed_by_node_of_name(
 		layer,
 		&document.network_interface,
@@ -325,15 +325,15 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 /// the segment from `start` to `end` in document space. The perpendicular column is forced to the same magnitude
 /// as the `start`..`end` direction so the matrix stays invertible (linear gradients ignore the perpendicular axis,
 /// but click detection uses the full inverse).
-// TODO: Apply a separate scale on the perpendicular axis when we support elliptical gradients.
+// TODO: Apply a separate scale on the perpendicular axis when we support elliptical gradients
 fn gradient_item_transform(start: DVec2, end: DVec2) -> DAffine2 {
 	let delta = end - start;
 	let perp = DVec2::new(-delta.y, delta.x);
 	DAffine2::from_cols_array(&[delta.x, delta.y, perp.x, perp.y, start.x, start.y])
 }
 
-// TODO: Remove this whole function once all gradients are `Table<GradientStops>`, callers will read the table directly
-// TODO: Until then, only Linear + `Pad` spread are produced from a table since rows can't carry the gradient type or spread method yet
+// TODO: Remove this whole function once all gradients are `Table<GradientStops>`
+// TODO: Until then, only Linear + `Pad` spread are produced from a table (rows can't carry type/spread yet)
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	match (get_gradient_table(layer, network_interface), graph_modification_utils::get_gradient(layer, network_interface)) {
 		(Some(gradient_graphic), _) => {
@@ -1037,7 +1037,7 @@ impl Fsm for GradientToolFsmState {
 				};
 
 				// The gradient has only one point and so should become a fill
-				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `Table<GradientStops>`, the table just retains the single stop
+				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `Table<GradientStops>`
 				if selected_gradient.gradient.stops.len() == 1 {
 					if selected_gradient.is_gradient_table {
 						selected_gradient.render_gradient(responses);
@@ -1631,8 +1631,8 @@ fn apply_gradient_update(
 			}
 			update(&mut gradient);
 
-			// Only check for the gradient table once we know we'll write back, since this is a graph traversal per layer.
-			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`, the lookup will then be unconditional
+			// Only check for the gradient table once we know we'll write back, since this is a graph traversal per layer
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
 			if let Some(existing_table) = get_gradient_table(layer, &context.document.network_interface) {
 				let transform = existing_table.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
 				let gradient_table = Table::new_from_row(TableRow::new_from_element(gradient.stops.clone()).with_attribute(ATTR_TRANSFORM, transform));

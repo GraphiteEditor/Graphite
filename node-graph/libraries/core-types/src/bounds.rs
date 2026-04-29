@@ -1,13 +1,6 @@
 use crate::Color;
 use glam::{DAffine2, DVec2};
 
-/// Fallback rectangle used as the thumbnail bounding box for types whose normal bounding box is
-/// `RenderBoundingBox::Infinite` (currently just solid `Color`). Thumbnail rendering needs a finite
-/// preview area, so this is what callers substitute when their thumbnail bounding box query returns
-/// `Infinite`, either by returning it directly from `thumbnail_bounding_box` or by mapping it from
-/// `Infinite` at the call site.
-pub const DEFAULT_THUMBNAIL_BOUNDS: [DVec2; 2] = [DVec2::ZERO, DVec2::new(300., 200.)];
-
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub enum RenderBoundingBox {
 	#[default]
@@ -19,11 +12,13 @@ pub enum RenderBoundingBox {
 pub trait BoundingBox {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox;
 
-	/// Returns a finite bounding box suitable for rendering a thumbnail.
+	/// Returns the bounding box to use when sizing this value's thumbnail in the Layers panel.
 	///
-	/// Differs from `bounding_box` only for types that would otherwise return
-	/// `RenderBoundingBox::Infinite` (e.g., `Color`, `GradientStops`).
-	/// Those substitute a finite fallback rectangle so the thumbnail has a defined area to render into.
+	/// Diverges from `bounding_box` for types where the rendering bounds wouldn't make a useful thumbnail frame.
+	/// For instance, `GradientStops` is `Infinite` for rendering but returns the line's AABB here, so a `Table<Graphic>`
+	/// group of a gradient and a vector frames around the vector's geometry rather than infinity.
+	/// Types with no meaningful contribution (e.g., `Color`) return `Infinite` from both; the runtime substitutes a
+	/// small fallback rectangle at the end if no finite bounds remain after combining.
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox;
 }
 
@@ -52,8 +47,7 @@ impl BoundingBox for Color {
 	}
 
 	fn thumbnail_bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
-		// A solid color has no intrinsic extent (its `bounding_box` is `Infinite`),
-		// so we substitute a finite fallback so the thumbnail has a defined area to fill.
-		RenderBoundingBox::Rectangle(DEFAULT_THUMBNAIL_BOUNDS)
+		// A solid color has no intrinsic extent, so its container's other content frames the thumbnail
+		RenderBoundingBox::Infinite
 	}
 }
