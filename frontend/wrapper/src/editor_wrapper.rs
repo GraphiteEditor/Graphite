@@ -395,7 +395,7 @@ impl EditorWrapper {
 	pub fn load_document_content(&self, document_id: u64, document: String) {
 		let message = PersistentStateMessage::LoadDocument {
 			document_id: DocumentId(document_id),
-			document: document,
+			document,
 		};
 		self.dispatch(message);
 	}
@@ -404,6 +404,13 @@ impl EditorWrapper {
 	pub fn select_document(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::SelectDocument { document_id };
+		self.dispatch(message);
+	}
+
+	/// Rename the currently active document.
+	#[wasm_bindgen(js_name = renameDocument)]
+	pub fn rename_document(&self, new_name: String) {
+		let message = DocumentMessage::RenameDocument { new_name };
 		self.dispatch(message);
 	}
 
