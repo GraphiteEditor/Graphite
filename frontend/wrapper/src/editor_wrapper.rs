@@ -1017,14 +1017,6 @@ impl EditorWrapper {
 		};
 		self.dispatch(message);
 	}
-/* 
-	/// Is the tablet stylus drawing/dragging on the surface?
-	#[wasm_bindgen(getter, js_name = isPenDrawing)]
-	pub fn is_pen_drawing(&self) {
-		let message = InputPreprocessorMessage::IsPenDrawing { };
-		self.dispatch(message)
-	}
-	*/
 }
 
 // ====================================================================

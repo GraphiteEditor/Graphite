@@ -29,6 +29,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
 				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
 				for key in pointer_state.mouse_keys {
 					responses.add(InputMapperMessage::DoubleClick(match key {
@@ -92,6 +93,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
 				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
 				responses.add(InputMapperMessage::PointerShake);
 			}
@@ -105,6 +107,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
 				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 				self.pointer.scroll_delta = pointer_state.scroll_delta;
 
 				responses.add(InputMapperMessage::WheelScroll);

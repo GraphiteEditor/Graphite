@@ -97,45 +97,34 @@ impl BrushStroke {
 	pub fn compute_blit_points(&self) -> Vec<BrushOutputSample> {
 		// We always travel in a straight line towards the next user input,
 		// placing a blit point every time we travelled our spacing distance.
-		let spacing_dist = (self.style.spacing / 100.) * self.style.diameter;
+		let spacing_distance = (self.style.spacing / 100.) * self.style.diameter;
 		if self.trace.is_empty() {
 			return Vec::new();
 		};
 
-		// We currently treat all input samples as blit points, so capture the very first input
-		let mut result = vec![BrushOutputSample {
-			position: self.trace[0].position,
-			scale: self.trace[0].pressure,
-		}];
+		let mut current_position = self.trace[0].position;
+		let mut current_pressure = self.trace[0].pressure;
+		let mut result = vec![BrushOutputSample { position: current_position, scale: current_pressure, }];
 
-		// We iterate over all input points in a sliding pair window. We take uniform
-		// steps of length equal to our spacing distance between the input points, and
-		// linearly interpolate pressure.
-		for samples in self.trace.windows(2) {
-			let position_delta = (samples[1].position - samples[0].position).length();
-			if position_delta < f64::EPSILON {
+		// We iterate over all input points and take uniform steps of length equal to our spacing distance across the entire stroke
+		for sample in &self.trace[1..] {
+			let position_delta = (sample.position - current_position).length();
+			let pressure_delta = sample.pressure - current_pressure;
+
+			// Skip input sample pairs with negligible position and pressure differences.
+			if position_delta < f64::EPSILON && pressure_delta < f64::EPSILON {
 				continue;
 			}
-			let unit_step = (samples[1].position - samples[0].position).normalize() * spacing_dist;
-			let pressure_delta = samples[1].pressure - samples[0].pressure;
-			let mut current_position = samples[0].position + unit_step;
-			loop {
-				let remaining = (samples[1].position - current_position).length();
-				if remaining < spacing_dist {
-					break;
-				}
-				result.push(BrushOutputSample {
-					position: current_position,
-					scale: samples[1].pressure - (remaining / position_delta) * pressure_delta,
-				});
-				current_position += unit_step;
-			}
 
-			// We currently treat all input samples as blit points, so append the second of each pair
-			result.push(BrushOutputSample {
-				position: samples[1].position,
-				scale: samples[1].pressure,
-			});
+			let spacing_step = (sample.position - current_position).normalize() * spacing_distance;
+			let mut space_remaining = position_delta;
+			while space_remaining > spacing_distance {
+				current_position += spacing_step;
+				current_pressure = sample.pressure - (space_remaining / position_delta) * pressure_delta;
+				result.push(BrushOutputSample { position: current_position, scale: current_pressure });
+
+				space_remaining -= spacing_distance;
+			}
 		}
 
 		result
