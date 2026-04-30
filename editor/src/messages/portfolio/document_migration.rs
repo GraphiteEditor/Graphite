@@ -38,13 +38,19 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// ================================
 	// blending
 	// ================================
-	NodeReplacement {
-		node: graphene_std::blending_nodes::blending::IDENTIFIER,
-		aliases: &["graphene_core::raster::BlendingNode", "graphene_core::blending_nodes::BlendingNode"],
-	},
+	// The legacy combined "Blending" node was split into separate Blend Mode, Opacity (now also covers fill), and Clip nodes.
+	// Old Blending references are remapped here to `blend_mode::IDENTIFIER` so the per-node migration in `migrate_node` can
+	// detect a 5-input Blend Mode node and rewrite it as a chain (skipping any sub-node whose value is at the default and
+	// not exposed/wired up).
 	NodeReplacement {
 		node: graphene_std::blending_nodes::blend_mode::IDENTIFIER,
-		aliases: &["graphene_core::raster::BlendModeNode", "graphene_core::blending_nodes::BlendModeNode"],
+		aliases: &[
+			"graphene_core::raster::BlendModeNode",
+			"graphene_core::blending_nodes::BlendModeNode",
+			"graphene_core::raster::BlendingNode",
+			"graphene_core::blending_nodes::BlendingNode",
+			"blending_nodes::BlendingNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::blending_nodes::opacity::IDENTIFIER,
@@ -1089,6 +1095,175 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	let reference = document.network_interface.reference(node_id, network_path)?;
 
 	let mut inputs_count = node.inputs.len();
+
+	// Split the legacy combined "Blending" node into a chain of separate Blend Mode, Opacity (now also covers fill), and Clip nodes.
+	// `NODE_REPLACEMENTS` rewrites the old `Blending` proto identifier (and its older aliases) to `blend_mode::IDENTIFIER`, so a leftover
+	// 5-input shape on a Blend Mode node identifies an old Blending node that still needs structural splitting. Sub-nodes whose values
+	// were at the default and weren't exposed/wired up are skipped, and the existing node ID is reused for the first kept sub-node so
+	// any references elsewhere in the document survive. If everything would be skipped, a no-op default Blend Mode node is left behind
+	// to preserve the chain structure (the user can delete it manually).
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blend_mode::IDENTIFIER) && inputs_count == 5 {
+		use graphene_std::blending::BlendMode;
+
+		// Snapshot the old inputs before any rewriting
+		let old_inputs = node.inputs.clone();
+		let content_input = old_inputs[0].clone();
+		let blend_mode_input = old_inputs[1].clone();
+		let opacity_input = old_inputs[2].clone();
+		let fill_input = old_inputs[3].clone();
+		let clip_input = old_inputs[4].clone();
+
+		// A sub-node is kept if its input is exposed/wired (so the user can drive it from the graph) OR if its value differs from the default
+		let keep_blend_mode = blend_mode_input.is_exposed() || !matches!(blend_mode_input.as_value(), Some(TaggedValue::BlendMode(BlendMode::Normal)));
+		let keep_opacity = opacity_input.is_exposed() || !matches!(opacity_input.as_value(), Some(TaggedValue::F64(v)) if (*v - 100.).abs() < f64::EPSILON);
+		let keep_fill = fill_input.is_exposed() || !matches!(fill_input.as_value(), Some(TaggedValue::F64(v)) if (*v - 100.).abs() < f64::EPSILON);
+		let keep_clip = clip_input.is_exposed() || !matches!(clip_input.as_value(), Some(TaggedValue::Bool(false)));
+
+		// Find the downstream connection so we can chain new nodes between this node and downstream
+		let downstream = document
+			.network_interface
+			.outward_wires(network_path)
+			.and_then(|wires| wires.get(&OutputConnector::node(*node_id, 0)))
+			.and_then(|connections| connections.first().cloned());
+
+		// The position of the existing node; subsequent chain nodes are placed to the right
+		let base_position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+
+		// Decide which sub-node the existing ID becomes (the first one in the chain order: Blend Mode, Opacity, Clip)
+		#[derive(Clone, Copy, PartialEq)]
+		enum SubNode {
+			BlendMode,
+			Opacity,
+			Clip,
+		}
+		let first_kind = if keep_blend_mode {
+			SubNode::BlendMode
+		} else if keep_opacity || keep_fill {
+			SubNode::Opacity
+		} else if keep_clip {
+			SubNode::Clip
+		} else {
+			// Everything was at default and not exposed: leave a no-op Blend Mode node so the chain structure is preserved
+			SubNode::BlendMode
+		};
+
+		let identifier_for = |kind: SubNode| match kind {
+			SubNode::BlendMode => graphene_std::blending_nodes::blend_mode::IDENTIFIER,
+			SubNode::Opacity => graphene_std::blending_nodes::opacity::IDENTIFIER,
+			SubNode::Clip => graphene_std::blending_nodes::clip::IDENTIFIER,
+		};
+
+		// Replace the existing node's implementation with the first kept sub-node's template
+		let first_reference = DefinitionIdentifier::ProtoNode(identifier_for(first_kind));
+		let mut first_template = resolve_document_node_type(&first_reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut first_template);
+		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut first_template);
+
+		// Wire the existing node's inputs based on its new role (input 0 is always `content`)
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), content_input, network_path);
+		match first_kind {
+			SubNode::BlendMode => {
+				document.network_interface.set_input(&InputConnector::node(*node_id, 1), blend_mode_input.clone(), network_path);
+			}
+			SubNode::Opacity => {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 2), opacity_input.clone(), network_path);
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 4), fill_input.clone(), network_path);
+			}
+			SubNode::Clip => {
+				document.network_interface.set_input(&InputConnector::node(*node_id, 1), clip_input.clone(), network_path);
+			}
+		}
+
+		// Build the list of remaining sub-nodes to insert (after the first one), in chain order. Blend Mode is never
+		// reinserted because if it was kept it would already be the `first_kind`.
+		let mut remaining: Vec<SubNode> = Vec::new();
+		if first_kind != SubNode::Opacity && (keep_opacity || keep_fill) {
+			remaining.push(SubNode::Opacity);
+		}
+		if first_kind != SubNode::Clip && keep_clip {
+			remaining.push(SubNode::Clip);
+		}
+
+		// Insert each remaining sub-node into the chain between the previous node and the original downstream
+		let mut chain_x_offset = 7;
+		for sub in remaining {
+			let identifier = identifier_for(sub);
+			let new_id = NodeId::new();
+			let definition = match resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier.clone())) {
+				Some(definition) => definition,
+				None => {
+					log::error!("Could not resolve `{identifier:?}` while migrating Blending node");
+					continue;
+				}
+			};
+			let template = definition.default_node_template();
+			document.network_interface.insert_node(new_id, template, network_path);
+			document
+				.network_interface
+				.shift_absolute_node_position(&new_id, base_position + IVec2::new(chain_x_offset, 0), network_path);
+			chain_x_offset += 7;
+
+			// Splice this node in just before the original downstream input (so each iteration appends to the chain end)
+			if let Some(downstream_input) = &downstream {
+				document.network_interface.insert_node_between(&new_id, downstream_input, 0, network_path);
+			}
+
+			// Wire the parameter inputs for the inserted node
+			match sub {
+				SubNode::BlendMode => {
+					document.network_interface.set_input(&InputConnector::node(new_id, 1), blend_mode_input.clone(), network_path);
+				}
+				SubNode::Opacity => {
+					document
+						.network_interface
+						.set_input(&InputConnector::node(new_id, 1), NodeInput::value(TaggedValue::Bool(keep_opacity), false), network_path);
+					document.network_interface.set_input(&InputConnector::node(new_id, 2), opacity_input.clone(), network_path);
+					document
+						.network_interface
+						.set_input(&InputConnector::node(new_id, 3), NodeInput::value(TaggedValue::Bool(keep_fill), false), network_path);
+					document.network_interface.set_input(&InputConnector::node(new_id, 4), fill_input.clone(), network_path);
+				}
+				SubNode::Clip => {
+					document.network_interface.set_input(&InputConnector::node(new_id, 1), clip_input.clone(), network_path);
+				}
+			}
+		}
+
+		inputs_count = match first_kind {
+			SubNode::BlendMode => 2,
+			SubNode::Opacity => 5,
+			SubNode::Clip => 2,
+		};
+	}
+
+	// Upgrade old single-purpose Opacity node (content, opacity) to the new shape that also covers fill:
+	// (content, has_opacity, opacity, has_fill, fill). The original opacity input is preserved with `has_opacity` enabled,
+	// while `has_fill` is left disabled and the fill value defaults to 100% (no change to fill behavior).
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::opacity::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::F64(100.), false), network_path);
+
+		inputs_count = 5;
+	}
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 8 {
