@@ -104,7 +104,10 @@ impl BrushStroke {
 
 		let mut current_position = self.trace[0].position;
 		let mut current_pressure = self.trace[0].pressure;
-		let mut result = vec![BrushOutputSample { position: current_position, scale: current_pressure, }];
+		let mut result = vec![BrushOutputSample {
+			position: current_position,
+			scale: current_pressure,
+		}];
 
 		// We iterate over all input points and take uniform steps of length equal to our spacing distance across the entire stroke
 		for sample in &self.trace[1..] {
@@ -121,7 +124,10 @@ impl BrushStroke {
 			while space_remaining > spacing_distance {
 				current_position += spacing_step;
 				current_pressure = sample.pressure - (space_remaining / position_delta) * pressure_delta;
-				result.push(BrushOutputSample { position: current_position, scale: current_pressure });
+				result.push(BrushOutputSample {
+					position: current_position,
+					scale: current_pressure,
+				});
 
 				space_remaining -= spacing_distance;
 			}

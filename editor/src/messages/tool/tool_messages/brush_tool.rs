@@ -388,7 +388,10 @@ impl Fsm for BrushToolFsmState {
 						DrawMode::Restore => BlendMode::Restore,
 					};
 					tool_data.strokes.push(BrushStroke {
-						trace: vec![BrushInputSample { position: layer_position, pressure: input.pointer.pressure }],
+						trace: vec![BrushInputSample {
+							position: layer_position,
+							pressure: input.pointer.pressure,
+						}],
 						style: BrushStyle {
 							color: tool_options.color.active_color().unwrap_or_default(),
 							diameter: tool_options.diameter / layer_scale,
@@ -425,7 +428,10 @@ impl Fsm for BrushToolFsmState {
 						.transform_point2(input.pointer.position);
 					let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
 
-					stroke.trace.push(BrushInputSample { position: layer_position, pressure: input.pointer.pressure })
+					stroke.trace.push(BrushInputSample {
+						position: layer_position,
+						pressure: input.pointer.pressure,
+					})
 				}
 				tool_data.update_strokes(responses);
 
