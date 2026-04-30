@@ -4,9 +4,11 @@ use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::utility_types::{CachedData, FontCatalogStyle};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -235,6 +237,7 @@ pub(crate) fn property_from_type(
 						// =========================
 						Some(x) if x == TypeId::of::<FillType>() => enum_choice::<FillType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<GradientType>() => enum_choice::<GradientType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<GradientSpreadMethod>() => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
@@ -2025,11 +2028,21 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	LayoutGroup::section(name, description, visible, pinned, node_id.0, Layout(layout))
 }
 
+/// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
+/// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
+fn gradient_orientation_in_fill_node(node_id: NodeId, gradient: &graphene_std::vector::style::Gradient, context: &mut NodePropertiesContext) -> Option<bool> {
+	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
+	let layer = LayerNodeIdentifier::new(layer_node, context.network_interface);
+	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
+	Some(graph_modification_utils::gradient_orientation_rightward(gradient.start, gradient.end, transform))
+}
+
 /// Fill Node Widgets LayoutGroup
 pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::fill::*;
 
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, true, context));
+	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, false, context));
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -2051,6 +2064,30 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let fill2 = fill.clone();
 	let backup_color_fill: Fill = backup_color.clone().into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
+
+	match fill {
+		Fill::Gradient(gradient) => {
+			let reverse_button = IconButton::new("Reverse", 24)
+				.tooltip_label("Reverse Stops")
+				.tooltip_description("Reverse the gradient color stops.")
+				.on_update(update_value(
+					{
+						let gradient = gradient.clone();
+						move |_| {
+							let mut gradient = gradient.clone();
+							gradient.stops = gradient.stops.reversed();
+							TaggedValue::Fill(Fill::Gradient(gradient))
+						}
+					},
+					node_id,
+					FillInput::<Color>::INDEX,
+				))
+				.widget_instance();
+			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			widgets_first_row.push(reverse_button);
+		}
+		_ => add_blank_assist(&mut widgets_first_row),
+	}
 
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
@@ -2089,32 +2126,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.on_commit(commit_value)
 			.widget_instance(),
 	);
+
 	let mut widgets = vec![LayoutGroup::row(widgets_first_row)];
 
 	let fill_type_switch = {
 		let mut row = vec![TextLabel::new("").widget_instance()];
-		match fill {
-			Fill::Solid(_) | Fill::None => add_blank_assist(&mut row),
-			Fill::Gradient(gradient) => {
-				let reverse_button = IconButton::new("Reverse", 24)
-					.tooltip_description("Reverse the gradient color stops.")
-					.on_update(update_value(
-						{
-							let gradient = gradient.clone();
-							move |_| {
-								let mut gradient = gradient.clone();
-								gradient.stops = gradient.stops.reversed();
-								TaggedValue::Fill(Fill::Gradient(gradient))
-							}
-						},
-						node_id,
-						FillInput::<Color>::INDEX,
-					))
-					.widget_instance();
-				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-				row.push(reverse_button);
-			}
-		}
+		add_blank_assist(&mut row);
 
 		let entries = vec![
 			RadioEntryData::new("solid")
@@ -2137,34 +2154,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets.push(fill_type_switch);
 
 	if let Fill::Gradient(gradient) = fill.clone() {
+		// Linear/Radial radio: blank assist (the "Reverse Direction" button has been moved down to the spread method row)
 		let mut row = vec![TextLabel::new("").widget_instance()];
-		match gradient.gradient_type {
-			GradientType::Linear => add_blank_assist(&mut row),
-			GradientType::Radial => {
-				let orientation = if (gradient.end.x - gradient.start.x).abs() > f64::EPSILON * 1e6 {
-					gradient.end.x > gradient.start.x
-				} else {
-					(gradient.start.x + gradient.start.y) < (gradient.end.x + gradient.end.y)
-				};
-				let reverse_radial_gradient_button = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
-					.tooltip_description("Reverse which end the gradient radiates from.")
-					.on_update(update_value(
-						{
-							let gradient = gradient.clone();
-							move |_| {
-								let mut gradient = gradient.clone();
-								std::mem::swap(&mut gradient.start, &mut gradient.end);
-								TaggedValue::Fill(Fill::Gradient(gradient))
-							}
-						},
-						node_id,
-						FillInput::<Color>::INDEX,
-					))
-					.widget_instance();
-				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-				row.push(reverse_radial_gradient_button);
-			}
-		}
+		add_blank_assist(&mut row);
 
 		let gradient_for_closure = gradient.clone();
 
@@ -2203,7 +2195,33 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 		widgets.push(LayoutGroup::row(row));
 
-		let mut spread_methods_row: Vec<WidgetInstance> = vec![TextLabel::new("").widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance()];
+		// "Reverse Direction" button (assist) plus the Pad/Reflect/Repeat radio. Icon orientation is resolved in viewport
+		// space so canvas tilt and layer transforms behave the same as in the Gradient tool's control bar.
+		let mut spread_methods_row = vec![TextLabel::new("").widget_instance()];
+
+		let orientation_rightward = gradient_orientation_in_fill_node(node_id, &gradient, context).unwrap_or(true);
+		let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+			.tooltip_label("Reverse Direction")
+			.tooltip_description(if gradient.gradient_type == GradientType::Radial {
+				"Reverse which end the gradient radiates from."
+			} else {
+				"Swap the start and end points of the gradient line."
+			})
+			.on_update(update_value(
+				{
+					let gradient = gradient.clone();
+					move |_| {
+						let mut gradient = gradient.clone();
+						std::mem::swap(&mut gradient.start, &mut gradient.end);
+						TaggedValue::Fill(Fill::Gradient(gradient))
+					}
+				},
+				node_id,
+				FillInput::<Color>::INDEX,
+			))
+			.widget_instance();
+		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		spread_methods_row.push(reverse_direction_button);
 
 		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
 			.iter()
@@ -2247,8 +2265,10 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			})
 			.collect();
 
-		add_blank_assist(&mut spread_methods_row);
-		spread_methods_row.extend_from_slice(&[RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance()]);
+		spread_methods_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance(),
+		]);
 
 		widgets.push(LayoutGroup::row(spread_methods_row));
 	}

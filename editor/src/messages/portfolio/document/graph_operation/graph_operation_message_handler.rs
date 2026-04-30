@@ -45,9 +45,24 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.blending_fill_set(fill);
 				}
 			}
-			GraphOperationMessage::GradientTableSet { layer, gradient_table } => {
+			GraphOperationMessage::GradientStopsSet { layer, stops } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.gradient_table_set(gradient_table);
+					modify_inputs.gradient_stops_set(stops);
+				}
+			}
+			GraphOperationMessage::GradientLineSet { layer, start, end } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_line_set(start, end);
+				}
+			}
+			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_type_set(gradient_type);
+				}
+			}
+			GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_spread_method_set(spread_method);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {

@@ -9,9 +9,8 @@ use graphene_std::color::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, VectorModificationType};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
@@ -25,9 +24,22 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: f64,
 	},
-	GradientTableSet {
+	GradientStopsSet {
 		layer: LayerNodeIdentifier,
-		gradient_table: Table<GradientStops>,
+		stops: GradientStops,
+	},
+	GradientLineSet {
+		layer: LayerNodeIdentifier,
+		start: DVec2,
+		end: DVec2,
+	},
+	GradientTypeSet {
+		layer: LayerNodeIdentifier,
+		gradient_type: GradientType,
+	},
+	GradientSpreadMethodSet {
+		layer: LayerNodeIdentifier,
+		spread_method: GradientSpreadMethod,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
