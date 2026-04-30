@@ -298,7 +298,11 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 	let metadata = network_interface.document_metadata();
 	let is_gradient_table = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER));
 	if is_gradient_table {
-		return metadata.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(metadata.document_to_viewport);
+		return metadata
+			.upstream_footprints
+			.get(&layer.to_node())
+			.map(|footprint| footprint.transform)
+			.unwrap_or(metadata.document_to_viewport);
 	}
 	let multiplied = metadata.transform_to_viewport(layer);
 	let bounds = metadata.nonzero_bounding_box(layer);
