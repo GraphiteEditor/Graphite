@@ -289,6 +289,39 @@ pub fn get_gradient_table(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	Some(gradient_table.clone())
 }
 
+/// Compute the transform from a gradient's local space to viewport space for the given layer. For a `Table<GradientStops>`
+/// layer this is the layer's incoming footprint transform; for the legacy `Fill::Gradient` path it composes the layer's
+/// viewport transform with the [0,1]² → bounding-box mapping.
+pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+
+	let metadata = network_interface.document_metadata();
+	let is_gradient_table = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER));
+	if is_gradient_table {
+		return metadata
+			.upstream_footprints
+			.get(&layer.to_node())
+			.map(|footprint| footprint.transform)
+			.unwrap_or(metadata.document_to_viewport);
+	}
+	let multiplied = metadata.transform_to_viewport(layer);
+	let bounds = metadata.nonzero_bounding_box(layer);
+	let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+	multiplied * bound_transform
+}
+
+/// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
+/// vertical lines we fall back to a stable tiebreaker on (x + y) so the choice doesn't flicker between equal alternatives.
+pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, transform: glam::DAffine2) -> bool {
+	let viewport_start = transform.transform_point2(start);
+	let viewport_end = transform.transform_point2(end);
+	if (viewport_end.x - viewport_start.x).abs() > f64::EPSILON * 1e6 {
+		viewport_end.x > viewport_start.x
+	} else {
+		(viewport_start.x + viewport_start.y) < (viewport_end.x + viewport_end.y)
+	}
+}
+
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;

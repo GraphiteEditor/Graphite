@@ -2,10 +2,6 @@ use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
-/// Default scale applied to a freshly-created `Table<GradientStops>` item's transform.
-/// Places the unit gradient line (the +X unit vector in local space) inside a 100×100 document-space box.
-pub const GRADIENT_TABLE_DEFAULT_SCALE: f64 = 100.;
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -13,7 +13,7 @@ use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Color, Graphic, NodeInputDecleration};
 
@@ -460,13 +460,98 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
 	}
 
-	pub fn gradient_table_set(&mut self, gradient_table: Table<GradientStops>) {
+	/// Set the stops table on the 'Gradient Value' node, creating it if necessary.
+	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
 		let Some(gradient_node_id) = self.existing_proto_node_id(graphene_std::math_nodes::gradient_value::IDENTIFIER, true) else {
 			return;
 		};
-
 		let input_connector = InputConnector::node(gradient_node_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientTable(gradient_table), false), false);
+		let stops_table = Table::new_from_element(stops);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientTable(stops_table), false), false);
+	}
+
+	/// Update the gradient line so its endpoints are at `new_start` and `new_end`.
+	/// With multiple `Transform` nodes the last one (closest to the layer) is modified so the chain still composes to the target.
+	/// With none, one is inserted unless the target is the identity.
+	pub fn gradient_line_set(&mut self, new_start: DVec2, new_end: DVec2) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let transform_reference = DefinitionIdentifier::Network("Transform".into());
+		let upstream_transforms: Vec<NodeId> = self
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow)
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.filter(|node_id| self.network_interface.reference(node_id, &[]).as_ref() == Some(&transform_reference))
+			.collect();
+
+		// Upstream walk yields downstream-to-upstream order, so the first hit is the chain's last `Transform`
+		let (last_transform_node_id, prior_transforms) = match upstream_transforms.split_first() {
+			Some((last, prior)) => (Some(*last), prior),
+			None => (None, [].as_slice()),
+		};
+
+		// `composed_old` = T_n * T_{n-1} * ... * T_1, `prior_combined` = same product without T_n
+		let compose = |ids: &[_]| {
+			ids.iter().fold(DAffine2::IDENTITY, |acc, transform_id| {
+				self.network_interface
+					.document_network()
+					.nodes
+					.get(transform_id)
+					.map_or(acc, |document_node| acc * transform_utils::get_current_transform(&document_node.inputs))
+			})
+		};
+		let composed_old = compose(&upstream_transforms);
+		let prior_combined = compose(prior_transforms);
+
+		// Rebuild the y-axis from the new x-axis using the old (parallel, perpendicular) decomposition and length ratio,
+		// so the gradient's aspect ratio and skew survive an endpoint drag (so an ellipse stays the same ellipse) instead of
+		// the old y-axis vector remaining fixed while x changes
+		let new_x_axis = new_end - new_start;
+		let preserved_y_axis = scale_y_axis_to_match_new_x(composed_old.matrix2.x_axis, composed_old.matrix2.y_axis, new_x_axis);
+		let new_composed = DAffine2 {
+			matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
+			translation: new_start,
+		};
+
+		let last_transform_value = new_composed * prior_combined.inverse();
+
+		let transform_node_id = if let Some(id) = last_transform_node_id {
+			id
+		} else {
+			// Don't pollute the graph with an identity 'Transform' node
+			if last_transform_value.abs_diff_eq(DAffine2::IDENTITY, 1e-6) {
+				return;
+			}
+			let Some(id) = self.existing_network_node_id("Transform", true) else { return };
+			id
+		};
+
+		transform_utils::update_transform(self.network_interface, &transform_node_id, last_transform_value);
+		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	/// Write the gradient type to the last 'Gradient Type' node in the chain, inserting one only when the value differs
+	/// from the default (`Linear`).
+	pub fn gradient_type_set(&mut self, gradient_type: GradientType) {
+		let identifier = graphene_std::math_nodes::gradient_type::IDENTIFIER;
+		let create_if_nonexistent = gradient_type != GradientType::default();
+		let Some(node_id) = self.existing_proto_node_id(identifier, create_if_nonexistent) else { return };
+
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_type::GradientTypeInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
+	}
+
+	/// Write the spread method to the last 'Spread Method' node in the chain, inserting one only when the value differs
+	/// from the default (`Pad`).
+	pub fn gradient_spread_method_set(&mut self, spread_method: GradientSpreadMethod) {
+		let identifier = graphene_std::math_nodes::spread_method::IDENTIFIER;
+		let create_if_nonexistent = spread_method != GradientSpreadMethod::default();
+		let Some(node_id) = self.existing_proto_node_id(identifier, create_if_nonexistent) else { return };
+
+		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::spread_method::SpreadMethodInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false), false);
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
@@ -620,4 +705,30 @@ impl<'a> ModifyInputsContext<'a> {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
 	}
+}
+
+/// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
+/// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
+/// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
+/// Falls back to a +90° rotation of `new_x` when `old_x` is degenerate.
+fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec2 {
+	let old_x_length = old_x.length();
+	if old_x_length < 1e-9 {
+		return DVec2::new(-new_x.y, new_x.x);
+	}
+	let ex_old = old_x / old_x_length;
+	let ey_old = DVec2::new(-ex_old.y, ex_old.x);
+
+	let new_x_length = new_x.length();
+	if new_x_length < 1e-9 {
+		return DVec2::ZERO;
+	}
+	let ex_new = new_x / new_x_length;
+	let ey_new = DVec2::new(-ex_new.y, ex_new.x);
+
+	let parallel = old_y.dot(ex_old);
+	let perpendicular = old_y.dot(ey_old);
+	let scale = new_x_length / old_x_length;
+
+	scale * (parallel * ex_new + perpendicular * ey_new)
 }
