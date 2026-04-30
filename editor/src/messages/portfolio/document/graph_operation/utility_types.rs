@@ -492,18 +492,17 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		// `composed_old` = T_n * T_{n-1} * ... * T_1, `prior_combined` = same product without T_n
-		let composed_old = upstream_transforms.iter().fold(DAffine2::IDENTITY, |acc, transform_id| {
-			let Some(document_node) = self.network_interface.document_network().nodes.get(transform_id) else {
-				return acc;
-			};
-			acc * transform_utils::get_current_transform(&document_node.inputs)
-		});
-		let prior_combined = prior_transforms.iter().fold(DAffine2::IDENTITY, |acc, transform_id| {
-			let Some(document_node) = self.network_interface.document_network().nodes.get(transform_id) else {
-				return acc;
-			};
-			acc * transform_utils::get_current_transform(&document_node.inputs)
-		});
+		let compose = |ids: &[_]| {
+			ids.iter().fold(DAffine2::IDENTITY, |acc, transform_id| {
+				self.network_interface
+					.document_network()
+					.nodes
+					.get(transform_id)
+					.map_or(acc, |document_node| acc * transform_utils::get_current_transform(&document_node.inputs))
+			})
+		};
+		let composed_old = compose(&upstream_transforms);
+		let prior_combined = compose(prior_transforms);
 
 		// Rebuild the y-axis from the new x-axis using the old (parallel, perpendicular) decomposition and length ratio,
 		// so the gradient's aspect ratio and skew survive an endpoint drag (so an ellipse stays the same ellipse) instead of
