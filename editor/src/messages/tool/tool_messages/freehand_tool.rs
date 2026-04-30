@@ -535,6 +535,7 @@ mod test_freehand {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)
@@ -594,6 +595,7 @@ mod test_freehand {
 					editor_position: last_extension_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)
@@ -648,6 +650,7 @@ mod test_freehand {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)
@@ -683,6 +686,7 @@ mod test_freehand {
 					editor_position: first_second_point,
 					mouse_keys: MouseKeys::LEFT,
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::SHIFT,
 			)
@@ -699,6 +703,7 @@ mod test_freehand {
 					editor_position: last_second_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::SHIFT,
 			)
@@ -772,6 +777,7 @@ mod test_freehand {
 					editor_position: last_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)

@@ -132,6 +132,7 @@ impl EditorTestUtils {
 				editor_position: (x2, y2).into(),
 				mouse_keys: MouseKeys::empty(),
 				scroll_delta: ScrollDelta::default(),
+				pressure: 1.,
 			},
 			modifier_keys,
 		)
@@ -152,6 +153,7 @@ impl EditorTestUtils {
 				editor_position: (100., 100.).into(),
 				mouse_keys: MouseKeys::LEFT | MouseKeys::RIGHT,
 				scroll_delta: ScrollDelta::default(),
+				pressure: 1.,
 			},
 			ModifierKeys::default(),
 		)
@@ -205,6 +207,7 @@ impl EditorTestUtils {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::LEFT,
 				scroll_delta: ScrollDelta::default(),
+				pressure: 1.,
 			},
 			modifier_keys,
 		)
@@ -217,6 +220,7 @@ impl EditorTestUtils {
 				editor_position: (x, y).into(),
 				mouse_keys: MouseKeys::empty(),
 				scroll_delta: ScrollDelta::default(),
+				pressure: 1.,
 			},
 			modifier_keys,
 		)
@@ -273,6 +277,7 @@ impl EditorTestUtils {
 				editor_position: position,
 				mouse_keys: MouseKeys::LEFT,
 				scroll_delta: ScrollDelta::default(),
+				pressure: 1.,
 			},
 			modifier_keys: ModifierKeys::empty(),
 		})
@@ -297,6 +302,7 @@ impl EditorTestUtils {
 				editor_position: points[points.len() - 1],
 				mouse_keys: MouseKeys::empty(),
 				scroll_delta: ScrollDelta::default(),
+				pressure: 1.,
 			},
 			modifier_keys,
 		)
