@@ -16,7 +16,9 @@ use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::portfolio::document::guide_lines_message::GuideLinesMessage;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use editor::messages::portfolio::document::utility_types::guide_line::{GuideLineDirection, GuideLineId};
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
@@ -34,6 +36,12 @@ use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
+
+/// Generates a unique guide ID
+#[wasm_bindgen(js_name = generateGuideLineId)]
+pub fn generate_guide_id() -> u64 {
+	editor::application::generate_uuid()
+}
 
 /// This struct is, via wasm-bindgen, used by JS to interact with the editor backend. It does this by calling functions, which are `impl`ed
 #[wasm_bindgen]
@@ -984,6 +992,38 @@ impl EditorWrapper {
 			name,
 			index: ImportOrExport::Export(index),
 		};
+		self.dispatch(message);
+	}
+
+	/// Create a new guide line from a ruler drag
+	#[wasm_bindgen(js_name = createGuideLine)]
+	pub fn create_guide(&self, id: u64, direction: String, mouse_x: f64, mouse_y: f64) {
+		let id = GuideLineId::from_raw(id);
+		let direction = match direction.as_str() {
+			"Horizontal" => GuideLineDirection::Horizontal,
+			"Vertical" => GuideLineDirection::Vertical,
+			_ => {
+				log::error!("Invalid guide direction: {}", direction);
+				return;
+			}
+		};
+		let message = GuideLinesMessage::CreateGuideLine { id, direction, mouse_x, mouse_y };
+		self.dispatch(message);
+	}
+
+	/// Move an existing guide to a new position
+	#[wasm_bindgen(js_name = moveGuideLine)]
+	pub fn move_guide(&self, id: u64, mouse_x: f64, mouse_y: f64) {
+		let id = GuideLineId::from_raw(id);
+		let message = GuideLinesMessage::MoveGuideLine { id, mouse_x, mouse_y };
+		self.dispatch(message);
+	}
+
+	/// Delete a guide by its ID
+	#[wasm_bindgen(js_name = deleteGuideLine)]
+	pub fn delete_guide(&self, id: u64) {
+		let id = GuideLineId::from_raw(id);
+		let message = GuideLinesMessage::DeleteGuideLine { id };
 		self.dispatch(message);
 	}
 }
