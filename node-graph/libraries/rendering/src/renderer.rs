@@ -1705,9 +1705,11 @@ impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
 			render.leaf_tag("polyline", |attributes| {
-				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
-				let max = u64::MAX;
-				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+				// Stand-in for an infinite background. Chrome's SVG renderer keeps internal coordinates in f32 and loses
+				// precision past ~2^24 (~16.7 million), causing tile-boundary artifacts that pop in and out during panning.
+				// 1e7 stays under that limit while still being far larger than any practical document extent.
+				const MAX: f64 = 1e7;
+				attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
 				if color.a() < 1. {
@@ -1779,9 +1781,11 @@ impl Render for Table<GradientStops> {
 					attributes.push("width", size.x.to_string());
 					attributes.push("height", size.y.to_string());
 				} else {
-					// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
-					let max = u64::MAX;
-					attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
+					// Stand-in for an infinite background. Chrome's SVG renderer keeps internal coordinates in f32 and loses
+					// precision past ~2^24 (~16.7 million), causing tile-boundary artifacts that pop in and out during panning.
+					// 1e7 stays under that limit while still being far larger than any practical document extent.
+					const MAX: f64 = 1e7;
+					attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 				}
 
 				let mut stop_string = String::new();
