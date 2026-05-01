@@ -336,7 +336,7 @@ impl WorkspacePanelLayout {
 	/// - Layers: bottom of the right column (root child 1)
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
 		let new_id = self.next_id();
-		let new_group = SplitChild {
+		let mut new_group = SplitChild {
 			subdivision: PanelLayoutSubdivision::PanelGroup {
 				id: new_id,
 				state: PanelGroupState {
@@ -344,12 +344,7 @@ impl WorkspacePanelLayout {
 					active_tab_index: 0,
 				},
 			},
-			size: match panel_type {
-				PanelType::Data => 0.3,
-				PanelType::Properties => 0.45,
-				PanelType::Layers => 0.55,
-				_ => EQUAL_PANEL_SHARE,
-			},
+			size: EQUAL_PANEL_SHARE,
 		};
 
 		// Determine which root child column to insert into and at which position
@@ -394,6 +389,14 @@ impl WorkspacePanelLayout {
 		}
 
 		if let PanelLayoutSubdivision::Split { children } = target {
+			// Match the new panel's size to the existing children's average so it joins as an equal sibling
+			let average = if children.is_empty() {
+				new_group.size
+			} else {
+				children.iter().map(|c| c.size).sum::<f64>() / children.len() as f64
+			};
+			new_group.size = average;
+
 			if insert_at_end {
 				children.push(new_group);
 			} else {
