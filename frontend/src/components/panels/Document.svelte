@@ -45,6 +45,9 @@
 	let rulerInterval = 100;
 	let rulersVisible = true;
 	let rulerTilt = 0;
+	let rulerFlip = false;
+	let rulerCursorPosition: { x: number; y: number } | undefined;
+	let viewportBounds: DOMRect | undefined;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -288,12 +291,17 @@
 		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number) {
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number, flip: boolean) {
 		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
 		rulerTilt = tilt;
+		rulerFlip = flip;
+	}
+
+	function updateRulerCursorPosition(e: PointerEvent) {
+		if (viewportBounds) rulerCursorPosition = { x: e.clientX - viewportBounds.left, y: e.clientY - viewportBounds.top };
 	}
 
 	// Update mouse cursor icon
@@ -416,6 +424,7 @@
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
 		devicePixelRatio = window.devicePixelRatio || 1;
+		viewportBounds = viewport.getBoundingClientRect();
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -489,8 +498,8 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible, tilt } = data;
-			updateDocumentRulers(origin, spacing, interval, visible, tilt);
+			const { origin, spacing, interval, visible, tilt, flip } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip);
 		});
 
 		// Update mouse cursor icon
@@ -601,9 +610,11 @@
 						originX={rulerOrigin.x}
 						originY={rulerOrigin.y}
 						tilt={rulerTilt}
+						flip={rulerFlip}
 						majorMarkSpacing={rulerSpacing}
 						numberInterval={rulerInterval}
 						direction="Horizontal"
+						cursorPosition={rulerCursorPosition}
 						bind:this={rulerHorizontal}
 					/>
 				</LayoutRow>
@@ -615,9 +626,11 @@
 							originX={rulerOrigin.x}
 							originY={rulerOrigin.y}
 							tilt={rulerTilt}
+							flip={rulerFlip}
 							majorMarkSpacing={rulerSpacing}
 							numberInterval={rulerInterval}
 							direction="Vertical"
+							cursorPosition={rulerCursorPosition}
 							bind:this={rulerVertical}
 						/>
 					</LayoutCol>
@@ -664,6 +677,8 @@
 						class:viewport={!$appWindow.viewportHolePunch}
 						class:viewport-transparent={$appWindow.viewportHolePunch}
 						on:pointerdown={(e) => canvasPointerDown(e)}
+						on:pointermove={updateRulerCursorPosition}
+						on:pointerleave={() => (rulerCursorPosition = undefined)}
 						bind:this={viewport}
 						data-viewport
 					>

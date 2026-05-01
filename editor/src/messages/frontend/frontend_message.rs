@@ -245,6 +245,7 @@ pub enum FrontendMessage {
 		interval: f64,
 		visible: bool,
 		tilt: f64,
+		flip: bool,
 	},
 	UpdateDocumentScrollbars {
 		position: (f64, f64),

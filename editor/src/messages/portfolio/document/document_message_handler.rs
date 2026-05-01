@@ -844,6 +844,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					interval: ruler_interval,
 					visible: self.rulers_visible,
 					tilt: if self.graph_view_overlay_open { 0. } else { current_ptz.tilt() },
+					flip: !self.graph_view_overlay_open && current_ptz.flip,
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
