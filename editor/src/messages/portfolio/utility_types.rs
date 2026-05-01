@@ -181,6 +181,21 @@ pub struct SplitChild {
 	pub size: f64,
 }
 
+/// Remembers where a panel was before it was removed, so it can be restored to the same location.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+struct SavedPanelPosition {
+	panel_type: PanelType,
+	/// The group the panel was a tab in.
+	group_id: PanelGroupId,
+	/// Which tab index it occupied within that group.
+	tab_index: usize,
+	/// The group's slot size at the time of removal (used to restore its visual weight via the sibling fallback).
+	slot_size: Option<f64>,
+	/// When the panel was the sole tab (so the group will be pruned), a neighboring group and
+	/// whether to insert before it (`true`) or after it (`false`) to recreate the original position.
+	sibling_fallback: Option<(PanelGroupId, bool)>,
+}
+
 /// The complete workspace panel layout as a tree of nested rows and columns.
 /// The root subdivision is always a row (horizontal split). Direction alternates at each depth.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -191,9 +206,9 @@ pub struct WorkspacePanelLayout {
 	/// Counter for generating unique panel group IDs.
 	#[serde(default)]
 	next_group_id: PanelGroupId,
-	/// Remembers where a panel was before being removed (panel type, group ID, and tab index), so it can be restored there.
+	/// Remembers where each panel was before removal so it can be restored there.
 	#[serde(default)]
-	saved_positions: Vec<(PanelType, PanelGroupId, usize)>,
+	saved_positions: Vec<SavedPanelPosition>,
 	/// Whether Focus Document mode is active, hiding all non-document panels.
 	#[serde(default)]
 	pub focus_document: bool,
@@ -299,33 +314,69 @@ impl WorkspacePanelLayout {
 		self.root.recalculate_default_sizes_recursive();
 	}
 
-	/// Remember which panel group and tab index a panel was in before removal, so it can be restored there later.
+	/// Remember where a panel was before removal so it can be restored there later.
+	/// Saves the group ID and tab index. If the panel is the sole tab (so the group will be pruned),
+	/// also saves a sibling group as a fallback for adjacency-based restoration.
 	pub fn save_panel_position(&mut self, panel_type: PanelType) {
-		if let Some(group_id) = self.find_panel(panel_type) {
-			let tab_index = self.panel_group(group_id).and_then(|g| g.tabs.iter().position(|&t| t == panel_type)).unwrap_or(0);
+		let Some(group_id) = self.find_panel(panel_type) else { return };
+		let tab_index = self.panel_group(group_id).and_then(|g| g.tabs.iter().position(|&t| t == panel_type)).unwrap_or(0);
+		let is_sole_tab = self.panel_group(group_id).is_some_and(|g| g.tabs.len() == 1);
 
-			// Replace any existing saved position for this panel type
-			self.saved_positions.retain(|(pt, _, _)| *pt != panel_type);
-			self.saved_positions.push((panel_type, group_id, tab_index));
-		}
+		// When it's the sole tab, the group will be pruned, so save a sibling and slot size as fallback
+		let sibling_fallback = if is_sole_tab { self.root.find_sibling_group(group_id) } else { None };
+		let slot_size = if is_sole_tab { self.root.find_slot_size_by_group_id(group_id) } else { None };
+
+		self.saved_positions.retain(|s| s.panel_type != panel_type);
+		self.saved_positions.push(SavedPanelPosition {
+			panel_type,
+			group_id,
+			tab_index,
+			slot_size,
+			sibling_fallback,
+		});
 	}
 
 	/// Restore a panel to its previous position if available, otherwise to its default position.
-	/// If the panel was previously in a group that still exists, it's added back as a tab at its original index.
-	/// Otherwise, it's placed at its default structural position in the tree.
 	pub fn restore_panel(&mut self, panel_type: PanelType) {
-		// Try to restore to the previously saved group and tab position
-		let saved = self.saved_positions.iter().find(|(pt, _, _)| *pt == panel_type).copied();
-		if let Some((_, saved_group_id, saved_tab_index)) = saved
-			&& let Some(group) = self.panel_group_mut(saved_group_id)
-		{
-			let insert_index = saved_tab_index.min(group.tabs.len());
+		let saved = self.saved_positions.iter().find(|s| s.panel_type == panel_type).copied();
+		self.saved_positions.retain(|s| s.panel_type != panel_type);
+
+		let Some(saved) = saved else {
+			self.restore_panel_to_default_position(panel_type);
+			return;
+		};
+
+		// Primary: restore as a tab in the original group if it still exists
+		if let Some(group) = self.panel_group_mut(saved.group_id) {
+			let insert_index = saved.tab_index.min(group.tabs.len());
 			group.tabs.insert(insert_index, panel_type);
 			group.active_tab_index = insert_index;
-			self.saved_positions.retain(|(pt, _, _)| *pt != panel_type);
 			return;
 		}
-		self.saved_positions.retain(|(pt, _, _)| *pt != panel_type);
+
+		// Fallback: the original group was pruned, but a sibling in the same parent split survives
+		if let Some((sibling_id, before_sibling)) = saved.sibling_fallback
+			&& self.root.contains_group(sibling_id)
+		{
+			let new_id = self.next_id();
+			let new_subdivision = PanelLayoutSubdivision::PanelGroup {
+				id: new_id,
+				state: PanelGroupState {
+					tabs: vec![panel_type],
+					active_tab_index: 0,
+				},
+			};
+
+			let new_group = SplitChild {
+				subdivision: new_subdivision,
+				size: saved.slot_size.unwrap_or_else(|| {
+					let sibling_is_document_panel = self.root.find_group(sibling_id).is_some_and(|g| g.contains(PanelType::Document) || g.contains(PanelType::Welcome));
+					if sibling_is_document_panel { 1. - DOCUMENT_PANEL_SHARE } else { EQUAL_PANEL_SHARE }
+				}),
+			};
+			self.root.insert_adjacent_to_group(sibling_id, new_group, before_sibling);
+			return;
+		}
 
 		self.restore_panel_to_default_position(panel_type);
 	}
@@ -336,7 +387,7 @@ impl WorkspacePanelLayout {
 	/// - Layers: bottom of the right column (root child 1)
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
 		let new_id = self.next_id();
-		let mut new_group = SplitChild {
+		let new_group = SplitChild {
 			subdivision: PanelLayoutSubdivision::PanelGroup {
 				id: new_id,
 				state: PanelGroupState {
@@ -389,19 +440,17 @@ impl WorkspacePanelLayout {
 		}
 
 		if let PanelLayoutSubdivision::Split { children } = target {
-			// Match the new panel's size to the existing children's average so it joins as an equal sibling
-			let average = if children.is_empty() {
-				new_group.size
-			} else {
-				children.iter().map(|c| c.size).sum::<f64>() / children.len() as f64
-			};
-			new_group.size = average;
-
 			if insert_at_end {
 				children.push(new_group);
 			} else {
 				children.insert(0, new_group);
 			}
+		}
+
+		// Recalculate sizes within the target column to get the correct document-aware ratio
+		let PanelLayoutSubdivision::Split { children: root_children } = &mut self.root else { return };
+		if let Some(target) = root_children.get_mut(root_child_index) {
+			target.subdivision.recalculate_default_sizes();
 		}
 	}
 }
@@ -586,6 +635,71 @@ impl PanelLayoutSubdivision {
 			}
 			PanelLayoutSubdivision::Split { children } => {
 				children.iter_mut().for_each(|child| child.subdivision.retain_only_document_panels());
+			}
+		}
+	}
+
+	/// Find the nearest sibling panel group for the given group within the same parent split.
+	/// Returns the sibling's ID and whether the target was before it (`true`) or after it (`false`).
+	/// Prefers the immediately previous sibling (with before=false meaning "insert after it"), falling
+	/// back to the next sibling (with before=true) so all positions in a 3-child split are distinguishable.
+	pub fn find_sibling_group(&self, target_id: PanelGroupId) -> Option<(PanelGroupId, bool)> {
+		let PanelLayoutSubdivision::Split { children } = self else { return None };
+
+		let target_index = children
+			.iter()
+			.position(|child| matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { id, .. } if *id == target_id));
+
+		if let Some(index) = target_index {
+			let previous = (0..index).rev().find_map(|i| Self::group_id_of(&children[i]).map(|id| (id, false)));
+			let next = ((index + 1)..children.len()).find_map(|i| Self::group_id_of(&children[i]).map(|id| (id, true)));
+			return previous.or(next);
+		}
+
+		children.iter().find_map(|child| child.subdivision.find_sibling_group(target_id))
+	}
+
+	/// Get a panel group ID from a child, either directly or the first one in a subtree.
+	fn group_id_of(child: &SplitChild) -> Option<PanelGroupId> {
+		match &child.subdivision {
+			PanelLayoutSubdivision::PanelGroup { id, .. } => Some(*id),
+			sub => sub.first_group_id(),
+		}
+	}
+
+	/// Return the first panel group ID found in this subtree.
+	fn first_group_id(&self) -> Option<PanelGroupId> {
+		match self {
+			PanelLayoutSubdivision::PanelGroup { id, .. } => Some(*id),
+			PanelLayoutSubdivision::Split { children } => children.iter().find_map(|child| child.subdivision.first_group_id()),
+		}
+	}
+
+	/// Insert a new split child immediately before or after the given group in its parent split,
+	/// scaling existing siblings down proportionally to make room for the new child's size.
+	pub fn insert_adjacent_to_group(&mut self, sibling_id: PanelGroupId, new_child: SplitChild, before_sibling: bool) {
+		let PanelLayoutSubdivision::Split { children } = self else { return };
+
+		let sibling_index = children
+			.iter()
+			.position(|child| matches!(&child.subdivision, PanelLayoutSubdivision::PanelGroup { id, .. } if *id == sibling_id));
+		if let Some(index) = sibling_index {
+			// Shrink existing siblings proportionally to make room
+			let old_total: f64 = children.iter().map(|c| c.size).sum();
+			let scale = if old_total > 0. { (old_total - new_child.size).max(0.) / old_total } else { 1. };
+			for child in children.iter_mut() {
+				child.size *= scale;
+			}
+
+			let insert_at = if before_sibling { index } else { index + 1 };
+			children.insert(insert_at, new_child);
+			return;
+		}
+
+		for child in children.iter_mut() {
+			if child.subdivision.contains_group(sibling_id) {
+				child.subdivision.insert_adjacent_to_group(sibling_id, new_child, before_sibling);
+				return;
 			}
 		}
 	}
