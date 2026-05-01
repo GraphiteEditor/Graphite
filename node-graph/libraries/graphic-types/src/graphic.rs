@@ -1,11 +1,11 @@
-use core_types::blending::AlphaBlending;
+use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::ops::TableConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::DAffine2;
 use raster_types::{CPU, GPU, Raster};
@@ -130,47 +130,57 @@ impl From<Table<GradientStops>> for Graphic {
 /// Deeply flattens a `Table<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`Table`s composes transforms and opacity.
 fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) -> Table<T> {
-	fn compose_alpha_blending(parent: AlphaBlending, child: AlphaBlending) -> AlphaBlending {
-		AlphaBlending {
-			blend_mode: child.blend_mode,
-			opacity: parent.opacity * child.opacity,
-			fill: child.fill,
-			clip: child.clip,
-		}
-	}
-
 	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
 		for current_graphic_row in current_graphic_table.into_iter() {
 			let layer_path: Table<NodeId> = current_graphic_row.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let current_alpha_blending: AlphaBlending = current_graphic_row.attribute_cloned_or_default(ATTR_ALPHA_BLENDING);
+			let current_opacity: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY, 1.);
+			let current_fill: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 
 			match current_graphic_row.into_element() {
-				// Recurse into nested `Table<Graphic>` items, composing the parent's transform onto each child
+				// Compose the parent's transform, opacity, and fill onto each child row
 				Graphic::Graphic(mut sub_table) => {
-					for index in 0..sub_table.len() {
-						let child_transform: DAffine2 = sub_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-						let child_alpha_blending: AlphaBlending = sub_table.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+					// Identity default means a missing column still composes correctly
+					for v in sub_table.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+						*v = current_transform * *v;
+					}
 
-						sub_table.set_attribute(ATTR_TRANSFORM, index, current_transform * child_transform);
-						sub_table.set_attribute(ATTR_ALPHA_BLENDING, index, compose_alpha_blending(current_alpha_blending, child_alpha_blending));
+					// f64 defaults to 0, but opacity/fill default to 1, so missing columns must be set rather than multiplied
+					if let Some(values) = sub_table.iter_attribute_values_mut::<f64>(ATTR_OPACITY) {
+						for v in values {
+							*v *= current_opacity;
+						}
+					} else {
+						for v in sub_table.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
+							*v = current_opacity;
+						}
+					}
+					if let Some(values) = sub_table.iter_attribute_values_mut::<f64>(ATTR_OPACITY_FILL) {
+						for v in values {
+							*v *= current_fill;
+						}
+					} else {
+						for v in sub_table.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
+							*v = current_fill;
+						}
 					}
 
 					flatten_recursive(output, sub_table, extract_variant);
 				}
-				// Try to extract the target variant; if it matches, push its items with composed transform and opacity
+				// Extract the target variant and push its items with composed transform, opacity, and fill
 				other => {
 					if let Some(typed_table) = extract_variant(other) {
-						for row in typed_table.into_iter() {
-							let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-							let row_alpha_blending: AlphaBlending = row.attribute_cloned_or_default(ATTR_ALPHA_BLENDING);
-							let (element, mut attributes) = row.into_parts();
+						for mut item in typed_table.into_iter() {
+							let row_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+							let row_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
+							let row_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 
-							attributes.insert(ATTR_TRANSFORM, current_transform * row_transform);
-							attributes.insert(ATTR_ALPHA_BLENDING, compose_alpha_blending(current_alpha_blending, row_alpha_blending));
-							attributes.insert(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+							item.set_attribute(ATTR_TRANSFORM, current_transform * row_transform);
+							item.set_attribute(ATTR_OPACITY, current_opacity * row_opacity);
+							item.set_attribute(ATTR_OPACITY_FILL, current_fill * row_fill);
+							item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
 
-							output.push(TableRow::from_parts(element, attributes));
+							output.push(item);
 						}
 					}
 				}
@@ -321,8 +331,9 @@ impl Graphic {
 
 	pub fn had_clip_enabled(&self) -> bool {
 		fn all_clipped<T>(table: &Table<T>) -> bool {
-			table.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING).all(|a| a.clip)
+			table.iter_attribute_values_or_default::<bool>(ATTR_CLIPPING_MASK).all(|clip| clip)
 		}
+
 		match self {
 			Graphic::Vector(table) => all_clipped(table),
 			Graphic::Graphic(table) => all_clipped(table),
@@ -335,12 +346,11 @@ impl Graphic {
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector
-				.iter_element_values()
-				.zip(vector.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING))
-				.all(|(element, alpha_blending)| {
-					(alpha_blending.opacity > 1. - f32::EPSILON) && element.style.fill().is_opaque() && element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
-				}),
+			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
+				let Some(element) = vector.element(index) else { return false };
+				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+				opacity > 1. - f64::EPSILON && element.style.fill().is_opaque() && element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			}),
 			_ => false,
 		}
 	}
@@ -474,12 +484,23 @@ impl<T: Clone> OmitIndex for Table<T> {
 pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
 	use serde::Deserialize;
 
+	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
+	#[derive(Clone, Debug, Default, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub struct LegacyAlphaBlending {
+		pub blend_mode: BlendMode,
+		pub opacity: f32,
+		pub fill: f32,
+		pub clip: bool,
+	}
+
 	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldGraphicGroup {
 		elements: Vec<(Graphic, Option<NodeId>)>,
 		transform: DAffine2,
-		alpha_blending: AlphaBlending,
+		alpha_blending: LegacyAlphaBlending,
 	}
 	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -502,7 +523,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 		transform: Vec<DAffine2>,
-		alpha_blending: Vec<AlphaBlending>,
+		alpha_blending: Vec<LegacyAlphaBlending>,
 	}
 
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

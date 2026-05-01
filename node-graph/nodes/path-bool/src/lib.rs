@@ -1,6 +1,6 @@
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AlphaBlending, Color, Ctx};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
@@ -179,7 +179,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				}
 				Graphic::RasterCPU(image) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_row = |transform, layer, alpha_blending| {
+					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
@@ -187,7 +187,10 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
 						TableRow::new_from_element(element)
-							.with_attribute(ATTR_ALPHA_BLENDING, alpha_blending)
+							.with_attribute(ATTR_BLEND_MODE, blend_mode)
+							.with_attribute(ATTR_OPACITY, opacity)
+							.with_attribute(ATTR_OPACITY_FILL, fill)
+							.with_attribute(ATTR_CLIPPING_MASK, clip)
 							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer)
 					};
 
@@ -198,14 +201,17 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
 							let layer: Table<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, i);
-							make_row(parent_transform * row_transform, layer, alpha_blending)
+							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
+							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
+							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
 						})
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
 					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					let make_row = |transform, layer, alpha_blending| {
+					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
@@ -213,7 +219,10 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
 						TableRow::new_from_element(element)
-							.with_attribute(ATTR_ALPHA_BLENDING, alpha_blending)
+							.with_attribute(ATTR_BLEND_MODE, blend_mode)
+							.with_attribute(ATTR_OPACITY, opacity)
+							.with_attribute(ATTR_OPACITY_FILL, fill)
+							.with_attribute(ATTR_CLIPPING_MASK, clip)
 							.with_attribute(ATTR_EDITOR_LAYER_PATH, layer)
 					};
 
@@ -224,8 +233,11 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
 							let layer: Table<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
-							let alpha_blending: AlphaBlending = image.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, i);
-							make_row(parent_transform * row_transform, layer, alpha_blending)
+							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
+							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+							let clip: bool = image.attribute_cloned_or_default(ATTR_CLIPPING_MASK, i);
+							make_item(parent_transform * row_transform, layer, blend_mode, opacity, fill, clip)
 						})
 						.collect::<Vec<_>>()
 				}

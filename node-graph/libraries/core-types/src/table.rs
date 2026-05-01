@@ -10,59 +10,60 @@ use std::fmt::Debug;
 // Standard attribute keys used across the data flow
 // =====================================================================
 
-/// Attribute key for a row's `DAffine2` transformation, applied when rendering and when accumulating
-/// transforms through nested compositions.
+/// Row's `DAffine2` transformation, composed multiplicatively through nested groups.
 pub const ATTR_TRANSFORM: &str = "transform";
 
-/// Attribute key for a row's `AlphaBlending` (blend mode + opacity + fill + clip), composed
-/// multiplicatively through nested compositions.
-pub const ATTR_ALPHA_BLENDING: &str = "alpha_blending";
+/// Row's `BlendMode`, controlling how it composites with content beneath it.
+pub const ATTR_BLEND_MODE: &str = "blend_mode";
 
-/// Attribute key under which each row of an editor-aware layer stores a `Table<NodeId>` describing the
-/// path (from the root document network) to the layer node that owns the row. Editor tools use this to
-/// route clicks/selection back to the originating layer at any nesting depth.
+/// Row's opacity multiplier (`f64`, implicit default `1.`).
+/// Composed multiplicatively through nested groups. Affects content clipped to the row.
+pub const ATTR_OPACITY: &str = "opacity";
+
+/// Row's fill opacity multiplier (`f64`, implicit default `1.`).
+/// Like opacity but does not affect content clipped to the row.
+pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
+
+/// Whether a row inherits the alpha of the content beneath it (clipping mask).
+pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
+
+/// `Table<NodeId>` path from the root network to the layer node owning this row.
+/// Used by editor tools to route clicks/selection back to the originating layer.
 pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 
-/// Attribute key under which a row stores a `Table<Graphic>` snapshot of the upstream content that fed
-/// into a destructive merge (Boolean Operation, Flatten Path, Morph, Rasterize, etc.). The renderer
-/// recurses into this snapshot during metadata collection so the editor can still surface click targets
-/// for the original child layers after their content has been collapsed into a single output.
+/// `Table<Graphic>` snapshot of the upstream content that fed into a destructive merge
+/// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
+/// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
 
-/// Attribute key for the byte offset where a regex match begins in the input string, set by the
-/// `regex_find_all` and `regex_capture` text nodes.
+/// Byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_START: &str = "start";
 
-/// Attribute key for the byte offset where a regex match ends in the input string, set by the
-/// `regex_find_all` and `regex_capture` text nodes.
+/// Byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_END: &str = "end";
 
-/// Attribute key for a regex named-capture-group's name (empty for unnamed groups), set by the
-/// `regex_capture` text node.
+/// Regex named-capture-group's name, or empty for unnamed groups ('Regex Capture' text node).
 pub const ATTR_NAME: &str = "name";
 
-/// Attribute key for a JSON value's type (`"string"`, `"number"`, `"object"`, etc.), set by the
-/// `json_query_all` text node alongside each extracted value.
+/// JSON value's type string (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
 pub const ATTR_TYPE: &str = "type";
 
-/// Attribute key for an artboard row's `DVec2` top-left corner location in document coordinates.
+/// Artboard's `DVec2` top-left corner in document coordinates.
 pub const ATTR_LOCATION: &str = "location";
 
-/// Attribute key for an artboard row's `DVec2` width and height.
+/// Artboard's `DVec2` width and height.
 pub const ATTR_DIMENSIONS: &str = "dimensions";
 
-/// Attribute key for an artboard row's `Color` background fill.
+/// Artboard's `Color` background fill.
 pub const ATTR_BACKGROUND: &str = "background";
 
-/// Attribute key for an artboard row's `bool` flag indicating whether content is clipped to the artboard bounds.
+/// Whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
 
-/// Attribute key for a `Table<GradientStops>` row's `GradientSpreadMethod`, controlling the gradient's behavior
-/// outside the start/end stops (`Pad` clamps to the boundary colors, `Reflect` mirrors, `Repeat` tiles).
+/// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 
-/// Attribute key for a `Table<GradientStops>` row's `GradientType`, choosing between a linear gradient (color
-/// transitions along the gradient line) or a radial gradient (color transitions outward from the line's start).
+/// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
 // =====================

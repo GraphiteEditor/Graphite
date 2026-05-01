@@ -1,8 +1,9 @@
 use crate::raster_types::{CPU, Raster};
 use crate::{Bitmap, BitmapMut};
+use core_types::blending::BlendMode;
 use core_types::color::float_to_srgb_u8;
 use core_types::table::{Table, TableRow};
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_TRANSFORM, AlphaBlending, Color};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core_types::color::*;
 use dyn_any::{DynAny, StaticType};
@@ -222,6 +223,17 @@ impl<P: Pixel> IntoIterator for Image<P> {
 pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
 
+	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
+	#[derive(Clone, Debug, Default, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub struct LegacyAlphaBlending {
+		pub blend_mode: BlendMode,
+		pub opacity: f32,
+		pub fill: f32,
+		pub clip: bool,
+	}
+
 	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny)]
 	enum RasterFrame {
 		ImageFrame(Table<Image<Color>>),
@@ -280,7 +292,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
-		alpha_blending: AlphaBlending,
+		alpha_blending: LegacyAlphaBlending,
 	}
 
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -303,7 +315,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 		transform: Vec<DAffine2>,
-		alpha_blending: Vec<AlphaBlending>,
+		alpha_blending: Vec<LegacyAlphaBlending>,
 	}
 
 	#[derive(Clone, Debug)]
@@ -339,7 +351,10 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
 			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
 			image_frame_table.set_attribute(ATTR_TRANSFORM, 0, transform);
-			image_frame_table.set_attribute(ATTR_ALPHA_BLENDING, 0, alpha_blending);
+			image_frame_table.set_attribute(ATTR_BLEND_MODE, 0, alpha_blending.blend_mode);
+			image_frame_table.set_attribute(ATTR_OPACITY, 0, alpha_blending.opacity as f64);
+			image_frame_table.set_attribute(ATTR_OPACITY_FILL, 0, alpha_blending.fill as f64);
+			image_frame_table.set_attribute(ATTR_CLIPPING_MASK, 0, alpha_blending.clip);
 			image_frame_table
 		}
 		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),
@@ -355,6 +370,17 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<TableRow<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
+
+	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
+	#[derive(Clone, Debug, Default, PartialEq)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub struct LegacyAlphaBlending {
+		pub blend_mode: BlendMode,
+		pub opacity: f32,
+		pub fill: f32,
+		pub clip: bool,
+	}
 
 	#[derive(Clone, Debug, PartialEq, DynAny)]
 	enum RasterFrame {
@@ -416,7 +442,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
-		alpha_blending: AlphaBlending,
+		alpha_blending: LegacyAlphaBlending,
 	}
 
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

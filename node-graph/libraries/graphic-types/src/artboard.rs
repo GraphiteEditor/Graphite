@@ -1,5 +1,5 @@
 use crate::graphic::Graphic;
-use core_types::blending::AlphaBlending;
+use core_types::blending::BlendMode;
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, Color};
@@ -21,6 +21,17 @@ use glam::{DAffine2, IVec2};
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Table<Graphic>>, D::Error> {
 	use serde::Deserialize;
+
+	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
+	#[derive(Clone, Debug, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub struct LegacyAlphaBlending {
+		pub blend_mode: BlendMode,
+		pub opacity: f32,
+		pub fill: f32,
+		pub clip: bool,
+	}
 
 	/// Pre-migration shape of the artboard's stored data: the struct that used to live as the element
 	/// of `Table<Artboard>`. Kept as a private type so we can deserialize legacy documents into the new
@@ -48,7 +59,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 		element: Vec<T>,
 		transform: Vec<DAffine2>,
-		alpha_blending: Vec<AlphaBlending>,
+		alpha_blending: Vec<LegacyAlphaBlending>,
 	}
 
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

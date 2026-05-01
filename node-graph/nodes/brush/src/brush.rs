@@ -10,8 +10,8 @@ use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::value::ClonedNode;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM};
-use core_types::{AlphaBlending, Ctx, Node};
+use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM};
+use core_types::{Ctx, Node};
 use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
 use raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
@@ -314,12 +314,18 @@ async fn brush(
 	}
 
 	let transform: DAffine2 = actual_image.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let alpha_blending: AlphaBlending = actual_image.attribute_cloned_or_default(ATTR_ALPHA_BLENDING);
+	let blend_mode: BlendMode = actual_image.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	let opacity: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY, 1.);
+	let fill: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
 	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 
 	*image.element_mut(0).unwrap() = actual_image.into_element();
 	image.set_attribute(ATTR_TRANSFORM, 0, transform);
-	image.set_attribute(ATTR_ALPHA_BLENDING, 0, alpha_blending);
+	image.set_attribute(ATTR_BLEND_MODE, 0, blend_mode);
+	image.set_attribute(ATTR_OPACITY, 0, opacity);
+	image.set_attribute(ATTR_OPACITY_FILL, 0, fill);
+	image.set_attribute(ATTR_CLIPPING_MASK, 0, clip);
 	image.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer);
 
 	image
@@ -410,7 +416,7 @@ mod test {
 		let image = brush(
 			(),
 			Table::new_from_element(Raster::new_cpu(Image::<Color>::default())),
-			vec![BrushStroke {
+			Table::new_from_element(BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
 					color: Color::BLACK,
@@ -420,7 +426,7 @@ mod test {
 					spacing: 20.,
 					blend_mode: BlendMode::Normal,
 				},
-			}],
+			}),
 			BrushCache::default(),
 		)
 		.await;
