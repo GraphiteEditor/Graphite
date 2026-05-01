@@ -328,7 +328,7 @@ impl NodeGraphExecutor {
 					let Some((fid, execution_context)) = self.futures.pop_front() else {
 						panic!("InvalidGenerationId")
 					};
-					assert_eq!(fid, execution_id, "Missmatch in execution id");
+					assert_eq!(fid, execution_id, "Mismatch in execution id");
 
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
@@ -558,9 +558,9 @@ mod test {
 	}
 
 	impl Instrumented {
-		/// Adds montior nodes to the network
+		/// Adds monitor nodes to the network
 		fn add(&mut self, network: &mut NodeNetwork, path: &mut Vec<NodeId>) {
-			// Required to do seperately to satiate the borrow checker.
+			// Required to do separately to satiate the borrow checker.
 			let mut monitor_nodes = Vec::new();
 			for (id, node) in network.nodes.iter_mut() {
 				// Recursively instrument

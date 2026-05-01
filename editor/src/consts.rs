@@ -77,7 +77,7 @@ pub const COMPASS_ROSE_RING_INNER_DIAMETER: f64 = 13.;
 pub const COMPASS_ROSE_MAIN_RING_DIAMETER: f64 = 15.;
 pub const COMPASS_ROSE_HOVER_RING_DIAMETER: f64 = 23.;
 pub const COMPASS_ROSE_ARROW_SIZE: f64 = 5.;
-// Angle to either side of the compass arrows where they are targetted by the cursor (in degrees, must be less than 45°)
+// Angle to either side of the compass arrows where they are targeted by the cursor (in degrees, must be less than 45°)
 pub const COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE: f64 = 20.;
 
 // TRANSFORM OVERLAY

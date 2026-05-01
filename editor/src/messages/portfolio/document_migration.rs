@@ -1713,7 +1713,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				// Decide on the placement position of the new Multiply node
 				let multiply_node_id = NodeId::new();
 				let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
-					log::error!("Could not get positon for transform node {node_id}");
+					log::error!("Could not get position for transform node {node_id}");
 					return None;
 				};
 				let multiply_position = transform_position + IVec2::new(-7, 1);
