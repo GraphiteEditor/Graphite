@@ -45,6 +45,7 @@
 	let rulerInterval = 100;
 	let rulersVisible = true;
 	let rulerTilt = 0;
+	let rulerFlip = false;
 	let rulerCursorPosition: { x: number; y: number } | undefined;
 
 	// Rendered SVG viewport data
@@ -289,12 +290,13 @@
 		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number) {
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number, flip: boolean) {
 		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
 		rulerTilt = tilt;
+		rulerFlip = flip;
 	}
 
 	function updateRulerCursorPosition(e: PointerEvent) {
@@ -496,8 +498,8 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible, tilt } = data;
-			updateDocumentRulers(origin, spacing, interval, visible, tilt);
+			const { origin, spacing, interval, visible, tilt, flip } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip);
 		});
 
 		// Update mouse cursor icon
@@ -608,6 +610,7 @@
 						originX={rulerOrigin.x}
 						originY={rulerOrigin.y}
 						tilt={rulerTilt}
+						flip={rulerFlip}
 						majorMarkSpacing={rulerSpacing}
 						numberInterval={rulerInterval}
 						direction="Horizontal"
@@ -623,6 +626,7 @@
 							originX={rulerOrigin.x}
 							originY={rulerOrigin.y}
 							tilt={rulerTilt}
+							flip={rulerFlip}
 							majorMarkSpacing={rulerSpacing}
 							numberInterval={rulerInterval}
 							direction="Vertical"

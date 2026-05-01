@@ -13,6 +13,7 @@
 	export let originX: number;
 	export let originY: number;
 	export let tilt: number;
+	export let flip: boolean = false;
 	export let numberInterval: number;
 	export let majorMarkSpacing: number;
 	export let minorDivisions = 5;
@@ -31,10 +32,10 @@
 	$: otherAxis = isHorizontal ? axes.vert : axes.horiz;
 	$: stretchFactor = 1 / Math.max(Math.abs(isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]), 1e-10);
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
-	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis);
-	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis);
+	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis, flip);
+	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis, flip);
 	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis, tilt);
-	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, otherAxis);
+	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, otherAxis, flip);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const normTilt = ((tilt % TAU) + TAU) % TAU;
@@ -52,8 +53,9 @@
 		return { horiz: posY, vert: negX };
 	}
 
-	function computeEffectiveOrigin(direction: RulerDirection, ox: number, oy: number, otherAxis: Axis): number {
-		const [vx, vy] = otherAxis.vec;
+	function computeEffectiveOrigin(direction: RulerDirection, ox: number, oy: number, otherAxis: Axis, flip: boolean): number {
+		const [rawVx, vy] = otherAxis.vec;
+		const vx = flip ? -rawVx : rawVx;
 		if (direction === "Horizontal") {
 			return Math.abs(vy) < 1e-10 ? ox : ox - oy * (vx / vy);
 		} else {
@@ -70,15 +72,17 @@
 		microDivisions: number,
 		rulerLength: number,
 		otherAxis: Axis,
+		flip: boolean,
 	): string {
 		const adaptive = stretchFactor > 1.3 ? { minor: minorDivisions, micro: 1 } : { minor: minorDivisions, micro: microDivisions };
 		const divisions = stretchedSpacing / adaptive.minor / adaptive.micro;
 		const majorMarksFrequency = adaptive.minor * adaptive.micro;
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 
-		const [vx, vy] = otherAxis.vec;
-		const flip = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
-		const [dx, dy] = [vx * flip, vy * flip];
+		const [rawVx, vy] = otherAxis.vec;
+		const vx = flip ? -rawVx : rawVx;
+		const reversal = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
+		const [dx, dy] = [vx * reversal, vy * reversal];
 		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
 
 		let path = "";
@@ -110,11 +114,13 @@
 	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
-		const [vx, vy] = otherAxis.vec;
-		const flip = isVertical ? (vx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
+		const [rawVx, vy] = otherAxis.vec;
+
+		// Tip offset uses the un-flipped axis so text stays on the correct side of tick marks
+		const tipReversal = isVertical ? (rawVx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
 		const tiltScale = tilt >= 0 ? 1 : 0.5;
-		const tipOffsetX = vx * flip * MAJOR_MARK_THICKNESS * tiltScale;
-		const tipOffsetY = vy * flip * MAJOR_MARK_THICKNESS * tiltScale;
+		const tipOffsetX = rawVx * tipReversal * MAJOR_MARK_THICKNESS * tiltScale;
+		const tipOffsetY = vy * tipReversal * MAJOR_MARK_THICKNESS * tiltScale;
 
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 		const increments = Math.round((shiftedOffsetStart - effectiveOrigin) / stretchedSpacing);
@@ -141,11 +147,12 @@
 		return results;
 	}
 
-	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, otherAxis: Axis): string {
+	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, otherAxis: Axis, flip: boolean): string {
 		if (cursor === undefined) return "";
 
 		// Project cursor position along the other axis onto the ruler strip
-		const [vx, vy] = otherAxis.vec;
+		const [rawVx, vy] = otherAxis.vec;
+		const vx = flip ? -rawVx : rawVx;
 		let projected: number;
 		if (direction === "Horizontal") {
 			projected = Math.abs(vy) < 1e-10 ? cursor.x : cursor.x - cursor.y * (vx / vy);
@@ -153,8 +160,8 @@
 			projected = Math.abs(vx) < 1e-10 ? cursor.y : cursor.y - cursor.x * (vy / vx);
 		}
 
-		const flip = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
-		const [dx, dy] = [vx * flip, vy * flip];
+		const reversal = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
+		const [dx, dy] = [vx * reversal, vy * reversal];
 		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
 
 		// Scale the line so it spans the full ruler bar thickness
