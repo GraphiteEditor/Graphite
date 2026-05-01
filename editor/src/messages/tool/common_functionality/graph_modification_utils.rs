@@ -362,7 +362,7 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::clip::IDENTIFIER))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::clipping_mask::IDENTIFIER))?;
 	let TaggedValue::Bool(clip) = inputs.get(1)?.as_value()? else {
 		return None;
 	};

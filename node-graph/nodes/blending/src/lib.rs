@@ -242,7 +242,7 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 
 /// Sets whether the input graphics inherit the alpha of the content beneath them, "clipping" them to that content.
 #[node_macro::node(category("Blending"))]
-fn clip<T: SetClip>(
+fn clipping_mask<T: SetClip>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(

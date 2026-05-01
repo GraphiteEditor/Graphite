@@ -1150,7 +1150,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let identifier_for = |kind: SubNode| match kind {
 			SubNode::BlendMode => graphene_std::blending_nodes::blend_mode::IDENTIFIER,
 			SubNode::Opacity => graphene_std::blending_nodes::opacity::IDENTIFIER,
-			SubNode::Clip => graphene_std::blending_nodes::clip::IDENTIFIER,
+			SubNode::Clip => graphene_std::blending_nodes::clipping_mask::IDENTIFIER,
 		};
 
 		// Replace the existing node's implementation with the first kept sub-node's template

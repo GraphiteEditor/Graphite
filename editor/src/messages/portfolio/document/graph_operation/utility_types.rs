@@ -567,7 +567,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
 		let clip = !clip_mode.unwrap_or(false);
-		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clip::IDENTIFIER, true) else {
+		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(clip_node_id, 1);
