@@ -4,8 +4,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 use graphene_std::brush::brush_stroke::BrushStroke;
-use graphene_std::color::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;

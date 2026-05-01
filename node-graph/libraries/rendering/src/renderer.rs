@@ -2,8 +2,9 @@ use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
-use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::color::{Alpha, Color};
+use core_types::bounds::BoundingBox;
+use core_types::bounds::RenderBoundingBox;
+use core_types::color::Color;
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
@@ -31,46 +32,6 @@ use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
 use vello::*;
-
-/// Cached 16x16 transparency checkerboard image data (two 8x8 cells of #ffffff and #cccccc).
-static CHECKERBOARD_IMAGE_DATA: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| {
-	const SIZE: u32 = 16;
-	const HALF: u32 = 8;
-
-	let mut data = vec![0_u8; (SIZE * SIZE * 4) as usize];
-	for y in 0..SIZE {
-		for x in 0..SIZE {
-			let is_light = ((x / HALF) + (y / HALF)).is_multiple_of(2);
-			let value = if is_light { 0xff } else { 0xcc };
-			let index = ((y * SIZE + x) * 4) as usize;
-			data[index] = value;
-			data[index + 1] = value;
-			data[index + 2] = value;
-			data[index + 3] = 0xff;
-		}
-	}
-
-	Arc::new(data)
-});
-
-/// Creates a 16x16 tiling transparency checkerboard brush for Vello.
-pub fn checkerboard_brush() -> peniko::Brush {
-	peniko::Brush::Image(peniko::ImageBrush {
-		image: peniko::ImageData {
-			data: peniko::Blob::new(CHECKERBOARD_IMAGE_DATA.clone()),
-			format: peniko::ImageFormat::Rgba8,
-			width: 16,
-			height: 16,
-			alpha_type: peniko::ImageAlphaType::Alpha,
-		},
-		sampler: peniko::ImageSampler {
-			x_extend: peniko::Extend::Repeat,
-			y_extend: peniko::Extend::Repeat,
-			quality: peniko::ImageQuality::Low, // Nearest-neighbor sampling for crisp edges
-			alpha: 1.,
-		},
-	})
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -125,15 +86,17 @@ impl SvgRender {
 	pub fn format_svg(&mut self, bounds_min: DVec2, bounds_max: DVec2) {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
-		let defs = &self.svg_defs;
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
+		let svg_header = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,
+			defs = &self.svg_defs
+		);
+		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</svg>".into());
 	}
 
 	/// Wraps the SVG with `<svg><g transform="...">...</g></svg>`, which allows for rotation
 	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>) {
-		let defs = &self.svg_defs;
 		let view_box = size
 			.map(|size| format!("viewBox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
 			.unwrap_or_default();
@@ -141,7 +104,11 @@ impl SvgRender {
 		let matrix = format_transform_matrix(transform);
 		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#);
+		let svg_header = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#,
+			defs = &self.svg_defs
+		);
+		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -186,6 +153,34 @@ impl SvgRender {
 	}
 }
 
+pub struct SvgRenderOutput {
+	pub svg: String,
+	pub svg_defs: String,
+	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
+}
+
+impl From<&SvgRenderOutput> for SvgRender {
+	fn from(value: &SvgRenderOutput) -> Self {
+		Self {
+			svg: vec![value.svg.clone().into()],
+			svg_defs: value.svg_defs.clone(),
+			transform: DAffine2::IDENTITY,
+			image_data: value.image_data.clone(),
+			indent: 0,
+		}
+	}
+}
+
+impl From<SvgRender> for SvgRenderOutput {
+	fn from(val: SvgRender) -> Self {
+		Self {
+			svg: val.svg.to_svg_string(),
+			svg_defs: val.svg_defs,
+			image_data: val.image_data,
+		}
+	}
+}
+
 impl Default for SvgRender {
 	fn default() -> Self {
 		Self::new()
@@ -215,8 +210,6 @@ pub struct RenderParams {
 	pub scale: f64,
 	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
-	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
-	pub hide_artboards: bool,
 	/// Are we exporting
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
@@ -334,6 +327,7 @@ pub struct RenderMetadata {
 	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
+	pub backgrounds: Vec<Background>,
 }
 
 impl RenderMetadata {
@@ -354,6 +348,7 @@ impl RenderMetadata {
 			click_targets,
 			clip_targets,
 			vector_data,
+			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
 		local_transforms.extend(other.local_transforms.iter());
@@ -361,7 +356,20 @@ impl RenderMetadata {
 		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
+
+		// TODO: Find a better non O(n^2) way to merge backgrounds
+		for background in &other.backgrounds {
+			if !backgrounds.contains(background) {
+				backgrounds.push(background.clone());
+			}
+		}
 	}
+}
+
+#[derive(Debug, Default, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct Background {
+	pub location: DVec2,
+	pub dimensions: DVec2,
 }
 
 // TODO: Rename to "Graphical"
@@ -526,42 +534,17 @@ impl Render for Table<Table<Graphic>> {
 			let width = dimensions.x.abs();
 			let height = dimensions.y.abs();
 
-			// Rectangle for the artboard
-			if !render_params.hide_artboards {
-				// Transparency checkerboard behind the artboard background (viewport only)
-				let show_checkerboard = background.alpha() < 1. && render_params.to_canvas();
-				if show_checkerboard && render_params.viewport_zoom > 0. {
-					let checker_id = format!("checkered-artboard-{}", generate_uuid());
-					let cell_size = 8. / render_params.viewport_zoom;
-					let pattern_size = cell_size * 2.;
-
-					// Anchor pattern at this artboard's top-left corner (x, y), not the document origin
-					let _ = write!(
-						&mut render.svg_defs,
-						r##"<pattern id="{checker_id}" x="{x}" y="{y}" width="{pattern_size}" height="{pattern_size}" patternUnits="userSpaceOnUse"><rect width="{pattern_size}" height="{pattern_size}" fill="#fff" /><rect x="{cell_size}" y="0" width="{cell_size}" height="{cell_size}" fill="#ccc" /><rect x="0" y="{cell_size}" width="{cell_size}" height="{cell_size}" fill="#ccc" /></pattern>"##
-					);
-
-					render.leaf_tag("rect", |attributes| {
-						attributes.push("x", x.to_string());
-						attributes.push("y", y.to_string());
-						attributes.push("width", width.to_string());
-						attributes.push("height", height.to_string());
-						attributes.push("fill", format!("url(#{checker_id})"));
-					});
+			// Background
+			render.leaf_tag("rect", |attributes| {
+				attributes.push("fill", format!("#{}", background.to_rgb_hex_srgb_from_gamma()));
+				if background.a() < 1. {
+					attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
 				}
-
-				// Background
-				render.leaf_tag("rect", |attributes| {
-					attributes.push("fill", format!("#{}", background.to_rgb_hex_srgb_from_gamma()));
-					if background.a() < 1. {
-						attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
-					}
-					attributes.push("x", x.to_string());
-					attributes.push("y", y.to_string());
-					attributes.push("width", width.to_string());
-					attributes.push("height", height.to_string());
-				});
-			}
+				attributes.push("x", x.to_string());
+				attributes.push("y", y.to_string());
+				attributes.push("width", width.to_string());
+				attributes.push("height", height.to_string());
+			});
 
 			// Artwork
 			render.parent_tag(
@@ -607,26 +590,12 @@ impl Render for Table<Table<Graphic>> {
 			let [a, b] = [location, location + dimensions];
 			let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-			// Render background
-			if !render_params.hide_artboards {
-				let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
 
-				// Transparency checkerboard behind the artboard background (viewport only)
-				let show_checkerboard = background.alpha() < 1. && render_params.to_canvas();
-				if show_checkerboard && render_params.viewport_zoom > 0. {
-					// Anchor pattern at THIS artboard's top-left corner
-					// brush_transform is an image placement transform: it maps brush pixel coords → shape coords
-					// scale(1/zoom) sets each brush pixel to 1/zoom document units (constant CSS size after viewport transform)
-					// then_translate places the brush origin at the artboard corner
-					let brush_transform = kurbo::Affine::scale(1. / render_params.viewport_zoom).then_translate(kurbo::Vec2::new(rect.x0, rect.y0));
-					scene.fill(peniko::Fill::NonZero, artboard_transform, &checkerboard_brush(), Some(brush_transform), &rect);
-				}
-
-				let color = peniko::Color::new([background.r(), background.g(), background.b(), background.a()]);
-				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
-				scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
-				scene.pop_layer();
-			}
+			let color = peniko::Color::new([background.r(), background.g(), background.b(), background.a()]);
+			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
+			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
+			scene.pop_layer();
 
 			if clip {
 				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
@@ -660,6 +629,8 @@ impl Render for Table<Table<Graphic>> {
 					metadata.clip_targets.insert(element_id);
 				}
 			}
+
+			metadata.backgrounds.push(Background { location, dimensions });
 
 			let mut child_footprint = footprint;
 			child_footprint.transform *= DAffine2::from_translation(location);
