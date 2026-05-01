@@ -370,8 +370,8 @@ impl WorkspacePanelLayout {
 			let new_group = SplitChild {
 				subdivision: new_subdivision,
 				size: saved.slot_size.unwrap_or_else(|| {
-					let sibling_is_document_panel = self.root.find_group(sibling_id).is_some_and(|g| g.contains(PanelType::Document) || g.contains(PanelType::Welcome));
-					if sibling_is_document_panel { 1. - DOCUMENT_PANEL_SHARE } else { EQUAL_PANEL_SHARE }
+					let sibling_contains_document = self.root.find_subtree_containing_group(sibling_id).is_some_and(|s| s.contains_document());
+					if sibling_contains_document { 1. - DOCUMENT_PANEL_SHARE } else { EQUAL_PANEL_SHARE }
 				}),
 			};
 			self.root.insert_adjacent_to_group(sibling_id, new_group, before_sibling);
@@ -677,8 +677,9 @@ impl PanelLayoutSubdivision {
 
 	/// Insert a new split child immediately before or after the given group in its parent split,
 	/// scaling existing siblings down proportionally to make room for the new child's size.
-	pub fn insert_adjacent_to_group(&mut self, sibling_id: PanelGroupId, new_child: SplitChild, before_sibling: bool) {
-		let PanelLayoutSubdivision::Split { children } = self else { return };
+	/// Returns whether the insertion was performed.
+	pub fn insert_adjacent_to_group(&mut self, sibling_id: PanelGroupId, new_child: SplitChild, before_sibling: bool) -> bool {
+		let PanelLayoutSubdivision::Split { children } = self else { return false };
 
 		let sibling_index = children
 			.iter()
@@ -693,15 +694,23 @@ impl PanelLayoutSubdivision {
 
 			let insert_at = if before_sibling { index } else { index + 1 };
 			children.insert(insert_at, new_child);
-			return;
+			return true;
 		}
 
-		for child in children.iter_mut() {
-			if child.subdivision.contains_group(sibling_id) {
-				child.subdivision.insert_adjacent_to_group(sibling_id, new_child, before_sibling);
-				return;
+		children
+			.iter_mut()
+			.any(|child| child.subdivision.insert_adjacent_to_group(sibling_id, new_child.clone(), before_sibling))
+	}
+
+	/// Find the `SplitChild` subtree that contains the panel group with the given ID.
+	pub fn find_subtree_containing_group(&self, target_id: PanelGroupId) -> Option<&PanelLayoutSubdivision> {
+		let PanelLayoutSubdivision::Split { children } = self else { return None };
+		for child in children {
+			if child.subdivision.contains_group(target_id) {
+				return Some(&child.subdivision);
 			}
 		}
+		None
 	}
 
 	/// Check if this subtree contains a panel group with the given ID.
