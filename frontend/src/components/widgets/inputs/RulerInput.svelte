@@ -30,13 +30,13 @@
 	$: isHorizontal = direction === "Horizontal";
 	$: trackedAxis = isHorizontal ? axes.horiz : axes.vert;
 	$: otherAxis = isHorizontal ? axes.vert : axes.horiz;
-	$: otherVec = flipVec(otherAxis.vec, flip);
+	$: crossAxisDirection = flipVector(otherAxis.vec, flip);
 	$: stretchFactor = 1 / Math.max(Math.abs(isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]), 1e-10);
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
-	$: effectiveOrigin = projectOntoRuler(direction, originX, originY, otherVec);
-	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherVec);
-	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis.vec, tilt);
-	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, otherVec);
+	$: effectiveOrigin = projectOntoRuler(direction, originX, originY, crossAxisDirection);
+	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, crossAxisDirection);
+	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, crossAxisDirection);
+	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, crossAxisDirection);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const normTilt = ((tilt % TAU) + TAU) % TAU;
@@ -54,7 +54,7 @@
 		return { horiz: posY, vert: negX };
 	}
 
-	function flipVec(vec: [number, number], flipped: boolean): [number, number] {
+	function flipVector(vec: [number, number], flipped: boolean): [number, number] {
 		return flipped ? [-vec[0], vec[1]] : vec;
 	}
 
@@ -82,14 +82,14 @@
 		minorDivisions: number,
 		microDivisions: number,
 		rulerLength: number,
-		otherVec: [number, number],
+		crossAxisDirection: [number, number],
 	): string {
 		const adaptive = stretchFactor > 1.3 ? { minor: minorDivisions, micro: 1 } : { minor: minorDivisions, micro: microDivisions };
 		const divisions = stretchedSpacing / adaptive.minor / adaptive.micro;
 		const majorMarksFrequency = adaptive.minor * adaptive.micro;
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 
-		const { dx, dy, sxBase, syBase } = tickMarkGeometry(direction, otherVec[0], otherVec[1]);
+		const { dx, dy, sxBase, syBase } = tickMarkGeometry(direction, crossAxisDirection[0], crossAxisDirection[1]);
 
 		let path = "";
 		let i = 0;
@@ -115,14 +115,13 @@
 		numberInterval: number,
 		rulerLength: number,
 		trackedAxis: Axis,
-		unflippedOtherVec: [number, number],
-		tilt: number,
+		crossAxisDirection: [number, number],
 	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
-		// Tip offset uses the un-flipped axis so text stays on the correct side of tick marks
-		const { dx: tipDx, dy: tipDy } = tickMarkGeometry(direction, unflippedOtherVec[0], unflippedOtherVec[1]);
-		const tiltScale = tilt >= 0 ? 1 : 0.5;
+		const { dx: tipDx, dy: tipDy } = tickMarkGeometry(direction, crossAxisDirection[0], crossAxisDirection[1]);
+		const forwardTip = isVertical ? -tipDy : tipDx;
+		const tiltScale = forwardTip >= 0 ? 1 : 0.5;
 		const tipOffsetX = tipDx * MAJOR_MARK_THICKNESS * tiltScale;
 		const tipOffsetY = tipDy * MAJOR_MARK_THICKNESS * tiltScale;
 
@@ -151,11 +150,11 @@
 		return results;
 	}
 
-	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, otherVec: [number, number]): string {
+	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, crossAxisDirection: [number, number]): string {
 		if (cursor === undefined) return "";
 
-		const projected = projectOntoRuler(direction, cursor.x, cursor.y, otherVec);
-		const { dx, dy, sxBase, syBase } = tickMarkGeometry(direction, otherVec[0], otherVec[1]);
+		const projected = projectOntoRuler(direction, cursor.x, cursor.y, crossAxisDirection);
+		const { dx, dy, sxBase, syBase } = tickMarkGeometry(direction, crossAxisDirection[0], crossAxisDirection[1]);
 
 		// Scale the line so it spans the full ruler bar thickness
 		const thicknessComponent = Math.abs(direction === "Horizontal" ? dy : dx);
