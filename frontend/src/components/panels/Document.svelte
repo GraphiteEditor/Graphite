@@ -47,6 +47,7 @@
 	let rulerTilt = 0;
 	let rulerFlip = false;
 	let rulerCursorPosition: { x: number; y: number } | undefined;
+	let viewportBounds: DOMRect | undefined;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -300,9 +301,7 @@
 	}
 
 	function updateRulerCursorPosition(e: PointerEvent) {
-		if (!viewport) return;
-		const rect = viewport.getBoundingClientRect();
-		rulerCursorPosition = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+		if (viewportBounds) rulerCursorPosition = { x: e.clientX - viewportBounds.left, y: e.clientY - viewportBounds.top };
 	}
 
 	// Update mouse cursor icon
@@ -425,6 +424,7 @@
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
 		devicePixelRatio = window.devicePixelRatio || 1;
+		viewportBounds = viewport.getBoundingClientRect();
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
