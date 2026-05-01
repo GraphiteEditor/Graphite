@@ -94,7 +94,7 @@
 		// Only start a group drag from the tab bar background (not from a tab or button)
 		if (e.button !== BUTTON_LEFT) return;
 		if (e.target !== e.currentTarget) return;
-		if (!crossPanelDropAction) return;
+		if (!crossPanelDropAction && !splitDropAction) return;
 
 		dragStartState = { tabIndex: tabActiveIndex, pointerX: e.clientX, pointerY: e.clientY, isGroupDrag: true };
 		dragging = false;
@@ -142,13 +142,12 @@
 
 			dragging = true;
 
-			if (crossPanelDropAction) {
-				if (dragStartState.isGroupDrag) {
-					startCrossPanelDrag(panelId, [...panelTypes], tabActiveIndex, true);
-				} else {
-					const draggedTab = panelTypes[dragStartState.tabIndex];
-					startCrossPanelDrag(panelId, [draggedTab], dragStartState.tabIndex, false);
-				}
+			// Group drags enter cross-panel state for edge docking even without crossPanelDropAction
+			if (dragStartState.isGroupDrag && (crossPanelDropAction || splitDropAction)) {
+				startCrossPanelDrag(panelId, [...panelTypes], tabActiveIndex, true);
+			} else if (!dragStartState.isGroupDrag && crossPanelDropAction) {
+				const draggedTab = panelTypes[dragStartState.tabIndex];
+				startCrossPanelDrag(panelId, [draggedTab], dragStartState.tabIndex, false);
 			}
 		}
 
@@ -165,7 +164,9 @@
 		insertionIndex = undefined;
 		insertionMarkerLeft = undefined;
 
-		// Check if the pointer is over any other dockable panel's tab bar
+		// Skip cross-panel hover detection for sources that can't dock anywhere
+		if (!crossPanelDropAction && !splitDropAction) return;
+
 		if (crossPanelDropAction) {
 			const tabBarTarget = Array.from(document.querySelectorAll("[data-panel-tab-bar]")).find((element) => {
 				const targetPanelId = element.getAttribute("data-panel-tab-bar");
@@ -180,35 +181,35 @@
 				calculateForeignInsertionIndex(e.clientX, tabBarTargetId, tabBarTarget);
 				return;
 			}
+		}
 
-			// Check if the pointer is over any panel body's edge zone for split docking
-			const panelBody = Array.from(document.querySelectorAll("[data-panel-body]")).find((element) => {
-				const rect = element.getBoundingClientRect();
-				return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-			});
+		// Check for edge-zone split docking
+		const panelBody = Array.from(document.querySelectorAll("[data-panel-body]")).find((element) => {
+			const rect = element.getBoundingClientRect();
+			return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+		});
 
-			const bodyPanelId = panelBody && panelBody.getAttribute("data-panel-body");
-			if (bodyPanelId) {
-				const rect = panelBody.getBoundingClientRect();
-				let edge: DockingEdge | undefined = detectDockingEdge(e.clientX, e.clientY, rect);
+		const bodyPanelId = panelBody && panelBody.getAttribute("data-panel-body");
+		if (bodyPanelId) {
+			const rect = panelBody.getBoundingClientRect();
+			let edge: DockingEdge | undefined = detectDockingEdge(e.clientX, e.clientY, rect);
 
-				// Block center drops between document and non-document panels
-				if (edge === "Center") {
-					const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
-					const sourceIsDockable = crossPanelDropAction !== undefined;
-					if (targetIsDockable !== sourceIsDockable) edge = undefined;
-				}
-
-				if (edge) {
-					updateDockingHover(bodyPanelId, edge);
-					return;
-				}
+			// Center drops between different panels require both to be cross-panel-dockable (self-drops are always allowed as a no-op)
+			if (edge === "Center" && bodyPanelId !== panelId) {
+				const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
+				const sourceIsDockable = crossPanelDropAction !== undefined;
+				if (!sourceIsDockable || !targetIsDockable) edge = undefined;
 			}
 
-			// Not hovering any drop target
-			updateCrossPanelHover(undefined, undefined, undefined);
-			updateDockingHover(undefined, undefined);
+			if (edge) {
+				updateDockingHover(bodyPanelId, edge);
+				return;
+			}
 		}
+
+		// Not hovering any drop target
+		updateCrossPanelHover(undefined, undefined, undefined);
+		updateDockingHover(undefined, undefined);
 	}
 
 	function dragPointerUp() {
@@ -273,7 +274,7 @@
 		dragging = false;
 		insertionIndex = undefined;
 		insertionMarkerLeft = undefined;
-		if (crossPanelDropAction) endCrossPanelDrag();
+		endCrossPanelDrag();
 		removeDragListeners();
 	}
 

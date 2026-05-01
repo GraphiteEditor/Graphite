@@ -498,13 +498,6 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = resetPanelGroupSizes)]
-	pub fn reset_panel_group_sizes(&self, split_path: JsValue) {
-		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
-		let message = PortfolioMessage::ResetPanelGroupSizes { split_path };
-		self.dispatch(message);
-	}
-
 	#[wasm_bindgen(js_name = setPanelGroupSizes)]
 	pub fn set_panel_group_sizes(&self, split_path: JsValue, sizes: JsValue) {
 		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();

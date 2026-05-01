@@ -1,9 +1,12 @@
+import { tick } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, DocumentInfo, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import { patchLayout } from "/src/utility-functions/widgets";
+import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
@@ -12,12 +15,28 @@ type PortfolioStoreState = {
 	documents: DocumentInfo[];
 	activeDocumentIndex: number;
 	panelLayout: WorkspacePanelLayout;
+	welcomeScreenButtonsLayout: Layout;
+	propertiesPanelLayout: Layout;
+	dataPanelLayout: Layout;
+	layersPanelControlBarLeftLayout: Layout;
+	layersPanelControlBarRightLayout: Layout;
+	layersPanelBottomBarLayout: Layout;
+	layerCache: SvelteMap<string, LayerPanelEntry>;
+	layerStructure: LayerStructureEntry[];
 };
 const initialState: PortfolioStoreState = {
 	unsaved: false,
 	documents: [],
 	activeDocumentIndex: 0,
 	panelLayout: {},
+	welcomeScreenButtonsLayout: [],
+	propertiesPanelLayout: [],
+	dataPanelLayout: [],
+	layersPanelControlBarLeftLayout: [],
+	layersPanelControlBarRightLayout: [],
+	layersPanelBottomBarLayout: [],
+	layerCache: new SvelteMap<string, LayerPanelEntry>(),
+	layerStructure: [],
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -104,6 +123,69 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		});
 	});
 
+	// All panel layouts below live in this store so panels that remount during a panel-tree change keep their contents
+	subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", async (data) => {
+		await tick();
+		update((state) => {
+			patchLayout(state.welcomeScreenButtonsLayout, data);
+			return state;
+		});
+	});
+
+	subscriptions.subscribeLayoutUpdate("PropertiesPanel", async (data) => {
+		await tick();
+		update((state) => {
+			patchLayout(state.propertiesPanelLayout, data);
+			return state;
+		});
+	});
+
+	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
+		await tick();
+		update((state) => {
+			patchLayout(state.dataPanelLayout, data);
+			return state;
+		});
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", async (data) => {
+		await tick();
+		update((state) => {
+			patchLayout(state.layersPanelControlBarLeftLayout, data);
+			return state;
+		});
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", async (data) => {
+		await tick();
+		update((state) => {
+			patchLayout(state.layersPanelControlBarRightLayout, data);
+			return state;
+		});
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", async (data) => {
+		await tick();
+		update((state) => {
+			patchLayout(state.layersPanelBottomBarLayout, data);
+			return state;
+		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		update((state) => {
+			state.layerStructure = data.layerStructure;
+			return state;
+		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		update((state) => {
+			state.layerCache.set(String(data.data.id), data.data);
+			return state;
+		});
+	});
+
 	return { subscribe };
 }
 
@@ -120,4 +202,12 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
+	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
+	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+	subscriptions.unsubscribeLayoutUpdate("DataPanel");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 }

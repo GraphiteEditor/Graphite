@@ -453,6 +453,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(layout) = state.workspace_layout {
 					self.workspace_panel_layout = layout;
 					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+					// Refill panels whose content was lost when the layout load remounted their frontend components
+					for group_id in self.workspace_panel_layout.root.all_group_ids() {
+						if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+							self.refresh_panel_content(panel_type, responses);
+						}
+					}
 				}
 
 				let PersistedState {
@@ -1330,13 +1337,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Self::destroy_panel_layouts(target_active, responses);
 				}
 
+				// Preserve the source panel's visual weight at its new location
+				let source_slot_size = self.workspace_panel_layout.find_source_slot_size(&tabs);
+
 				// Remove the dragged tabs from their current panel groups (without pruning, so the target group survives)
 				for &panel_type in &tabs {
 					self.remove_panel_from_layout(panel_type);
 				}
 
 				// Create the new panel group adjacent to the target, then prune empty groups
-				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index) else {
+				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index, source_slot_size) else {
 					log::error!("Failed to insert split adjacent to panel group {target_group:?}");
 					return;
 				};
@@ -1610,20 +1620,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 				responses.add(MenuBarMessage::SendLayout);
-			}
-			PortfolioMessage::ResetPanelGroupSizes { split_path } => {
-				// Walk the tree to the target split node using the path
-				let mut node = &mut self.workspace_panel_layout.root;
-				for &index in &split_path {
-					let PanelLayoutSubdivision::Split { children } = node else { return };
-					let Some(child) = children.get_mut(index) else { return };
-					node = &mut child.subdivision;
-				}
-
-				// Recalculate default sizes for this split node
-				node.recalculate_default_sizes();
-
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 			}
 			PortfolioMessage::SetPanelGroupSizes { split_path, sizes } => {
 				// Walk the tree to the target split node using the path
@@ -1977,7 +1973,12 @@ impl PortfolioMessageHandler {
 			PanelType::Data => {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
 			}
-			PanelType::Document | PanelType::Welcome => {}
+			PanelType::Document | PanelType::Welcome => {
+				// Re-send the welcome screen buttons layout to repopulate after a remount
+				if self.document_ids.is_empty() {
+					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
+				}
+			}
 		}
 	}
 }
