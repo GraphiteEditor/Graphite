@@ -1646,13 +1646,14 @@ impl Render for Table<Raster<GPU>> {
 
 			let mut layer = false;
 
-			let any_nondefault = blend_mode_attr != BlendMode::default() || opacity_attr != 1. || opacity_fill_attr != 1. || clip_attr;
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+			let any_nondefault = blend_mode_attr != BlendMode::default() || opacity < 1. || clip_attr;
 			if (render_params.render_mode != RenderMode::Outline && any_nondefault)
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true)
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(peniko::Fill::NonZero, blending, opacity_attr as f32, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
