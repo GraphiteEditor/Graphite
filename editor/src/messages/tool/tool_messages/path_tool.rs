@@ -1063,6 +1063,9 @@ impl PathToolData {
 		snap_angle: bool,
 		tangent_to_neighboring_tangents: bool,
 	) -> f64 {
+		if handle_vector.length_squared() < f64::EPSILON {
+			return self.angle;
+		}
 		let current_angle = -handle_vector.angle_to(DVec2::X);
 
 		if let Some((vector, layer)) = shape_editor
@@ -1151,14 +1154,22 @@ impl PathToolData {
 			false => self.snap_manager.free_snap(&snap_data, &snap_point, Default::default()),
 		};
 
-		self.snap_manager.update_indicator(snap_result.clone());
-
 		let snap_result = self.reduce_snap_weight(snap_result, new_handle_position, anchor_position);
+
+		self.snap_manager.update_indicator(snap_result.clone());
 
 		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
 	}
 
-	fn reduce_snap_weight(&mut self, mut snap_result: SnappedPoint, new_handle_position: DVec2, anchor_position: DVec2) -> SnappedPoint {
+	fn reduce_snap_weight(&self, mut snap_result: SnappedPoint, new_handle_position: DVec2, anchor_position: DVec2) -> SnappedPoint {
+		//If the snapping result is a non-finite position
+		if snap_result.distance == f64::INFINITY {
+			return SnappedPoint {
+				snapped_point_document: new_handle_position,
+				..Default::default()
+			};
+		}
+
 		if !matches!(snap_result.target, SnapTarget::Path(PathSnapTarget::AlongPath)) {
 			return snap_result;
 		}
@@ -3690,4 +3701,232 @@ fn update_dynamic_hints(
 	};
 	hint_data.send_layout(responses);
 	responses.add(ToolMessage::UpdateHints);
+}
+
+#[cfg(test)]
+mod test_path {
+	use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
+	use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+	use crate::messages::portfolio::document::utility_types::misc::{SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
+	pub use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graphene_std::subpath::BezierHandles;
+	use graphene_std::vector::Vector;
+
+	async fn prepare_document_for_path_snap_weight(anchor_positions: &[DVec2]) -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::splat(-1000.), DVec2::splat(1000.)).await; // Necessary for doing snapping since snaps outside of the viewport are discarded
+
+		editor.drag_tool(ToolType::Artboard, 0., 0., 1000., 600., ModifierKeys::empty()).await; // Necessary for doing path snapping without it that path snapping does not work
+		editor.select_tool(ToolType::Select).await;
+
+		// Disable all bounding box snapping
+		for (_, closure, _) in SNAP_FUNCTIONS_FOR_BOUNDING_BOXES {
+			editor
+				.handle_message(DocumentMessage::SetSnapping {
+					closure: Some(closure),
+					snapping_state: false,
+				})
+				.await;
+		}
+
+		// Disable all path snapping EXCEPT along_path
+		for (name, closure, _) in SNAP_FUNCTIONS_FOR_PATHS {
+			let enabled = name == "Along Paths";
+
+			editor
+				.handle_message(DocumentMessage::SetSnapping {
+					closure: Some(closure),
+					snapping_state: enabled,
+				})
+				.await;
+		}
+
+		//Create Bezier path for testing
+		editor.drag_tool(ToolType::Pen, anchor_positions[0].x, anchor_positions[0].y, 650., 30., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Pen, anchor_positions[1].x, anchor_positions[1].y, 370., 420., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Pen, anchor_positions[2].x, anchor_positions[2].y, 20., 330., ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		assert_eq!(
+			editor.active_document().metadata().all_layers().count(),
+			2,
+			"The document should contain one artboard and one path layers"
+		);
+
+		let (modified_path, layer_to_viewport) = get_path_data(&editor);
+		assert_anchor_positions(&modified_path, layer_to_viewport, anchor_positions, 1e-10);
+
+		let expected_handles: Vec<BezierHandles> = vec![
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(700.0, 60.0),
+				handle_end: DVec2::new(430.0, 180.0),
+			},
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(370.0, 420.0),
+				handle_end: DVec2::new(80.0, 70.0),
+			},
+		];
+		assert_handle_positions(&modified_path, &expected_handles, layer_to_viewport, 1e-10);
+
+		editor
+	}
+
+	fn get_path_data(editor: &EditorTestUtils) -> (Vector, DAffine2) {
+		let document = editor.active_document();
+
+		let path_layer = document.metadata().all_layers().nth(1).expect("Expected path layer");
+
+		let modified_path = document.network_interface.compute_modified_vector(path_layer).expect("Vector not found in the path layer");
+
+		let layer_to_document = document.metadata().transform_to_document(path_layer);
+
+		(modified_path, layer_to_document)
+	}
+
+	fn assert_anchor_positions(vector: &Vector, transform: DAffine2, expected_anchors: &[DVec2], epsilon: f64) {
+		let anchors_in_viewport: Vec<DVec2> = vector
+			.point_domain
+			.ids()
+			.iter()
+			.filter_map(|&point_id| {
+				let pos = vector.point_domain.position_from_id(point_id)?;
+				Some(transform.transform_point2(pos))
+			})
+			.collect();
+
+		assert_eq!(anchors_in_viewport.len(), expected_anchors.len(), "Anchor count mismatch");
+
+		for (i, expected) in expected_anchors.iter().enumerate() {
+			let actual = anchors_in_viewport[i];
+			let distance = (actual - *expected).length();
+
+			assert!(distance < epsilon, "Anchor {i} mismatch: expected {expected:?}, got {actual:?}, distance {distance}");
+		}
+	}
+
+	fn assert_handle_positions(vector: &Vector, expected_handles: &[BezierHandles], transform: DAffine2, epsilon: f64) {
+		let segment_ids = vector.segment_domain.ids();
+
+		assert_eq!(segment_ids.len(), expected_handles.len(), "Segment count mismatch for handles");
+
+		for (i, segment_id) in segment_ids.iter().enumerate() {
+			let segment = vector.segment_from_id(*segment_id).expect("Segment not found");
+			let expected = &expected_handles[i];
+
+			match (&segment.handles, expected) {
+				(BezierHandles::Linear, BezierHandles::Linear) => {
+					// OK
+				}
+
+				(BezierHandles::Quadratic { handle: actual }, BezierHandles::Quadratic { handle: expected }) => {
+					let actual_viewport = transform.transform_point2(*actual);
+
+					let dist = (actual_viewport - expected).length();
+
+					assert!(
+						dist < epsilon,
+						"Segment {i} quadratic handle mismatch: expected {:?}, got {:?}, dist {}",
+						expected,
+						actual_viewport,
+						dist
+					);
+				}
+
+				(
+					BezierHandles::Cubic {
+						handle_start: actual_start,
+						handle_end: actual_end,
+					},
+					BezierHandles::Cubic {
+						handle_start: expected_start,
+						handle_end: expected_end,
+					},
+				) => {
+					let actual_start_viewport = transform.transform_point2(*actual_start);
+					let actual_end_viewport = transform.transform_point2(*actual_end);
+
+					let dist_start = (actual_start_viewport - expected_start).length();
+					let dist_end = (actual_end_viewport - expected_end).length();
+
+					assert!(
+						dist_start < epsilon,
+						"Segment {i} cubic start handle mismatch: expected {:?}, got {:?}, dist {}",
+						expected_start,
+						actual_start_viewport,
+						dist_start
+					);
+
+					assert!(
+						dist_end < epsilon,
+						"Segment {i} cubic end handle mismatch: expected {:?}, got {:?}, dist {}",
+						expected_end,
+						actual_end_viewport,
+						dist_end
+					);
+				}
+				// Mismatch case
+				(actual, expected) => {
+					panic!("Segment {i} handle type mismatch: actual = {:?}, expected = {:?}", actual, expected);
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn path_move_handle_close_to_anchor_with_along_path_snapping() {
+		let anchor_positions = [DVec2::new(50., 30.), DVec2::new(400., 300.), DVec2::new(50., 200.)];
+		let delta_x = -2.;
+		let delta_y = 1.;
+		let mut editor = prepare_document_for_path_snap_weight(&anchor_positions).await;
+
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, anchor_positions[1], ModifierKeys::empty()).await;
+		editor
+			.drag_tool(ToolType::Path, 370., 420., anchor_positions[1].x + delta_x, anchor_positions[1].y + delta_y, ModifierKeys::empty())
+			.await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let (modified_path, layer_to_document) = get_path_data(&editor);
+
+		assert_anchor_positions(&modified_path, layer_to_document, &anchor_positions, 1e-10);
+
+		let expected_handles: Vec<BezierHandles> = vec![
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(700.0, 60.0),
+				handle_end: DVec2::new(470.9153, 198.6539),
+			},
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(399.0945, 301.2940),
+				handle_end: DVec2::new(80.0, 70.0),
+			},
+		];
+		assert_handle_positions(&modified_path, &expected_handles, layer_to_document, 1e-4);
+	}
+
+	#[tokio::test]
+	async fn path_move_handle_to_anchor() {
+		let anchor_positions = [DVec2::new(50., 30.), DVec2::new(400., 300.), DVec2::new(50., 200.)];
+		let mut editor = prepare_document_for_path_snap_weight(&anchor_positions).await;
+
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, anchor_positions[1], ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Path, 370., 420., anchor_positions[1].x, anchor_positions[1].y, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let (modified_path, layer_to_document) = get_path_data(&editor);
+
+		assert_anchor_positions(&modified_path, layer_to_document, &anchor_positions, 1e-10);
+
+		let expected_handles: Vec<BezierHandles> = vec![
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(700.0, 60.0),
+				handle_end: DVec2::new(430.0, 180.0),
+			},
+			BezierHandles::Cubic {
+				handle_start: DVec2::new(400.0, 300.0),
+				handle_end: DVec2::new(80.0, 70.0),
+			},
+		];
+		assert_handle_positions(&modified_path, &expected_handles, layer_to_document, 1e-10);
+	}
 }
