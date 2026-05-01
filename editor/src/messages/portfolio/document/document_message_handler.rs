@@ -843,6 +843,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					spacing: ruler_spacing,
 					interval: ruler_interval,
 					visible: self.rulers_visible,
+					tilt: if self.graph_view_overlay_open { 0. } else { current_ptz.tilt() },
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
