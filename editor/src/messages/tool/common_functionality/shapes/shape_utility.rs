@@ -593,3 +593,274 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 
 	Some((grid_type, spacing, columns, rows, angles))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::{arc_end_points_ignore_layer, calculate_display_angle, format_rounded, inside_polygon, inside_star, polygon_vertex_position, star_vertex_position, wrap_to_tau};
+	use glam::{DAffine2, DVec2};
+	use std::f64::consts::{PI, TAU};
+
+	// ── wrap_to_tau ─────────────────────────────────────────────────────────────
+
+	#[test]
+	fn wrap_zero_stays_zero() {
+		assert_eq!(wrap_to_tau(0.), 0.);
+	}
+
+	#[test]
+	fn wrap_pi_stays_pi() {
+		assert!((wrap_to_tau(PI) - PI).abs() < 1e-10);
+	}
+
+	#[test]
+	fn wrap_tau_becomes_zero() {
+		assert!(wrap_to_tau(TAU).abs() < 1e-10);
+	}
+
+	#[test]
+	fn wrap_beyond_tau_reduces_to_remainder() {
+		// TAU + 1 wraps back to 1
+		assert!((wrap_to_tau(TAU + 1.) - 1.).abs() < 1e-10);
+	}
+
+	#[test]
+	fn wrap_negative_pi_becomes_pi() {
+		// -π + 2π = π
+		assert!((wrap_to_tau(-PI) - PI).abs() < 1e-10);
+	}
+
+	#[test]
+	fn wrap_negative_small_angle_wraps_near_tau() {
+		// -0.5 → TAU - 0.5
+		assert!((wrap_to_tau(-0.5) - (TAU - 0.5)).abs() < 1e-10);
+	}
+
+	#[test]
+	fn wrap_two_full_turns_returns_zero() {
+		assert!(wrap_to_tau(2. * TAU).abs() < 1e-10);
+	}
+
+	// ── format_rounded ──────────────────────────────────────────────────────────
+
+	#[test]
+	fn format_rounded_trims_trailing_zeros_and_dot() {
+		assert_eq!(format_rounded(1.0, 2), "1");
+	}
+
+	#[test]
+	fn format_rounded_keeps_significant_decimal() {
+		assert_eq!(format_rounded(1.5, 2), "1.5");
+	}
+
+	#[test]
+	fn format_rounded_trims_trailing_zero_only() {
+		assert_eq!(format_rounded(1.50, 3), "1.5");
+	}
+
+	#[test]
+	fn format_rounded_zero_precision_integer() {
+		assert_eq!(format_rounded(100.0, 0), "100");
+	}
+
+	#[test]
+	fn format_rounded_rounds_last_digit() {
+		assert_eq!(format_rounded(3.14159, 3), "3.142");
+	}
+
+	#[test]
+	fn format_rounded_zero_value() {
+		assert_eq!(format_rounded(0.0, 3), "0");
+	}
+
+	#[test]
+	fn format_rounded_preserves_all_significant_digits() {
+		assert_eq!(format_rounded(1.23, 2), "1.23");
+	}
+
+	// ── calculate_display_angle ─────────────────────────────────────────────────
+
+	#[test]
+	fn display_angle_positive_within_range_unchanged() {
+		assert!((calculate_display_angle(45.) - 45.).abs() < 1e-10);
+	}
+
+	#[test]
+	fn display_angle_positive_beyond_360_wraps() {
+		// 400° → 40°
+		assert!((calculate_display_angle(400.) - 40.).abs() < 1e-10);
+	}
+
+	#[test]
+	fn display_angle_exactly_360_becomes_zero() {
+		assert!(calculate_display_angle(360.).abs() < 1e-10);
+	}
+
+	#[test]
+	fn display_angle_720_becomes_zero() {
+		assert!(calculate_display_angle(720.).abs() < 1e-10);
+	}
+
+	#[test]
+	fn display_angle_negative_small_unchanged() {
+		// -45 is in (−360, 0): formula returns -45
+		assert!((calculate_display_angle(-45.) - (-45.)).abs() < 1e-10);
+	}
+
+	#[test]
+	fn display_angle_negative_beyond_neg_360_wraps() {
+		// -400° → -40°
+		assert!((calculate_display_angle(-400.) - (-40.)).abs() < 1e-10);
+	}
+
+	#[test]
+	fn display_angle_positive_zero_returns_zero() {
+		// +0.0 is sign-positive, first branch: 0 − 0 = 0
+		assert_eq!(calculate_display_angle(0.), 0.);
+	}
+
+	// ── arc_end_points_ignore_layer ─────────────────────────────────────────────
+
+	#[test]
+	fn arc_endpoints_no_viewport_zero_start_zero_sweep_at_unit_radius() {
+		// start=0°, sweep=0°: both points at (1, 0)
+		let (start, end) = arc_end_points_ignore_layer(1., 0., 0., None).unwrap();
+		assert!((start.x - 1.).abs() < 1e-10, "start.x expected 1, got {}", start.x);
+		assert!(start.y.abs() < 1e-10, "start.y expected 0, got {}", start.y);
+		assert!((end.x - 1.).abs() < 1e-10, "end.x expected 1, got {}", end.x);
+		assert!(end.y.abs() < 1e-10, "end.y expected 0, got {}", end.y);
+	}
+
+	#[test]
+	fn arc_endpoints_no_viewport_quarter_sweep() {
+		// start=0°, sweep=90°: start at (1,0), end at (0,1)
+		let (start, end) = arc_end_points_ignore_layer(1., 0., 90., None).unwrap();
+		assert!((start.x - 1.).abs() < 1e-10, "start.x expected 1, got {}", start.x);
+		assert!(start.y.abs() < 1e-10, "start.y expected 0, got {}", start.y);
+		assert!(end.x.abs() < 1e-10, "end.x expected 0, got {}", end.x);
+		assert!((end.y - 1.).abs() < 1e-10, "end.y expected 1, got {}", end.y);
+	}
+
+	#[test]
+	fn arc_endpoints_scales_with_radius() {
+		// Radius 5 at start=0°, sweep=0°: start at (5, 0)
+		let (start, _) = arc_end_points_ignore_layer(5., 0., 0., None).unwrap();
+		assert!((start.x - 5.).abs() < 1e-10, "start.x expected 5, got {}", start.x);
+	}
+
+	#[test]
+	fn arc_endpoints_with_identity_viewport_matches_no_viewport() {
+		// Identity transform must not change coordinates
+		let (start_id, end_id) = arc_end_points_ignore_layer(1., 0., 90., Some(DAffine2::IDENTITY)).unwrap();
+		let (start_none, end_none) = arc_end_points_ignore_layer(1., 0., 90., None).unwrap();
+		assert!((start_id - start_none).length() < 1e-10);
+		assert!((end_id - end_none).length() < 1e-10);
+	}
+
+	#[test]
+	fn arc_endpoints_half_circle_sweep() {
+		// start=0°, sweep=180°: end lands at (-1, 0) for unit radius
+		let (_, end) = arc_end_points_ignore_layer(1., 0., 180., None).unwrap();
+		assert!((end.x - (-1.)).abs() < 1e-10, "end.x expected -1, got {}", end.x);
+		assert!(end.y.abs() < 1e-10, "end.y expected 0, got {}", end.y);
+	}
+
+	// ── star_vertex_position ────────────────────────────────────────────────────
+
+	#[test]
+	fn star_vertex_even_index_uses_outer_radius() {
+		// vertex_index=0 (even) → outer radius, angle=0 → (0, -radius1)
+		let pos = star_vertex_position(DAffine2::IDENTITY, 0, 5, 10., 5.);
+		assert!(pos.x.abs() < 1e-10, "x expected ~0, got {}", pos.x);
+		assert!((pos.y - (-10.)).abs() < 1e-10, "y expected -10, got {}", pos.y);
+	}
+
+	#[test]
+	fn star_vertex_odd_index_uses_inner_radius() {
+		// vertex_index=1 (odd) → inner radius
+		let pos = star_vertex_position(DAffine2::IDENTITY, 1, 5, 10., 5.);
+		let angle = PI / 5.;
+		assert!((pos.x - 5. * angle.sin()).abs() < 1e-10, "x mismatch, got {}", pos.x);
+		assert!((pos.y - (-5. * angle.cos())).abs() < 1e-10, "y mismatch, got {}", pos.y);
+	}
+
+	#[test]
+	fn star_vertex_second_outer_point() {
+		// vertex_index=2 (even) → outer radius, angle = 2π/5
+		let pos = star_vertex_position(DAffine2::IDENTITY, 2, 5, 10., 5.);
+		let angle = 2. * PI / 5.;
+		assert!((pos.x - 10. * angle.sin()).abs() < 1e-10, "x mismatch, got {}", pos.x);
+		assert!((pos.y - (-10. * angle.cos())).abs() < 1e-10, "y mismatch, got {}", pos.y);
+	}
+
+	// ── polygon_vertex_position ──────────────────────────────────────────────────
+
+	#[test]
+	fn polygon_vertex_zero_index_points_up() {
+		// vertex 0: angle=0 → x=0, y=−radius
+		let pos = polygon_vertex_position(DAffine2::IDENTITY, 0, 4, 10.);
+		assert!(pos.x.abs() < 1e-10, "x expected ~0, got {}", pos.x);
+		assert!((pos.y - (-10.)).abs() < 1e-10, "y expected -10, got {}", pos.y);
+	}
+
+	#[test]
+	fn polygon_vertex_first_of_square_points_right() {
+		// n=4, vertex 1: angle=TAU/4=90° → x=radius, y=0
+		let pos = polygon_vertex_position(DAffine2::IDENTITY, 1, 4, 10.);
+		assert!((pos.x - 10.).abs() < 1e-10, "x expected 10, got {}", pos.x);
+		assert!(pos.y.abs() < 1e-10, "y expected ~0, got {}", pos.y);
+	}
+
+	#[test]
+	fn polygon_vertex_halfway_around_points_down() {
+		// n=4, vertex 2: angle=TAU/2=180° → x=0, y=+radius
+		let pos = polygon_vertex_position(DAffine2::IDENTITY, 2, 4, 10.);
+		assert!(pos.x.abs() < 1e-10, "x expected ~0, got {}", pos.x);
+		assert!((pos.y - 10.).abs() < 1e-10, "y expected 10, got {}", pos.y);
+	}
+
+	// ── inside_polygon ───────────────────────────────────────────────────────────
+
+	#[test]
+	fn inside_polygon_center_is_inside() {
+		assert!(inside_polygon(DAffine2::IDENTITY, 6, 50., DVec2::ZERO), "Center of hexagon should be inside");
+	}
+
+	#[test]
+	fn inside_polygon_far_point_is_outside() {
+		assert!(!inside_polygon(DAffine2::IDENTITY, 6, 50., DVec2::new(1000., 1000.)), "Far point should be outside");
+	}
+
+	#[test]
+	fn inside_polygon_point_beyond_vertex_is_outside() {
+		// Hexagon radius=50, topmost vertex at (0,−50); point at (0,−60) is beyond
+		assert!(!inside_polygon(DAffine2::IDENTITY, 6, 50., DVec2::new(0., -60.)), "Point beyond outer vertex should be outside");
+	}
+
+	#[test]
+	fn inside_polygon_point_near_center_is_inside() {
+		assert!(inside_polygon(DAffine2::IDENTITY, 6, 50., DVec2::new(10., 10.)), "Point near center should be inside hexagon");
+	}
+
+	// ── inside_star ──────────────────────────────────────────────────────────────
+
+	#[test]
+	fn inside_star_center_is_inside() {
+		assert!(inside_star(DAffine2::IDENTITY, 5, 50., 25., DVec2::ZERO), "Center should be inside 5-point star");
+	}
+
+	#[test]
+	fn inside_star_far_point_is_outside() {
+		assert!(!inside_star(DAffine2::IDENTITY, 5, 50., 25., DVec2::new(1000., 0.)), "Far point should be outside");
+	}
+
+	#[test]
+	fn inside_star_point_beyond_outer_tip_is_outside() {
+		// Outermost tip at (0,−50); point at (0,−60) is outside
+		assert!(!inside_star(DAffine2::IDENTITY, 5, 50., 25., DVec2::new(0., -60.)), "Point beyond outer tip should be outside");
+	}
+
+	#[test]
+	fn inside_star_point_near_center_is_inside() {
+		assert!(inside_star(DAffine2::IDENTITY, 5, 50., 25., DVec2::new(5., 5.)), "Point near center should be inside star");
+	}
+}

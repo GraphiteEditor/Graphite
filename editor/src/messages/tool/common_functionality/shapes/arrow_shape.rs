@@ -114,3 +114,103 @@ impl Arrow {
 		shape_tool_data.line_data.selected_layers_with_position.extend(arrow_layers);
 	}
 }
+
+#[cfg(test)]
+mod test_arrow {
+	use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
+	use crate::messages::tool::tool_messages::shape_tool::{ShapeOptionsUpdate, ShapeToolMessage};
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::value::TaggedValue;
+
+	async fn select_arrow(editor: &mut EditorTestUtils) {
+		editor.select_tool(ToolType::Shape).await;
+		editor
+			.handle_message(ToolMessage::Shape(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arrow),
+			}))
+			.await;
+	}
+
+	fn get_arrow_to(editor: &EditorTestUtils) -> Option<DVec2> {
+		let document = editor.active_document();
+		document
+			.metadata()
+			.all_layers()
+			.find_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface)
+					.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER))?;
+				let Some(&TaggedValue::DVec2(arrow_to)) = node_inputs[1].as_value() else {
+					return None;
+				};
+				Some(arrow_to)
+			})
+	}
+
+	#[tokio::test]
+	async fn arrow_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		select_arrow(&mut editor).await;
+		editor.drag_tool(ToolType::Shape, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let arrow_to = get_arrow_to(&editor).expect("Expected arrow_to value");
+		assert!((arrow_to.x - 100.).abs() < 1., "arrow_to.x should be ~100, got {}", arrow_to.x);
+		assert!(arrow_to.y.abs() < 1., "arrow_to.y should be ~0, got {}", arrow_to.y);
+	}
+
+	#[tokio::test]
+	async fn arrow_draw_diagonal() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		select_arrow(&mut editor).await;
+		editor.drag_tool(ToolType::Shape, 0., 0., 60., 80., ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let arrow_to = get_arrow_to(&editor).expect("Expected arrow_to value");
+		let length = arrow_to.length();
+		assert!((length - 100.).abs() < 1., "arrow length should be ~100, got {length}");
+	}
+
+	#[tokio::test]
+	async fn arrow_cancel_rmb() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		select_arrow(&mut editor).await;
+		editor.drag_tool_cancel_rmb(ToolType::Shape).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "No layer should be created on RMB cancel");
+		assert!(get_arrow_to(&editor).is_none());
+	}
+
+	#[tokio::test]
+	async fn arrow_snap_angle_shift() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		select_arrow(&mut editor).await;
+		editor.drag_tool(ToolType::Shape, 0., 0., 80., 30., ModifierKeys::SHIFT).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let arrow_to = get_arrow_to(&editor).expect("Expected arrow_to value");
+		let angle_degrees = arrow_to.angle_to(DVec2::X).to_degrees();
+		let nearest_snap = (angle_degrees / 15.).round() * 15.;
+		assert!((angle_degrees - nearest_snap).abs() < 1., "Angle should snap to 15° multiple, got {angle_degrees}°");
+	}
+
+	#[tokio::test]
+	async fn arrow_zero_length_no_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		select_arrow(&mut editor).await;
+		// Drag start == end: the 1e-6 guard in update_shape should prevent a valid arrow_to
+		editor.drag_tool(ToolType::Shape, 50., 50., 50., 50., ModifierKeys::empty()).await;
+
+		// Either no layer created, or arrow_to is zero/near-zero
+		if let Some(arrow_to) = get_arrow_to(&editor) {
+			assert!(arrow_to.length() < 1e-4, "Zero-length drag should produce no meaningful arrow_to, got {arrow_to:?}");
+		}
+	}
+}
