@@ -17,6 +17,7 @@
 	export let majorMarkSpacing: number;
 	export let minorDivisions = 5;
 	export let microDivisions = 2;
+	export let cursorPosition: { x: number; y: number } | undefined = undefined;
 
 	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
@@ -33,6 +34,7 @@
 	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis);
 	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis);
 	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis, tilt);
+	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, otherAxis);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const normTilt = ((tilt % TAU) + TAU) % TAU;
@@ -139,6 +141,31 @@
 		return results;
 	}
 
+	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, otherAxis: Axis): string {
+		if (cursor === undefined) return "";
+
+		// Project cursor position along the other axis onto the ruler strip
+		const [vx, vy] = otherAxis.vec;
+		let projected: number;
+		if (direction === "Horizontal") {
+			projected = Math.abs(vy) < 1e-10 ? cursor.x : cursor.x - cursor.y * (vx / vy);
+		} else {
+			projected = Math.abs(vx) < 1e-10 ? cursor.y : cursor.y - cursor.x * (vy / vx);
+		}
+
+		const flip = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
+		const [dx, dy] = [vx * flip, vy * flip];
+		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
+
+		// Scale the line so it spans the full ruler bar thickness
+		const thicknessComponent = Math.abs(direction === "Horizontal" ? dy : dx);
+		const length = thicknessComponent < 1e-10 ? RULER_THICKNESS : RULER_THICKNESS / thicknessComponent;
+
+		const destination = Math.round(projected) + 0.5;
+		const [sx, sy] = direction === "Horizontal" ? [destination, syBase] : [sxBase, destination];
+		return `M${sx},${sy}l${dx * length},${dy * length}`;
+	}
+
 	export function resize() {
 		if (!rulerInput) return;
 
@@ -170,6 +197,9 @@
 		{#each svgTexts as svgText}
 			<text transform={svgText.transform}>{svgText.text}</text>
 		{/each}
+		{#if cursorIndicatorPath}
+			<path class="cursor-indicator" d={cursorIndicatorPath} />
+		{/if}
 	</svg>
 </div>
 
@@ -201,6 +231,10 @@
 			path {
 				stroke-width: 1px;
 				stroke: var(--color-5-dullgray);
+
+				&.cursor-indicator {
+					stroke: var(--color-8-uppergray);
+				}
 			}
 
 			text {

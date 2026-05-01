@@ -45,6 +45,7 @@
 	let rulerInterval = 100;
 	let rulersVisible = true;
 	let rulerTilt = 0;
+	let rulerCursorPosition: { x: number; y: number } | undefined;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -294,6 +295,12 @@
 		rulerInterval = interval;
 		rulersVisible = visible;
 		rulerTilt = tilt;
+	}
+
+	function updateRulerCursorPosition(e: PointerEvent) {
+		if (!viewport) return;
+		const rect = viewport.getBoundingClientRect();
+		rulerCursorPosition = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 	}
 
 	// Update mouse cursor icon
@@ -604,6 +611,7 @@
 						majorMarkSpacing={rulerSpacing}
 						numberInterval={rulerInterval}
 						direction="Horizontal"
+						cursorPosition={rulerCursorPosition}
 						bind:this={rulerHorizontal}
 					/>
 				</LayoutRow>
@@ -618,6 +626,7 @@
 							majorMarkSpacing={rulerSpacing}
 							numberInterval={rulerInterval}
 							direction="Vertical"
+							cursorPosition={rulerCursorPosition}
 							bind:this={rulerVertical}
 						/>
 					</LayoutCol>
@@ -664,6 +673,8 @@
 						class:viewport={!$appWindow.viewportHolePunch}
 						class:viewport-transparent={$appWindow.viewportHolePunch}
 						on:pointerdown={(e) => canvasPointerDown(e)}
+						on:pointermove={updateRulerCursorPosition}
+						on:pointerleave={() => (rulerCursorPosition = undefined)}
 						bind:this={viewport}
 						data-viewport
 					>
