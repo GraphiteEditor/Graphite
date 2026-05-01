@@ -376,3 +376,75 @@ pub mod test_prelude {
 		};
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	async fn create_editor_with_new_document() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+	}
+
+	/// - create editor
+	/// - assert it initializes without panicking
+	#[tokio::test]
+	async fn editor_creates_successfully() {
+		let _editor = EditorTestUtils::create();
+	}
+
+	/// - create editor
+	/// - create new document
+	/// - assert active document exists
+	#[tokio::test]
+	async fn new_document_is_active() {
+		let editor = create_editor_with_new_document().await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0);
+	}
+
+	/// - create editor
+	/// - create new document
+	/// - draw a rect using draw_rect helper
+	/// - assert one layer exists
+	#[tokio::test]
+	async fn draw_rect_helper_creates_layer() {
+		let mut editor = create_editor_with_new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+	}
+
+	/// - create editor
+	/// - create new document
+	/// - draw an ellipse using draw_ellipse helper
+	/// - assert one layer exists
+	#[tokio::test]
+	async fn draw_ellipse_helper_creates_layer() {
+		let mut editor = create_editor_with_new_document().await;
+		editor.draw_ellipse(0., 0., 100., 100.).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+	}
+
+	/// - create editor
+	/// - create new document
+	/// - select primary color red
+	/// - assert no layer added
+	#[tokio::test]
+	async fn select_primary_color_does_not_add_layer() {
+		let mut editor = create_editor_with_new_document().await;
+		editor.select_primary_color(Color::RED).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0);
+	}
+
+	/// - create editor
+	/// - create new document
+	/// - draw rect then ellipse
+	/// - assert two layers exist
+	#[tokio::test]
+	async fn draw_two_shapes_gives_two_layers() {
+		let mut editor = create_editor_with_new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.draw_ellipse(0., 0., 100., 100.).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 2);
+	}
+}
