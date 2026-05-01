@@ -170,3 +170,101 @@ impl Star {
 		}
 	}
 }
+
+#[cfg(test)]
+mod test_star {
+	use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+	use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
+	use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::document::value::TaggedValue;
+
+	/// Switch to Star shape type, then manually drag to avoid drag_tool re-selecting and resetting options.
+	async fn draw_star(editor: &mut EditorTestUtils, x1: f64, y1: f64, x2: f64, y2: f64, modifier_keys: ModifierKeys) {
+		editor.select_tool(ToolType::Shape).await;
+		editor
+			.handle_message(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Star),
+			})
+			.await;
+		editor.move_mouse(x1, y1, modifier_keys, MouseKeys::empty()).await;
+		editor.left_mousedown(x1, y1, modifier_keys).await;
+		editor.move_mouse(x2, y2, modifier_keys, MouseKeys::LEFT).await;
+		editor.left_mouseup(x2, y2, modifier_keys).await;
+	}
+
+	/// Returns (sides, outer_radius, inner_radius) from the first star node in the document.
+	fn get_star_inputs(editor: &EditorTestUtils) -> Option<(u32, f64, f64)> {
+		let document = editor.active_document();
+		document.metadata().all_layers().find_map(|layer| {
+			let inputs = NodeGraphLayer::new(layer, &document.network_interface)
+				.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::star::IDENTIFIER))?;
+			let Some(&TaggedValue::U32(sides)) = inputs.get(1).and_then(|i| i.as_value()) else {
+				return None;
+			};
+			let Some(&TaggedValue::F64(outer_radius)) = inputs.get(2).and_then(|i| i.as_value()) else {
+				return None;
+			};
+			let Some(&TaggedValue::F64(inner_radius)) = inputs.get(3).and_then(|i| i.as_value()) else {
+				return None;
+			};
+			Some((sides, outer_radius, inner_radius))
+		})
+	}
+
+	#[tokio::test]
+	async fn star_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_star(&mut editor, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+		let (sides, outer_radius, _) = get_star_inputs(&editor).expect("Star node should exist after draw");
+		assert!(sides >= 2, "Star should have at least 2 points, got {sides}");
+		assert!(outer_radius > 0., "Outer radius should be positive, got {outer_radius}");
+	}
+
+	#[tokio::test]
+	async fn star_inner_radius_is_half_outer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_star(&mut editor, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let (_, outer_radius, inner_radius) = get_star_inputs(&editor).expect("Star node should exist");
+		assert!(
+			(inner_radius - outer_radius / 2.).abs() < 1e-10,
+			"Inner radius {inner_radius} should equal outer_radius/2 = {}",
+			outer_radius / 2.
+		);
+	}
+
+	#[tokio::test]
+	async fn star_draw_correct_outer_radius() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// 100x100 drag: dimensions=(100,100), x==y, radius = x/2 = 50
+		draw_star(&mut editor, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let (_, outer_radius, _) = get_star_inputs(&editor).expect("Star node should exist");
+		assert!((outer_radius - 50.).abs() < 1., "Expected outer radius ~50 for 100x100 drag, got {outer_radius}");
+	}
+
+	#[tokio::test]
+	async fn star_cancel_rmb_no_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Shape).await;
+		editor
+			.handle_message(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Star),
+			})
+			.await;
+		editor.drag_tool_cancel_rmb(ToolType::Shape).await;
+
+		assert_eq!(
+			editor.active_document().metadata().all_layers().count(),
+			0,
+			"RMB-cancelled star should not create a layer"
+		);
+	}
+}
