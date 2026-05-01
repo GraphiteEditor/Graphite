@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-use glam::{IVec2, UVec2};
+use glam::UVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 
@@ -35,14 +35,22 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					});
 					responses.add(NodeGraphMessage::SetDisplayNameImpl {
 						node_id,
+						network_path: Vec::new(),
 						alias: "Background".to_string(),
 					});
-					responses.add(NodeGraphMessage::SetLocked { node_id, locked: true });
+					responses.add(NodeGraphMessage::SetLocked {
+						node_id,
+						network_path: Vec::new(),
+						locked: true,
+					});
 				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
 					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
-						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
+						location: glam::DVec2::ZERO,
+						dimensions: self.dimensions.as_dvec2(),
+						background: Color::WHITE,
+						clip: true,
 					});
 					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
 				}
@@ -50,12 +58,10 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(ViewportMessage::RepropagateUpdate);
 
+				responses.add(DocumentMessage::DeselectAllLayers);
+
 				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![
-						DocumentMessage::ZoomCanvasToFitAll.into(),
-						DocumentMessage::DeselectAllLayers.into(),
-						PortfolioMessage::AutoSaveActiveDocument.into(),
-					],
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), PortfolioMessage::AutoSaveActiveDocument.into()],
 				});
 
 				responses.add(DocumentMessage::MarkAsSaved);

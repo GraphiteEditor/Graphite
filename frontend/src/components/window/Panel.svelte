@@ -36,6 +36,7 @@
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
+	export let renameAction: ((index: number, newName: string) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
 	export let groupDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
@@ -49,6 +50,28 @@
 	export let styles: Record<string, string | number | undefined> = {};
 
 	let tabElements: (LayoutRow | undefined)[] = [];
+
+	// Document tab rename state
+	let editingNameTabIndex: number | undefined = undefined;
+	let editingNameText = "";
+	let editingNameInputElement: HTMLInputElement | undefined = undefined;
+
+	async function setEditingTabName(tabIndex: number, currentName: string) {
+		editingNameText = currentName;
+		editingNameTabIndex = tabIndex;
+
+		await tick();
+
+		editingNameInputElement?.focus();
+		editingNameInputElement?.select();
+	}
+
+	function commitEditingTabName(event: Event) {
+		if (editingNameTabIndex === undefined || !(event.target instanceof HTMLInputElement)) return;
+
+		renameAction?.(editingNameTabIndex, event.target.value);
+		editingNameTabIndex = undefined;
+	}
 
 	// Tab drag-and-drop state
 	let dragStartState: { tabIndex: number; pointerX: number; pointerY: number; isGroupDrag: boolean } | undefined = undefined;
@@ -71,7 +94,7 @@
 		// Only start a group drag from the tab bar background (not from a tab or button)
 		if (e.button !== BUTTON_LEFT) return;
 		if (e.target !== e.currentTarget) return;
-		if (!crossPanelDropAction) return;
+		if (!crossPanelDropAction && !splitDropAction) return;
 
 		dragStartState = { tabIndex: tabActiveIndex, pointerX: e.clientX, pointerY: e.clientY, isGroupDrag: true };
 		dragging = false;
@@ -119,13 +142,12 @@
 
 			dragging = true;
 
-			if (crossPanelDropAction) {
-				if (dragStartState.isGroupDrag) {
-					startCrossPanelDrag(panelId, [...panelTypes], tabActiveIndex, true);
-				} else {
-					const draggedTab = panelTypes[dragStartState.tabIndex];
-					startCrossPanelDrag(panelId, [draggedTab], dragStartState.tabIndex, false);
-				}
+			// Group drags enter cross-panel state for edge docking even without crossPanelDropAction
+			if (dragStartState.isGroupDrag && (crossPanelDropAction || splitDropAction)) {
+				startCrossPanelDrag(panelId, [...panelTypes], tabActiveIndex, true);
+			} else if (!dragStartState.isGroupDrag && crossPanelDropAction) {
+				const draggedTab = panelTypes[dragStartState.tabIndex];
+				startCrossPanelDrag(panelId, [draggedTab], dragStartState.tabIndex, false);
 			}
 		}
 
@@ -142,7 +164,9 @@
 		insertionIndex = undefined;
 		insertionMarkerLeft = undefined;
 
-		// Check if the pointer is over any other dockable panel's tab bar
+		// Skip cross-panel hover detection for sources that can't dock anywhere
+		if (!crossPanelDropAction && !splitDropAction) return;
+
 		if (crossPanelDropAction) {
 			const tabBarTarget = Array.from(document.querySelectorAll("[data-panel-tab-bar]")).find((element) => {
 				const targetPanelId = element.getAttribute("data-panel-tab-bar");
@@ -157,35 +181,35 @@
 				calculateForeignInsertionIndex(e.clientX, tabBarTargetId, tabBarTarget);
 				return;
 			}
+		}
 
-			// Check if the pointer is over any panel body's edge zone for split docking
-			const panelBody = Array.from(document.querySelectorAll("[data-panel-body]")).find((element) => {
-				const rect = element.getBoundingClientRect();
-				return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-			});
+		// Check for edge-zone split docking
+		const panelBody = Array.from(document.querySelectorAll("[data-panel-body]")).find((element) => {
+			const rect = element.getBoundingClientRect();
+			return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+		});
 
-			const bodyPanelId = panelBody && panelBody.getAttribute("data-panel-body");
-			if (bodyPanelId) {
-				const rect = panelBody.getBoundingClientRect();
-				let edge: DockingEdge | undefined = detectDockingEdge(e.clientX, e.clientY, rect);
+		const bodyPanelId = panelBody && panelBody.getAttribute("data-panel-body");
+		if (bodyPanelId) {
+			const rect = panelBody.getBoundingClientRect();
+			let edge: DockingEdge | undefined = detectDockingEdge(e.clientX, e.clientY, rect);
 
-				// Block center drops between document and non-document panels
-				if (edge === "Center") {
-					const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
-					const sourceIsDockable = crossPanelDropAction !== undefined;
-					if (targetIsDockable !== sourceIsDockable) edge = undefined;
-				}
-
-				if (edge) {
-					updateDockingHover(bodyPanelId, edge);
-					return;
-				}
+			// Center drops between different panels require both to be cross-panel-dockable (self-drops are always allowed as a no-op)
+			if (edge === "Center" && bodyPanelId !== panelId) {
+				const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
+				const sourceIsDockable = crossPanelDropAction !== undefined;
+				if (!sourceIsDockable || !targetIsDockable) edge = undefined;
 			}
 
-			// Not hovering any drop target
-			updateCrossPanelHover(undefined, undefined, undefined);
-			updateDockingHover(undefined, undefined);
+			if (edge) {
+				updateDockingHover(bodyPanelId, edge);
+				return;
+			}
 		}
+
+		// Not hovering any drop target
+		updateCrossPanelHover(undefined, undefined, undefined);
+		updateDockingHover(undefined, undefined);
 	}
 
 	function dragPointerUp() {
@@ -250,7 +274,7 @@
 		dragging = false;
 		insertionIndex = undefined;
 		insertionMarkerLeft = undefined;
-		if (crossPanelDropAction) endCrossPanelDrag();
+		endCrossPanelDrag();
 		removeDragListeners();
 	}
 
@@ -392,9 +416,30 @@
 					bind:this={tabElements[tabIndex]}
 				>
 					<LayoutRow class="name">
-						<TextLabel class="text">{tabLabel.name}</TextLabel>
+						{#if editingNameTabIndex !== tabIndex}
+							<TextLabel class="text" on:dblclick={() => renameAction && setEditingTabName(tabIndex, tabLabel.name)}>{tabLabel.name}</TextLabel>
+						{:else}
+							<input
+								type="text"
+								bind:this={editingNameInputElement}
+								bind:value={editingNameText}
+								on:pointerdown|stopPropagation
+								on:dblclick|stopPropagation
+								on:blur={commitEditingTabName}
+								on:keydown={(e) => {
+									// Stop propagation when we handle the key ourselves so the global keyboard forwarder doesn't dispatch them and trigger unrelated bindings
+									if (e.key === "Enter") {
+										commitEditingTabName(e);
+										e.stopPropagation();
+									} else if (e.key === "Escape") {
+										editingNameTabIndex = undefined;
+										e.stopPropagation();
+									}
+								}}
+							/>
+						{/if}
 						{#if tabLabel.unsaved}
-							<TextLabel>*</TextLabel>
+							<TextLabel classes={{ hidden: editingNameTabIndex === tabIndex }}>*</TextLabel>
 						{/if}
 					</LayoutRow>
 					{#if tabCloseButtons}
@@ -513,10 +558,30 @@
 
 							&.text {
 								overflow-x: hidden;
-								white-space: nowrap;
+								white-space: pre;
 								text-overflow: ellipsis;
 								flex-shrink: 1;
 							}
+						}
+
+						input {
+							color: inherit;
+							border: none;
+							outline: none;
+							margin: 0 -4px;
+							padding: 0 4px;
+							height: 20px;
+							border-radius: 2px;
+							background: var(--color-1-nearblack);
+							field-sizing: content;
+							align-self: center;
+							// Stack above the absolutely-positioned close button so it doesn't intercept clicks at the input's right edge.
+							position: relative;
+							z-index: 1;
+						}
+
+						.text-label.hidden {
+							visibility: hidden;
 						}
 					}
 

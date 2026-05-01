@@ -9,18 +9,13 @@ use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
 
 /// Represents a procedural change to the [`PointDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	delta: HashMap<PointId, DVec2>,
-}
-
-impl Hash for PointModification {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		generate_uuid().hash(state)
-	}
 }
 
 impl PointModification {
@@ -59,7 +54,7 @@ impl PointModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
 			add: vector.point_domain.ids().to_vec(),
 			remove: HashSet::new(),
@@ -80,19 +75,20 @@ impl PointModification {
 }
 
 /// Represents a procedural change to the [`SegmentDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	start_point: HashMap<SegmentId, PointId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	end_point: HashMap<SegmentId, PointId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	handle_primary: HashMap<SegmentId, Option<DVec2>>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	handle_end: HashMap<SegmentId, Option<DVec2>>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	stroke: HashMap<SegmentId, StrokeId>,
 }
 
@@ -215,7 +211,7 @@ impl SegmentModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		let point_id = |(&segment, &index)| (segment, vector.point_domain.ids()[index]);
 		Self {
 			add: vector.segment_domain.ids().to_vec(),
@@ -250,13 +246,14 @@ impl SegmentModification {
 }
 
 /// Represents a procedural change to the [`RegionDomain`] in [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
-	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	fill: HashMap<RegionId, FillId>,
 }
 
@@ -283,7 +280,7 @@ impl RegionModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
 			add: vector.region_domain.ids().to_vec(),
 			remove: HashSet::new(),
@@ -294,7 +291,8 @@ impl RegionModification {
 }
 
 /// Represents a procedural change to the [`Vector`].
-#[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
@@ -304,7 +302,8 @@ pub struct VectorModification {
 }
 
 /// A modification type that can be added to a [`VectorModification`].
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VectorModificationType {
 	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
 	InsertPoint { id: PointId, position: DVec2 },
@@ -427,7 +426,7 @@ impl VectorModification {
 	}
 
 	/// Apply this modification to the specified [`Vector`].
-	pub fn apply<Upstream>(&self, vector: &mut Vector<Upstream>) {
+	pub fn apply(&self, vector: &mut Vector) {
 		self.points.apply(&mut vector.point_domain, &mut vector.segment_domain);
 		self.segments.apply(&mut vector.segment_domain, &vector.point_domain);
 		self.regions.apply(&mut vector.region_domain);
@@ -500,7 +499,7 @@ impl VectorModification {
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
-	pub fn create_from_vector<Upstream>(vector: &Vector<Upstream>) -> Self {
+	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
 			points: PointModification::create_from_vector(vector),
 			segments: SegmentModification::create_from_vector(vector),
@@ -511,9 +510,13 @@ impl VectorModification {
 	}
 }
 
-impl Hash for VectorModification {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		generate_uuid().hash(state)
+// Intentionally non-deterministic: fields contain HashMaps with non-deterministic iteration order,
+// so we use a UUID to always bust the cache and force re-evaluation when any modification is present.
+// This will not actually lead to a cache invalidation in most cases due to the
+// graph inputs being wrapped in a `MemoHash` wrapper.
+impl graphene_hash::CacheHash for VectorModification {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&generate_uuid(), state);
 	}
 }
 
@@ -578,7 +581,7 @@ where
 	deserializer.deserialize_seq(visitor)
 }
 
-pub struct AppendBezpath<'a, Upstream: 'static> {
+pub struct AppendBezpath<'a> {
 	first_point: Option<Point>,
 	last_point: Option<Point>,
 	first_point_index: Option<usize>,
@@ -587,11 +590,11 @@ pub struct AppendBezpath<'a, Upstream: 'static> {
 	last_segment_id: Option<SegmentId>,
 	point_id: PointId,
 	segment_id: SegmentId,
-	vector: &'a mut Vector<Upstream>,
+	vector: &'a mut Vector,
 }
 
-impl<'a, Upstream> AppendBezpath<'a, Upstream> {
-	fn new(vector: &'a mut Vector<Upstream>) -> Self {
+impl<'a> AppendBezpath<'a> {
+	fn new(vector: &'a mut Vector) -> Self {
 		Self {
 			first_point: None,
 			last_point: None,
@@ -673,7 +676,7 @@ impl<'a, Upstream> AppendBezpath<'a, Upstream> {
 		self.last_segment_id = None;
 	}
 
-	pub fn append_bezpath(vector: &'a mut Vector<Upstream>, bezpath: BezPath) {
+	pub fn append_bezpath(vector: &'a mut Vector, bezpath: BezPath) {
 		let mut this = Self::new(vector);
 		let mut elements = bezpath.elements().iter().peekable();
 
@@ -723,7 +726,7 @@ pub trait VectorExt {
 	fn append_bezpath(&mut self, bezpath: BezPath);
 }
 
-impl<Upstream: 'static> VectorExt for Vector<Upstream> {
+impl VectorExt for Vector {
 	fn append_bezpath(&mut self, bezpath: BezPath) {
 		AppendBezpath::append_bezpath(self, bezpath);
 	}
@@ -755,7 +758,7 @@ mod tests {
 
 	#[test]
 	fn modify_new() {
-		let vector: Vector<()> = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO)], false);
+		let vector: Vector = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO)], false);
 
 		let modify = VectorModification::create_from_vector(&vector);
 
@@ -777,7 +780,7 @@ mod tests {
 				false,
 			),
 		];
-		let mut vector: Vector<()> = Vector::from_subpaths(subpaths, false);
+		let mut vector: Vector = Vector::from_subpaths(subpaths, false);
 
 		let mut modify_new = VectorModification::create_from_vector(&vector);
 		let mut modify_original = VectorModification::default();

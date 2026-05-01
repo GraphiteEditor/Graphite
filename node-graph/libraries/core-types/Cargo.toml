@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+serde = ["dep:serde"]
 nightly = []
 type_id_logging = []
 dealloc_nodes = []
@@ -16,6 +17,7 @@ wasm = ["tsify", "wasm-bindgen", "no-std-types/wasm"]
 [dependencies]
 # Local dependencies
 no-std-types = { workspace = true, features = ["std"] }
+graphene-hash = { workspace = true, features = ["derive"] }
 
 # Workspace dependencies
 bitflags = { workspace = true }

@@ -1,5 +1,6 @@
-use core_types::Ctx;
 use core_types::registry::types::SignedInteger;
+use core_types::table::{Table, TableRow};
+use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
 
 /// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.
 #[node_macro::node(category("Text: Regex"))]
@@ -76,9 +77,12 @@ fn regex_replace(
 	}
 }
 
-/// Finds a regex match in the string and returns its components. The result is a list where the first element is the whole match (`$0`) and subsequent elements are the capture groups (`$1`, `$2`, etc., if any).
+/// Finds a regex match in the string and returns its components. The result is a list where the first item is the whole match (`$0`) and subsequent items are the capture groups (`$1`, `$2`, etc., if any).
 ///
 /// The match index selects which non-overlapping occurrence to return (0 for the first match). Returns an empty list if no match is found at the given index.
+///
+/// Each item carries `start` and `end` byte-offset attributes pointing into the original string, plus a `name` attribute holding
+/// the capture group's name (empty for unnamed groups, and for index 0 which is the whole match).
 #[node_macro::node(category(""))]
 fn regex_find(
 	_: impl Ctx,
@@ -92,9 +96,9 @@ fn regex_find(
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
-) -> Vec<String> {
+) -> Table<String> {
 	if pattern.is_empty() {
-		return Vec::new();
+		return Table::new();
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -107,8 +111,11 @@ fn regex_find(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return Vec::new();
+		return Table::new();
 	};
+
+	// Capture group names indexed positionally; index 0 (the whole match) is always None.
+	let capture_names: Vec<Option<String>> = regex.capture_names().map(|name| name.map(str::to_string)).collect();
 
 	// Collect all matches since we need to support negative indexing
 	let matches: Vec<_> = regex.captures_iter(&string).filter_map(|c| c.ok()).collect();
@@ -117,7 +124,7 @@ fn regex_find(
 	let resolved_index = if match_index < 0 {
 		let from_end = (-match_index) as usize;
 		if from_end > matches.len() {
-			return Vec::new();
+			return Table::new();
 		}
 		matches.len() - from_end
 	} else {
@@ -125,14 +132,28 @@ fn regex_find(
 	};
 
 	let Some(captures) = matches.get(resolved_index) else {
-		return Vec::new();
+		return Table::new();
 	};
 
 	// Index 0 is the whole match, 1+ are capture groups
-	(0..captures.len()).map(|i| captures.get(i).map_or(String::new(), |m| m.as_str().to_string())).collect()
+	(0..captures.len())
+		.map(|i| {
+			let captured = captures.get(i);
+			let text = captured.map_or(String::new(), |m| m.as_str().to_string());
+			let start = captured.map_or(0_u64, |m| m.start() as u64);
+			let end = captured.map_or(0_u64, |m| m.end() as u64);
+			let name = capture_names.get(i).cloned().flatten().unwrap_or_default();
+			TableRow::new_from_element(text)
+				.with_attribute(ATTR_START, start)
+				.with_attribute(ATTR_END, end)
+				.with_attribute(ATTR_NAME, name)
+		})
+		.collect()
 }
 
 /// Finds all non-overlapping matches of a regular expression pattern in the string, returning a list of the matched substrings.
+///
+/// Each item carries `start` and `end` byte-offset attributes pointing into the original string.
 #[node_macro::node(category("Text: Regex"))]
 fn regex_find_all(
 	_: impl Ctx,
@@ -144,9 +165,9 @@ fn regex_find_all(
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
-) -> Vec<String> {
+) -> Table<String> {
 	if pattern.is_empty() {
-		return Vec::new();
+		return Table::new();
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -159,10 +180,18 @@ fn regex_find_all(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return Vec::new();
+		return Table::new();
 	};
 
-	regex.find_iter(&string).filter_map(|m| m.ok()).map(|m| m.as_str().to_string()).collect()
+	regex
+		.find_iter(&string)
+		.filter_map(|m| m.ok())
+		.map(|m| {
+			TableRow::new_from_element(m.as_str().to_string())
+				.with_attribute(ATTR_START, m.start() as u64)
+				.with_attribute(ATTR_END, m.end() as u64)
+		})
+		.collect()
 }
 
 /// Splits a string into a list of substrings pulled from between separator characters as matched by a regular expression.
@@ -179,9 +208,9 @@ fn regex_split(
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
-) -> Vec<String> {
+) -> Table<String> {
 	if pattern.is_empty() {
-		return vec![string];
+		return Table::new_from_element(string);
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -194,8 +223,8 @@ fn regex_split(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return vec![string];
+		return Table::new_from_element(string);
 	};
 
-	regex.split(&string).filter_map(|s| s.ok()).map(|s| s.to_string()).collect()
+	regex.split(&string).filter_map(|s| s.ok()).map(|s| s.to_string()).map(TableRow::new_from_element).collect()
 }

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-	import { SvelteMap } from "svelte/reactivity";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
@@ -8,12 +7,11 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -27,7 +25,7 @@
 		ancestorOfSelected: boolean;
 		parentsVisible: boolean;
 		parentsUnlocked: boolean;
-		instancePath: bigint[];
+		treePath: bigint[];
 	};
 
 	type DraggingData = {
@@ -48,15 +46,13 @@
 		startY: number;
 	};
 
-	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	let list: LayoutCol | undefined;
 
-	// Layer data
-	let layerCache = new SvelteMap<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
@@ -71,38 +67,9 @@
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
 
-	// Layouts
-	let layersPanelControlBarLeftLayout: Layout = [];
-	let layersPanelControlBarRightLayout: Layout = [];
-	let layersPanelBottomBarLayout: Layout = [];
+	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
 
 	onMount(() => {
-		subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
-			patchLayout(layersPanelControlBarLeftLayout, data);
-			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
-		});
-
-		subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
-			patchLayout(layersPanelControlBarRightLayout, data);
-			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
-		});
-
-		subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
-			patchLayout(layersPanelBottomBarLayout, data);
-			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
-		});
-
-		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
-			rebuildLayerHierarchy(data.layerStructure);
-		});
-
-		subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
-			const targetLayer = data.data;
-			const targetId = targetLayer.id;
-
-			updateLayerInTree(targetId, targetLayer);
-		});
-
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("mousedown", draggingMouseDown);
@@ -115,12 +82,6 @@
 	});
 
 	onDestroy(() => {
-		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-		subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-		subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
-		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
-		subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
-
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("mousedown", draggingMouseDown);
@@ -140,10 +101,10 @@
 		editor.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClickWithModifiers(e: MouseEvent, instancePath: bigint[]) {
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, treePath: bigint[]) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.toggleLayerExpansion(BigUint64Array.from(instancePath), collapseRecursive);
+		editor.toggleLayerExpansion(BigUint64Array.from(treePath), collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -504,7 +465,7 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
+	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[], cache: Map<string, LayerPanelEntry>) {
 		// Track the editing state by flat list index, not layer ID, since a layer can appear at multiple positions
 		const editingIndex = layers.findIndex((layer: LayerListingInfo) => layer.editingName);
 
@@ -514,8 +475,8 @@
 		// Build the new layer hierarchy
 		const recurse = (children: LayerStructureEntry[], depth: number, parentId: bigint | undefined, parentPath: bigint[], parentsVisible: boolean, parentsUnlocked: boolean) => {
 			children.forEach((item, index) => {
-				const instancePath = [...parentPath, item.layerId];
-				const mapping = layerCache.get(String(item.layerId));
+				const treePath = [...parentPath, item.layerId];
+				const mapping = cache.get(String(item.layerId));
 
 				if (mapping) {
 					mapping.id = item.layerId;
@@ -531,41 +492,28 @@
 						ancestorOfSelected: item.descendantSelected,
 						parentsVisible,
 						parentsUnlocked,
-						instancePath,
+						treePath,
 					});
 				}
 
 				// Call self recursively, propagating this layer's visibility/lock state to its children
 				const childParentsVisible = parentsVisible && (mapping?.visible ?? true);
 				const childParentsUnlocked = parentsUnlocked && (mapping?.unlocked ?? true);
-				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, instancePath, childParentsVisible, childParentsUnlocked);
+				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, treePath, childParentsVisible, childParentsUnlocked);
 			});
 		};
 		recurse(layerStructure, 1, undefined, [], true, true);
 		layers = layers;
 	}
-
-	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
-		layerCache.set(String(targetId), targetLayer);
-
-		let changed = false;
-		layers.forEach((layer) => {
-			if (layer.entry.id === targetId) {
-				layer.entry = targetLayer;
-				changed = true;
-			}
-		});
-		if (changed) layers = layers;
-	}
 </script>
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
-		{#if layersPanelControlBarLeftLayout?.length > 0 && layersPanelControlBarRightLayout?.length > 0}
+		<WidgetLayout layout={$portfolio.layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		{#if $portfolio.layersPanelControlBarLeftLayout?.length > 0 && $portfolio.layersPanelControlBarRightLayout?.length > 0}
 			<Separator />
 		{/if}
-		<WidgetLayout layout={layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
+		<WidgetLayout layout={$portfolio.layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -605,7 +553,7 @@
 								: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
 								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
 							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.instancePath)}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.treePath)}
 							tabindex="0"
 						></button>
 					{:else}
@@ -685,7 +633,7 @@
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
+		<WidgetLayout layout={$portfolio.layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
 

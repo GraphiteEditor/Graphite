@@ -6,7 +6,8 @@ use glam::{DAffine2, DMat2, DVec2, UVec2};
 /// Controls whether the Decompose Scale node returns axis-length magnitudes or pure scale factors.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum ScaleType {
 	/// The visual length of each axis (always positive, includes any skew contribution).
@@ -141,7 +142,8 @@ impl TransformMut for Footprint {
 	}
 }
 
-#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderQuality {
 	/// Low quality, fast rendering
 	Preview,
@@ -154,7 +156,8 @@ pub enum RenderQuality {
 	/// Render at full quality
 	Full,
 }
-#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Footprint {
 	/// Inverse of the transform which will be applied to the node output during the rendering process
 	pub transform: DAffine2,
@@ -173,7 +176,7 @@ impl Default for Footprint {
 impl Footprint {
 	pub const DEFAULT: Self = Self {
 		transform: DAffine2::IDENTITY,
-		resolution: UVec2::new(1920, 1080),
+		resolution: UVec2::ONE,
 		quality: RenderQuality::Full,
 	};
 
@@ -211,13 +214,6 @@ impl Footprint {
 impl From<()> for Footprint {
 	fn from(_: ()) -> Self {
 		Footprint::default()
-	}
-}
-
-impl std::hash::Hash for Footprint {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
-		self.resolution.hash(state)
 	}
 }
 

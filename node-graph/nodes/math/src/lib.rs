@@ -5,7 +5,7 @@ use core_types::transform::Footprint;
 use core_types::{Color, Ctx, num_traits};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -753,7 +753,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> u64,
 		Context -> DVec2,
 		Context -> DAffine2,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
@@ -772,7 +772,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> u64,
 		Context -> DVec2,
 		Context -> DAffine2,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
@@ -863,13 +863,31 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: Table<GradientStops>) -> 
 	gradient
 }
 
+/// Sets the type (linear or radial) of each gradient in the input table.
+#[node_macro::node(category("Color"))]
+fn gradient_type(_: impl Ctx, mut gradient: Table<GradientStops>, gradient_type: vector_types::GradientType) -> Table<GradientStops> {
+	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientType>(core_types::ATTR_GRADIENT_TYPE) {
+		*value = gradient_type;
+	}
+	gradient
+}
+
+/// Sets how each gradient in the input table extends past its endpoints: Pad, Reflect, or Repeat.
+#[node_macro::node(category("Color"))]
+fn spread_method(_: impl Ctx, mut gradient: Table<GradientStops>, spread_method: vector_types::GradientSpreadMethod) -> Table<GradientStops> {
+	for value in gradient.iter_attribute_values_mut_or_default::<vector_types::GradientSpreadMethod>(core_types::ATTR_SPREAD_METHOD) {
+		*value = spread_method;
+	}
+	gradient
+}
+
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, position: Fraction) -> Table<Color> {
-	let Some(row) = gradient.get(0) else { return Table::new() };
+	let Some(gradient) = gradient.element(0) else { return Table::new() };
 
 	let position = position.clamp(0., 1.);
-	let color = row.element.evaluate(position);
+	let color = gradient.evaluate(position);
 	Table::new_from_element(color)
 }
 

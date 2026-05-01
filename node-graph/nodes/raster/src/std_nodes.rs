@@ -1,5 +1,5 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use core_types::blending::AlphaBlending;
+use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
@@ -33,9 +33,9 @@ impl From<std::io::Error> for Error {
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
 	image_frame
 		.into_iter()
-		.filter_map(|mut row| {
-			let image_frame_transform = row.transform;
-			let image = row.element;
+		.filter_map(|row| {
+			let image_frame_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let (image, mut attributes) = row.into_parts();
 
 			// Resize the image using the image crate
 			let data = bytemuck::cast_vec(image.data.clone());
@@ -86,10 +86,9 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 			// we need to adjust the offset if we truncate the offset calculation
 
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+			attributes.insert(ATTR_TRANSFORM, new_transform);
 
-			row.transform = new_transform;
-			row.element = Raster::new_cpu(image);
-			Some(row)
+			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
 		})
 		.collect()
 }
@@ -113,24 +112,21 @@ pub fn combine_channels(
 		.zip(blue)
 		.zip(alpha)
 		.filter_map(|(((red, green), blue), alpha)| {
-			// Turn any default zero-sized image rows into None
-			let red = red.filter(|i| i.element.width > 0 && i.element.height > 0);
-			let green = green.filter(|i| i.element.width > 0 && i.element.height > 0);
-			let blue = blue.filter(|i| i.element.width > 0 && i.element.height > 0);
-			let alpha = alpha.filter(|i| i.element.width > 0 && i.element.height > 0);
+			// Turn any default zero-sized image items into None
+			let red = red.filter(|i| i.element().width > 0 && i.element().height > 0);
+			let green = green.filter(|i| i.element().width > 0 && i.element().height > 0);
+			let blue = blue.filter(|i| i.element().width > 0 && i.element().height > 0);
+			let alpha = alpha.filter(|i| i.element().width > 0 && i.element().height > 0);
 
-			// Get this row's transform and alpha blending mode from the first non-empty channel
-			let (transform, alpha_blending, source_node_id) = [&red, &green, &blue, &alpha]
-				.iter()
-				.find_map(|i| i.as_ref())
-				.map(|i| (i.transform, i.alpha_blending, i.source_node_id))?;
+			// Get this item's transform and alpha blending mode from the first non-empty channel
+			let attributes = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| i.attributes().clone())?;
 
 			// Get the common width and height of the channels, which must have equal dimensions
 			let channel_dimensions = [
-				red.as_ref().map(|r| (r.element.width, r.element.height)),
-				green.as_ref().map(|g| (g.element.width, g.element.height)),
-				blue.as_ref().map(|b| (b.element.width, b.element.height)),
-				alpha.as_ref().map(|a| (a.element.width, a.element.height)),
+				red.as_ref().map(|r| (r.element().width, r.element().height)),
+				green.as_ref().map(|g| (g.element().width, g.element().height)),
+				blue.as_ref().map(|b| (b.element().width, b.element().height)),
+				alpha.as_ref().map(|a| (a.element().width, a.element().height)),
 			];
 			if channel_dimensions.iter().all(Option::is_none)
 				|| channel_dimensions
@@ -150,22 +146,22 @@ pub fn combine_channels(
 				for x in 0..image.width() {
 					let image_pixel = image.get_pixel_mut(x, y).unwrap();
 
-					if let Some(r) = red.as_ref().and_then(|r| r.element.get_pixel(x, y)) {
+					if let Some(r) = red.as_ref().and_then(|r| r.element().get_pixel(x, y)) {
 						image_pixel.set_red(r.l().cast_linear_channel());
 					} else {
 						image_pixel.set_red(Channel::from_linear(0.));
 					}
-					if let Some(g) = green.as_ref().and_then(|g| g.element.get_pixel(x, y)) {
+					if let Some(g) = green.as_ref().and_then(|g| g.element().get_pixel(x, y)) {
 						image_pixel.set_green(g.l().cast_linear_channel());
 					} else {
 						image_pixel.set_green(Channel::from_linear(0.));
 					}
-					if let Some(b) = blue.as_ref().and_then(|b| b.element.get_pixel(x, y)) {
+					if let Some(b) = blue.as_ref().and_then(|b| b.element().get_pixel(x, y)) {
 						image_pixel.set_blue(b.l().cast_linear_channel());
 					} else {
 						image_pixel.set_blue(Channel::from_linear(0.));
 					}
-					if let Some(a) = alpha.as_ref().and_then(|a| a.element.get_pixel(x, y)) {
+					if let Some(a) = alpha.as_ref().and_then(|a| a.element().get_pixel(x, y)) {
 						image_pixel.set_alpha(a.l().cast_linear_channel());
 					} else {
 						image_pixel.set_alpha(Channel::from_linear(1.));
@@ -173,12 +169,7 @@ pub fn combine_channels(
 				}
 			}
 
-			Some(TableRow {
-				element: Raster::new_cpu(image),
-				transform,
-				alpha_blending,
-				source_node_id,
-			})
+			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
 		})
 		.collect()
 }
@@ -192,37 +183,39 @@ pub fn mask(
 	#[expose]
 	stencil: Table<Raster<CPU>>,
 ) -> Table<Raster<CPU>> {
-	// TODO: Figure out what it means to support multiple stencil rows?
+	// TODO: Figure out what it means to support multiple stencil items?
 	let Some(stencil) = stencil.into_iter().next() else {
 		// No stencil provided so we return the original image
 		return image;
 	};
-	let stencil_size = DVec2::new(stencil.element.width as f64, stencil.element.height as f64);
+	let stencil_size = DVec2::new(stencil.element().width as f64, stencil.element().height as f64);
 
 	image
 		.into_iter()
 		.filter_map(|mut row| {
-			let image_size = DVec2::new(row.element.width as f64, row.element.height as f64);
-			let mask_size = stencil.transform.scale_magnitudes();
+			let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
+			let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let mask_size = stencil_transform.scale_magnitudes();
 
 			if mask_size == DVec2::ZERO {
 				return None;
 			}
 
 			// Transforms a point from the background image to the foreground image
-			let bg_to_fg = row.transform * DAffine2::from_scale(1. / image_size);
-			let stencil_transform_inverse = stencil.transform.inverse();
+			let transform_attribute: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
+			let stencil_transform_inverse = stencil_transform.inverse();
 
-			for y in 0..row.element.height {
-				for x in 0..row.element.width {
+			for y in 0..row.element().height {
+				for x in 0..row.element().width {
 					let image_point = DVec2::new(x as f64, y as f64);
 					let mask_point = bg_to_fg.transform_point2(image_point);
 					let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-					let mask_point = stencil.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-					let mask_point = (DAffine2::from_scale(stencil_size) * stencil.transform.inverse()).transform_point2(mask_point);
+					let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+					let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
 
-					let image_pixel = row.element.data_mut().get_pixel_mut(x, y).unwrap();
-					let mask_pixel = stencil.element.sample(mask_point);
+					let image_pixel = row.element_mut().data_mut().get_pixel_mut(x, y).unwrap();
+					let mask_pixel = stencil.element().sample(mask_point);
 					*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 				}
 			}
@@ -237,20 +230,21 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 	image
 		.into_iter()
 		.map(|mut row| {
-			let image_aabb = Bbox::unit().affine_transform(row.transform).to_axis_aligned_bbox();
+			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let image_aabb = Bbox::unit().affine_transform(row_transform).to_axis_aligned_bbox();
 			let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 			if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
 				return row;
 			}
 
-			let image_data = &row.element.data;
-			let (image_width, image_height) = (row.element.width, row.element.height);
+			let image_data = &row.element().data;
+			let (image_width, image_height) = (row.element().width, row.element().height);
 			if image_width == 0 || image_height == 0 {
 				return empty_image((), bounds, Table::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
-			let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * row.transform.inverse();
+			let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * row_transform.inverse();
 			let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
 
 			let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
@@ -270,10 +264,10 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 
 			// Compute new transform.
 			// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
-			let new_texture_to_layer_space = row.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+			let new_texture_to_layer_space = row_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-			row.element = Raster::new_cpu(new_image);
-			row.transform = new_texture_to_layer_space;
+			*row.element_mut() = Raster::new_cpu(new_image);
+			row.set_attribute(ATTR_TRANSFORM, new_texture_to_layer_space);
 			row
 		})
 		.collect()
@@ -284,15 +278,13 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let color: Option<Color> = color.into();
-	let image = Image::new(width, height, color.unwrap_or(Color::WHITE));
+	let color = color.element(0).copied().unwrap_or(Color::WHITE);
+	let image = Image::new(width, height, color);
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
-	let row = result_table.get_mut(0).unwrap();
-	*row.transform = transform;
-	*row.alpha_blending = AlphaBlending::default();
+	result_table.set_attribute(ATTR_TRANSFORM, 0, transform);
 
-	// Callers of empty_image can safely unwrap on returned table
+	// Callers of empty_image can safely unwrap on returned `Table`
 	result_table
 }
 
@@ -342,6 +334,8 @@ pub fn noise_pattern(
 		return Table::new();
 	}
 
+	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+
 	let footprint_scale = footprint.scale();
 	let width = (size.x * footprint_scale.x) as u32;
 	let height = (size.y * footprint_scale.y) as u32;
@@ -383,11 +377,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_row(TableRow {
-				element: Raster::new_cpu(image),
-				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-				..Default::default()
-			});
+			return Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -445,11 +435,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_row(TableRow {
-		element: Raster::new_cpu(image),
-		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-		..Default::default()
-	})
+	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
@@ -487,16 +473,15 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 		}
 	}
 
-	Table::new_from_row(TableRow {
-		element: Raster::new_cpu(Image {
+	Table::new_from_row(
+		TableRow::new_from_element(Raster::new_cpu(Image {
 			width,
 			height,
 			data,
 			..Default::default()
-		}),
-		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-		..Default::default()
-	})
+		}))
+		.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)),
+	)
 }
 
 #[inline(always)]

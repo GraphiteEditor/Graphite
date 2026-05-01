@@ -11,9 +11,7 @@ use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
-use graphene_std::Artboard;
 use graphene_std::renderer::{Quad, Rect};
-use graphene_std::table::Table;
 
 #[derive(Default, ExtractField)]
 pub struct ArtboardTool {
@@ -113,7 +111,7 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	dragging_current_artboard_location: glam::IVec2,
+	dragging_current_artboard_location: glam::DVec2,
 	draw: Resize,
 }
 
@@ -142,7 +140,7 @@ impl ArtboardToolData {
 	fn start_resizing(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
-			self.dragging_current_artboard_location = bounds.bounds[0].round().as_ivec2();
+			self.dragging_current_artboard_location = bounds.bounds[0].round();
 		}
 	}
 
@@ -211,14 +209,14 @@ impl ArtboardToolData {
 
 		responses.add(GraphOperationMessage::ResizeArtboard {
 			layer: selected_artboard,
-			location: position.round().as_ivec2(),
-			dimensions: size.round().as_ivec2(),
+			location: position.round(),
+			dimensions: size.round(),
 		});
 
-		let translation = position.round().as_ivec2() - self.dragging_current_artboard_location;
-		self.dragging_current_artboard_location = position.round().as_ivec2();
+		let translation = position.round() - self.dragging_current_artboard_location;
+		self.dragging_current_artboard_location = position.round();
 		for child in selected_artboard.children(document.metadata()) {
-			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation.as_dvec2());
+			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation);
 			responses.add(GraphOperationMessage::TransformChange {
 				layer: child,
 				transform: DAffine2::from_translation(local_translation),
@@ -348,8 +346,8 @@ impl Fsm for ArtboardToolFsmState {
 					}
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						layer: tool_data.selected_artboard.unwrap(),
-						location: position.round().as_ivec2(),
-						dimensions: size.round().as_ivec2(),
+						location: position.round(),
+						dimensions: size.round(),
 					});
 
 					// The second term is added to prevent the slow change in position due to rounding errors.
@@ -379,8 +377,8 @@ impl Fsm for ArtboardToolFsmState {
 
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						layer: artboard,
-						location: start.min(end).round().as_ivec2(),
-						dimensions: (start.round() - end.round()).abs().as_ivec2(),
+						location: start.min(end).round(),
+						dimensions: (start.round() - end.round()).abs(),
 					});
 				} else {
 					let id = NodeId::new();
@@ -389,14 +387,10 @@ impl Fsm for ArtboardToolFsmState {
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
-						artboard: Artboard {
-							content: Table::new(),
-							label: String::from("Artboard"),
-							location: start.min(end).round().as_ivec2(),
-							dimensions: (start.round() - end.round()).abs().as_ivec2(),
-							background: graphene_std::Color::WHITE,
-							clip: true,
-						},
+						location: start.min(end).round(),
+						dimensions: (start.round() - end.round()).abs(),
+						background: graphene_std::Color::WHITE,
+						clip: true,
 					})
 				}
 
@@ -516,8 +510,8 @@ impl Fsm for ArtboardToolFsmState {
 
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						layer: selected_artboard,
-						location: DVec2::new(existing_top_left.x + delta.x, existing_top_left.y + delta.y).round().as_ivec2(),
-						dimensions: (existing_bottom_right - existing_top_left).round().as_ivec2(),
+						location: DVec2::new(existing_top_left.x + delta.x, existing_top_left.y + delta.y).round(),
+						dimensions: (existing_bottom_right - existing_top_left).round(),
 					});
 
 					return ArtboardToolFsmState::Ready { hovered };
@@ -563,8 +557,8 @@ impl Fsm for ArtboardToolFsmState {
 
 				responses.add(GraphOperationMessage::ResizeArtboard {
 					layer: selected_artboard,
-					location: position.round().as_ivec2(),
-					dimensions: new.transform_vector2(existing_bottom_right - existing_top_left).round().as_ivec2(),
+					location: position.round(),
+					dimensions: new.transform_vector2(existing_bottom_right - existing_top_left).round(),
 				});
 
 				ArtboardToolFsmState::Ready { hovered }
@@ -617,26 +611,27 @@ impl Fsm for ArtboardToolFsmState {
 #[cfg(test)]
 mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::Graphic;
 	use graphene_std::table::Table;
 
-	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<graphene_std::Artboard> {
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<Table<Graphic>> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 		instrumented
-			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Artboard>>(&editor.runtime)
+			.grab_all_input::<graphene_std::graphic::extend::NewInput<Table<graphene_std::Graphic>>>(&editor.runtime)
 			.flatten()
 			.collect()
 	}
 
 	#[derive(Debug, PartialEq)]
 	struct ArtboardLayoutDocument {
-		position: IVec2,
-		dimensions: IVec2,
+		position: DVec2,
+		dimensions: DVec2,
 	}
 	impl ArtboardLayoutDocument {
-		pub fn new(position: impl Into<IVec2>, dimensions: impl Into<IVec2>) -> Self {
+		pub fn new(position: impl Into<DVec2>, dimensions: impl Into<DVec2>) -> Self {
 			Self {
 				position: position.into(),
 				dimensions: dimensions.into(),
@@ -646,10 +641,13 @@ mod test_artboard {
 
 	/// Check if all of the artboards exist in any ordering
 	async fn has_artboards(editor: &mut EditorTestUtils, mut expected: Vec<ArtboardLayoutDocument>) {
-		let artboards = get_artboards(editor)
-			.await
-			.iter()
-			.map(|row| ArtboardLayoutDocument::new(row.element.location, row.element.dimensions))
+		let artboards = get_artboards(editor).await;
+		let artboards = (0..artboards.len())
+			.map(|index| {
+				let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
+				let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+				ArtboardLayoutDocument::new(location, dimensions)
+			})
 			.collect::<Vec<_>>();
 		assert_eq!(artboards.len(), expected.len(), "incorrect len: actual {:?}, expected {:?}", artboards, expected);
 
@@ -666,7 +664,7 @@ mod test_artboard {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty()).await;
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((10, 0), (10, 11))]).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((10., 0.), (10., 11.))]).await;
 	}
 
 	#[tokio::test]
@@ -676,7 +674,11 @@ mod test_artboard {
 		editor.set_viewport_size(DVec2::splat(-1000.), DVec2::splat(1000.)).await; // Necessary for doing snapping since snaps outside of the viewport are discarded
 		editor.drag_tool(ToolType::Artboard, 10., 10., 20., 20., ModifierKeys::empty()).await;
 		editor.drag_tool(ToolType::Artboard, 11., 50., 19., 60., ModifierKeys::empty()).await;
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((10, 10), (10, 10)), ArtboardLayoutDocument::new((10, 50), (10, 10))]).await;
+		has_artboards(
+			&mut editor,
+			vec![ArtboardLayoutDocument::new((10., 10.), (10., 10.)), ArtboardLayoutDocument::new((10., 50.), (10., 10.))],
+		)
+		.await;
 	}
 
 	#[tokio::test]
@@ -684,7 +686,7 @@ mod test_artboard {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((-10, 10), (20, 20))]).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((-10., 10.), (20., 20.))]).await;
 	}
 
 	#[tokio::test]
@@ -701,7 +703,7 @@ mod test_artboard {
 		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await;
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
 
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new(IVec2::new(0, 0), desired_size.round().as_ivec2())]).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new(DVec2::new(0., 0.), desired_size.round())]).await;
 	}
 
 	#[tokio::test]
@@ -717,8 +719,8 @@ mod test_artboard {
 			.await;
 		// Viewport coordinates
 		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await;
-		let desired_location = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2();
-		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.).as_ivec2();
+		let desired_location = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).round();
+		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.).round();
 		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new(desired_location, desired_size)]).await;
 	}
 
@@ -750,7 +752,7 @@ mod test_artboard {
 		editor.drag_tool(ToolType::Artboard, 10., 10., 20., 22., ModifierKeys::empty()).await; // Artboard to drag
 		editor.drag_tool(ToolType::Artboard, 15., 15., 65., 65., ModifierKeys::empty()).await; // Drag from the middle by (50,50)
 
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 60), (10, 12))]).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60., 60.), (10., 12.))]).await;
 	}
 	#[tokio::test]
 	async fn artboard_move_snapping() {
@@ -761,7 +763,11 @@ mod test_artboard {
 		editor.drag_tool(ToolType::Artboard, 70., 0., 80., 100., ModifierKeys::empty()).await; // Artboard to snap to
 		editor.drag_tool(ToolType::Artboard, 15., 15., 15. + 49., 15., ModifierKeys::empty()).await; // Drag the artboard so it should snap to the edge
 
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 10), (10, 12)), ArtboardLayoutDocument::new((70, 0), (10, 100))]).await;
+		has_artboards(
+			&mut editor,
+			vec![ArtboardLayoutDocument::new((60., 10.), (10., 12.)), ArtboardLayoutDocument::new((70., 0.), (10., 100.))],
+		)
+		.await;
 	}
 
 	#[tokio::test]
@@ -775,7 +781,7 @@ mod test_artboard {
 
 		// Put the artboard in
 		editor.drag_tool(ToolType::Artboard, 5., 5., 30., 10., ModifierKeys::empty()).await;
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((5, 5), (25, 5))]).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((5., 5.), (25., 5.))]).await;
 		let document = editor.active_document();
 
 		// artboard

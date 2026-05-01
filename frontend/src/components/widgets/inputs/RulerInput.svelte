@@ -5,11 +5,14 @@
 	const MAJOR_MARK_THICKNESS = 16;
 	const MINOR_MARK_THICKNESS = 6;
 	const MICRO_MARK_THICKNESS = 3;
+	const TAU = 2 * Math.PI;
 
 	type RulerDirection = "Horizontal" | "Vertical";
 
 	export let direction: RulerDirection = "Vertical";
-	export let origin: number;
+	export let originX: number;
+	export let originY: number;
+	export let tilt: number;
 	export let numberInterval: number;
 	export let majorMarkSpacing: number;
 	export let minorDivisions = 5;
@@ -19,62 +22,121 @@
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
 
-	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength);
-	$: svgTexts = computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength);
+	type Axis = { sign: number; vec: [number, number] };
 
-	function computeSvgPath(direction: RulerDirection, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number): string {
-		const isVertical = direction === "Vertical";
-		const lineDirection = isVertical ? "H" : "V";
+	$: axes = computeAxes(tilt);
+	$: isHorizontal = direction === "Horizontal";
+	$: trackedAxis = isHorizontal ? axes.horiz : axes.vert;
+	$: otherAxis = isHorizontal ? axes.vert : axes.horiz;
+	$: stretchFactor = 1 / Math.max(Math.abs(isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]), 1e-10);
+	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
+	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis);
+	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis);
+	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis, tilt);
 
-		const offsetStart = mod(origin, majorMarkSpacing);
-		const shiftedOffsetStart = offsetStart - majorMarkSpacing;
+	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
+		const normTilt = ((tilt % TAU) + TAU) % TAU;
+		const octant = Math.floor((normTilt + Math.PI / 4) / (Math.PI / 2)) % 4;
 
-		const divisions = majorMarkSpacing / minorDivisions / microDivisions;
-		const majorMarksFrequency = minorDivisions * microDivisions;
+		const [c, s] = [Math.cos(tilt), Math.sin(tilt)];
+		const posX: Axis = { sign: 1, vec: [c, s] };
+		const posY: Axis = { sign: 1, vec: [-s, c] };
+		const negX: Axis = { sign: -1, vec: [-c, -s] };
+		const negY: Axis = { sign: -1, vec: [s, -c] };
 
-		let dPathAttribute = "";
+		if (octant === 0) return { horiz: posX, vert: posY };
+		if (octant === 1) return { horiz: negY, vert: posX };
+		if (octant === 2) return { horiz: negX, vert: negY };
+		return { horiz: posY, vert: negX };
+	}
+
+	function computeEffectiveOrigin(direction: RulerDirection, ox: number, oy: number, otherAxis: Axis): number {
+		const [vx, vy] = otherAxis.vec;
+		if (direction === "Horizontal") {
+			return Math.abs(vy) < 1e-10 ? ox : ox - oy * (vx / vy);
+		} else {
+			return Math.abs(vx) < 1e-10 ? oy : oy - ox * (vy / vx);
+		}
+	}
+
+	function computeSvgPath(
+		direction: RulerDirection,
+		effectiveOrigin: number,
+		stretchedSpacing: number,
+		stretchFactor: number,
+		minorDivisions: number,
+		microDivisions: number,
+		rulerLength: number,
+		otherAxis: Axis,
+	): string {
+		const adaptive = stretchFactor > 1.3 ? { minor: minorDivisions, micro: 1 } : { minor: minorDivisions, micro: microDivisions };
+		const divisions = stretchedSpacing / adaptive.minor / adaptive.micro;
+		const majorMarksFrequency = adaptive.minor * adaptive.micro;
+		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
+
+		const [vx, vy] = otherAxis.vec;
+		const flip = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
+		const [dx, dy] = [vx * flip, vy * flip];
+		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
+
+		let path = "";
 		let i = 0;
-		for (let location = shiftedOffsetStart; location < rulerLength; location += divisions) {
+		for (let location = shiftedOffsetStart; location < rulerLength + RULER_THICKNESS; location += divisions) {
 			let length;
 			if (i % majorMarksFrequency === 0) length = MAJOR_MARK_THICKNESS;
-			else if (i % microDivisions === 0) length = MINOR_MARK_THICKNESS;
+			else if (i % adaptive.micro === 0) length = MINOR_MARK_THICKNESS;
 			else length = MICRO_MARK_THICKNESS;
 			i += 1;
 
 			const destination = Math.round(location) + 0.5;
-			const startPoint = isVertical ? `${RULER_THICKNESS - length},${destination}` : `${destination},${RULER_THICKNESS - length}`;
-			dPathAttribute += `M${startPoint}${lineDirection}${RULER_THICKNESS} `;
+			const [sx, sy] = direction === "Horizontal" ? [destination, syBase] : [sxBase, destination];
+			path += `M${sx},${sy}l${dx * length},${dy * length} `;
 		}
 
-		return dPathAttribute;
+		return path;
 	}
 
-	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: string }[] {
+	function computeSvgTexts(
+		direction: RulerDirection,
+		effectiveOrigin: number,
+		stretchedSpacing: number,
+		numberInterval: number,
+		rulerLength: number,
+		trackedAxis: Axis,
+		otherAxis: Axis,
+		tilt: number,
+	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
-		const offsetStart = mod(origin, majorMarkSpacing);
-		const shiftedOffsetStart = offsetStart - majorMarkSpacing;
+		const [vx, vy] = otherAxis.vec;
+		const flip = isVertical ? (vx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
+		const tiltScale = tilt >= 0 ? 1 : 0.5;
+		const tipOffsetX = vx * flip * MAJOR_MARK_THICKNESS * tiltScale;
+		const tipOffsetY = vy * flip * MAJOR_MARK_THICKNESS * tiltScale;
 
-		const svgTextCoordinates = [];
+		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
+		const increments = Math.round((shiftedOffsetStart - effectiveOrigin) / stretchedSpacing);
+		let labelNumber = increments * numberInterval * trackedAxis.sign;
 
-		let labelNumber = (Math.ceil(-origin / majorMarkSpacing) - 1) * numberInterval;
+		const results: { transform: string; text: string }[] = [];
 
-		for (let location = shiftedOffsetStart; location < rulerLength; location += majorMarkSpacing) {
+		for (let location = shiftedOffsetStart; location < rulerLength; location += stretchedSpacing) {
 			const destination = Math.round(location);
-			const x = isVertical ? 9 : destination + 2;
-			const y = isVertical ? destination + 1 : 9;
+			const x = isVertical ? 9 : destination + 2 + tipOffsetX;
+			const y = isVertical ? destination + 1 + tipOffsetY : 9;
 
 			let transform = `translate(${x} ${y})`;
 			if (isVertical) transform += " rotate(270)";
 
-			const text = numberInterval >= 1 ? `${labelNumber}` : labelNumber.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
+			const num = Math.abs(labelNumber) < 1e-9 ? 0 : labelNumber;
+			const text = numberInterval >= 1 ? `${num}` : num.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
 
-			svgTextCoordinates.push({ transform, text });
+			results.push({ transform, text });
 
-			labelNumber += numberInterval;
+			labelNumber += numberInterval * trackedAxis.sign;
 		}
 
-		return svgTextCoordinates;
+		return results;
 	}
 
 	export function resize() {
@@ -83,7 +145,7 @@
 		const isVertical = direction === "Vertical";
 
 		const newLength = isVertical ? rulerInput.clientHeight : rulerInput.clientWidth;
-		const roundedUp = (Math.floor(newLength / majorMarkSpacing) + 1) * majorMarkSpacing;
+		const roundedUp = (Math.floor(newLength / stretchedSpacing) + 2) * stretchedSpacing;
 
 		if (roundedUp !== rulerLength) {
 			rulerLength = roundedUp;

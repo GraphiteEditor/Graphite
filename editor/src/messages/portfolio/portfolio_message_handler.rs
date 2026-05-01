@@ -453,6 +453,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(layout) = state.workspace_layout {
 					self.workspace_panel_layout = layout;
 					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+
+					// Refill panels whose content was lost when the layout load remounted their frontend components
+					for group_id in self.workspace_panel_layout.root.all_group_ids() {
+						if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+							self.refresh_panel_content(panel_type, responses);
+						}
+					}
 				}
 
 				let PersistedState {
@@ -498,7 +505,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
-				new_document.name = name;
+				new_document.name = self.resolve_document_name(name, None);
 
 				responses.add(DocumentMessage::PTZUpdate);
 
@@ -799,28 +806,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				});
 
-				match (document_name, document_path, document_name_from_path) {
-					(Some(name), _, None) => {
-						document.name = name;
-					}
+				let candidate_name = match (document_name, document_path, document_name_from_path) {
+					(Some(name), _, None) => name,
 					(_, Some(path), Some(name)) => {
-						document.name = name;
 						document.path = Some(path);
+						name
 					}
-					(_, _, Some(name)) => {
-						document.name = name;
-					}
-					_ => {
-						document.name = DEFAULT_DOCUMENT_NAME.to_string();
-					}
-				}
+					(_, _, Some(name)) => name,
+					_ => String::new(),
+				};
+				document.name = self.resolve_document_name(candidate_name, None);
 
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, responses);
 			}
 			PortfolioMessage::OpenImage { name, image } => {
+				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
 				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
+					name: name.clone().unwrap_or_default(),
 				});
 
 				responses.add(DocumentMessage::PasteImage {
@@ -847,7 +850,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::OpenSvg { name, svg } => {
 				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
+					name: name.clone().unwrap_or_default(),
 				});
 
 				// Parse the SVG to extract its declared canvas origin and dimensions from the viewBox attribute.
@@ -1129,8 +1132,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 								responses.add(GraphOperationMessage::ResizeArtboard {
 									layer: item_id,
-									location: new_artboard_origin_doc.round().as_ivec2(),
-									dimensions: dimensions_doc.round().as_ivec2(),
+									location: new_artboard_origin_doc.round(),
+									dimensions: dimensions_doc.round(),
 								});
 							}
 						} else {
@@ -1334,13 +1337,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Self::destroy_panel_layouts(target_active, responses);
 				}
 
+				// Preserve the source panel's visual weight at its new location
+				let source_slot_size = self.workspace_panel_layout.find_source_slot_size(&tabs);
+
 				// Remove the dragged tabs from their current panel groups (without pruning, so the target group survives)
 				for &panel_type in &tabs {
 					self.remove_panel_from_layout(panel_type);
 				}
 
 				// Create the new panel group adjacent to the target, then prune empty groups
-				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index) else {
+				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index, source_slot_size) else {
 					log::error!("Failed to insert split adjacent to panel group {target_group:?}");
 					return;
 				};
@@ -1358,6 +1364,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
 					self.refresh_panel_content(target_active, responses);
 				}
+			}
+			PortfolioMessage::RenameDocument { new_name } => {
+				let resolved_name = self.resolve_document_name(new_name, self.active_document_id);
+				responses.add(DocumentMessage::RenameDocument { new_name: resolved_name });
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
@@ -1611,20 +1621,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			PortfolioMessage::ResetPanelGroupSizes { split_path } => {
-				// Walk the tree to the target split node using the path
-				let mut node = &mut self.workspace_panel_layout.root;
-				for &index in &split_path {
-					let PanelLayoutSubdivision::Split { children } = node else { return };
-					let Some(child) = children.get_mut(index) else { return };
-					node = &mut child.subdivision;
-				}
-
-				// Recalculate default sizes for this split node
-				node.recalculate_default_sizes();
-
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-			}
 			PortfolioMessage::SetPanelGroupSizes { split_path, sizes } => {
 				// Walk the tree to the target split node using the path
 				let mut node = &mut self.workspace_panel_layout.root;
@@ -1744,10 +1740,22 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	pub fn generate_new_document_name(&self) -> String {
+	/// Resolves a proposed document name: if it's empty or only whitespace, falls back to the next
+	/// available "Untitled Document {N}" via [`Self::generate_new_document_name`]. Otherwise trims surrounding
+	/// whitespace and returns it. `exclude` is forwarded so a renaming document can skip its own current
+	/// name when computing the fallback (preventing self-collision).
+	pub fn resolve_document_name(&self, name: String, exclude: Option<DocumentId>) -> String {
+		let trimmed = name.trim();
+		if trimmed.is_empty() { self.generate_new_document_name(exclude) } else { trimmed.to_string() }
+	}
+
+	/// `exclude` lets a renaming caller skip its own current name so a document can rename back to its
+	/// existing slot rather than colliding with itself and getting bumped to the next number.
+	pub fn generate_new_document_name(&self, exclude: Option<DocumentId>) -> String {
 		let mut doc_title_numbers = self
 			.document_ids
 			.iter()
+			.filter(|id| exclude != Some(**id))
 			.filter_map(|id| self.document_details(*id))
 			.filter_map(|doc| {
 				doc.name
@@ -1868,22 +1876,31 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	/// Get the ID of the selected node that should be used as the current source for the Data panel.
-	pub fn node_to_inspect(&self) -> Option<NodeId> {
+	/// Returns the full path from the root network to the selected node that should drive the Data panel.
+	/// The last element is the node itself; preceding elements identify the nested subnetwork it lives in
+	/// so the Data panel can introspect nodes inside subgraphs. An empty `Vec` signals "nothing to inspect".
+	pub fn node_to_inspect(&self) -> Vec<NodeId> {
 		// Skip if the Data panel is not open
 		if !self.workspace_panel_layout.is_panel_visible(PanelType::Data) || self.workspace_panel_layout.focus_document {
-			return None;
+			return Vec::new();
 		}
 
-		let document = self.document(self.active_document_id?)?;
-		let selected_nodes = document.network_interface.selected_nodes().0;
+		let Some(document) = self.active_document_id.and_then(|id| self.document(id)) else {
+			return Vec::new();
+		};
+		let network_path = document.selection_network_path();
+		let Some(selected_nodes) = document.network_interface.selected_nodes_in_nested_network(network_path) else {
+			return Vec::new();
+		};
 
 		// Skip if there is not exactly one selected node
-		if selected_nodes.len() != 1 {
-			return None;
-		}
+		let [node_id] = selected_nodes.0.as_slice() else {
+			return Vec::new();
+		};
 
-		selected_nodes.first().copied()
+		let mut path = network_path.to_vec();
+		path.push(*node_id);
+		path
 	}
 
 	/// Remove a dockable panel type from whichever panel group currently contains it. Does not prune empty groups.
@@ -1956,7 +1973,12 @@ impl PortfolioMessageHandler {
 			PanelType::Data => {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
 			}
-			PanelType::Document | PanelType::Welcome => {}
+			PanelType::Document | PanelType::Welcome => {
+				// Re-send the welcome screen buttons layout to repopulate after a remount
+				if self.document_ids.is_empty() {
+					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
+				}
+			}
 		}
 	}
 }

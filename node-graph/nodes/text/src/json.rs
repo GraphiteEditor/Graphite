@@ -1,4 +1,5 @@
-use core_types::Ctx;
+use core_types::table::{Table, TableRow};
+use core_types::{ATTR_TYPE, Ctx};
 use serde_json::Value;
 
 use crate::unescape_string;
@@ -209,10 +210,12 @@ fn query_json(
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
 
-	results.into_iter().next().unwrap_or_default()
+	results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default()
 }
 
 /// Extracts every matched value from a JSON string using a path expression (see that parameter's description for its syntax). A list of zero or more resultant strings is produced. The `[]` path accessor is used to read more than one value.
+///
+/// Each item carries a `type` attribute holding the matched value's JSON type (`"string"`, `"number"`, `"bool"`, `"null"`, `"object"`, or `"array"`).
 ///
 /// This is useful in conjunction with the nodes:
 /// • **Index Elements**: access the `N`th query result.
@@ -237,15 +240,18 @@ fn query_json_all(
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
 	unquote_strings: bool,
-) -> Vec<String> {
+) -> Table<String> {
 	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Vec::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return Vec::new() };
+	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Table::new() };
+	let Some(segments) = parse_json_path(path.trim()) else { return Table::new() };
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
 
 	results
+		.into_iter()
+		.map(|(text, ty)| TableRow::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string()))
+		.collect()
 }
 
 /// A parsed segment of a JSON access path.
@@ -401,6 +407,18 @@ fn json_value_to_string(value: &serde_json::Value, quote_strings: bool) -> Strin
 	}
 }
 
+/// Returns a short JSON-type name (`"string"`, `"number"`, `"bool"`, `"null"`, `"object"`, `"array"`) for a parsed value.
+fn json_value_type_name(value: &serde_json::Value) -> &'static str {
+	match value {
+		serde_json::Value::String(_) => "string",
+		serde_json::Value::Number(_) => "number",
+		serde_json::Value::Bool(_) => "bool",
+		serde_json::Value::Null => "null",
+		serde_json::Value::Object(_) => "object",
+		serde_json::Value::Array(_) => "array",
+	}
+}
+
 /// Navigates a JSON value by one path segment, returning the resulting value (or `None` if the path is invalid).
 fn json_navigate<'a>(value: &'a serde_json::Value, segment: &JsonPathSegment) -> Option<&'a serde_json::Value> {
 	match segment {
@@ -415,7 +433,7 @@ fn json_navigate<'a>(value: &'a serde_json::Value, segment: &JsonPathSegment) ->
 }
 
 /// Recursively resolves a path against a JSON value, fanning out at each `[]` and collecting leaf results.
-fn resolve_all(value: &serde_json::Value, segments: &[JsonPathSegment], quote_strings: bool, results: &mut Vec<String>) {
+fn resolve_all(value: &serde_json::Value, segments: &[JsonPathSegment], quote_strings: bool, results: &mut Vec<(String, &'static str)>) {
 	// Find the next IterateAll in the remaining segments
 	let Some(iterate_position) = segments.iter().position(|s| matches!(s, JsonPathSegment::IterateAll)) else {
 		// No more [] segments, navigate the rest linearly
@@ -424,7 +442,7 @@ fn resolve_all(value: &serde_json::Value, segments: &[JsonPathSegment], quote_st
 			let Some(next) = json_navigate(current, segment) else { return };
 			current = next;
 		}
-		results.push(json_value_to_string(current, quote_strings));
+		results.push((json_value_to_string(current, quote_strings), json_value_type_name(current)));
 		return;
 	};
 

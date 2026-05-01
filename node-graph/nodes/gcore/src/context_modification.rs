@@ -6,7 +6,7 @@ use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Filters out what should be unused components of the context based on the specified requirements.
@@ -26,17 +26,16 @@ async fn context_modification<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
-		Context -> Vec<f64>,
-		Context -> Vec<f32>,
-		Context -> Vec<String>,
+		Context -> Table<String>,
+		Context -> Table<NodeId>,
+		Context -> Table<f64>,
+		Context -> Table<u8>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<GradientStops>,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
@@ -51,17 +50,17 @@ async fn context_modification<T>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::graphene_hash::CacheHash;
 	use core_types::transform::Footprint;
 	use std::collections::hash_map::DefaultHasher;
-	use std::hash::{Hash, Hasher};
+	use std::hash::Hasher;
 
-	/// Test that the hash of a nullified context remains stable even when nullified inputs change
+	/// Verifies that nullified context fields don't affect the cache hash — only the kept features matter.
 	#[test]
 	fn test_nullified_context_hash_stability() {
 		use core_types::Context;
 		use std::sync::Arc;
 
-		// Create original contexts using the Context type (Option<Arc<OwnedContextImpl>>)
 		let original_ctx: Context = Some(Arc::new(
 			OwnedContextImpl::empty()
 				.with_footprint(Footprint::default())
@@ -71,53 +70,48 @@ mod tests {
 				.with_animation_time(20.25),
 		));
 
-		// Test nullifying different features - hash should remain stable for each nullification
-		let features_to_keep = ContextFeatures::empty(); // Nullify everything
-
-		// Create nullified context - this should only keep features specified in features_to_keep
-		let nullified_ctx = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), features_to_keep);
-
-		// Calculate hash of nullified context
-		let mut hasher1 = DefaultHasher::new();
-		nullified_ctx.hash(&mut hasher1);
-		let hash1 = hasher1.finish();
-
-		// Create a different original context with changed values
+		// A second context with different values for the nullified fields
 		let changed_ctx: Context = Some(Arc::new(
 			OwnedContextImpl::empty()
-				.with_footprint(Footprint::default()) // Same footprint
+				.with_footprint(Footprint::default())
 				.with_index(2)
-				.with_real_time(999.9) // Different real time
+				.with_real_time(999.9)
 				.with_vararg(Box::new("test"))
-				.with_animation_time(888.8), // Different animation time
+				.with_animation_time(888.8),
 		));
 
-		// Create nullified context from the changed original - should have same hash since everything is nullified
-		let nullified_changed_ctx = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), features_to_keep);
+		// Nullify everything — both should hash the same regardless of their field values
+		let features_to_keep = ContextFeatures::empty();
+		let nullified1 = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), features_to_keep);
+		let nullified2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), features_to_keep);
+
+		let mut hasher1 = DefaultHasher::new();
+		nullified1.cache_hash(&mut hasher1);
 
 		let mut hasher2 = DefaultHasher::new();
-		nullified_changed_ctx.hash(&mut hasher2);
-		let hash2 = hasher2.finish();
+		nullified2.cache_hash(&mut hasher2);
 
-		// Hash should be the same because all features were nullified
-		assert_eq!(hash1, hash2, "Hash of nullified context should remain stable regardless of input changes when features are nullified");
+		assert_eq!(
+			hasher1.finish(),
+			hasher2.finish(),
+			"Hash of nullified context should remain stable regardless of input changes when features are nullified"
+		);
 
-		// Test partial nullification - keep only footprint
+		// Keep only footprint and varargs — both have the same footprint and vararg, so hash should still match
 		let partial_features = ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS;
-
-		let partial_nullified1 = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), partial_features);
-		let partial_nullified2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), partial_features);
+		let partial1 = OwnedContextImpl::from_flags(original_ctx.clone().unwrap(), partial_features);
+		let partial2 = OwnedContextImpl::from_flags(changed_ctx.clone().unwrap(), partial_features);
 
 		let mut hasher3 = DefaultHasher::new();
-		partial_nullified1.hash(&mut hasher3);
-		let hash3 = hasher3.finish();
+		partial1.cache_hash(&mut hasher3);
 
 		let mut hasher4 = DefaultHasher::new();
-		partial_nullified2.hash(&mut hasher4);
-		let hash4 = hasher4.finish();
+		partial2.cache_hash(&mut hasher4);
 
-		// These should be the same because both have the same footprint (Footprint::default()) and varargs
-		// and other features are nullified
-		assert_eq!(hash3, hash4, "Hash should be stable when keeping only footprint and footprint values are the same");
+		assert_eq!(
+			hasher3.finish(),
+			hasher4.finish(),
+			"Hash should be stable when keeping only footprint and varargs and their values are the same"
+		);
 	}
 }

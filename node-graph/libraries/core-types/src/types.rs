@@ -77,7 +77,8 @@ macro_rules! fn_type_fut {
 }
 
 // TODO: Rename to NodeSignatureMonomorphization
-#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -126,7 +127,8 @@ impl std::fmt::Debug for NodeIOTypes {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProtoNodeIdentifier {
 	name: Cow<'static, str>,
 }
@@ -151,52 +153,30 @@ impl Display for ProtoNodeIdentifier {
 	}
 }
 
-fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
-	use serde::Deserialize;
-
-	let name = String::deserialize(deserializer)?;
-	let name = match name.as_str() {
-		"f32" => "f64".to_string(),
-		"grahpene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<grahpene_core::context::OwnedContextImpl>>".to_string(),
-		"grahpene_core::graphic_element::GraphicGroup" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
-		"grahpene_core::raster::image::ImageFrame<Color>"
-		| "grahpene_core::raster::image::ImageFrame<grahpene_core::raster::color::Color>"
-		| "grahpene_core::instances::Instances<grahpene_core::raster::image::ImageFrame<Color>>"
-		| "grahpene_core::instances::Instances<grahpene_core::raster::image::ImageFrame<grahpene_core::raster::color::Color>>"
-		| "grahpene_core::instances::Instances<grahpene_core::raster::image::Image<grahpene_core::raster::color::Color>>" => {
-			"grahpene_core::table::Table<grahpene_core::raster::image::Image<grahpene_core::raster::color::Color>>".to_string()
-		}
-		"grahpene_core::vector::vector_data::VectorData"
-		| "grahpene_core::instances::Instances<grahpene_core::vector::vector_data::VectorData>"
-		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::VectorData>"
-		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::Vector>" => "grahpene_core::table::Table<grahpene_core::vector::vector_types::Vector>".to_string(),
-		"grahpene_core::instances::Instances<grahpene_core::graphic_element::Artboard>" => "grahpene_core::table::Table<grahpene_core::artboard::Artboard>".to_string(),
-		"grahpene_core::vector::vector_data::modification::VectorModification" => "grahpene_core::vector::vector_modification::VectorModification".to_string(),
-		"grahpene_core::table::Table<grahpene_core::graphic_element::Graphic>" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
-		_ => name,
-	};
-
-	Ok(Cow::Owned(name))
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeDescriptor {
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub id: Option<TypeId>,
-	#[serde(deserialize_with = "migrate_type_descriptor_names")]
 	pub name: Cow<'static, str>,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub alias: Option<Cow<'static, str>>,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub size: usize,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub align: usize,
 }
 
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);
+	}
+}
+
+impl graphene_hash::CacheHash for TypeDescriptor {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		graphene_hash::CacheHash::cache_hash(&self.name, state);
 	}
 }
 
@@ -222,7 +202,8 @@ impl PartialEq for TypeDescriptor {
 
 /// Graph runtime type information used for type inference.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),
@@ -356,10 +337,7 @@ pub fn simplify_identifier_name(ty: &str) -> String {
 }
 
 pub fn make_type_user_readable(ty: &str) -> String {
-	ty.replace("Option<Arc<OwnedContextImpl>>", "Context")
-		.replace("Vector<Option<Table<Graphic>>>", "Vector")
-		.replace("Raster<CPU>", "Raster")
-		.replace("Raster<GPU>", "Raster")
+	ty.replace("Option<Arc<OwnedContextImpl>>", "Context").replace("Raster<CPU>", "Raster").replace("Raster<GPU>", "Raster")
 }
 
 impl std::fmt::Debug for Type {

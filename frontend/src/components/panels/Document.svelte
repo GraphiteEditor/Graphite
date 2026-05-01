@@ -44,6 +44,7 @@
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
 	let rulersVisible = true;
+	let rulerTilt = 0;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -191,7 +192,7 @@
 			const isViewport = placeholder.hasAttribute("data-is-viewport");
 			if (isViewport && canvas.isConnected && canvas.parentElement?.closest("[data-viewport]")) return;
 
-			// Clone canvas for repeated instances (layers that appear multiple times)
+			// Clone canvas for repeated occurrences (layers that appear multiple times)
 			if (!isViewport && canvas.parentElement) {
 				const newCanvas = window.document.createElement("canvas");
 				const context = newCanvas.getContext("2d");
@@ -287,11 +288,12 @@
 		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean) {
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number) {
 		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
+		rulerTilt = tilt;
 	}
 
 	// Update mouse cursor icon
@@ -487,8 +489,8 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible } = data;
-			updateDocumentRulers(origin, spacing, interval, visible);
+			const { origin, spacing, interval, visible, tilt } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt);
 		});
 
 		// Update mouse cursor icon
@@ -595,13 +597,29 @@
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
-					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+					<RulerInput
+						originX={rulerOrigin.x}
+						originY={rulerOrigin.y}
+						tilt={rulerTilt}
+						majorMarkSpacing={rulerSpacing}
+						numberInterval={rulerInterval}
+						direction="Horizontal"
+						bind:this={rulerHorizontal}
+					/>
 				</LayoutRow>
 			{/if}
 			<LayoutRow class="viewport-container-inner-1">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
-						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+						<RulerInput
+							originX={rulerOrigin.x}
+							originY={rulerOrigin.y}
+							tilt={rulerTilt}
+							majorMarkSpacing={rulerSpacing}
+							numberInterval={rulerInterval}
+							direction="Vertical"
+							bind:this={rulerVertical}
+						/>
 					</LayoutCol>
 				{/if}
 				<LayoutCol class="viewport-container-inner-2" styles={{ cursor: canvasCursor }} data-viewport-container>
