@@ -30,12 +30,13 @@
 	$: isHorizontal = direction === "Horizontal";
 	$: trackedAxis = isHorizontal ? axes.horiz : axes.vert;
 	$: otherAxis = isHorizontal ? axes.vert : axes.horiz;
+	$: otherVec = flipVec(otherAxis.vec, flip);
 	$: stretchFactor = 1 / Math.max(Math.abs(isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]), 1e-10);
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
-	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis, flip);
-	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis, flip);
-	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis, tilt);
-	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, otherAxis, flip);
+	$: effectiveOrigin = projectOntoRuler(direction, originX, originY, otherVec);
+	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherVec);
+	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis.vec, tilt);
+	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, otherVec);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const normTilt = ((tilt % TAU) + TAU) % TAU;
@@ -53,14 +54,24 @@
 		return { horiz: posY, vert: negX };
 	}
 
-	function computeEffectiveOrigin(direction: RulerDirection, ox: number, oy: number, otherAxis: Axis, flip: boolean): number {
-		const [rawVx, vy] = otherAxis.vec;
-		const vx = flip ? -rawVx : rawVx;
-		if (direction === "Horizontal") {
-			return Math.abs(vy) < 1e-10 ? ox : ox - oy * (vx / vy);
-		} else {
-			return Math.abs(vx) < 1e-10 ? oy : oy - ox * (vy / vx);
-		}
+	function flipVec(vec: [number, number], flipped: boolean): [number, number] {
+		return flipped ? [-vec[0], vec[1]] : vec;
+	}
+
+	function projectOntoRuler(direction: RulerDirection, x: number, y: number, vec: [number, number]): number {
+		const [vx, vy] = vec;
+		if (direction === "Horizontal") return Math.abs(vy) < 1e-10 ? x : x - y * (vx / vy);
+		return Math.abs(vx) < 1e-10 ? y : y - x * (vy / vx);
+	}
+
+	function tickMarkGeometry(direction: RulerDirection, vx: number, vy: number): { dx: number; dy: number; sxBase: number; syBase: number } {
+		const reversal = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
+		return {
+			dx: vx * reversal,
+			dy: vy * reversal,
+			sxBase: direction === "Horizontal" ? 0 : RULER_THICKNESS,
+			syBase: direction === "Horizontal" ? RULER_THICKNESS : 0,
+		};
 	}
 
 	function computeSvgPath(
@@ -71,19 +82,14 @@
 		minorDivisions: number,
 		microDivisions: number,
 		rulerLength: number,
-		otherAxis: Axis,
-		flip: boolean,
+		otherVec: [number, number],
 	): string {
 		const adaptive = stretchFactor > 1.3 ? { minor: minorDivisions, micro: 1 } : { minor: minorDivisions, micro: microDivisions };
 		const divisions = stretchedSpacing / adaptive.minor / adaptive.micro;
 		const majorMarksFrequency = adaptive.minor * adaptive.micro;
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 
-		const [rawVx, vy] = otherAxis.vec;
-		const vx = flip ? -rawVx : rawVx;
-		const reversal = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
-		const [dx, dy] = [vx * reversal, vy * reversal];
-		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
+		const { dx, dy, sxBase, syBase } = tickMarkGeometry(direction, otherVec[0], otherVec[1]);
 
 		let path = "";
 		let i = 0;
@@ -109,18 +115,16 @@
 		numberInterval: number,
 		rulerLength: number,
 		trackedAxis: Axis,
-		otherAxis: Axis,
+		unflippedOtherVec: [number, number],
 		tilt: number,
 	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
-		const [rawVx, vy] = otherAxis.vec;
-
 		// Tip offset uses the un-flipped axis so text stays on the correct side of tick marks
-		const tipReversal = isVertical ? (rawVx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
+		const { dx: tipDx, dy: tipDy } = tickMarkGeometry(direction, unflippedOtherVec[0], unflippedOtherVec[1]);
 		const tiltScale = tilt >= 0 ? 1 : 0.5;
-		const tipOffsetX = rawVx * tipReversal * MAJOR_MARK_THICKNESS * tiltScale;
-		const tipOffsetY = vy * tipReversal * MAJOR_MARK_THICKNESS * tiltScale;
+		const tipOffsetX = tipDx * MAJOR_MARK_THICKNESS * tiltScale;
+		const tipOffsetY = tipDy * MAJOR_MARK_THICKNESS * tiltScale;
 
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 		const increments = Math.round((shiftedOffsetStart - effectiveOrigin) / stretchedSpacing);
@@ -147,22 +151,11 @@
 		return results;
 	}
 
-	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, otherAxis: Axis, flip: boolean): string {
+	function computeCursorIndicator(direction: RulerDirection, cursor: { x: number; y: number } | undefined, otherVec: [number, number]): string {
 		if (cursor === undefined) return "";
 
-		// Project cursor position along the other axis onto the ruler strip
-		const [rawVx, vy] = otherAxis.vec;
-		const vx = flip ? -rawVx : rawVx;
-		let projected: number;
-		if (direction === "Horizontal") {
-			projected = Math.abs(vy) < 1e-10 ? cursor.x : cursor.x - cursor.y * (vx / vy);
-		} else {
-			projected = Math.abs(vx) < 1e-10 ? cursor.y : cursor.y - cursor.x * (vy / vx);
-		}
-
-		const reversal = direction === "Horizontal" ? (vy > 0 ? -1 : 1) : vx > 0 ? -1 : 1;
-		const [dx, dy] = [vx * reversal, vy * reversal];
-		const [sxBase, syBase] = direction === "Horizontal" ? [0, RULER_THICKNESS] : [RULER_THICKNESS, 0];
+		const projected = projectOntoRuler(direction, cursor.x, cursor.y, otherVec);
+		const { dx, dy, sxBase, syBase } = tickMarkGeometry(direction, otherVec[0], otherVec[1]);
 
 		// Scale the line so it spans the full ruler bar thickness
 		const thicknessComponent = Math.abs(direction === "Horizontal" ? dy : dx);
