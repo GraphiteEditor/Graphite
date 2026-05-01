@@ -600,10 +600,10 @@
 					<RulerInput
 						originX={rulerOrigin.x}
 						originY={rulerOrigin.y}
+						tilt={rulerTilt}
 						majorMarkSpacing={rulerSpacing}
 						numberInterval={rulerInterval}
 						direction="Horizontal"
-						tilt={rulerTilt}
 						bind:this={rulerHorizontal}
 					/>
 				</LayoutRow>
@@ -614,10 +614,10 @@
 						<RulerInput
 							originX={rulerOrigin.x}
 							originY={rulerOrigin.y}
+							tilt={rulerTilt}
 							majorMarkSpacing={rulerSpacing}
 							numberInterval={rulerInterval}
 							direction="Vertical"
-							tilt={rulerTilt}
 							bind:this={rulerVertical}
 						/>
 					</LayoutCol>

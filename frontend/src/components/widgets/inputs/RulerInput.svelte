@@ -12,11 +12,11 @@
 	export let direction: RulerDirection = "Vertical";
 	export let originX: number;
 	export let originY: number;
+	export let tilt: number;
 	export let numberInterval: number;
 	export let majorMarkSpacing: number;
 	export let minorDivisions = 5;
 	export let microDivisions = 2;
-	export let tilt: number = 0;
 
 	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
@@ -28,11 +28,11 @@
 	$: isHorizontal = direction === "Horizontal";
 	$: trackedAxis = isHorizontal ? axes.horiz : axes.vert;
 	$: otherAxis = isHorizontal ? axes.vert : axes.horiz;
-	$: stretchFactor = 1 / (isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]);
+	$: stretchFactor = 1 / Math.max(Math.abs(isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]), 1e-10);
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
 	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis);
 	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, otherAxis);
-	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis);
+	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis, tilt);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const normTilt = ((tilt % TAU) + TAU) % TAU;
@@ -52,7 +52,11 @@
 
 	function computeEffectiveOrigin(direction: RulerDirection, ox: number, oy: number, otherAxis: Axis): number {
 		const [vx, vy] = otherAxis.vec;
-		return direction === "Horizontal" ? ox - oy * (vx / vy) : oy - ox * (vy / vx);
+		if (direction === "Horizontal") {
+			return Math.abs(vy) < 1e-10 ? ox : ox - oy * (vx / vy);
+		} else {
+			return Math.abs(vx) < 1e-10 ? oy : oy - ox * (vy / vx);
+		}
 	}
 
 	function computeSvgPath(
@@ -100,13 +104,15 @@
 		rulerLength: number,
 		trackedAxis: Axis,
 		otherAxis: Axis,
+		tilt: number,
 	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
 		const [vx, vy] = otherAxis.vec;
 		const flip = isVertical ? (vx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
-		const tipOffsetX = vx * flip * MAJOR_MARK_THICKNESS;
-		const tipOffsetY = vy * flip * MAJOR_MARK_THICKNESS;
+		const tiltScale = tilt >= 0 ? 1 : 0.5;
+		const tipOffsetX = vx * flip * MAJOR_MARK_THICKNESS * tiltScale;
+		const tipOffsetY = vy * flip * MAJOR_MARK_THICKNESS * tiltScale;
 
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 		const increments = Math.round((shiftedOffsetStart - effectiveOrigin) / stretchedSpacing);
@@ -126,6 +132,7 @@
 			const text = numberInterval >= 1 ? `${num}` : num.toFixed(Math.abs(Math.log10(numberInterval))).replace(/\.0+$/, "");
 
 			results.push({ transform, text });
+
 			labelNumber += numberInterval * trackedAxis.sign;
 		}
 
@@ -136,6 +143,7 @@
 		if (!rulerInput) return;
 
 		const isVertical = direction === "Vertical";
+
 		const newLength = isVertical ? rulerInput.clientHeight : rulerInput.clientWidth;
 		const roundedUp = (Math.floor(newLength / stretchedSpacing) + 2) * stretchedSpacing;
 
