@@ -454,9 +454,11 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn blending_fill_set(&mut self, fill: f64) {
-		// Check whether the Opacity node already exists, before letting the next call create one if missing
-		let existed = self.existing_proto_node_id(graphene_std::blending_nodes::opacity::IDENTIFIER, false).is_some();
-		let Some(opacity_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::opacity::IDENTIFIER, true) else {
+		// Reuse the Opacity node if already present (saving a chain walk on slider drags), otherwise let the next call create it
+		let identifier = graphene_std::blending_nodes::opacity::IDENTIFIER;
+		let existing = self.existing_proto_node_id(identifier.clone(), false);
+		let existed = existing.is_some();
+		let Some(opacity_node_id) = existing.or_else(|| self.existing_proto_node_id(identifier, true)) else {
 			return;
 		};
 		// Disable the opacity component on a freshly-created node so the slider only affects fill, mirroring the opacity-slider case
