@@ -453,7 +453,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(InputConnector::node(opacity_node_id, 2), NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
-	pub fn blending_fill_set(&mut self, fill: f64) {
+	pub fn opacity_fill_set(&mut self, fill: f64) {
 		// Reuse the Opacity node if already present (saving a chain walk on slider drags), otherwise let the next call create it
 		let identifier = graphene_std::blending_nodes::opacity::IDENTIFIER;
 		let existing = self.existing_proto_node_id(identifier.clone(), false);
