@@ -159,7 +159,7 @@ async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVar
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	if render_params.for_export {
+	if !render_params.to_canvas() {
 		return data;
 	}
 
