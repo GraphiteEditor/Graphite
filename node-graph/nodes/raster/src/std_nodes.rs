@@ -1,12 +1,11 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use core_types::blending::AlphaBlending;
+use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::math::bbox::Bbox;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_TRANSFORM};
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -284,7 +283,6 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
 	result_table.set_attribute(ATTR_TRANSFORM, 0, transform);
-	result_table.set_attribute(ATTR_ALPHA_BLENDING, 0, AlphaBlending::default());
 
 	// Callers of empty_image can safely unwrap on returned `Table`
 	result_table

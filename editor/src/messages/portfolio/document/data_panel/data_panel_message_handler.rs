@@ -904,9 +904,7 @@ macro_rules! known_table_row_types {
 	};
 }
 
-/// Override hook for [`Table::attribute_display_value`] that prefers `Display` over `Debug` for select
-/// attribute types. The underlying storage is generic and can only see a `Debug` bound, so types whose
-/// nicer `Display` rendering matters in the data panel are listed here explicitly.
+/// Uses `Display` instead of `Debug` for attribute types that have a nicer human-readable format.
 fn display_value_override(any: &dyn Any) -> Option<String> {
 	if let Some(value) = any.downcast_ref::<BlendMode>() {
 		return Some(value.to_string());

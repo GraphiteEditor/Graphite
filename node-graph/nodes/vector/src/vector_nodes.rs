@@ -1,13 +1,16 @@
 use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
-use core_types::AlphaBlending;
+use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::table::{Table, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll,
+	OwnedContextImpl,
+};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -2310,10 +2313,20 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		return content;
 	};
 
-	// Lerp styles
-	let source_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, source_index);
-	let target_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, target_index);
-	let vector_alpha_blending = source_alpha_blending.lerp(&target_alpha_blending, time as f32);
+	// Lerp blending attributes: opacity/fill interpolate, blend_mode/clip step at the midpoint
+	let source_blend_mode: BlendMode = content.attribute_cloned_or_default(ATTR_BLEND_MODE, source_index);
+	let target_blend_mode: BlendMode = content.attribute_cloned_or_default(ATTR_BLEND_MODE, target_index);
+	let source_opacity: f64 = content.attribute_cloned_or(ATTR_OPACITY, source_index, 1.);
+	let target_opacity: f64 = content.attribute_cloned_or(ATTR_OPACITY, target_index, 1.);
+	let source_fill: f64 = content.attribute_cloned_or(ATTR_OPACITY_FILL, source_index, 1.);
+	let target_fill: f64 = content.attribute_cloned_or(ATTR_OPACITY_FILL, target_index, 1.);
+	let source_clip: bool = content.attribute_cloned_or_default(ATTR_CLIPPING_MASK, source_index);
+	let target_clip: bool = content.attribute_cloned_or_default(ATTR_CLIPPING_MASK, target_index);
+
+	let lerped_blend_mode = if time < 0.5 { source_blend_mode } else { target_blend_mode };
+	let lerped_opacity = source_opacity + (target_opacity - source_opacity) * time;
+	let lerped_fill = source_fill + (target_fill - source_fill) * time;
+	let lerped_clip = if time < 0.5 { source_clip } else { target_clip };
 
 	// Evaluate the spatial position on the control path for the translation component.
 	// When the segment has zero arc length (e.g., two objects at the same position), inv_arclen
@@ -2534,7 +2547,10 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	Table::new_from_row(
 		TableRow::new_from_element(vector)
 			.with_attribute(ATTR_TRANSFORM, lerped_transform)
-			.with_attribute(ATTR_ALPHA_BLENDING, vector_alpha_blending)
+			.with_attribute(ATTR_BLEND_MODE, lerped_blend_mode)
+			.with_attribute(ATTR_OPACITY, lerped_opacity)
+			.with_attribute(ATTR_OPACITY_FILL, lerped_fill)
+			.with_attribute(ATTR_CLIPPING_MASK, lerped_clip)
 			.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_table_content),
 	)

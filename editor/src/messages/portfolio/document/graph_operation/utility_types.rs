@@ -440,7 +440,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blend_mode::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(blend_node_id, 1);
+		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blend_mode::BlendModeInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
@@ -449,26 +449,45 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		// Enable the `has_opacity` checkbox so the value is applied
-		self.set_input_with_refresh(InputConnector::node(opacity_node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), false);
-		self.set_input_with_refresh(InputConnector::node(opacity_node_id, 2), NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput::INDEX),
+			NodeInput::value(TaggedValue::Bool(true), false),
+			false,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::OpacityInput::INDEX),
+			NodeInput::value(TaggedValue::F64(opacity * 100.), false),
+			false,
+		);
 	}
 
 	pub fn opacity_fill_set(&mut self, fill: f64) {
-		// Reuse the Opacity node if already present (saving a chain walk on slider drags), otherwise let the next call create it
+		// Reuse an existing Opacity node to avoid a redundant chain walk on slider drags
 		let identifier = graphene_std::blending_nodes::opacity::IDENTIFIER;
 		let existing = self.existing_proto_node_id(identifier.clone(), false);
 		let existed = existing.is_some();
 		let Some(opacity_node_id) = existing.or_else(|| self.existing_proto_node_id(identifier, true)) else {
 			return;
 		};
-		// Disable the opacity component on a freshly-created node so the slider only affects fill, mirroring the opacity-slider case
-		// (where the node's default `has_fill = false` already keeps fill out of the picture)
+		// Freshly-created node defaults to opacity enabled; disable it so the fill slider works independently
 		if !existed {
-			self.set_input_with_refresh(InputConnector::node(opacity_node_id, 1), NodeInput::value(TaggedValue::Bool(false), false), false);
+			self.set_input_with_refresh(
+				InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasOpacityInput::INDEX),
+				NodeInput::value(TaggedValue::Bool(false), false),
+				false,
+			);
 		}
 		// Enable the `has_fill` checkbox so the value is applied
-		self.set_input_with_refresh(InputConnector::node(opacity_node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), false);
-		self.set_input_with_refresh(InputConnector::node(opacity_node_id, 4), NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::HasFillInput::INDEX),
+			NodeInput::value(TaggedValue::Bool(true), false),
+			false,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::FillInput::INDEX),
+			NodeInput::value(TaggedValue::F64(fill * 100.), false),
+			false,
+		);
 	}
 
 	/// Set the stops table on the 'Gradient Value' node, creating it if necessary.
@@ -570,7 +589,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::clipping_mask::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(clip_node_id, 1);
+		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::clipping_mask::ClipInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
 	}
 

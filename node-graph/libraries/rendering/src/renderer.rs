@@ -1,6 +1,5 @@
 use crate::render_ext::RenderExt;
 use crate::to_peniko::BlendModeExt;
-use core_types::AlphaBlending;
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -11,7 +10,8 @@ use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY,
+	ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -686,7 +686,9 @@ impl Render for Table<Graphic> {
 
 		for index in 0..self.len() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
 
 			render.parent_tag(
@@ -697,13 +699,13 @@ impl Render for Table<Graphic> {
 						attributes.push(ATTR_TRANSFORM, matrix);
 					}
 
-					let opacity = alpha_blending.opacity(render_params.for_mask);
+					let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
 
-					if alpha_blending.blend_mode != BlendMode::default() {
-						attributes.push("style", alpha_blending.blend_mode.render());
+					if blend_mode != BlendMode::default() {
+						attributes.push("style", blend_mode.render());
 					}
 
 					let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
@@ -741,19 +743,21 @@ impl Render for Table<Graphic> {
 		for index in 0..self.len() {
 			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let transform = transform * row_transform;
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let element = self.element(index).unwrap();
 
 			let mut layer = false;
 
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
-				_ => alpha_blending.blend_mode.to_peniko(),
+				_ => blend_mode_attr.to_peniko(),
 			};
 			let mut bounds = RenderBoundingBox::None;
 
-			let opacity = alpha_blending.opacity(render_params.for_mask);
-			if opacity < 1. || (render_params.render_mode != RenderMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+			if opacity < 1. || (render_params.render_mode != RenderMode::Outline && blend_mode_attr != BlendMode::default()) {
 				bounds = element.bounding_box(transform, true);
 
 				if let RenderBoundingBox::Rectangle(bounds) = bounds {
@@ -882,7 +886,10 @@ impl Render for Table<Vector> {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
 			let multiplied_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let clipping_mask_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
@@ -948,7 +955,10 @@ impl Render for Table<Vector> {
 				let vector_row = Table::new_from_row(
 					TableRow::new_from_element(cloned_vector)
 						.with_attribute(ATTR_TRANSFORM, multiplied_transform)
-						.with_attribute(ATTR_ALPHA_BLENDING, alpha_blending),
+						.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
+						.with_attribute(ATTR_OPACITY, opacity_attr)
+						.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
+						.with_attribute(ATTR_CLIPPING_MASK, clipping_mask_attr),
 				);
 
 				(id, mask_type, vector_row)
@@ -1034,13 +1044,13 @@ impl Render for Table<Vector> {
 					attributes.push("fill-rule", "evenodd");
 				}
 
-				let opacity = alpha_blending.opacity(render_params.for_mask);
+				let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", alpha_blending.blend_mode.render());
+				if blend_mode_attr != BlendMode::default() {
+					attributes.push("style", blend_mode_attr.render());
 				}
 			});
 
@@ -1076,7 +1086,10 @@ impl Render for Table<Vector> {
 
 			let Some(element) = self.element(index) else { continue };
 			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let clip_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
 			let multiplied_transform = parent_transform * row_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -1105,12 +1118,12 @@ impl Render for Table<Vector> {
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
-				_ => alpha_blending.blend_mode.to_peniko(),
+				_ => blend_mode_attr.to_peniko(),
 			};
 			let mut layer = false;
 
-			let opacity = alpha_blending.opacity(render_params.for_mask);
-			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				layer = true;
 				let weight = element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
@@ -1264,7 +1277,10 @@ impl Render for Table<Vector> {
 						let vector_table = Table::new_from_row(
 							TableRow::new_from_element(cloned_element)
 								.with_attribute(ATTR_TRANSFORM, row_transform)
-								.with_attribute(ATTR_ALPHA_BLENDING, alpha_blending),
+								.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
+								.with_attribute(ATTR_OPACITY, opacity_attr)
+								.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
+								.with_attribute(ATTR_CLIPPING_MASK, clip_attr),
 						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
@@ -1442,7 +1458,9 @@ impl Render for Table<Raster<CPU>> {
 			let Some(image) = self.element(index) else { continue };
 
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
 			if image.data.is_empty() {
 				continue;
@@ -1469,13 +1487,13 @@ impl Render for Table<Raster<CPU>> {
 						attributes.push("width", size.x.to_string());
 						attributes.push("height", size.y.to_string());
 
-						let opacity = alpha_blending.opacity(render_params.for_mask);
+						let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 						if opacity < 1. {
 							attributes.push("opacity", opacity.to_string());
 						}
 
-						if alpha_blending.blend_mode != BlendMode::default() {
-							attributes.push("style", alpha_blending.blend_mode.render());
+						if blend_mode_attr != BlendMode::default() {
+							attributes.push("style", blend_mode_attr.render());
 						}
 					},
 					|render| {
@@ -1509,12 +1527,12 @@ impl Render for Table<Raster<CPU>> {
 						attributes.push(ATTR_TRANSFORM, matrix);
 					}
 
-					let opacity = alpha_blending.opacity(render_params.for_mask);
+					let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 					if opacity < 1. {
 						attributes.push("opacity", opacity.to_string());
 					}
-					if alpha_blending.blend_mode != BlendMode::default() {
-						attributes.push("style", alpha_blending.blend_mode.render());
+					if blend_mode_attr != BlendMode::default() {
+						attributes.push("style", blend_mode_attr.render());
 					}
 				});
 			}
@@ -1528,13 +1546,15 @@ impl Render for Table<Raster<CPU>> {
 				continue;
 			}
 
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
-			let blend_mode = alpha_blending.blend_mode.to_peniko();
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode = blend_mode_attr.to_peniko();
 
-			let opacity = alpha_blending.opacity(render_params.for_mask);
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			let mut layer = false;
 
-			if (opacity < 1. || (render_params.render_mode != RenderMode::Outline && alpha_blending.blend_mode != BlendMode::default()))
+			if (opacity < 1. || (render_params.render_mode != RenderMode::Outline && blend_mode_attr != BlendMode::default()))
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false)
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
@@ -1615,20 +1635,25 @@ impl Render for Table<Raster<GPU>> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(raster) = self.element(index) else { continue };
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let clip_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
-				_ => alpha_blending.blend_mode.to_peniko(),
+				_ => blend_mode_attr.to_peniko(),
 			};
 
 			let mut layer = false;
 
-			if (render_params.render_mode != RenderMode::Outline && alpha_blending != Default::default())
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+			let any_nondefault = blend_mode_attr != BlendMode::default() || opacity < 1. || clip_attr;
+			if (render_params.render_mode != RenderMode::Outline && any_nondefault)
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true)
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(peniko::Fill::NonZero, blending, alpha_blending.opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
@@ -1703,7 +1728,10 @@ impl Render for Table<Raster<GPU>> {
 // later replace with the current viewport transform before each render.
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
+		for (index, color) in self.iter_element_values().enumerate() {
+			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			render.leaf_tag("polyline", |attributes| {
 				// Stand-in for an infinite background. Chrome's SVG renderer keeps internal coordinates in f32 and loses
 				// precision past ~2^24 (~16.7 million), causing tile-boundary artifacts that pop in and out during panning.
@@ -1716,13 +1744,13 @@ impl Render for Table<Color> {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}
 
-				let opacity = alpha_blending.opacity(render_params.for_mask);
+				let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", alpha_blending.blend_mode.render());
+				if blend_mode != BlendMode::default() {
+					attributes.push("style", blend_mode.render());
 				}
 			});
 		}
@@ -1731,16 +1759,19 @@ impl Render for Table<Color> {
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
-		for (color, alpha_blending) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING)) {
-			let blend_mode = alpha_blending.blend_mode.to_peniko();
-			let opacity = alpha_blending.opacity(render_params.for_mask);
+		for (index, color) in self.iter_element_values().enumerate() {
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode = blend_mode_attr.to_peniko();
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
-			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
@@ -1770,7 +1801,9 @@ impl Render for Table<GradientStops> {
 		for index in 0..self.len() {
 			let Some(gradient) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let alpha_blending: AlphaBlending = self.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, index);
+			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let spread_method: GradientSpreadMethod = self.attribute_cloned_or_default(ATTR_SPREAD_METHOD, index);
 			let gradient_type: GradientType = self.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, index);
 			let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
@@ -1834,13 +1867,13 @@ impl Render for Table<GradientStops> {
 
 				attributes.push("fill", format!("url('#{gradient_id}')"));
 
-				let opacity = alpha_blending.opacity(render_params.for_mask);
+				let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", alpha_blending.blend_mode.render());
+				if blend_mode != BlendMode::default() {
+					attributes.push("style", blend_mode.render());
 				}
 			});
 		}
@@ -1853,17 +1886,20 @@ impl Render for Table<GradientStops> {
 			return;
 		}
 
-		for ((((gradient, transform), alpha_blending), spread_method), gradient_type) in self
+		for (((index, gradient), spread_method), gradient_type) in self
 			.iter_element_values()
-			.zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM))
-			.zip(self.iter_attribute_values_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING))
+			.enumerate()
 			.zip(self.iter_attribute_values_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD))
 			.zip(self.iter_attribute_values_or_default::<GradientType>(ATTR_GRADIENT_TYPE))
 		{
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let gradient_transform = parent_transform * transform;
 
-			let blend_mode = alpha_blending.blend_mode.to_peniko();
-			let opacity = alpha_blending.opacity(render_params.for_mask);
+			let blend_mode = blend_mode_attr.to_peniko();
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let mut stops: peniko::ColorStops = peniko::ColorStops::new();
 			for (position, color, _) in gradient.interpolated_samples() {
@@ -1907,7 +1943,7 @@ impl Render for Table<GradientStops> {
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
-			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				// See implementation in `Table<Color>` for more detail
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
