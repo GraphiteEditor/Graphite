@@ -1,15 +1,15 @@
 use core_types::table::Table;
 use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, CacheHash, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, CacheHash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RealTimeMode {
 	#[label("UTC")]
 	Utc,
@@ -73,18 +73,15 @@ async fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
-		Context -> Vec<f64>,
-		Context -> Vec<f32>,
-		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<GradientStops>,
+		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
@@ -116,18 +113,15 @@ async fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
-		Context -> Vec<f64>,
-		Context -> Vec<f32>,
-		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<GradientStops>,
+		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,

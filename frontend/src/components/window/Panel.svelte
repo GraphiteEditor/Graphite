@@ -36,6 +36,7 @@
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
+	export let renameAction: ((index: number, newName: string) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
 	export let groupDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
@@ -49,6 +50,28 @@
 	export let styles: Record<string, string | number | undefined> = {};
 
 	let tabElements: (LayoutRow | undefined)[] = [];
+
+	// Document tab rename state
+	let editingNameTabIndex: number | undefined = undefined;
+	let editingNameText = "";
+	let editingNameInputElement: HTMLInputElement | undefined = undefined;
+
+	async function setEditingTabName(tabIndex: number, currentName: string) {
+		editingNameText = currentName;
+		editingNameTabIndex = tabIndex;
+
+		await tick();
+
+		editingNameInputElement?.focus();
+		editingNameInputElement?.select();
+	}
+
+	function commitEditingTabName(event: Event) {
+		if (editingNameTabIndex === undefined || !(event.target instanceof HTMLInputElement)) return;
+
+		renameAction?.(editingNameTabIndex, event.target.value);
+		editingNameTabIndex = undefined;
+	}
 
 	// Tab drag-and-drop state
 	let dragStartState: { tabIndex: number; pointerX: number; pointerY: number; isGroupDrag: boolean } | undefined = undefined;
@@ -392,9 +415,30 @@
 					bind:this={tabElements[tabIndex]}
 				>
 					<LayoutRow class="name">
-						<TextLabel class="text">{tabLabel.name}</TextLabel>
+						{#if editingNameTabIndex !== tabIndex}
+							<TextLabel class="text" on:dblclick={() => renameAction && setEditingTabName(tabIndex, tabLabel.name)}>{tabLabel.name}</TextLabel>
+						{:else}
+							<input
+								type="text"
+								bind:this={editingNameInputElement}
+								bind:value={editingNameText}
+								on:pointerdown|stopPropagation
+								on:dblclick|stopPropagation
+								on:blur={commitEditingTabName}
+								on:keydown={(e) => {
+									// Stop propagation when we handle the key ourselves so the global keyboard forwarder doesn't dispatch them and trigger unrelated bindings
+									if (e.key === "Enter") {
+										commitEditingTabName(e);
+										e.stopPropagation();
+									} else if (e.key === "Escape") {
+										editingNameTabIndex = undefined;
+										e.stopPropagation();
+									}
+								}}
+							/>
+						{/if}
 						{#if tabLabel.unsaved}
-							<TextLabel>*</TextLabel>
+							<TextLabel classes={{ hidden: editingNameTabIndex === tabIndex }}>*</TextLabel>
 						{/if}
 					</LayoutRow>
 					{#if tabCloseButtons}
@@ -513,10 +557,30 @@
 
 							&.text {
 								overflow-x: hidden;
-								white-space: nowrap;
+								white-space: pre;
 								text-overflow: ellipsis;
 								flex-shrink: 1;
 							}
+						}
+
+						input {
+							color: inherit;
+							border: none;
+							outline: none;
+							margin: 0 -4px;
+							padding: 0 4px;
+							height: 20px;
+							border-radius: 2px;
+							background: var(--color-1-nearblack);
+							field-sizing: content;
+							align-self: center;
+							// Stack above the absolutely-positioned close button so it doesn't intercept clicks at the input's right edge.
+							position: relative;
+							z-index: 1;
+						}
+
+						.text-label.hidden {
+							visibility: hidden;
 						}
 					}
 

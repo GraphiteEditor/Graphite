@@ -33,6 +33,10 @@ pub use num_traits;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
+pub use table::{
+	ATTR_ALPHA_BLENDING, ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_END, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_NAME, ATTR_SPREAD_METHOD,
+	ATTR_START, ATTR_TRANSFORM, ATTR_TYPE,
+};
 #[cfg(feature = "wasm")]
 pub use tsify;
 pub use types::Cow;

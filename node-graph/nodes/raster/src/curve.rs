@@ -4,13 +4,14 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use std::ops::{Add, Mul, Sub};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, core_types::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Curve {
-	#[serde(rename = "manipulatorGroups")]
+	#[cfg_attr(feature = "serde", serde(rename = "manipulatorGroups"))]
 	pub manipulator_groups: Vec<CurveManipulatorGroup>,
-	#[serde(rename = "firstHandle")]
+	#[cfg_attr(feature = "serde", serde(rename = "firstHandle"))]
 	pub first_handle: [f32; 2],
-	#[serde(rename = "lastHandle")]
+	#[cfg_attr(feature = "serde", serde(rename = "lastHandle"))]
 	pub last_handle: [f32; 2],
 }
 
@@ -25,7 +26,8 @@ impl Default for Curve {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, core_types::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CurveManipulatorGroup {
 	pub anchor: [f32; 2],
 	pub handles: [[f32; 2]; 2],

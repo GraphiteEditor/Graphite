@@ -6,7 +6,7 @@ use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Filters out what should be unused components of the context based on the specified requirements.
@@ -26,17 +26,16 @@ async fn context_modification<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
-		Context -> Vec<f64>,
-		Context -> Vec<f32>,
-		Context -> Vec<String>,
+		Context -> Table<String>,
+		Context -> Table<NodeId>,
+		Context -> Table<f64>,
+		Context -> Table<u8>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<GradientStops>,
 	)]
 	value: impl Node<Context<'static>, Output = T>,

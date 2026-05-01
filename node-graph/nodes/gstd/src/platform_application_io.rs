@@ -3,12 +3,12 @@ use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
 #[cfg(target_family = "wasm")]
-use core_types::WasmNotSend;
-#[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
-use core_types::table::Table;
+use core_types::table::{Table, TableRow};
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
+#[cfg(target_family = "wasm")]
+use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, WasmNotSend};
 use core_types::{Color, Ctx};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
@@ -17,6 +17,8 @@ use graphene_application_io::ApplicationIo;
 pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
+#[cfg(target_family = "wasm")]
+use graphic_types::IntoGraphicTable;
 #[cfg(target_family = "wasm")]
 use graphic_types::Vector;
 use graphic_types::raster_types::Image;
@@ -83,14 +85,15 @@ async fn post_request(
 	#[name("URL")]
 	url: String,
 	/// The binary data to include in the body of the POST request.
-	body: Vec<u8>,
+	body: Table<u8>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
 ) -> String {
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let request = reqwest::Client::new().post(url).body(body).headers(header_map);
+	let body_bytes: Vec<u8> = body.iter_element_values().copied().collect();
+	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
 		#[cfg(target_family = "wasm")]
@@ -112,15 +115,15 @@ async fn post_request(
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
-	string.into_bytes()
+fn string_to_bytes(_: impl Ctx, string: String) -> Table<u8> {
+	string.into_bytes().into_iter().map(TableRow::new_from_element).collect()
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
-	let Some(image) = image.iter().next() else { return vec![] };
-	image.element.data.iter().flat_map(|color| color.to_rgba8_srgb().into_iter()).collect::<Vec<u8>>()
+fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Table<u8> {
+	let Some(image) = image.element(0) else { return Table::new() };
+	image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(TableRow::new_from_element).collect()
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
@@ -170,7 +173,7 @@ async fn create_canvas(_: impl Ctx) -> CanvasHandle {
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn rasterize<T: WasmNotSend + 'n>(
+async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Vector>,
@@ -184,14 +187,18 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	mut canvas: CanvasHandle,
 ) -> Table<Raster<CPU>>
 where
-	Table<T>: Render,
+	Table<T>: Render + Clone + graphic_types::IntoGraphicTable,
 {
-	use core_types::table::TableRow;
+	use glam::{DAffine2, DVec2};
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return Table::new();
 	}
+
+	// Snapshot the input as a Table<Graphic> so the renderer can recurse into the original child layers
+	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
+	let upstream_graphic_table = data.clone().into_graphic_table();
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -203,11 +210,11 @@ where
 		..Default::default()
 	};
 
-	for row in data.iter_mut() {
-		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
+	for transform in data.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+		*transform = DAffine2::from_translation(-aabb.start) * *transform;
 	}
 	data.render_svg(&mut render, &render_params);
-	render.format_svg(glam::DVec2::ZERO, size);
+	render.format_svg(DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();
 
 	canvas.set_resolution(resolution);
@@ -228,9 +235,9 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(TableRow {
-		element: Raster::new_cpu(image),
-		transform: footprint.transform,
-		..Default::default()
-	})
+	Table::new_from_row(
+		TableRow::new_from_element(Raster::new_cpu(image))
+			.with_attribute(ATTR_TRANSFORM, footprint.transform)
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_table),
+	)
 }

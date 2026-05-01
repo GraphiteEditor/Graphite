@@ -26,14 +26,14 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 // FRAGMENT SHADER
 // ===============
 
-struct Constants {
+struct Immediates {
 	viewport_scale: vec2<f32>,
 	viewport_offset: vec2<f32>,
 	ui_scale: vec2<f32>,
 	background_color: vec4<f32>,
 };
 
-var<push_constant> constants: Constants;
+var<immediate> immediates: Immediates;
 
 @group(0) @binding(0)
 var t_viewport: texture_2d<f32>;
@@ -46,10 +46,10 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	let ui_coordinate = in.tex_coords * constants.ui_scale;
+	let ui_coordinate = in.tex_coords * immediates.ui_scale;
 	if (ui_coordinate.x < 0.0 || ui_coordinate.x > 1.0 ||
 		ui_coordinate.y < 0.0 || ui_coordinate.y > 1.0) {
-		return srgb_to_linear(constants.background_color);
+		return srgb_to_linear(immediates.background_color);
 	}
 
 	let ui_linear = srgb_to_linear(textureSample(t_ui, s_diffuse, ui_coordinate));
@@ -60,19 +60,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	// UI texture is premultiplied, we need to unpremultiply before blending
 	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
 
-	let viewport_coordinate = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
+	let viewport_coordinate = (in.tex_coords - immediates.viewport_offset) * immediates.viewport_scale;
 	if (viewport_coordinate.x < 0.0 || viewport_coordinate.x > 1.0 ||
 		viewport_coordinate.y < 0.0 || viewport_coordinate.y > 1.0) {
-		return srgb_to_linear(constants.background_color);
+		return srgb_to_linear(immediates.background_color);
 	}
 
 	let overlay_srgb = textureSample(t_overlays, s_diffuse, viewport_coordinate);
 	var viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);
 
 	if (viewport_srgb.a < 0.001) {
-		viewport_srgb = constants.background_color;
+		viewport_srgb = immediates.background_color;
 	} else if (viewport_srgb.a < 0.999) {
-		viewport_srgb = blend(viewport_srgb, constants.background_color);
+		viewport_srgb = blend(viewport_srgb, immediates.background_color);
 	}
 
 	if (overlay_srgb.a < 0.001) {

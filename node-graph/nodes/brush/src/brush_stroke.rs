@@ -5,7 +5,8 @@ use core_types::math::bbox::AxisAlignedBbox;
 use dyn_any::DynAny;
 use glam::DVec2;
 /// The style of a brush.
-#[derive(Clone, Debug, CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushStyle {
 	pub color: Color,
 	pub diameter: f64,
@@ -42,13 +43,15 @@ impl PartialEq for BrushStyle {
 }
 
 /// A single sample of brush parameters across the brush stroke.
-#[derive(Clone, Debug, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, core_types::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushInputSample {
 	pub position: DVec2,
 }
 
 /// The parameters for a single stroke brush.
-#[derive(Clone, Debug, PartialEq, core_types::CacheHash, Default, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, core_types::CacheHash, Default, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushStroke {
 	pub style: BrushStyle,
 	pub trace: Vec<BrushInputSample>,

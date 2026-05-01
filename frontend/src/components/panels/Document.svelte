@@ -191,7 +191,7 @@
 			const isViewport = placeholder.hasAttribute("data-is-viewport");
 			if (isViewport && canvas.isConnected && canvas.parentElement?.closest("[data-viewport]")) return;
 
-			// Clone canvas for repeated instances (layers that appear multiple times)
+			// Clone canvas for repeated occurrences (layers that appear multiple times)
 			if (!isViewport && canvas.parentElement) {
 				const newCanvas = window.document.createElement("canvas");
 				const context = newCanvas.getContext("2d");

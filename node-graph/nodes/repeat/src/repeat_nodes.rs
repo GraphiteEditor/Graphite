@@ -1,8 +1,8 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::registry::types::{Angle, PixelSize};
-use core_types::table::{Table, TableRowRef};
-use core_types::{CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
+use core_types::table::Table;
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
@@ -18,7 +18,7 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(1)]
 	#[hard_min(1)]
 	count: u32,
@@ -34,9 +34,9 @@ async fn repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let index = if reverse { count - index - 1 } else { index };
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-		for generated_row in generated_instance.into_iter() {
+		for generated_row in generated_content.into_iter() {
 			result_table.push(generated_row);
 		}
 	}
@@ -54,7 +54,7 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -75,14 +75,15 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-		for row in generated_instance.iter() {
-			let mut row = row.into_cloned();
+		for row_index in 0..generated_content.len() {
+			let Some(mut row) = generated_content.clone_row(row_index) else { continue };
 
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
+			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let local_translation = DAffine2::from_translation(local_transform.translation);
+			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
+			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
 
 			result_table.push(row);
 		}
@@ -101,7 +102,7 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	start_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
@@ -120,14 +121,15 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let transform = angle * translation;
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context()).await;
 
-		for row in generated_instance.iter() {
-			let mut row = row.into_cloned();
+		for row_index in 0..generated_content.len() {
+			let Some(mut row) = generated_content.clone_row(row_index) else { continue };
 
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
+			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let local_translation = DAffine2::from_translation(local_transform.translation);
+			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
+			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
 
 			result_table.push(row);
 		}
@@ -147,25 +149,28 @@ async fn repeat_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
+	content: impl Node<'n, Context<'static>, Output = Table<T>>,
 	reverse: bool,
 ) -> Table<T> {
 	let mut result_table = Table::new();
 
-	for TableRowRef { element: points, transform, .. } in points.iter() {
+	for points_index in 0..points.len() {
+		let Some(points_element) = points.element(points_index) else { continue };
+		let transform: DAffine2 = points.attribute_cloned_or_default(ATTR_TRANSFORM, points_index);
+
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(transformed_point);
-			let generated_instance = instance.eval(new_ctx.into_context()).await;
+			let generated_content = content.eval(new_ctx.into_context()).await;
 
-			for mut generated_row in generated_instance.into_iter() {
-				generated_row.transform.translation = transformed_point;
+			for mut generated_row in generated_content.into_iter() {
+				generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = transformed_point;
 				result_table.push(generated_row);
 			}
 		};
 
-		let range = points.point_domain.positions().iter().enumerate();
+		let range = points_element.point_domain.positions().iter().enumerate();
 		if reverse {
 			for (index, &point) in range.rev() {
 				iteration(index, point).await;
@@ -228,8 +233,12 @@ mod test {
 		let points = Table::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
 		let generated = super::repeat_on_points(context, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
-		for (position, generated_row) in positions.into_iter().zip(generated.iter()) {
-			let bounds = generated_row.element.bounding_box_with_transform(*generated_row.transform).unwrap();
+		for (position, index) in positions.into_iter().zip(0..generated.len()) {
+			let bounds = generated
+				.element(index)
+				.unwrap()
+				.bounding_box_with_transform(generated.attribute_cloned_or_default(ATTR_TRANSFORM, index))
+				.unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}
@@ -249,7 +258,7 @@ mod test {
 		)
 		.await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
+		let vector = vector_table.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 3);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
@@ -270,7 +279,7 @@ mod test {
 		)
 		.await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
+		let vector = vector_table.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
@@ -282,7 +291,7 @@ mod test {
 		let context = OwnedContextImpl::default().into_context();
 		let repeated = super::repeat_radial(context, &FutureWrapperNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))), 45., 4., 8).await;
 		let vector_table = vector_nodes::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
+		let vector = vector_table.element(0).unwrap();
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
 
 		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {

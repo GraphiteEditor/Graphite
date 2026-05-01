@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -8,19 +8,19 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::bounds::RenderBoundingBox;
+use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::table::{Table, TableRow};
+use graphene_std::table::Table;
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic};
+use graphene_std::{Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
@@ -76,8 +76,10 @@ pub enum GraphRuntimeRequest {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
-	/// The node that should be temporary inspected during execution
-	pub(super) node_to_inspect: Option<NodeId>,
+	/// Full path from the root network to the node that should be temporarily inspected during execution.
+	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
+	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
+	pub(super) node_to_inspect: Vec<NodeId>,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -235,7 +237,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
 					// Insert the monitor node to manage the inspection
-					self.inspect_state = node_to_inspect.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
 
 					self.old_graph = Some(network.clone());
 
@@ -264,7 +266,7 @@ impl NodeRuntime {
 					self.update_thumbnails = false;
 
 					// Resolve the result from the inspection by accessing the monitor node
-					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
 
 					let (result, texture) = match result {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
@@ -408,7 +410,11 @@ impl NodeRuntime {
 
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip the inspect monitor node
-			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
+			if self
+				.inspect_state
+				.as_ref()
+				.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node))
+			{
 				continue;
 			}
 
@@ -429,21 +435,22 @@ impl NodeRuntime {
 			// Graphic table: thumbnail
 			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					let bounds = io.output.thumbnail_bounding_box(DAffine2::IDENTITY, true);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
-			// Artboard table: thumbnail
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
+			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
+			// clips content to those rectangles so anything outside isn't visible
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Table<Graphic>>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					let bounds = artboard_clip_bounds(&io.output);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
 			// Vector table: vector modifications
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
 				// Insert the vector modify
-				let default = TableRow::default();
-				self.vector_modify
-					.insert(parent_network_node_id, io.output.iter().next().unwrap_or_else(|| default.as_ref()).element.clone());
+				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
 			// Other
 			else {
@@ -453,7 +460,13 @@ impl NodeRuntime {
 	}
 
 	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn render_thumbnail(thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>, parent_network_node_id: NodeId, graphic: &impl Render, responses: &mut VecDeque<FrontendMessage>) {
+	fn render_thumbnail(
+		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
+		parent_network_node_id: NodeId,
+		graphic: &impl Render,
+		bounds: RenderBoundingBox,
+		responses: &mut VecDeque<FrontendMessage>,
+	) {
 		// Skip thumbnails if the layer is too complex (for performance)
 		if graphic.render_complexity() > 1000 {
 			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
@@ -467,12 +480,13 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
-			RenderBoundingBox::None => None,
-			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
-			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
+		// Fall back to a 1×1 rectangle if no caller offered finite bounds, then aspect-correct to the panel's 3:2 ratio
+		let raw_bounds = match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+			_ => [DVec2::ZERO, DVec2::ONE],
 		};
-		let new_thumbnail_svg = if let Some(bounds) = bounds {
+		let bounds = expand_to_thumbnail_aspect(raw_bounds);
+		let new_thumbnail_svg = {
 			let footprint = Footprint {
 				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
 				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
@@ -492,8 +506,6 @@ impl NodeRuntime {
 			render.format_svg(bounds[0], bounds[1]);
 
 			render.svg
-		} else {
-			Vec::new()
 		};
 
 		// Update frontend thumbnail
@@ -506,6 +518,41 @@ impl NodeRuntime {
 			*old_thumbnail_svg = new_thumbnail_svg;
 		}
 	}
+}
+
+/// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
+/// framing matches what's actually visible after clipping rather than the unclipped content extents.
+fn artboard_clip_bounds(artboards: &Table<Table<Graphic>>) -> RenderBoundingBox {
+	let mut combined: Option<[DVec2; 2]> = None;
+	for index in 0..artboards.len() {
+		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
+		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+		let bounds = [location, location + dimensions];
+		combined = Some(match combined {
+			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],
+			None => bounds,
+		});
+	}
+	match combined {
+		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+		None => RenderBoundingBox::None,
+	}
+}
+
+/// Expands an AABB outward (centered) to match the Layers panel thumbnail's 3:2 aspect ratio, padding the smaller axis
+/// so the input's extent is always preserved.
+fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
+	const THUMBNAIL_ASPECT_RATIO: f64 = 1.5;
+
+	let size = bounds[1] - bounds[0];
+	let center = (bounds[0] + bounds[1]) / 2.;
+	let (width, height) = if size.x >= size.y * THUMBNAIL_ASPECT_RATIO {
+		(size.x, size.x / THUMBNAIL_ASPECT_RATIO)
+	} else {
+		(size.y * THUMBNAIL_ASPECT_RATIO, size.y)
+	};
+	let half = DVec2::new(width, height) / 2.;
+	[center - half, center + half]
 }
 
 pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
@@ -542,16 +589,22 @@ pub async fn replace_application_io(application_io: PlatformApplicationIo) {
 }
 
 /// Which node is inspected and which monitor node is used (if any) for the current execution
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct InspectState {
 	inspect_node: NodeId,
 	monitor_node: NodeId,
+	/// Path of the subnetwork the monitor was inserted into (i.e., the parent of `inspect_node`).
+	/// Used to construct the full node path when introspecting the monitor's value.
+	monitor_parent_path: Vec<NodeId>,
 }
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
 pub struct InspectResult {
 	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	pub inspect_node: NodeId,
+	/// Full path from the root network to the inspected node, with the node itself as the last element.
+	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
+	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
+	pub inspect_node_path: Vec<NodeId>,
 }
 
 impl InspectResult {
@@ -563,17 +616,21 @@ impl InspectResult {
 // This is very ugly but is required to be inside a message
 impl PartialEq for InspectResult {
 	fn eq(&self, other: &Self) -> bool {
-		self.inspect_node == other.inspect_node
+		self.inspect_node_path == other.inspect_node_path
 	}
 }
 
 impl InspectState {
-	/// Insert the monitor node to manage the inspection
-	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_node: NodeId) -> Self {
+	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
+	/// Returns `None` if the path is empty or doesn't resolve to a node inside a reachable subnetwork.
+	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
+		let (inspect_node, parent_path) = inspect_path.split_last()?;
+		let inspect_node = *inspect_node;
+		let target_network = navigate_to_network_mut(network, parent_path)?;
 		let monitor_id = NodeId::new();
 
 		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
-		for input in network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut network.exports) {
+		for input in target_network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut target_network.exports) {
 			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
 			// We only care about the primary output of our inspect node
 			if *output_index != 0 || *node_id != inspect_node {
@@ -590,21 +647,39 @@ impl InspectState {
 			skip_deduplication: true,
 			..Default::default()
 		};
-		network.nodes.insert(monitor_id, monitor_node);
+		target_network.nodes.insert(monitor_id, monitor_node);
 
-		Self {
+		Some(Self {
 			inspect_node,
 			monitor_node: monitor_id,
-		}
+			monitor_parent_path: parent_path.to_vec(),
+		})
 	}
 	/// Resolve the result from the inspection by accessing the monitor node
 	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
+		// The executor's source map indexes by full path from root, so prepend the subnetwork path to the monitor ID.
+		let mut monitor_path = self.monitor_parent_path.clone();
+		monitor_path.push(self.monitor_node);
+		let introspected_data = executor.introspect(&monitor_path).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
 		// TODO: Consider displaying the error instead of ignoring it
 
-		Some(InspectResult {
-			inspect_node: self.inspect_node,
-			introspected_data,
-		})
+		let mut inspect_node_path = self.monitor_parent_path.clone();
+		inspect_node_path.push(self.inspect_node);
+		Some(InspectResult { inspect_node_path, introspected_data })
 	}
+}
+
+/// Walks `network` down through `path`, returning a mutable reference to the nested `NodeNetwork`
+/// at the end. Each path element must name a `DocumentNode` whose implementation is `Network(...)`.
+/// Returns `None` if any step is missing or doesn't refer to a subnetwork.
+fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) -> Option<&'a mut NodeNetwork> {
+	let mut current = network;
+	for node_id in path {
+		let node = current.nodes.get_mut(node_id)?;
+		current = match &mut node.implementation {
+			DocumentNodeImplementation::Network(nested) => nested,
+			_ => return None,
+		};
+	}
+	Some(current)
 }

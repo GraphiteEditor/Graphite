@@ -62,11 +62,9 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 	async fn convert(self, _: Footprint, _: ()) -> Table<U> {
 		let table: Table<U> = self
 			.into_iter()
-			.map(|row| TableRow {
-				element: row.element.convert_row(),
-				transform: row.transform,
-				alpha_blending: row.alpha_blending,
-				source_node_id: row.source_node_id,
+			.map(|row| {
+				let (element, attributes) = row.into_parts();
+				TableRow::from_parts(element.convert_row(), attributes)
 			})
 			.collect();
 		table

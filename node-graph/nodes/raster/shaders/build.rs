@@ -1,5 +1,5 @@
-use cargo_gpu::InstalledBackend;
-use cargo_gpu::spirv_builder::{MetadataPrintout, SpirvMetadata};
+use cargo_gpu_install::install::{Install, InstalledBackend};
+use cargo_gpu_install::spirv_builder::SpirvMetadata;
 use std::path::PathBuf;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,19 +29,18 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let rustc_codegen_spirv_path = std::env::var("RUSTC_CODEGEN_SPIRV_PATH").unwrap_or_default();
 	let backend = if rustc_codegen_spirv_path.is_empty() {
 		// install the toolchain and build the `rustc_codegen_spirv` codegen backend with it
-		cargo_gpu::Install::from_shader_crate(shader_crate.clone()).run()?
+		Install::from_shader_crate(shader_crate.clone()).run()?
 	} else {
 		// use the `RUSTC_CODEGEN_SPIRV` environment variable to find the codegen backend
 		let mut backend = InstalledBackend::default();
 		backend.rustc_codegen_spirv_location = PathBuf::from(rustc_codegen_spirv_path);
 		backend.toolchain_channel = "nightly".to_string();
-		backend.target_spec_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 		backend
 	};
 
 	// build the shader crate
 	let mut builder = backend.to_spirv_builder(shader_crate, "spirv-unknown-naga-wgsl");
-	builder.print_metadata = MetadataPrintout::DependencyOnly;
+	builder.build_script.defaults = true;
 	builder.spirv_metadata = SpirvMetadata::Full;
 	let wgsl_result = builder.build()?;
 	let path_to_spv = wgsl_result.module.unwrap_single();

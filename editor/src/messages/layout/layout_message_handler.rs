@@ -102,22 +102,22 @@ impl LayoutMessageHandler {
 				}
 				LayoutGroup::Table(WidgetTable { rows, .. }) => {
 					for (row_index, row) in rows.iter().enumerate() {
-						for (cell_index, cell) in row.iter().enumerate() {
+						for (value_index, value) in row.iter().enumerate() {
 							// Return if this is the correct ID
-							if cell.widget_id == widget_id {
+							if value.widget_id == widget_id {
 								widget_path.push(row_index);
-								widget_path.push(cell_index);
-								return Some((cell, widget_path));
+								widget_path.push(value_index);
+								return Some((value, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &*cell.widget {
+							if let Widget::PopoverButton(popover) = &*value.widget {
 								stack.extend(
 									popover
 										.popover_layout
 										.0
 										.iter()
 										.enumerate()
-										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, child]].concat(), val)),
+										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, value_index, child]].concat(), val)),
 								);
 							}
 						}

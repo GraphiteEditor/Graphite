@@ -1,6 +1,7 @@
+use core_types::AlphaBlending;
 use core_types::registry::types::Percentage;
 use core_types::table::Table;
-use core_types::{BlendMode, Color, Ctx};
+use core_types::{ATTR_ALPHA_BLENDING, BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, Raster};
@@ -17,36 +18,36 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for Table<Vector> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.opacity *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<Graphic> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.opacity *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<Raster<CPU>> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.opacity *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<Color> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.opacity *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for Table<GradientStops> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.opacity *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.opacity *= factor as f32;
 		}
 	}
 }
@@ -61,36 +62,36 @@ impl MultiplyFill for Color {
 }
 impl MultiplyFill for Table<Vector> {
 	fn multiply_fill(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.fill *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<Graphic> {
 	fn multiply_fill(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.fill *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<Raster<CPU>> {
 	fn multiply_fill(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.fill *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<Color> {
 	fn multiply_fill(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.fill *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.fill *= factor as f32;
 		}
 	}
 }
 impl MultiplyFill for Table<GradientStops> {
 	fn multiply_fill(&mut self, factor: f64) {
-		for row in self.iter_mut() {
-			row.alpha_blending.fill *= factor as f32;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.fill *= factor as f32;
 		}
 	}
 }
@@ -101,36 +102,36 @@ trait SetBlendMode {
 
 impl SetBlendMode for Table<Vector> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for row in self.iter_mut() {
-			row.alpha_blending.blend_mode = blend_mode;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<Graphic> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for row in self.iter_mut() {
-			row.alpha_blending.blend_mode = blend_mode;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<Raster<CPU>> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for row in self.iter_mut() {
-			row.alpha_blending.blend_mode = blend_mode;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for row in self.iter_mut() {
-			row.alpha_blending.blend_mode = blend_mode;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for Table<GradientStops> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for row in self.iter_mut() {
-			row.alpha_blending.blend_mode = blend_mode;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.blend_mode = blend_mode;
 		}
 	}
 }
@@ -141,36 +142,36 @@ trait SetClip {
 
 impl SetClip for Table<Vector> {
 	fn set_clip(&mut self, clip: bool) {
-		for row in self.iter_mut() {
-			row.alpha_blending.clip = clip;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<Graphic> {
 	fn set_clip(&mut self, clip: bool) {
-		for row in self.iter_mut() {
-			row.alpha_blending.clip = clip;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<Raster<CPU>> {
 	fn set_clip(&mut self, clip: bool) {
-		for row in self.iter_mut() {
-			row.alpha_blending.clip = clip;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<Color> {
 	fn set_clip(&mut self, clip: bool) {
-		for row in self.iter_mut() {
-			row.alpha_blending.clip = clip;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.clip = clip;
 		}
 	}
 }
 impl SetClip for Table<GradientStops> {
 	fn set_clip(&mut self, clip: bool) {
-		for row in self.iter_mut() {
-			row.alpha_blending.clip = clip;
+		for a in self.iter_attribute_values_mut_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING) {
+			a.clip = clip;
 		}
 	}
 }
@@ -191,15 +192,16 @@ fn blend_mode<T: SetBlendMode>(
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: BlendMode,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or TableRow<T>) rather than applying to each item in its own table, which produces the undesired result
 	content.set_blend_mode(blend_mode);
 	content
 }
 
-/// Modifies the opacity of the input graphics by multiplying the existing opacity by this percentage.
-/// This affects the transparency of the content (together with anything above which is clipped to it).
+/// Modifies the opacity and/or fill of the input graphics by multiplying the existing values by these percentages.
+/// Opacity affects the transparency of the content (together with anything above which is clipped to it).
+/// Fill affects the transparency of the content itself, independent of any content clipped to it.
 #[node_macro::node(category("Blending"))]
-fn opacity<T: MultiplyAlpha>(
+fn opacity<T: MultiplyAlpha + MultiplyFill>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
@@ -210,19 +212,37 @@ fn opacity<T: MultiplyAlpha>(
 		Table<GradientStops>,
 	)]
 	mut content: T,
+	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
+	#[widget(ParsedWidgetOverride::Hidden)]
+	#[default(true)]
+	has_opacity: bool,
 	/// How visible the content should be, including any content clipped to it.
 	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
+	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
 	opacity: Percentage,
+	/// Whether the *Fill* property is enabled, multiplying the existing fill by the chosen percentage.
+	#[widget(ParsedWidgetOverride::Hidden)]
+	has_fill: bool,
+	/// How visible the content should be, independent of any content clipped to it.
+	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
+	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
+	#[default(100.)]
+	fill: Percentage,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
-	content.multiply_alpha(opacity / 100.);
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or TableRow<T>) rather than applying to each item in its own table, which produces the undesired result
+	if has_opacity {
+		content.multiply_alpha(opacity / 100.);
+	}
+	if has_fill {
+		content.multiply_fill(fill / 100.);
+	}
 	content
 }
 
-/// Sets each of the blending properties at once. The blend mode determines how overlapping content is composited together. The opacity affects the transparency of the content (together with anything above which is clipped to it). The fill affects the transparency of the content itself, without affecting that of content clipped to it. The clip property determines whether the content inherits the alpha of the content beneath it.
+/// Sets whether the input graphics inherit the alpha of the content beneath them, "clipping" them to that content.
 #[node_macro::node(category("Blending"))]
-fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
+fn clipping_mask<T: SetClip>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
@@ -233,23 +253,10 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 		Table<GradientStops>,
 	)]
 	mut content: T,
-	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
-	blend_mode: BlendMode,
-	/// How visible the content should be, including any content clipped to it.
-	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
-	#[default(100.)]
-	opacity: Percentage,
-	/// How visible the content should be, independent of any content clipped to it.
-	/// Ranges from 0% (fully transparent) to 100% (fully opaque).
-	#[default(100.)]
-	fill: Percentage,
 	/// Whether the content inherits the alpha of the content beneath it.
 	clip: bool,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
-	content.set_blend_mode(blend_mode);
-	content.multiply_alpha(opacity / 100.);
-	content.multiply_fill(fill / 100.);
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or TableRow<T>) rather than applying to each item in its own table, which produces the undesired result
 	content.set_clip(clip);
 	content
 }

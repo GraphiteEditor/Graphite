@@ -14,7 +14,7 @@ macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
 			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, graphene_hash::CacheHash, DynAny)]
-			#[derive(serde::Serialize, serde::Deserialize)]
+			#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 			/// A strongly typed ID
 			pub struct $id(u64);
 
@@ -79,11 +79,12 @@ impl std::hash::BuildHasher for NoHashBuilder {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.
 pub struct PointDomain {
 	id: Vec<PointId>,
-	#[serde(alias = "positions")]
+	#[cfg_attr(feature = "serde", serde(alias = "positions"))]
 	pub(crate) position: Vec<DVec2>,
 }
 
@@ -205,10 +206,11 @@ impl PointDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
-	#[serde(alias = "ids")]
+	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
 	id: Vec<SegmentId>,
 	start_point: Vec<usize>,
 	end_point: Vec<usize>,
@@ -587,11 +589,12 @@ impl SegmentDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Hash, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
 /// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
-	#[serde(alias = "ids")]
+	#[cfg_attr(feature = "serde", serde(alias = "ids"))]
 	id: Vec<RegionId>,
 	segment_range: Vec<std::ops::RangeInclusive<SegmentId>>,
 	fill: Vec<FillId>,
@@ -843,14 +846,14 @@ struct Faces {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FaceIterator<'a, Upstream> {
-	vector: &'a Vector<Upstream>,
+pub struct FaceIterator<'a> {
+	vector: &'a Vector,
 	faces: Faces,
 	current_face: usize,
 }
 
-impl<Upstream> FaceIterator<'_, Upstream> {
-	fn new<'a>(faces: Faces, vector: &'a Vector<Upstream>) -> FaceIterator<'a, Upstream> {
+impl FaceIterator<'_> {
+	fn new(faces: Faces, vector: &Vector) -> FaceIterator<'_> {
 		FaceIterator { vector, faces, current_face: 0 }
 	}
 
@@ -859,7 +862,7 @@ impl<Upstream> FaceIterator<'_, Upstream> {
 	}
 }
 
-impl<Upstream> Iterator for FaceIterator<'_, Upstream> {
+impl Iterator for FaceIterator<'_> {
 	type Item = kurbo::BezPath;
 	fn next(&mut self) -> Option<Self::Item> {
 		let start_side = self.faces.face_start.get(self.current_face).copied()?;
@@ -913,7 +916,7 @@ impl Faces {
 	}
 }
 
-impl<Upstream> Vector<Upstream> {
+impl Vector {
 	/// Construct a [`kurbo::PathSeg`] by resolving the points from their ids.
 	fn path_segment_from_index(&self, start: usize, end: usize, handles: BezierHandles) -> PathSeg {
 		let start = dvec2_to_point(self.point_domain.positions()[start]);
@@ -1128,7 +1131,7 @@ impl<Upstream> Vector<Upstream> {
 			})
 	}
 
-	pub fn build_stroke_path_iter(&self) -> StrokePathIter<'_, Upstream> {
+	pub fn build_stroke_path_iter(&self) -> StrokePathIter<'_> {
 		let mut points = vec![StrokePathIterPointMetadata::default(); self.point_domain.ids().len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			points[start].set(StrokePathIterPointSegmentMetadata::new(segment_index, false));
@@ -1236,7 +1239,7 @@ impl<Upstream> Vector<Upstream> {
 		self.is_branching() && !self.has_regions()
 	}
 
-	pub fn construct_faces(&self) -> FaceIterator<'_, Upstream> {
+	pub fn construct_faces(&self) -> FaceIterator<'_> {
 		let mut adjacency: Vec<Vec<FaceSide>> = vec![Vec::new(); self.point_domain.len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			adjacency[start].push(FaceSide { segment_index, reversed: false });
@@ -1358,14 +1361,14 @@ impl StrokePathIterPointMetadata {
 }
 
 #[derive(Clone)]
-pub struct StrokePathIter<'a, Upstream> {
-	vector: &'a Vector<Upstream>,
+pub struct StrokePathIter<'a> {
+	vector: &'a Vector,
 	points: Vec<StrokePathIterPointMetadata>,
 	skip: usize,
 	done_one: bool,
 }
 
-impl<Upstream> Iterator for StrokePathIter<'_, Upstream> {
+impl Iterator for StrokePathIter<'_> {
 	type Item = (Vec<ManipulatorGroup<PointId>>, bool);
 
 	fn next(&mut self) -> Option<Self::Item> {

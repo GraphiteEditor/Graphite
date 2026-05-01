@@ -9,7 +9,7 @@ use convert_case::{Boundary, Converter, pattern};
 use core_types::Color;
 use core_types::graphene_hash::CacheHash;
 use core_types::registry::types::{SignedInteger, TextArea};
-use core_types::table::Table;
+use core_types::table::{Table, TableRow};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -26,7 +26,8 @@ pub use vector_types;
 /// Alignment of lines of type within a text block.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]
@@ -49,7 +50,8 @@ impl From<TextAlign> for parley::Alignment {
 	}
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypesettingConfig {
 	pub font_size: f64,
 	pub line_height_ratio: f64,
@@ -698,10 +700,10 @@ fn string_split(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimiter_escaping: bool,
-) -> Vec<String> {
+) -> Table<String> {
 	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
 
-	string.split(&delimiter).map(str::to_string).collect()
+	string.split(&delimiter).map(str::to_string).map(TableRow::new_from_element).collect()
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
@@ -711,7 +713,7 @@ fn string_split(
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
-	strings: Vec<String>,
+	strings: Table<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
 	separator: String,
@@ -722,26 +724,27 @@ fn string_join(
 ) -> String {
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
-	strings.join(&separator)
+	strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator)
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
 #[node_macro::node(category("Text"))]
 async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	strings: Vec<String>,
+	strings: Table<String>,
 	#[expose]
 	#[implementations(Context -> String)]
 	mapped: impl Node<Context<'static>, Output = String>,
-) -> Vec<String> {
-	let mut result = Vec::new();
+) -> Table<String> {
+	let mut result = Table::new();
 
-	for (i, string) in strings.into_iter().enumerate() {
+	for (i, row) in strings.into_iter().enumerate() {
+		let string = row.into_element();
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
-		let mapped_strings = mapped.eval(owned_ctx.into_context()).await;
+		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
 
-		result.push(mapped_strings);
+		result.push(TableRow::new_from_element(mapped_string));
 	}
 
 	result

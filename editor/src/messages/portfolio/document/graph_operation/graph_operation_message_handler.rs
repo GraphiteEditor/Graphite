@@ -27,7 +27,7 @@ pub struct GraphOperationMessageContext<'a> {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct GraphOperationMessageHandler {}
 
-// GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.
+// GraphOperationMessageHandler always modified the document network. This is so changes to the Layers panel will only affect the document network.
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
 #[message_handler_data]
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for GraphOperationMessageHandler {
@@ -42,7 +42,27 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.blending_fill_set(fill);
+					modify_inputs.opacity_fill_set(fill);
+				}
+			}
+			GraphOperationMessage::GradientStopsSet { layer, stops } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_stops_set(stops);
+				}
+			}
+			GraphOperationMessage::GradientLineSet { layer, start, end } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_line_set(start, end);
+				}
+			}
+			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_type_set(gradient_type);
+				}
+			}
+			GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.gradient_spread_method_set(spread_method);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -108,11 +128,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				network_interface.force_set_upstream_to_chain(&first_chain_node, &[]);
 			}
-			GraphOperationMessage::NewArtboard { id, artboard } => {
+			GraphOperationMessage::NewArtboard {
+				id,
+				location,
+				dimensions,
+				background,
+				clip,
+			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				let artboard_location = artboard.location;
-				let artboard_layer = modify_inputs.create_artboard(id, artboard);
+				let artboard_layer = modify_inputs.create_artboard(id, location, dimensions, background, clip);
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
@@ -138,7 +163,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 							// Apply a translation to prevent the content from shifting
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
-								transform: DAffine2::from_translation(-artboard_location.as_dvec2()),
+								transform: DAffine2::from_translation(-location),
 								transform_in: TransformIn::Local,
 								skip_rerender: true,
 							});
@@ -197,10 +222,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
+					network_path: Vec::new(),
 					alias: layer_alias.to_string(),
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: control_path_id,
+					network_path: Vec::new(),
 					alias: path_alias.to_string(),
 				});
 			}
@@ -245,6 +272,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: id,
+					network_path: Vec::new(),
 					alias: "Boolean Operation".to_string(),
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -343,6 +371,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
+						network_path: Vec::new(),
 						alias: network_interface.display_name(&artboard.to_node(), &[]),
 						skip_adding_history_step: true,
 					});
@@ -713,10 +742,10 @@ fn set_import_child_positions(
 		let child_pos = IVec2::new(child_x, current_y);
 
 		if i == 0 {
-			// Top of stack — set to `Absolute` position
+			// Top of stack: set to `Absolute` position
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Absolute(child_pos), &[]);
 		} else {
-			// Below top — set `Stack` with `y_offset` based on previous sibling's subtree extent
+			// Below top: set `Stack` with `y_offset` based on previous sibling's subtree extent
 			let prev_sibling_svg_index = n - i;
 			let y_offset = child_extents_svg_order[prev_sibling_svg_index] + STACK_VERTICAL_GAP as u32;
 			network_interface.set_layer_position_for_import(&child_layer.to_node(), LayerPosition::Stack(y_offset), &[]);

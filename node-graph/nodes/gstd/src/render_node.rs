@@ -9,7 +9,7 @@ pub use graph_craft::document::value::RenderOutputType;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Graphic, Vector};
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, checkerboard_brush};
 use rendering::{RenderMetadata, SvgSegment};
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ pub struct RenderIntermediate {
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
-		Context -> Table<Artboard>,
+		Context -> Table<Table<Graphic>>,
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
@@ -230,11 +230,17 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 
 			scene.append(child, Some(footprint_transform_vello));
 
-			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
-			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
+			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport.
+			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail.
+			//
+			// `!is_finite()` rather than `== f32::INFINITY`: `scene.append` composes the child's `Affine::scale(INFINITY)` with
+			// the viewport rotation, leaving `matrix[0] = cos(θ) * INFINITY`. In the (90°, 270°) tilt range cos is negative so
+			// the result is `-INFINITY`, which the old equality check missed; Vello then rasterized a unit rect with non-finite
+			// vertices, dropping the gradient and tanking performance. `!is_finite()` also covers NaN as a guard against future
+			// code paths where `matrix[0]` could land on `0 * INFINITY`.
 			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
 			for transform in scene.encoding_mut().transforms.iter_mut() {
-				if transform.matrix[0] == f32::INFINITY {
+				if !transform.matrix[0].is_finite() {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}
 			}

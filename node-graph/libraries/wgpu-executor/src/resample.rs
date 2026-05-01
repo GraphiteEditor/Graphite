@@ -39,7 +39,7 @@ impl Resampler {
 		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("resample_pipeline_layout"),
 			bind_group_layouts: &[&bind_group_layout],
-			push_constant_ranges: &[],
+			..Default::default()
 		});
 
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -67,7 +67,7 @@ impl Resampler {
 			},
 			depth_stencil: None,
 			multisample: wgpu::MultisampleState::default(),
-			multiview: None,
+			multiview_mask: None,
 			cache: None,
 		});
 
@@ -135,9 +135,7 @@ impl Resampler {
 					},
 					depth_slice: None,
 				})],
-				depth_stencil_attachment: None,
-				timestamp_writes: None,
-				occlusion_query_set: None,
+				..Default::default()
 			});
 
 			render_pass.set_pipeline(&self.pipeline);

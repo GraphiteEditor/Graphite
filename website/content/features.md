@@ -147,6 +147,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Dockable panels and tab reordering</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Custom attributes for table data</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Stable document format</span>
 		</div>
@@ -193,10 +197,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Variables and color swatches</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Custom attributes for table data</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />

@@ -395,7 +395,7 @@ impl EditorWrapper {
 	pub fn load_document_content(&self, document_id: u64, document: String) {
 		let message = PersistentStateMessage::LoadDocument {
 			document_id: DocumentId(document_id),
-			document: document,
+			document,
 		};
 		self.dispatch(message);
 	}
@@ -404,6 +404,13 @@ impl EditorWrapper {
 	pub fn select_document(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::SelectDocument { document_id };
+		self.dispatch(message);
+	}
+
+	/// Rename the currently active document.
+	#[wasm_bindgen(js_name = renameDocument)]
+	pub fn rename_document(&self, new_name: String) {
+		let message = PortfolioMessage::RenameDocument { new_name };
 		self.dispatch(message);
 	}
 
@@ -775,6 +782,7 @@ impl EditorWrapper {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
+			network_path: Vec::new(),
 			alias: name,
 			skip_adding_history_step: false,
 		};
@@ -912,7 +920,7 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		let message = NodeGraphMessage::ToggleVisibility { node_id, network_path: Vec::new() };
 		self.dispatch(message);
 	}
 
@@ -931,15 +939,18 @@ impl EditorWrapper {
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, node_id: u64) {
-		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
+		let message = NodeGraphMessage::ToggleLocked {
+			node_id: NodeId(node_id),
+			network_path: Vec::new(),
+		};
 		self.dispatch(message);
 	}
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, instance_path: &[u64], recursive: bool) {
-		let instance_path = instance_path.iter().map(|&id| NodeId(id)).collect();
-		let message = DocumentMessage::ToggleLayerExpansion { instance_path, recursive };
+	pub fn toggle_layer_expansion(&self, tree_path: &[u64], recursive: bool) {
+		let tree_path = tree_path.iter().map(|&id| NodeId(id)).collect();
+		let message = DocumentMessage::ToggleLayerExpansion { tree_path, recursive };
 		self.dispatch(message);
 	}
 

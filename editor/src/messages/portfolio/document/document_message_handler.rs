@@ -28,7 +28,7 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
@@ -84,7 +84,7 @@ pub struct DocumentMessageHandler {
 	//
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
-	/// Tracks which layer instances are collapsed in the Layers panel, keyed by instance path.
+	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
@@ -699,6 +699,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
+						network_path: Vec::new(),
 						alias: name,
 						skip_adding_history_step: false,
 					});
@@ -756,6 +757,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
+						network_path: Vec::new(),
 						alias: name,
 						skip_adding_history_step: false,
 					});
@@ -782,7 +784,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
-				self.name = new_name.clone();
+				let new_name = new_name.trim().to_string();
+
+				// No-op when the resolved name is unchangedL committing the rename field without edits (or with
+				// only whitespace edits) shouldn't dissociate the document from its file on disk or mark it unsaved.
+				if new_name == self.name {
+					return;
+				}
+
+				self.name = new_name;
 
 				self.path = None;
 				self.set_save_state(false);
@@ -1173,27 +1183,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			DocumentMessage::ToggleLayerExpansion { instance_path, recursive } => {
-				let is_collapsed = self.collapsed.0.contains(&instance_path);
+			DocumentMessage::ToggleLayerExpansion { tree_path, recursive } => {
+				let is_collapsed = self.collapsed.0.contains(&tree_path);
 
 				if is_collapsed {
 					if recursive {
 						// Remove this path and all descendant paths (paths that start with this one)
-						self.collapsed.0.retain(|path| !path.starts_with(&instance_path));
+						self.collapsed.0.retain(|path| !path.starts_with(&tree_path));
 					} else {
-						self.collapsed.0.retain(|path| *path != instance_path);
+						self.collapsed.0.retain(|path| *path != tree_path);
 					}
 				} else {
 					if recursive {
-						// Collapse all expanded descendant instances by collecting their paths from the structure tree
-						let descendant_paths = self.collect_descendant_instance_paths(&instance_path);
+						// Collapse all expanded descendant occurrences by collecting their tree paths from the structure tree
+						let descendant_paths = self.collect_descendant_tree_paths(&tree_path);
 						for path in descendant_paths {
 							if !self.collapsed.0.contains(&path) {
 								self.collapsed.0.push(path);
 							}
 						}
 					}
-					self.collapsed.0.push(instance_path);
+					self.collapsed.0.push(tree_path);
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1386,11 +1396,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// When artboard_canvas is provided (SVG file-open flow), use the declared canvas origin and dimensions;
 				// no content-shift Transform node needed since the SVG was already placed at its natural coordinates.
 				let (artboard_location, artboard_dimensions, content_shift) = if let Some((origin, dimensions)) = artboard_canvas {
-					(origin, dimensions, DVec2::ZERO)
+					(origin.as_dvec2(), dimensions.as_dvec2(), DVec2::ZERO)
 				} else {
 					// No declared canvas (image or clipboard paste): derive location and dimensions from the content bounding box.
-					let location = if place_artboard_at_origin { IVec2::ZERO } else { bounds[0].round().as_ivec2() };
-					(location, (bounds[1] - bounds[0]).round().as_ivec2(), -bounds[0].round())
+					let location = if place_artboard_at_origin { DVec2::ZERO } else { bounds[0].round() };
+					(location, (bounds[1] - bounds[0]).round(), -bounds[0].round())
 				};
 
 				// Create an artboard and set its dimensions to the bounding box size and location
@@ -1686,6 +1696,12 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	/// Path to the subnetwork that the user's selection is currently scoped to.
+	/// Empty when the selection lives in the root document network.
+	pub fn selection_network_path(&self) -> &[NodeId] {
+		&self.selection_network_path
+	}
+
 	pub fn serialize_document(&self) -> String {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
@@ -1766,11 +1782,11 @@ impl DocumentMessageHandler {
 		let selected_layers: HashSet<NodeId> = network.selected_nodes().selected_layers(self.metadata()).map(LayerNodeIdentifier::to_node).collect();
 
 		let ancestors = HashSet::new();
-		let instance_path = Vec::new();
+		let tree_path = Vec::new();
 		let mut root_entries = Vec::new();
 
 		// The first root layer is the topmost entry
-		root_entries.push(self.build_layer_entry(first_root_layer_id, &ancestors, &selected_layers, &instance_path));
+		root_entries.push(self.build_layer_entry(first_root_layer_id, &ancestors, &selected_layers, &tree_path));
 
 		// Layers in the primary flow (input[0] chain) from the first root layer are root-level siblings
 		let mut root_ancestors = HashSet::new();
@@ -1778,7 +1794,7 @@ impl DocumentMessageHandler {
 
 		for sibling_id in network.upstream_flow_back_from_nodes(vec![first_root_layer_id], &[], FlowType::PrimaryFlow).skip(1) {
 			if network.is_layer(&sibling_id, &[]) && !root_ancestors.contains(&sibling_id) {
-				root_entries.push(self.build_layer_entry(sibling_id, &root_ancestors, &selected_layers, &instance_path));
+				root_entries.push(self.build_layer_entry(sibling_id, &root_ancestors, &selected_layers, &tree_path));
 			}
 		}
 
@@ -1787,19 +1803,19 @@ impl DocumentMessageHandler {
 
 	/// Builds a single `LayerStructureEntry` for the given layer, including its `children_present` flag,
 	/// `descendant_selected` flag, and (if expanded) its children collected from the graph.
-	fn build_layer_entry(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, parent_instance_path: &[NodeId]) -> LayerStructureEntry {
-		let mut instance_path = parent_instance_path.to_vec();
-		instance_path.push(layer_id);
+	fn build_layer_entry(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, parent_tree_path: &[NodeId]) -> LayerStructureEntry {
+		let mut tree_path = parent_tree_path.to_vec();
+		tree_path.push(layer_id);
 
 		let mut child_ancestors = ancestors.clone();
 		child_ancestors.insert(layer_id);
 
 		let children_present = self.has_layer_children_in_graph(layer_id, &child_ancestors);
 
-		let collapsed = self.collapsed.0.contains(&instance_path);
+		let collapsed = self.collapsed.0.contains(&tree_path);
 
 		let children = if children_present && !collapsed {
-			self.collect_layer_children(layer_id, &child_ancestors, selected_layers, &instance_path)
+			self.collect_layer_children(layer_id, &child_ancestors, selected_layers, &tree_path)
 		} else {
 			Vec::new()
 		};
@@ -1880,7 +1896,7 @@ impl DocumentMessageHandler {
 	/// The horizontal flow (a layer's secondary input chain) finds nested content layers, and the
 	/// primary flow from those (their stack's top output) finds stacked siblings at the same depth.
 	/// `ancestors` contains layer IDs in the current path from root, used for cycle prevention.
-	fn collect_layer_children(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, instance_path: &[NodeId]) -> Vec<LayerStructureEntry> {
+	fn collect_layer_children(&self, layer_id: NodeId, ancestors: &HashSet<NodeId>, selected_layers: &HashSet<NodeId>, tree_path: &[NodeId]) -> Vec<LayerStructureEntry> {
 		let network = &self.network_interface;
 
 		// Find the first nested layer via horizontal flow (content inside this layer)
@@ -1898,22 +1914,22 @@ impl DocumentMessageHandler {
 		}
 
 		// The nested layer is the first child at this depth level
-		let mut children = vec![self.build_layer_entry(nested_id, ancestors, selected_layers, instance_path)];
+		let mut children = vec![self.build_layer_entry(nested_id, ancestors, selected_layers, tree_path)];
 
 		// Primary flow from the nested layer finds stacked siblings (more children of this layer)
 		for sibling_id in network.upstream_flow_back_from_nodes(vec![nested_id], &[], FlowType::PrimaryFlow).skip(1) {
 			if network.is_layer(&sibling_id, &[]) && !ancestors.contains(&sibling_id) {
-				children.push(self.build_layer_entry(sibling_id, ancestors, selected_layers, instance_path));
+				children.push(self.build_layer_entry(sibling_id, ancestors, selected_layers, tree_path));
 			}
 		}
 
 		children
 	}
 
-	/// Collects instance paths for all descendant layers of the given instance path by traversing the graph.
+	/// Collects tree paths for all descendant layers of the given tree path by traversing the graph.
 	/// Used for recursive collapse to find all expandable descendants.
-	fn collect_descendant_instance_paths(&self, instance_path: &[NodeId]) -> Vec<Vec<NodeId>> {
-		let Some(&layer_id) = instance_path.last() else { return Vec::new() };
+	fn collect_descendant_tree_paths(&self, tree_path: &[NodeId]) -> Vec<Vec<NodeId>> {
+		let Some(&layer_id) = tree_path.last() else { return Vec::new() };
 		let network = &self.network_interface;
 
 		let mut paths = Vec::new();
@@ -1922,7 +1938,7 @@ impl DocumentMessageHandler {
 		// Seed with child layers via horizontal flow
 		for node_id in network.upstream_flow_back_from_nodes(vec![layer_id], &[], FlowType::HorizontalFlow).skip(1) {
 			if network.is_layer(&node_id, &[]) {
-				let mut child_path = instance_path.to_vec();
+				let mut child_path = tree_path.to_vec();
 				child_path.push(node_id);
 				stack.push((node_id, child_path));
 			}
@@ -1930,14 +1946,14 @@ impl DocumentMessageHandler {
 
 		let mut visited = HashSet::new();
 
-		// Depth-first traversal collecting all unique descendant instance paths
+		// Depth-first traversal collecting all unique descendant tree paths
 		while let Some((current_id, current_path)) = stack.pop() {
 			// Skip paths we've already visited to prevent cycles
 			if !visited.insert(current_path.clone()) {
 				continue;
 			}
 
-			// Record this descendant's instance path for collapsing
+			// Record this descendant's tree path for collapsing
 			paths.push(current_path.clone());
 
 			// Add nested content layers found via horizontal flow
@@ -2144,7 +2160,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".into()))
+							.is_some_and(|reference| reference == DefinitionIdentifier::ProtoNode(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER))
 					})
 				});
 
@@ -2202,18 +2218,18 @@ impl DocumentMessageHandler {
 				responses.add(NodeGraphMessage::SendGraph);
 
 				// The control path layer (Blend Path / Morph Path) should start collapsed.
-				let instance_path = {
-					// Build instance path from root down to the control path layer, which is a sibling of the main layer under `parent`.
-					let mut instance_path: Vec<NodeId> = parent
+				let tree_path = {
+					// Build tree path from root down to the control path layer, which is a sibling of the main layer under `parent`.
+					let mut tree_path: Vec<NodeId> = parent
 						.ancestors(network_interface.document_metadata())
 						.take_while(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
 						.map(LayerNodeIdentifier::to_node)
 						.collect();
-					instance_path.reverse();
-					instance_path.push(control_path_id);
-					instance_path
+					tree_path.reverse();
+					tree_path.push(control_path_id);
+					tree_path
 				};
-				responses.add(DocumentMessage::ToggleLayerExpansion { instance_path, recursive: false });
+				responses.add(DocumentMessage::ToggleLayerExpansion { tree_path, recursive: false });
 
 				return folder_id;
 			}
@@ -2359,7 +2375,7 @@ impl DocumentMessageHandler {
 			});
 
 			if layer_to_move.parent(self.metadata()) != Some(parent) {
-				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
+				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty `Table<Vector>` item.
 				// TODO: See #2688 for this issue.
 				let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 				let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();

@@ -18,22 +18,37 @@ impl CornerRadius for f64 {
 		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4])))
 	}
 }
-impl CornerRadius for [f64; 4] {
+impl CornerRadius for Table<f64> {
 	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector> {
+		// Expand to four corners using the CSS `border-radius` shorthand rules.
+		// - `[a]` → `[a, a, a, a]`
+		// - `[a, b]` → `[a, b, a, b]`
+		// - `[a, b, c]` → `[a, b, c, b]`
+		// - `[a, b, c, d, …]` → `[a, b, c, d]`
+		// - `[]` → `[0, 0, 0, 0]`
+		let values: Vec<f64> = self.iter_element_values().copied().collect();
+		let radii: [f64; 4] = match values.as_slice() {
+			[] => [0., 0., 0., 0.],
+			&[a] => [a, a, a, a],
+			&[a, b] => [a, b, a, b],
+			&[a, b, c] => [a, b, c, b],
+			&[a, b, c, d, ..] => [a, b, c, d],
+		};
+
 		let clamped_radius = if clamped {
 			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
 
 			let mut scale_factor: f64 = 1.;
 			for i in 0..4 {
 				let side_length = if i % 2 == 0 { size.x } else { size.y };
-				let adjacent_corner_radius_sum = self[i] + self[(i + 1) % 4];
+				let adjacent_corner_radius_sum = radii[i] + radii[(i + 1) % 4];
 				if side_length < adjacent_corner_radius_sum {
 					scale_factor = scale_factor.min(side_length / adjacent_corner_radius_sum);
 				}
 			}
-			self.map(|x| x * scale_factor)
+			radii.map(|x| x * scale_factor)
 		} else {
-			self
+			radii
 		};
 		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius)))
 	}
@@ -140,7 +155,7 @@ fn rectangle<T: CornerRadius>(
 	#[default(100)]
 	height: f64,
 	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
-	#[implementations(f64, [f64; 4])] corner_radius: T,
+	#[implementations(f64, Table<f64>)] corner_radius: T,
 	#[default(true)] clamped: bool,
 ) -> Table<Vector> {
 	corner_radius.generate(DVec2::new(width, height), clamped)
@@ -188,7 +203,8 @@ fn star<T: AsU64>(
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum QRCodeErrorCorrectionLevel {
 	/// Allows recovery from up to 7% data loss.
@@ -399,9 +415,9 @@ mod tests {
 
 		// Works properly
 		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
-		assert_eq!(grid.iter().next().unwrap().element.point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.iter().next().unwrap().element.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.iter().next().unwrap().element.segment_bezier_iter() {
+		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			assert!(
 				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -414,9 +430,9 @@ mod tests {
 	#[test]
 	fn skew_isometric_grid_test() {
 		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
-		assert_eq!(grid.iter().next().unwrap().element.point_domain.ids().len(), 5 * 5);
-		assert_eq!(grid.iter().next().unwrap().element.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-		for (_, bezier, _, _) in grid.iter().next().unwrap().element.segment_bezier_iter() {
+		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
 			assert_eq!(bezier.handles, subpath::BezierHandles::Linear);
 			let vector = bezier.start - bezier.end;
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
@@ -427,7 +443,7 @@ mod tests {
 	#[test]
 	fn qr_code_test() {
 		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
-		assert!(qr.iter().next().unwrap().element.point_domain.ids().len() > 0);
-		assert!(qr.iter().next().unwrap().element.segment_domain.ids().len() > 0);
+		assert!(qr.element(0).unwrap().point_domain.ids().len() > 0);
+		assert!(qr.element(0).unwrap().segment_domain.ids().len() > 0);
 	}
 }

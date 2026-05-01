@@ -405,9 +405,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				{
 					return;
 				};
+				// Double-clicking the layer's name area triggers inline rename instead of drilling into the subgraph.
+				if let Some(layer_id) = network_interface.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Name, selection_network_path) {
+					responses.add(NodeGraphMessage::BeginEditLayerName { node_id: layer_id });
+					return;
+				}
 				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
+			}
+			NodeGraphMessage::BeginEditLayerName { node_id } => {
+				responses.add(FrontendMessage::TriggerEditLayerNameInGraph { node_id });
 			}
 			NodeGraphMessage::ExposeInput {
 				input_connector,
@@ -659,6 +667,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: encapsulating_node_id,
+					network_path: selection_network_path.to_vec(),
 					alias: "Untitled Node".to_string(),
 				});
 
@@ -909,13 +918,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Toggle visibility of clicked node and return
 				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					responses.add(NodeGraphMessage::ToggleVisibility {
+						node_id: clicked_visibility,
+						network_path: selection_network_path.to_vec(),
+					});
 					return;
 				}
 
 				// Toggle lock of clicked node and return
 				if let Some(clicked_lock) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Lock, selection_network_path) {
-					responses.add(NodeGraphMessage::ToggleLocked { node_id: clicked_lock });
+					responses.add(NodeGraphMessage::ToggleLocked {
+						node_id: clicked_lock,
+						network_path: selection_network_path.to_vec(),
+					});
 					return;
 				}
 
@@ -1816,13 +1831,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetDisplayName {
 				node_id,
+				network_path,
 				alias,
 				skip_adding_history_step,
 			} => {
 				if !skip_adding_history_step {
 					responses.add(DocumentMessage::StartTransaction);
 				}
-				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
+				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, network_path, alias });
 				if !skip_adding_history_step {
 					// Does not add a history step if the name was not changed
 					responses.add(DocumentMessage::EndTransaction);
@@ -1831,9 +1847,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(OverlaysMessage::Draw); // Redraw overlays to update artboard names
+				responses.add(DataPanelMessage::Refresh);
 			}
-			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
-				network_interface.set_display_name(&node_id, alias, selection_network_path);
+			NodeGraphMessage::SetDisplayNameImpl { node_id, network_path, alias } => {
+				network_interface.set_display_name(&node_id, alias, &network_path);
 			}
 			NodeGraphMessage::SetImportExportName { name, index } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1872,25 +1889,34 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 
 				for node_id in &node_ids {
-					responses.add(NodeGraphMessage::SetLocked { node_id: *node_id, locked });
+					responses.add(NodeGraphMessage::SetLocked {
+						node_id: *node_id,
+						network_path: selection_network_path.to_vec(),
+						locked,
+					});
 				}
 
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				})
 			}
-			NodeGraphMessage::ToggleLocked { node_id } => {
-				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&node_id) else {
-					log::error!("Cannot get node {node_id:?} in NodeGraphMessage::ToggleLocked");
-					return;
-				};
-
-				let locked = !node_metadata.persistent_metadata.locked;
+			NodeGraphMessage::ToggleLocked { node_id, network_path } => {
+				let locked = !network_interface.is_locked(&node_id, &network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::SetLocked { node_id, locked });
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] })
+				responses.add(NodeGraphMessage::SetLocked {
+					node_id,
+					network_path: network_path.clone(),
+					locked,
+				});
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path,
+				});
 			}
-			NodeGraphMessage::SetLocked { node_id, locked } => {
-				network_interface.set_locked(&node_id, selection_network_path, locked);
+			NodeGraphMessage::SetLocked { node_id, network_path, locked } => {
+				network_interface.set_locked(&node_id, &network_path, locked);
 			}
 			NodeGraphMessage::ToggleSelectedIsPinned => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1906,7 +1932,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				for node_id in &node_ids {
 					responses.add(NodeGraphMessage::SetPinned { node_id: *node_id, pinned });
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				});
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
@@ -1920,31 +1949,46 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
-					responses.add(NodeGraphMessage::SetVisibility { node_id: *node_id, visible });
+					responses.add(NodeGraphMessage::SetVisibility {
+						node_id: *node_id,
+						network_path: selection_network_path.to_vec(),
+						visible,
+					});
 				}
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids,
+					network_path: selection_network_path.to_vec(),
+				});
 			}
-			NodeGraphMessage::ToggleVisibility { node_id } => {
-				let visible = !network_interface.is_visible(&node_id, selection_network_path);
+			NodeGraphMessage::ToggleVisibility { node_id, network_path } => {
+				let visible = !network_interface.is_visible(&node_id, &network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
-				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
+				responses.add(NodeGraphMessage::SetVisibility {
+					node_id,
+					network_path: network_path.clone(),
+					visible,
+				});
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects {
+					node_ids: vec![node_id],
+					network_path,
+				});
 			}
 			NodeGraphMessage::SetPinned { node_id, pinned } => {
 				network_interface.set_pinned(&node_id, selection_network_path, pinned);
 			}
-			NodeGraphMessage::SetVisibility { node_id, visible } => {
-				network_interface.set_visibility(&node_id, selection_network_path, visible);
+			NodeGraphMessage::SetVisibility { node_id, network_path, visible } => {
+				network_interface.set_visibility(&node_id, &network_path, visible);
 			}
-			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids } => {
-				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, selection_network_path)) {
+			NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids, network_path } => {
+				if node_ids.iter().any(|node_id| network_interface.connected_to_output(node_id, &network_path)) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::SendGraph);
 
 				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(DataPanelMessage::Refresh);
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
 				if let Some((box_selection_start, _)) = self.box_selection_start {
@@ -2358,7 +2402,7 @@ impl NodeGraphMessageHandler {
 		self.widgets[1] = LayoutGroup::row(widgets);
 	}
 
-	/// Collate the properties panel sections for a node graph
+	/// Collate the Properties panel sections for a node graph
 	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(selected_nodes) = context.network_interface.selected_nodes_in_nested_network(context.selection_network_path) else {
@@ -2397,6 +2441,7 @@ impl NodeGraphMessageHandler {
 					let mut properties = Vec::new();
 
 					if let [node_id] = *nodes.as_slice() {
+						let network_path = context.selection_network_path.to_vec();
 						properties.push(LayoutGroup::row(vec![
 							Separator::new(SeparatorStyle::Related).widget_instance(),
 							IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
@@ -2406,6 +2451,7 @@ impl NodeGraphMessageHandler {
 								.on_update(move |text_input| {
 									NodeGraphMessage::SetDisplayName {
 										node_id,
+										network_path: network_path.clone(),
 										alias: text_input.value.clone(),
 										skip_adding_history_step: false,
 									}
@@ -2422,14 +2468,14 @@ impl NodeGraphMessageHandler {
 				}
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
-				// This may require store a separate path for the properties panel
+				// This may require store a separate path for the Properties panel
 				let mut properties = vec![LayoutGroup::row(vec![
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					TextInput::new(context.document_name)
 						.tooltip_description("Name of the current document.")
-						.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
+						.on_update(|text_input| PortfolioMessage::RenameDocument { new_name: text_input.value.clone() }.into())
 						.widget_instance(),
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 				])];
@@ -2468,6 +2514,7 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
+				let layer_network_path = context.selection_network_path.to_vec();
 				let mut layer_properties = vec![LayoutGroup::row(vec![
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
@@ -2477,6 +2524,7 @@ impl NodeGraphMessageHandler {
 						.on_update(move |text_input| {
 							NodeGraphMessage::SetDisplayName {
 								node_id: layer,
+								network_path: layer_network_path.clone(),
 								alias: text_input.value.clone(),
 								skip_adding_history_step: false,
 							}

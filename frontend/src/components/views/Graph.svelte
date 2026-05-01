@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from "svelte";
+	import { getContext, onDestroy, onMount, tick } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
@@ -11,6 +11,7 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { closeContextMenu } from "/src/stores/node-graph";
+	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const GRID_COLLAPSE_SPACING = 10;
@@ -20,6 +21,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const documentState = getContext<DocumentStore>("document");
+	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
 	let graph: HTMLDivElement | undefined;
 
@@ -35,6 +37,7 @@
 
 	let editingNameImportIndex: number | undefined = undefined;
 	let editingNameExportIndex: number | undefined = undefined;
+	let editingNameNodeId: bigint | undefined = undefined;
 	let editingNameText = "";
 
 	function exportsToEdgeTextInputWidth() {
@@ -67,13 +70,10 @@
 		editingNameExportIndex = index;
 	}
 
-	function focusInput(currentName: string) {
+	async function focusInput(currentName: string) {
 		editingNameText = currentName;
-		setTimeout(() => {
-			if (inputElement) {
-				inputElement.focus();
-			}
-		}, 0);
+		await tick();
+		inputElement?.focus();
 	}
 
 	function setEditingImportName(event: Event) {
@@ -93,6 +93,33 @@
 			editingNameExportIndex = undefined;
 		}
 	}
+
+	function commitEditingNodeName(event: Event) {
+		if (editingNameNodeId === undefined || !(event.target instanceof HTMLInputElement)) return;
+
+		editor.setLayerName(editingNameNodeId, event.target.value);
+		editingNameNodeId = undefined;
+	}
+
+	onMount(() => {
+		// Backend dispatches this when the user double-clicks a layer's name area
+		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", async (data) => {
+			const node = $nodeGraph.nodes.get(data.nodeId);
+			if (!node) return;
+
+			editingNameText = node.displayName;
+			editingNameNodeId = data.nodeId;
+
+			await tick();
+
+			inputElement?.focus();
+			inputElement?.select();
+		});
+	});
+
+	onDestroy(() => {
+		subscriptions.unsubscribeFrontendMessage("TriggerEditLayerNameInGraph");
+	});
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
@@ -595,8 +622,30 @@
 					</div>
 				{/if}
 				<div class="details">
-					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
+					{#if editingNameNodeId === node.id}
+						<input
+							class="layer-name-input"
+							type="text"
+							bind:this={inputElement}
+							bind:value={editingNameText}
+							on:pointerdown|stopPropagation
+							on:dblclick|stopPropagation
+							on:blur={commitEditingNodeName}
+							on:keydown={(e) => {
+								// Stop propagation when we handle the key ourselves so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
+								// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
+								if (e.key === "Enter") {
+									commitEditingNodeName(e);
+									e.stopPropagation();
+								} else if (e.key === "Escape") {
+									editingNameNodeId = undefined;
+									e.stopPropagation();
+								}
+							}}
+						/>
+					{:else}
+						<TextLabel>{node.displayName}</TextLabel>
+					{/if}
 				</div>
 				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
 				{#if node.locked}
@@ -1245,11 +1294,28 @@
 			}
 
 			.details {
+				display: flex;
+				align-items: center;
 				margin: 0 8px;
 
 				.text-label {
 					white-space: nowrap;
 					line-height: 48px;
+				}
+
+				.layer-name-input {
+					color: inherit;
+					background: var(--color-1-nearblack);
+					border: none;
+					outline: none;
+					margin: 0 -4px;
+					padding: 0 4px;
+					height: 24px;
+					border-radius: 2px;
+					field-sizing: content;
+					// Stack above the absolutely-positioned grip/lock/visibility siblings, which can otherwise overlap the input's right edge and hijack clicks there.
+					position: relative;
+					z-index: 1;
 				}
 			}
 

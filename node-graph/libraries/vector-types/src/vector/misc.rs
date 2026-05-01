@@ -8,7 +8,8 @@ use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point
 use std::ops::Sub;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum BooleanOperation {
 	#[default]
@@ -26,7 +27,8 @@ pub enum BooleanOperation {
 
 /// Represents different geometric interpretations of calculating the centroid (center of mass).
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum CentroidType {
 	/// The center of mass for the area of a solid shape's interior, as if made out of an infinitely flat material.
@@ -38,7 +40,8 @@ pub enum CentroidType {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RowsOrColumns {
 	#[default]
@@ -85,7 +88,8 @@ impl AsI64 for f64 {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum GridType {
 	#[default]
@@ -95,7 +99,8 @@ pub enum GridType {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum ArcType {
 	#[default]
@@ -106,7 +111,8 @@ pub enum ArcType {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum MergeByDistanceAlgorithm {
 	#[default]
@@ -116,7 +122,8 @@ pub enum MergeByDistanceAlgorithm {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum ExtrudeJoiningAlgorithm {
 	All,
@@ -127,7 +134,8 @@ pub enum ExtrudeJoiningAlgorithm {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum PointSpacingType {
 	#[default]
@@ -368,7 +376,8 @@ impl Tangent for kurbo::PathSeg {
 }
 
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ManipulatorPointId {
 	/// A control anchor - the start or end point of a bézier.
 	Anchor(PointId),
@@ -382,7 +391,7 @@ impl ManipulatorPointId {
 	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
 	#[must_use]
 	#[track_caller]
-	pub fn get_position<Upstream: 'static>(&self, vector: &Vector<Upstream>) -> Option<DVec2> {
+	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
 			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
@@ -390,7 +399,7 @@ impl ManipulatorPointId {
 		}
 	}
 
-	pub fn get_anchor_position<Upstream: 'static>(&self, vector: &Vector<Upstream>) -> Option<DVec2> {
+	pub fn get_anchor_position(&self, vector: &Vector) -> Option<DVec2> {
 		match self {
 			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
 			_ => self.get_position(vector),
@@ -399,7 +408,7 @@ impl ManipulatorPointId {
 
 	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
 	#[must_use]
-	pub fn get_handle_pair<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<[HandleId; 2]> {
+	pub fn get_handle_pair(self, vector: &Vector) -> Option<[HandleId; 2]> {
 		match self {
 			ManipulatorPointId::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
 			ManipulatorPointId::PrimaryHandle(segment) => {
@@ -420,7 +429,7 @@ impl ManipulatorPointId {
 	/// Finds all the connected handles of a point.
 	/// For an anchor it is all the connected handles.
 	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
-	pub fn get_all_connected_handles<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<Vec<HandleId>> {
+	pub fn get_all_connected_handles(self, vector: &Vector) -> Option<Vec<HandleId>> {
 		match self {
 			ManipulatorPointId::Anchor(point) => {
 				let connected = vector.all_connected(point).collect::<Vec<_>>();
@@ -443,7 +452,7 @@ impl ManipulatorPointId {
 
 	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
 	#[must_use]
-	pub fn get_anchor<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<PointId> {
+	pub fn get_anchor(self, vector: &Vector) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
 			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
@@ -479,7 +488,8 @@ impl ManipulatorPointId {
 }
 
 /// The type of handle found on a bézier curve.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, graphene_hash::CacheHash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, graphene_hash::CacheHash, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HandleType {
 	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
 	Primary,
@@ -488,7 +498,8 @@ pub enum HandleType {
 }
 
 /// Represents a primary or end handle found in a particular segment.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, graphene_hash::CacheHash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, graphene_hash::CacheHash, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,
@@ -527,7 +538,7 @@ impl HandleId {
 	}
 
 	/// Calculate the magnitude of the handle from the anchor.
-	pub fn length<Upstream: 'static>(self, vector: &Vector<Upstream>) -> f64 {
+	pub fn length(self, vector: &Vector) -> f64 {
 		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector) else {
 			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
 			return 0.;
@@ -547,7 +558,8 @@ impl HandleId {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum SpiralType {
 	#[default]
@@ -557,7 +569,8 @@ pub enum SpiralType {
 
 /// Controls how the morph/blend progression spends its time along the interpolation path, allowing for constant speed/spacing with respect to different parameters of change.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum InterpolationDistribution {
 	/// All objects occupy an equal portion of the progression range, regardless of their changing distances, angles, sizes, or slants.

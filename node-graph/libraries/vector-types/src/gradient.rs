@@ -3,7 +3,8 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum GradientType {
 	#[default]
@@ -15,7 +16,8 @@ pub enum GradientType {
 // TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GradientStops {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
@@ -36,7 +38,7 @@ impl<'de> serde::Deserialize<'de> for GradientStops {
 		}
 
 		#[derive(serde::Deserialize)]
-		#[serde(untagged)]
+		#[cfg_attr(feature = "serde", serde(untagged))]
 		enum GradientStopsFormat {
 			New(NewFormat),
 			Old(Vec<(f64, Color)>),
@@ -325,7 +327,8 @@ impl GradientStops {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum GradientSpreadMethod {
 	#[default]
@@ -349,13 +352,14 @@ impl GradientSpreadMethod {
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Gradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
 	pub start: DVec2,
 	pub end: DVec2,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub spread_method: GradientSpreadMethod,
 }
 
@@ -468,7 +472,7 @@ pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D)
 	use serde::Deserialize;
 
 	#[derive(serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GradientStopsFormat {
 		GradientStops(GradientStops),
 		GradientTable(Table<GradientStops>),
@@ -483,5 +487,13 @@ pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D)
 impl core_types::bounds::BoundingBox for GradientStops {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		core_types::bounds::RenderBoundingBox::Infinite
+	}
+
+	fn thumbnail_bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
+		// AABB of the gradient line itself, leaving aspect padding and sub-pixel fallbacks to the runtime so this stays
+		// a clean per-item geometric bound that combines naturally with siblings
+		let start = transform.transform_point2(DVec2::ZERO);
+		let end = transform.transform_point2(DVec2::X);
+		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
 	}
 }
