@@ -20,13 +20,17 @@
 
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const nodeGraphTransform = nodeGraph.transformStore;
+	const nodeGraphImportsExports = nodeGraph.importsExportsStore;
+	const visibleNodes = nodeGraph.visibleNodesStore;
+	const nodeGraphWires = nodeGraph.wiresStore;
 	const documentState = getContext<DocumentStore>("document");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
 	let graph: HTMLDivElement | undefined;
 
-	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
-	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
+	$: gridSpacing = calculateGridSpacing($nodeGraphTransform.scale);
+	$: gridDotRadius = 1 + Math.floor($nodeGraphTransform.scale - 0.5 + 0.001) / 2;
 
 	// Close the context menu when the graph view overlay is closed
 	$: if (!$documentState.graphViewOverlayOpen) closeContextMenu();
@@ -215,23 +219,22 @@
 	}
 </script>
 
-<div
-	class="graph"
-	bind:this={graph}
-	style:--grid-spacing={`${gridSpacing}px`}
-	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
-	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
-	style:--grid-dot-radius={`${gridDotRadius}px`}
-	data-node-graph
->
+<div class="graph" bind:this={graph} data-node-graph>
+	<div
+		class="grid-background"
+		style:--grid-spacing={`${gridSpacing}px`}
+		style:--grid-offset-x={`${$nodeGraphTransform.x}px`}
+		style:--grid-offset-y={`${$nodeGraphTransform.y}px`}
+		style:--grid-dot-radius={`${gridDotRadius}px`}
+	></div>
 	<!-- Right click menu for adding nodes -->
 	{#if $nodeGraph.contextMenuInformation}
 		<FloatingMenu
 			class="context-menu"
 			data-context-menu
 			styles={{
-				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[0] * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
-				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[1] * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
+				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[0] * $nodeGraphTransform.scale + $nodeGraphTransform.x}px`,
+				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[1] * $nodeGraphTransform.scale + $nodeGraphTransform.y}px`,
 			}}
 			open={true}
 			type="Popover"
@@ -283,7 +286,7 @@
 	{/if}
 
 	{#if $nodeGraph.error}
-		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 			<span class="node-error faded" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
 				{$nodeGraph.error.error}
 			</span>
@@ -295,7 +298,7 @@
 
 	<!-- Click target debug visualizations -->
 	{#if $nodeGraph.clickTargets}
-		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 			<svg>
 				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
 					<path class="node" d={pathString} />
@@ -318,9 +321,9 @@
 	{/if}
 
 	<!-- Thick vertical layer connection wires -->
-	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<svg>
-			{#each $nodeGraph.wires.values() as map}
+			{#each $nodeGraphWires.values() as map}
 				{#each map.values() as { pathString, dataType, thick, dashed }}
 					{#if thick}
 						<path
@@ -337,9 +340,9 @@
 	</div>
 
 	<!-- Import and Export connectors -->
-	<div class="imports-and-exports" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		{#if $nodeGraph.updateImportsExports}
-			{#each $nodeGraph.updateImportsExports.imports as frontendOutput, index}
+	<div class="imports-and-exports" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
+		{#if $nodeGraphImportsExports}
+			{#each $nodeGraphImportsExports.imports as frontendOutput, index}
 				{#if frontendOutput}
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -351,8 +354,8 @@
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 8) / 24 + index}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + index}
 					>
 						{#if frontendOutput.connectedTo.length > 0}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -365,10 +368,10 @@
 						on:pointerenter={() => (hoveringImportIndex = index)}
 						on:pointerleave={() => (hoveringImportIndex = undefined)}
 						class="edit-import-export import"
-						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
-						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 8) / 24 + index}
+						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + index}
 					>
 						{#if editingNameImportIndex === index}
 							<input
@@ -385,7 +388,7 @@
 								{frontendOutput.name}
 							</p>
 						{/if}
-						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
+						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraphImportsExports.addImportExport}
 							<IconButton
 								size={16}
 								icon="Remove"
@@ -402,17 +405,13 @@
 						{/if}
 					</div>
 				{:else}
-					<div
-						class="plus"
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 12) / 24}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 12) / 24}
-					>
+					<div class="plus" style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 12) / 24} style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 12) / 24}>
 						<IconButton size={24} icon="Add" action={() => editor.addPrimaryImport()} />
 					</div>
 				{/if}
 			{/each}
 
-			{#each $nodeGraph.updateImportsExports.exports as frontendInput, index}
+			{#each $nodeGraphImportsExports.exports as frontendInput, index}
 				{#if frontendInput}
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -424,8 +423,8 @@
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 8) / 24 + index}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
 						{#if frontendInput.connectedTo !== "Connected to nothing."}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -437,12 +436,12 @@
 						on:pointerenter={() => (hoveringExportIndex = index)}
 						on:pointerleave={() => (hoveringExportIndex = undefined)}
 						class="edit-import-export export"
-						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
-						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 8) / 24 + index}
+						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
-						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
+						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraphImportsExports.addImportExport}
 							{#if index > 0}
 								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
 							{/if}
@@ -473,28 +472,24 @@
 						{/if}
 					</div>
 				{:else}
-					<div
-						class="plus"
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 12) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 12) / 24}
-					>
+					<div class="plus" style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 12) / 24} style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 12) / 24}>
 						<IconButton size={24} icon="Add" action={() => editor.addPrimaryExport()} />
 					</div>
 				{/if}
 			{/each}
 
-			{#if $nodeGraph.updateImportsExports.addImportExport}
+			{#if $nodeGraphImportsExports.addImportExport}
 				<div
 					class="plus"
-					style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 12) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
+					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 12) / 24}
+					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 12) / 24 + $nodeGraphImportsExports.imports.length}
 				>
 					<IconButton size={24} icon="Add" action={() => editor.addSecondaryImport()} />
 				</div>
 				<div
 					class="plus"
-					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 12) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
+					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 12) / 24}
+					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 12) / 24 + $nodeGraphImportsExports.exports.length}
 				>
 					<IconButton size={24} icon="Add" action={() => editor.addSecondaryExport()} />
 				</div>
@@ -502,16 +497,16 @@
 
 			{#if $nodeGraph.reorderImportIndex !== undefined}
 				{@const position = {
-					x: Number($nodeGraph.updateImportsExports.importPosition[0]),
-					y: Number($nodeGraph.updateImportsExports.importPosition[1]) + Number($nodeGraph.reorderImportIndex) * 24,
+					x: Number($nodeGraphImportsExports.importPosition[0]),
+					y: Number($nodeGraphImportsExports.importPosition[1]) + Number($nodeGraph.reorderImportIndex) * 24,
 				}}
 				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
 				{@const position = {
-					x: Number($nodeGraph.updateImportsExports.exportPosition[0]),
-					y: Number($nodeGraph.updateImportsExports.exportPosition[1]) + Number($nodeGraph.reorderExportIndex) * 24,
+					x: Number($nodeGraphImportsExports.exportPosition[0]),
+					y: Number($nodeGraphImportsExports.exportPosition[1]) + Number($nodeGraph.reorderExportIndex) * 24,
 				}}
 				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
@@ -519,11 +514,11 @@
 	</div>
 
 	<!-- Layers and nodes -->
-	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<!-- Layers -->
 		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
-			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
+			.filter(([nodeId, node]) => node.isLayer && $visibleNodes.has(nodeId))
+			.map(([_, node]) => node) as node (node.id)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
@@ -687,7 +682,7 @@
 		<!-- Node connection wires -->
 		<div class="wires">
 			<svg>
-				{#each $nodeGraph.wires.values() as map}
+				{#each $nodeGraphWires.values() as map}
 					{#each map.values() as { pathString, dataType, thick, dashed }}
 						{#if !thick}
 							<path
@@ -714,8 +709,8 @@
 
 		<!-- Nodes -->
 		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
-			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
+			.filter(([nodeId, node]) => !node.isLayer && $visibleNodes.has(nodeId))
+			.map(([_, node]) => node) as node (node.id)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
@@ -870,18 +865,25 @@
 		flex-direction: row;
 		flex-grow: 1;
 
-		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
-		&::before {
-			content: "";
+		.grid-background {
 			position: absolute;
 			width: 100%;
 			height: 100%;
-			background-size: var(--grid-spacing) var(--grid-spacing);
-			background-position: calc(var(--grid-offset-x) - var(--grid-dot-radius)) calc(var(--grid-offset-y) - var(--grid-dot-radius));
-			background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), var(--color-3-darkgray) var(--grid-dot-radius), transparent 0);
-			background-repeat: repeat;
-			image-rendering: pixelated;
-			mix-blend-mode: screen;
+			pointer-events: none;
+
+			// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
+			&::before {
+				content: "";
+				position: absolute;
+				width: 100%;
+				height: 100%;
+				background-size: var(--grid-spacing) var(--grid-spacing);
+				background-position: calc(var(--grid-offset-x) - var(--grid-dot-radius)) calc(var(--grid-offset-y) - var(--grid-dot-radius));
+				background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), var(--color-3-darkgray) var(--grid-dot-radius), transparent 0);
+				background-repeat: repeat;
+				image-rendering: pixelated;
+				mix-blend-mode: screen;
+			}
 		}
 
 		> img {
