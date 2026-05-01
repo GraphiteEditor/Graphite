@@ -10,8 +10,8 @@ use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL,
-	ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY,
+	ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -511,7 +511,7 @@ fn read_artboard_attributes(table: &Table<Table<Graphic>>, index: usize) -> (DVe
 	let location: DVec2 = table.attribute_cloned_or_default(ATTR_LOCATION, index);
 	let dimensions: DVec2 = table.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
 	let background: Color = table.attribute_cloned_or_default(ATTR_BACKGROUND, index);
-	let clip: bool = table.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
+	let clip: bool = table.attribute_cloned_or_default(ATTR_CLIP, index);
 	(location, dimensions, background, clip)
 }
 
