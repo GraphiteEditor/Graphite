@@ -2,7 +2,6 @@
 
 use super::tool_prelude::*;
 use crate::consts::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -83,6 +82,7 @@ pub struct SelectToolPointerKeys {
 pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
+	CanvasTransformed,
 	Overlays {
 		context: OverlayContext,
 	},
@@ -323,6 +323,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 		let mut common = actions!(SelectToolMessageDiscriminant;
 			PointerMove,
 			Abort,
+			CanvasTransformed,
 			EditLayer,
 			EditLayerExec,
 			Enter,
@@ -341,6 +342,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 impl ToolTransition for SelectTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			canvas_transformed: Some(SelectToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
 			overlay_provider: Some(|context| SelectToolMessage::Overlays { context }.into()),
 			..Default::default()
@@ -381,9 +383,8 @@ impl Default for SelectToolFsmState {
 
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
-	drag_start: ViewportPosition,
-	drag_current: ViewportPosition,
-	lasso_polygon: Vec<ViewportPosition>,
+	drag_state: DragState,
+	lasso_polygon: Vec<DVec2>,
 	selection_mode: Option<SelectionMode>,
 	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
 	ordered_layers: Vec<LayerNodeIdentifier>,  // Ordered list of layers
@@ -391,6 +392,7 @@ struct SelectToolData {
 	select_single_layer: Option<LayerNodeIdentifier>,
 	axis_align: bool,
 	non_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
+	duplicate_paused_by_ptz: bool,
 	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
@@ -398,14 +400,13 @@ struct SelectToolData {
 	pivot_gizmo_start: Option<DVec2>,
 	pivot_gizmo_shift: Option<DVec2>,
 	compass_rose: CompassRose,
-	line_center: DVec2,
 	skew_edge: EdgeBool,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	drag_start_center: ViewportPosition,
+	drag_start_center: DVec2,
 }
 
 impl SelectToolData {
@@ -422,13 +423,21 @@ impl SelectToolData {
 		}
 	}
 
-	pub fn selection_quad(&self) -> Quad {
-		let bbox = self.selection_box();
+	pub fn drag_start_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
+		self.drag_state.start_viewport(document)
+	}
+
+	pub fn drag_current_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
+		self.drag_state.current_viewport(document)
+	}
+
+	pub fn selection_quad(&self, document: &DocumentMessageHandler) -> Quad {
+		let bbox = self.selection_box(document);
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_selection_mode_from_direction(&mut self) -> SelectionMode {
-		let bbox: [DVec2; 2] = self.selection_box();
+	pub fn calculate_selection_mode_from_direction(&mut self, document: &DocumentMessageHandler) -> SelectionMode {
+		let bbox: [DVec2; 2] = self.selection_box(document);
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
 		if self.selection_mode.is_none() && above_threshold {
@@ -444,12 +453,13 @@ impl SelectToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
-	pub fn selection_box(&self) -> [DVec2; 2] {
-		if self.drag_current == self.drag_start {
+	pub fn selection_box(&self, document: &DocumentMessageHandler) -> [DVec2; 2] {
+		let start = self.drag_start_viewport(document);
+		if self.drag_state.current_doc == self.drag_state.start_doc {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start - tolerance, self.drag_start + tolerance]
+			[start - tolerance, start + tolerance]
 		} else {
-			[self.drag_start, self.drag_current]
+			[start, self.drag_current_viewport(document)]
 		}
 	}
 
@@ -457,7 +467,13 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return Vec::new();
 		}
-		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
+		let polygon = Subpath::from_anchors(
+			self.lasso_polygon
+				.iter()
+				.map(|point| document.metadata().document_to_viewport.transform_point2(*point))
+				.collect::<Vec<_>>(),
+			true,
+		);
 		document.intersect_polygon_no_artboards(polygon, viewport).collect()
 	}
 
@@ -465,14 +481,22 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return false;
 		}
-		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
+		let polygon = Subpath::from_anchors(
+			self.lasso_polygon
+				.iter()
+				.map(|point| document.metadata().document_to_viewport.transform_point2(*point))
+				.collect::<Vec<_>>(),
+			true,
+		);
 		document.is_layer_fully_inside_polygon(layer, viewport, polygon)
 	}
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
 	fn start_duplicates(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		self.duplicate_paused_by_ptz = false;
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
+		let drag_offset = self.drag_state.start_viewport(document) - self.drag_state.current_viewport(document);
 
 		// Get the shallowest unique layers and sort by their index relative to parent for ordered processing
 		let mut layers = document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
@@ -488,7 +512,7 @@ impl SelectToolData {
 			// Moves the layer back to its starting position.
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
-				transform: DAffine2::from_translation(self.drag_start - self.drag_current),
+				transform: DAffine2::from_translation(drag_offset),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
 			});
@@ -541,7 +565,7 @@ impl SelectToolData {
 		for &layer in &original {
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
-				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
+				transform: DAffine2::from_translation(self.drag_state.viewport_delta(document)),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
 			});
@@ -854,7 +878,7 @@ impl Fsm for SelectToolFsmState {
 						.pivot_gizmo_start
 						.map(|offset| {
 							if tool_data.pivot_gizmo.pivot_disconnected() {
-								tool_data.drag_current - offset
+								tool_data.drag_current_viewport(document) - document.metadata().document_to_viewport.transform_point2(offset)
 							} else {
 								Default::default()
 							}
@@ -868,9 +892,6 @@ impl Fsm for SelectToolFsmState {
 				if overlay_context.visibility_settings.compass_rose() {
 					tool_data.compass_rose.refresh_position(document);
 					let compass_center = tool_data.compass_rose.compass_rose_position();
-					if !matches!(self, Self::Dragging { .. }) {
-						tool_data.line_center = compass_center;
-					}
 
 					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
@@ -899,17 +920,17 @@ impl Fsm for SelectToolFsmState {
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let color = if !hover { color } else { color_faded };
-						let line_center = tool_data.line_center;
+						let line_center = compass_center;
 						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 					}
 
 					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
-						let mouse_position = mouse_position - tool_data.drag_start;
+						let mouse_position = mouse_position - tool_data.drag_start_viewport(document);
 						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 						let angle = -mouse_position.angle_to(DVec2::X);
 						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-						let origin = tool_data.drag_start_center;
+						let origin = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_center);
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X);
@@ -928,10 +949,10 @@ impl Fsm for SelectToolFsmState {
 				// Check if the tool is in selection mode
 				if let Self::Drawing { selection_shape, .. } = self {
 					// Get the updated selection box bounds
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let quad = tool_data.selection_quad(document);
 
 					let current_selection_mode = match tool_action_data.preferences.get_selection_mode() {
-						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document),
 						SelectionMode::Touched => SelectionMode::Touched,
 						SelectionMode::Enclosed => SelectionMode::Enclosed,
 					};
@@ -963,23 +984,19 @@ impl Fsm for SelectToolFsmState {
 
 					// Update the selection box
 					let fill_color = Some(COLOR_OVERLAY_BLUE_05);
-
-					let polygon = &tool_data.lasso_polygon;
+					let polygon: Vec<_> = tool_data.lasso_polygon.iter().map(|point| document.metadata().document_to_viewport.transform_point2(*point)).collect();
 
 					match (selection_shape, current_selection_mode) {
 						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(&polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
-						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
+						(SelectionShapeType::Lasso, _) => overlay_context.polygon(&polygon, None, fill_color),
 					}
 				}
 
 				if let Self::Dragging { .. } = self {
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
-					let document_start = document.metadata().document_to_viewport.inverse().transform_point2(quad.top_left());
-					let document_current = document.metadata().document_to_viewport.inverse().transform_point2(quad.bottom_right());
-
-					overlay_context.translation_box(document_current - document_start, quad, None);
+					let quad = tool_data.selection_quad(document);
+					overlay_context.translation_box(tool_data.drag_state.current_doc - tool_data.drag_state.start_doc, quad, None);
 				}
 
 				self
@@ -1010,8 +1027,7 @@ impl Fsm for SelectToolFsmState {
 					..
 				},
 			) => {
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
+				tool_data.drag_state = DragState::new(document, input.mouse.position);
 				tool_data.selection_mode = None;
 
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
@@ -1021,7 +1037,13 @@ impl Fsm for SelectToolFsmState {
 				let position = tool_data.pivot_gizmo().position(document);
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(position));
 
-				tool_data.drag_start_center = position;
+				tool_data.drag_start_center = document.metadata().document_to_viewport.inverse().transform_point2(position);
+
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let viewport_to_doc = document.metadata().document_to_viewport.inverse();
+					bounds.original_bounds_to_document = viewport_to_doc * bounds.original_bound_transform;
+					bounds.center_of_transformation_doc = viewport_to_doc.transform_point2(bounds.center_of_transformation);
+				}
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -1073,7 +1095,7 @@ impl Fsm for SelectToolFsmState {
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
 
-					tool_data.pivot_gizmo_start = Some(tool_data.drag_current);
+					tool_data.pivot_gizmo_start = Some(tool_data.drag_state.current_doc);
 
 					SelectToolFsmState::Dragging {
 						axis,
@@ -1114,7 +1136,7 @@ impl Fsm for SelectToolFsmState {
 
 						responses.add(DocumentMessage::StartTransaction);
 
-						tool_data.pivot_gizmo_start = Some(tool_data.drag_current);
+						tool_data.pivot_gizmo_start = Some(tool_data.drag_state.current_doc);
 
 						SelectToolFsmState::Dragging {
 							axis: Axis::None,
@@ -1129,6 +1151,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				};
 				tool_data.non_duplicated_layers = None;
+				tool_data.duplicate_paused_by_ptz = false;
 
 				state
 			}
@@ -1151,7 +1174,10 @@ impl Fsm for SelectToolFsmState {
 				if !has_dragged {
 					responses.add(ToolMessage::UpdateHints);
 				}
-				if input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_none() {
+				if !input.keyboard.key(modifier_keys.duplicate) {
+					tool_data.duplicate_paused_by_ptz = false;
+				}
+				if input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_none() && !tool_data.duplicate_paused_by_ptz {
 					tool_data.start_duplicates(document, responses);
 				} else if !input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_some() {
 					tool_data.stop_duplicates(document, responses);
@@ -1164,14 +1190,16 @@ impl Fsm for SelectToolFsmState {
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
 
 				let snap_data = SnapData::ignore(document, input, viewport, ignore);
-				let (start, current) = (tool_data.drag_start, tool_data.drag_current);
+				let start = tool_data.drag_state.start_doc;
+				let current = tool_data.drag_state.current_doc;
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+				let mouse_delta_document = snap_drag_from_document(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+				let mouse_delta = document.metadata().document_to_viewport.transform_vector2(mouse_delta_document);
 				let mouse_delta = match axis {
 					Axis::X => mouse_delta.project_onto(e0),
 					Axis::Y => mouse_delta.project_onto(e0.perp()),
@@ -1187,7 +1215,7 @@ impl Fsm for SelectToolFsmState {
 						skip_rerender: false,
 					});
 				}
-				tool_data.drag_current += mouse_delta;
+				tool_data.drag_state.current_doc += document.metadata().document_to_viewport.inverse().transform_vector2(mouse_delta);
 
 				// Auto-panning
 				let messages = [
@@ -1206,6 +1234,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { modifier_keys }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_bound_transform = document.metadata().document_to_viewport * bounds.original_bounds_to_document;
+					bounds.center_of_transformation = document.metadata().document_to_viewport.transform_point2(bounds.center_of_transformation_doc);
 					resize_bounds(
 						document,
 						responses,
@@ -1229,6 +1259,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_bound_transform = document.metadata().document_to_viewport * bounds.original_bounds_to_document;
+					bounds.center_of_transformation = document.metadata().document_to_viewport.transform_point2(bounds.center_of_transformation_doc);
 					skew_bounds(
 						document,
 						responses,
@@ -1242,13 +1274,16 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::SkewingBounds { skew }
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { .. }) => {
+				let drag_start_viewport = tool_data.drag_start_viewport(document);
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_bound_transform = document.metadata().document_to_viewport * bounds.original_bounds_to_document;
+					bounds.center_of_transformation = document.metadata().document_to_viewport.transform_point2(bounds.center_of_transformation_doc);
 					rotate_bounds(
 						document,
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
-						tool_data.drag_start,
+						drag_start_viewport,
 						input.mouse.position,
 						input.keyboard.key(Key::Shift),
 						ToolType::Select,
@@ -1279,11 +1314,11 @@ impl Fsm for SelectToolFsmState {
 					responses.add(ToolMessage::UpdateHints);
 				}
 
-				tool_data.drag_current = input.mouse.position;
+				tool_data.drag_state.set_current_viewport(document, input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 
 				if selection_shape == SelectionShapeType::Lasso {
-					extend_lasso(&mut tool_data.lasso_polygon, tool_data.drag_current);
+					extend_lasso(&mut tool_data.lasso_polygon, tool_data.drag_state.current_doc);
 				}
 
 				// Auto-panning
@@ -1331,13 +1366,96 @@ impl Fsm for SelectToolFsmState {
 					deepest,
 					remove,
 				},
+				SelectToolMessage::CanvasTransformed,
+			) => {
+				// Re-emit PointerMove to recompute drag delta with updated document_to_viewport
+				let modifier_keys = SelectToolPointerKeys {
+					axis_align: Key::Shift,
+					snap_angle: Key::Control,
+					center: Key::Alt,
+					duplicate: Key::Alt,
+				};
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+				responses.add(OverlaysMessage::Draw);
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				}
+			}
+			(SelectToolFsmState::Drawing { selection_shape, has_drawn }, SelectToolMessage::CanvasTransformed) => {
+				// Re-emit PointerMove to recompute selection box with updated document_to_viewport
+				let modifier_keys = SelectToolPointerKeys {
+					axis_align: Key::Shift,
+					snap_angle: Key::Control,
+					center: Key::Alt,
+					duplicate: Key::Alt,
+				};
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+				responses.add(OverlaysMessage::Draw);
+				SelectToolFsmState::Drawing { selection_shape, has_drawn }
+			}
+			(SelectToolFsmState::ResizingBounds, SelectToolMessage::CanvasTransformed) => {
+				// Re-emit PointerMove to recompute resize with updated document_to_viewport
+				let modifier_keys = SelectToolPointerKeys {
+					axis_align: Key::Shift,
+					snap_angle: Key::Control,
+					center: Key::Alt,
+					duplicate: Key::Alt,
+				};
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+				responses.add(OverlaysMessage::Draw);
+				SelectToolFsmState::ResizingBounds
+			}
+			(SelectToolFsmState::RotatingBounds, SelectToolMessage::CanvasTransformed) => {
+				// Re-emit PointerMove to recompute rotation with updated document_to_viewport
+				let modifier_keys = SelectToolPointerKeys {
+					axis_align: Key::Shift,
+					snap_angle: Key::Control,
+					center: Key::Alt,
+					duplicate: Key::Alt,
+				};
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+				responses.add(OverlaysMessage::Draw);
+				SelectToolFsmState::RotatingBounds
+			}
+			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::CanvasTransformed) => {
+				// Re-emit PointerMove to recompute skew with updated document_to_viewport
+				let modifier_keys = SelectToolPointerKeys {
+					axis_align: Key::Shift,
+					snap_angle: Key::Control,
+					center: Key::Alt,
+					duplicate: Key::Alt,
+				};
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+				responses.add(OverlaysMessage::Draw);
+				SelectToolFsmState::SkewingBounds { skew }
+			}
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::CanvasTransformed) => {
+				let modifier_keys = SelectToolPointerKeys {
+					axis_align: Key::Shift,
+					snap_angle: Key::Control,
+					center: Key::Alt,
+					duplicate: Key::Alt,
+				};
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+				responses.add(OverlaysMessage::Draw);
+				SelectToolFsmState::DraggingPivot
+			}
+			(state, SelectToolMessage::CanvasTransformed) => state,
+			(
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				},
 				SelectToolMessage::PointerOutsideViewport { .. },
 			) => {
-				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					tool_data.drag_current += shift;
-					tool_data.drag_start += shift;
-				}
+				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
 				SelectToolFsmState::Dragging {
 					axis,
@@ -1365,10 +1483,7 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
-				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					tool_data.drag_start += shift;
-				}
+				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
 				self
 			}
@@ -1389,7 +1504,7 @@ impl Fsm for SelectToolFsmState {
 
 				if !has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
-					let quad = tool_data.selection_quad();
+					let quad = tool_data.selection_quad(document);
 					let intersection = document.intersect_quad_no_artboards(quad, viewport);
 
 					if let Some(path) = intersection.last() {
@@ -1454,12 +1569,12 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(start) = tool_data.pivot_gizmo_start {
 					let offset = if tool_data.pivot_gizmo.pivot_disconnected() {
-						tool_data.drag_current - start
+						tool_data.drag_state.current_doc - start
 					} else {
 						Default::default()
 					};
 					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
-						*v += offset;
+						*v += document.metadata().document_to_viewport.transform_vector2(offset);
 					}
 				}
 				tool_data.pivot_gizmo_start = None;
@@ -1474,7 +1589,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
-				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start_viewport(document)) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 
 				let pivot_gizmo = tool_data.pivot_gizmo();
@@ -1495,10 +1610,10 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
-				let quad = tool_data.selection_quad();
+				let quad = tool_data.selection_quad(document);
 
 				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document),
 					selection_mode => selection_mode,
 				};
 
