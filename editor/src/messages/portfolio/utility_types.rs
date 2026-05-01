@@ -345,9 +345,9 @@ impl WorkspacePanelLayout {
 				},
 			},
 			size: match panel_type {
-				PanelType::Data => 30.,
-				PanelType::Properties => 45.,
-				PanelType::Layers => 55.,
+				PanelType::Data => 0.3,
+				PanelType::Properties => 0.45,
+				PanelType::Layers => 0.55,
 				_ => EQUAL_PANEL_SHARE,
 			},
 		};
@@ -565,7 +565,7 @@ impl PanelLayoutSubdivision {
 			}
 		}
 
-		// Renormalize to sum=100 since dock/prune cycles can compound shrinkage
+		// Renormalize to sum=1 since dock/prune cycles can compound shrinkage
 		let total: f64 = children.iter().map(|c| c.size).sum();
 		if total > 0. && (total - 1.).abs() > 0.001 {
 			for child in children.iter_mut() {
