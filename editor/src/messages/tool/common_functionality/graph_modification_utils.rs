@@ -333,25 +333,28 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(color.to_linear_srgb())
 }
 
-/// Get the current blend mode of a layer from the closest "Blending" node.
+/// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blend_mode::IDENTIFIER))?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest "Blending" node.
+/// Get the current opacity of a layer from the closest upstream "Opacity" node, only when the node's `has_opacity` checkbox is enabled.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
-/// - Multiplied with additional opacity nodes earlier in the chain
+/// - Multiplied with additional Opacity nodes earlier in the chain
 /// - Set by an Opacity node with an exposed input value driven by another node
 /// - Already factored into the pixel alpha channel of an image
-/// - The default value of 100% if no Opacity node is present, but this function returns None in that case
+/// - The default value of 100% if no Opacity node has its checkbox enabled (this function returns `None` in that case)
 ///
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::opacity::IDENTIFIER))?;
+	let TaggedValue::Bool(true) = inputs.get(1)?.as_value()? else {
+		return None;
+	};
 	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
@@ -359,16 +362,20 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::clipping_mask::IDENTIFIER))?;
+	let TaggedValue::Bool(clip) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*clip)
 }
 
+/// Get the current fill of a layer from the closest upstream "Opacity" node, only when the node's `has_fill` checkbox is enabled.
 pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::F64(fill) = inputs.get(3)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::opacity::IDENTIFIER))?;
+	let TaggedValue::Bool(true) = inputs.get(3)?.as_value()? else {
+		return None;
+	};
+	let TaggedValue::F64(fill) = inputs.get(4)?.as_value()? else {
 		return None;
 	};
 	Some(*fill)

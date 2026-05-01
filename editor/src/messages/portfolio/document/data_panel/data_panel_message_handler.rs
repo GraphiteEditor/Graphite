@@ -6,15 +6,16 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 use graphene_std::Context;
 use graphene_std::Graphic;
+use graphene_std::blending::BlendMode;
 use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, FillChoice};
-use graphene_std::{AlphaBlending, Color};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -283,7 +284,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 				for key in &attribute_keys {
 					let target = PathStep::Attribute { row: index, key: key.clone() };
 					let widget = self.attribute_any(key, index).and_then(|any| dispatch_value_widget(any, target, data)).unwrap_or_else(|| {
-						let text = self.attribute_display_value(key, index, |_| None).unwrap_or_else(|| "-".to_string());
+						let text = self.attribute_display_value(key, index, display_value_override).unwrap_or_else(|| "-".to_string());
 						TextLabel::new(text).narrow(true).widget_instance()
 					});
 					values.push(widget);
@@ -742,21 +743,6 @@ impl TableRowLayout for Affine2 {
 	}
 }
 
-impl TableRowLayout for AlphaBlending {
-	fn type_name() -> &'static str {
-		"AlphaBlending"
-	}
-	fn identifier(&self) -> String {
-		format_alpha_blending(*self)
-	}
-	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(format_alpha_blending(*self)).narrow(true).widget_instance()
-	}
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
-	}
-}
-
 /// Resolves the value/breadcrumb label for a `NodeId` against `network_interface` at the given `network_path`,
 /// falling back to "Node {id}" if the node isn't present (e.g. an ID that no longer maps to a real node).
 fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> String {
@@ -899,7 +885,6 @@ macro_rules! known_table_row_types {
 			GradientStops,
 			Color,
 			NodeId,
-			AlphaBlending,
 			DAffine2,
 			DVec2,
 			Affine2,
@@ -917,6 +902,16 @@ macro_rules! known_table_row_types {
 			Graphic,
 		);
 	};
+}
+
+/// Override hook for [`Table::attribute_display_value`] that prefers `Display` over `Debug` for select
+/// attribute types. The underlying storage is generic and can only see a `Debug` bound, so types whose
+/// nicer `Display` rendering matters in the data panel are listed here explicitly.
+fn display_value_override(any: &dyn Any) -> Option<String> {
+	if let Some(value) = any.downcast_ref::<BlendMode>() {
+		return Some(value.to_string());
+	}
+	None
 }
 
 /// Type-dispatched widget for displaying an attribute value in a `Table<T>` item.
@@ -1031,15 +1026,4 @@ fn format_transform_matrix(transform: DAffine2) -> String {
 fn format_dvec2(value: DVec2) -> String {
 	let round = |x: f64| (x * 1e3).round() / 1e3;
 	format!("({} px, {} px)", round(value.x), round(value.y))
-}
-
-fn format_alpha_blending(value: AlphaBlending) -> String {
-	let round = |x: f32| (x * 1e3).round() / 1e3;
-	format!(
-		"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
-		value.blend_mode,
-		round(value.opacity * 100.),
-		round(value.fill * 100.),
-		if value.clip { "Yes" } else { "No" }
-	)
 }

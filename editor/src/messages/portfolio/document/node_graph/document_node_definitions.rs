@@ -2037,6 +2037,19 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
+		// Like `optional_f64`, but the number input is configured as a percentage with a 0-100 range.
+		// As with `optional_f64`, the bool input must be at the input index directly before the f64 input.
+		"optional_percentage".to_string(),
+		Box::new(|node_id, index, context| {
+			let number_input = NumberInput::default().percentage().min(0.).max(100.);
+			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
+				ParameterWidgetsInfo::new(node_id, index, false, context),
+				index - 1,
+				number_input,
+			))])
+		}),
+	);
+	map.insert(
 		"vec2".to_string(),
 		Box::new(|node_id, index, context| {
 			let x = context

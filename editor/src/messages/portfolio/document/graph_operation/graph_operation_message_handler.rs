@@ -42,7 +42,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.blending_fill_set(fill);
+					modify_inputs.opacity_fill_set(fill);
 				}
 			}
 			GraphOperationMessage::GradientStopsSet { layer, stops } => {
