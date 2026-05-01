@@ -8,6 +8,9 @@
 
 	const MIN_PANEL_SIZE = 100;
 	const DOUBLE_CLICK_MILLISECONDS = 500;
+	// Must match DOCUMENT_PANEL_SHARE / NON_DOCUMENT_PANEL_SHARE in utility_types.rs
+	const DOCUMENT_PANEL_SHARE = 0.8;
+	const EQUAL_PANEL_SHARE = 0.5;
 
 	const editor = getContext<EditorWrapper>("editor");
 	const portfolio = getContext<PortfolioStore>("portfolio");
@@ -24,11 +27,15 @@
 	let activeResizeCleanup: (() => void) | undefined = undefined;
 	let lastGutterClickTarget: EventTarget | undefined = undefined;
 	let lastGutterClickTime = 0;
+	let lastSubdivisionRef: PanelLayoutSubdivision | undefined = undefined;
 
 	// At even depths (0, 2, 4...) children are in a row, at odd depths (1, 3, 5...) in a column
 	$: horizontal = depth % 2 === 0;
-	// Reset overrides when the subdivision changes (e.g., backend sends a new layout)
-	$: if (subdivision) sizeOverrides = {};
+	// Compare by reference because `safe_not_equal` treats any store update as changed, which would wipe drag overrides
+	$: if (subdivision !== lastSubdivisionRef) {
+		sizeOverrides = {};
+		lastSubdivisionRef = subdivision;
+	}
 	// Reactive array of resolved sizes (merging backend defaults with local overrides)
 	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
 	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => {
@@ -55,26 +62,41 @@
 		const parentElement = gutter.parentElement;
 		if (!(nextSibling instanceof HTMLDivElement) || !(prevSibling instanceof HTMLDivElement) || !(parentElement instanceof HTMLDivElement)) return;
 
-		// Double-click resets both adjacent panels to their default sizes
+		// Double-click resets the two adjacent panels to the default ratio (80:20 near document, otherwise 50:50)
 		const now = Date.now();
 		const isDoubleClick = now - lastGutterClickTime < DOUBLE_CLICK_MILLISECONDS && lastGutterClickTarget === gutter;
+
 		lastGutterClickTime = now;
 		lastGutterClickTarget = gutter;
+
 		if (isDoubleClick) {
-			sizeOverrides = {};
-			editor.resetPanelGroupSizes(splitPath);
+			const children = subdivision.Split.children;
+			const adjacentSum = resolvedSizes[prevIndex] + resolvedSizes[nextIndex];
+
+			const prevHasDocument = subtreeContainsDocument(children[prevIndex].subdivision);
+			const nextHasDocument = subtreeContainsDocument(children[nextIndex].subdivision);
+
+			let prevShare = EQUAL_PANEL_SHARE;
+			if (prevHasDocument && !nextHasDocument) prevShare = DOCUMENT_PANEL_SHARE;
+			else if (!prevHasDocument && nextHasDocument) prevShare = 1 - DOCUMENT_PANEL_SHARE;
+
+			sizeOverrides[prevIndex] = adjacentSum * prevShare;
+			sizeOverrides[nextIndex] = adjacentSum * (1 - prevShare);
+			sizeOverrides = sizeOverrides;
+
+			const allSizes = children.map((child, i) => sizeOverrides[i] ?? child.size);
+			editor.setPanelGroupSizes(splitPath, allSizes);
 			return;
 		}
 
 		const isHorizontal = horizontal;
 
-		const gutterSize = isHorizontal ? gutter.getBoundingClientRect().width : gutter.getBoundingClientRect().height;
 		const nextSiblingSize = isHorizontal ? nextSibling.getBoundingClientRect().width : nextSibling.getBoundingClientRect().height;
 		const prevSiblingSize = isHorizontal ? prevSibling.getBoundingClientRect().width : prevSibling.getBoundingClientRect().height;
-		const parentElementSize = isHorizontal ? parentElement.getBoundingClientRect().width : parentElement.getBoundingClientRect().height;
 
-		const totalResizingSpaceOccupied = gutterSize + nextSiblingSize + prevSiblingSize;
-		const proportionBeingResized = totalResizingSpaceOccupied / parentElementSize;
+		// Only redistribute within the two adjacent panels' combined flex-grow total
+		const adjacentFlexGrowTotal = resolvedSizes[prevIndex] + resolvedSizes[nextIndex];
+		const adjacentPixelTotal = prevSiblingSize + nextSiblingSize;
 
 		pointerCaptureId = e.pointerId;
 		gutter.setPointerCapture(pointerCaptureId);
@@ -88,7 +110,9 @@
 			activeResizeCleanup = undefined;
 
 			if (gutterResizeRestore !== undefined) {
-				sizeOverrides = { ...sizeOverrides, [nextIndex]: gutterResizeRestore[0], [prevIndex]: gutterResizeRestore[1] };
+				sizeOverrides[nextIndex] = gutterResizeRestore[0];
+				sizeOverrides[prevIndex] = gutterResizeRestore[1];
+				sizeOverrides = sizeOverrides;
 				gutterResizeRestore = undefined;
 			}
 		};
@@ -102,11 +126,9 @@
 
 			if (gutterResizeRestore === undefined) gutterResizeRestore = [resolvedSizes[nextIndex], resolvedSizes[prevIndex]];
 
-			sizeOverrides = {
-				...sizeOverrides,
-				[nextIndex]: ((nextSiblingSize + mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100,
-				[prevIndex]: ((prevSiblingSize - mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100,
-			};
+			sizeOverrides[nextIndex] = (adjacentFlexGrowTotal * (nextSiblingSize + mouseDelta)) / adjacentPixelTotal;
+			sizeOverrides[prevIndex] = (adjacentFlexGrowTotal * (prevSiblingSize - mouseDelta)) / adjacentPixelTotal;
+			sizeOverrides = sizeOverrides;
 		};
 
 		const onPointerUp = () => {
@@ -163,6 +185,12 @@
 
 	function isDocumentGroup(state: PanelGroupState): boolean {
 		return state.tabs.some((t) => t === "Document" || t === "Welcome");
+	}
+
+	function subtreeContainsDocument(node: PanelLayoutSubdivision): boolean {
+		if ("PanelGroup" in node) return isDocumentGroup(node.PanelGroup.state);
+		if ("Split" in node) return node.Split.children.some((child) => subtreeContainsDocument(child.subdivision));
+		return false;
 	}
 </script>
 

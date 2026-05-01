@@ -58,12 +58,10 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(ViewportMessage::RepropagateUpdate);
 
+				responses.add(DocumentMessage::DeselectAllLayers);
+
 				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![
-						DocumentMessage::ZoomCanvasToFitAll.into(),
-						DocumentMessage::DeselectAllLayers.into(),
-						PortfolioMessage::AutoSaveActiveDocument.into(),
-					],
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), PortfolioMessage::AutoSaveActiveDocument.into()],
 				});
 
 				responses.add(DocumentMessage::MarkAsSaved);

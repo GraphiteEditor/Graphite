@@ -1430,9 +1430,15 @@ impl Fsm for SelectToolFsmState {
 								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
 								NestedSelectionBehavior::Shallowest if !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, false, true),
 								_ => {
-									responses.add(DocumentMessage::DeselectAllLayers);
-									tool_data.layers_dragging.clear();
-									drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									// Narrow multi-selection to just the clicked layer (no-op if it's already the sole selection)
+									let currently_selected = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+									let already_only_selection = currently_selected.as_slice() == [intersection];
+
+									if !already_only_selection {
+										responses.add(DocumentMessage::DeselectAllLayers);
+										tool_data.layers_dragging.clear();
+										drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									}
 								}
 							}
 
