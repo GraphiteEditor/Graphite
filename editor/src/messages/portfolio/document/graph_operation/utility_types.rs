@@ -652,15 +652,27 @@ impl<'a> ModifyInputsContext<'a> {
 		// Get the existing upstream Transform node, if present
 		let transform_node_id = self.existing_network_node_id("Transform", false);
 
-		// Get a transform appropriate for the requested space
-		let to_transform = match transform_in {
-			TransformIn::Local => DAffine2::IDENTITY,
-			TransformIn::Scope { scope } => scope,
-			TransformIn::Viewport => self.network_interface.document_metadata().downstream_transform_to_viewport(self.layer_node.unwrap()).inverse(),
+		// Compute the Transform node value so `transform_to_viewport` matches the target after re-render
+		let final_transform = match transform_in {
+			TransformIn::Local => transform,
+			TransformIn::Scope { scope } => scope * transform,
+			TransformIn::Viewport => {
+				let layer = self.layer_node.unwrap();
+				let metadata = self.network_interface.document_metadata();
+				let parent_inverse = metadata.downstream_transform_to_viewport(layer).inverse();
+
+				// Compensate for item 0's transform baked into `local_transforms[layer]` (master style).
+				// For single-item shapes this is identity; for multi-item text it's the first glyph's baseline offset, and without this the layer jumps by that offset.
+				let local_transform = metadata.local_transforms.get(&layer.to_node()).copied().unwrap_or(DAffine2::IDENTITY);
+				let current_transform_node_value = transform_node_id
+					.and_then(|id| self.network_interface.document_network().nodes.get(&id))
+					.map(|node| transform_utils::get_current_transform(&node.inputs))
+					.unwrap_or(DAffine2::IDENTITY);
+
+				parent_inverse * transform * local_transform.inverse() * current_transform_node_value
+			}
 		};
 
-		// Set the transform value to the Transform node
-		let final_transform = to_transform * transform;
 		self.transform_set_direct(final_transform, skip_rerender, transform_node_id);
 	}
 
