@@ -7,6 +7,7 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import { layersPanelControlBarLeftLayout, layersPanelControlBarRightLayout, layersPanelBottomBarLayout } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { pasteFile } from "/src/utility-functions/files";
@@ -509,11 +510,11 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={$portfolio.layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
-		{#if $portfolio.layersPanelControlBarLeftLayout?.length > 0 && $portfolio.layersPanelControlBarRightLayout?.length > 0}
+		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		{#if $layersPanelControlBarLeftLayout?.length > 0 && $layersPanelControlBarRightLayout?.length > 0}
 			<Separator />
 		{/if}
-		<WidgetLayout layout={$portfolio.layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
+		<WidgetLayout layout={$layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -633,7 +634,7 @@
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
-		<WidgetLayout layout={$portfolio.layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
+		<WidgetLayout layout={$layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
 

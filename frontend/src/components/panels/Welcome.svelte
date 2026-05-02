@@ -5,12 +5,11 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import type { PortfolioStore } from "/src/stores/portfolio";
+	import { welcomeScreenButtonsLayout } from "/src/stores/portfolio";
 	import { pasteFile } from "/src/utility-functions/files";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
-	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	function dropFile(e: DragEvent) {
 		if (!e.dataTransfer) return;
@@ -29,7 +28,7 @@
 				<IconLabel icon="GraphiteLogotypeSolid" />
 			</LayoutRow>
 			<LayoutRow class="actions">
-				<WidgetLayout layout={$portfolio.welcomeScreenButtonsLayout} layoutTarget="WelcomeScreenButtons" />
+				<WidgetLayout layout={$welcomeScreenButtonsLayout} layoutTarget="WelcomeScreenButtons" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutCol>
