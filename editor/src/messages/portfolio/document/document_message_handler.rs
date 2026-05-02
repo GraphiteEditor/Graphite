@@ -1283,6 +1283,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_outlines(layer_outlines);
 			}
+			DocumentMessage::UpdateTextFrames { text_frames } => {
+				let layer_text_frames = text_frames
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, frame)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, frame)
+						})
+					})
+					.collect();
+				self.network_interface.update_text_frames(layer_text_frames);
+			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}

@@ -92,7 +92,23 @@ impl TextContext {
 			return Table::new_from_element(Vector::default());
 		};
 
-		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64);
+		let text_frame_size = DVec2::new(
+			typesetting.max_width.unwrap_or_else(|| layout.full_width() as f64),
+			typesetting.max_height.unwrap_or_else(|| layout.height() as f64),
+		);
+
+		// First glyph offset (pre-height-filter) so the empty placeholder item in `per_glyph_items`
+		// mode keeps the same item 0's transform, preventing `local_transforms` from jumping mid-drag
+		let first_glyph_offset = layout
+			.lines()
+			.flat_map(|line| line.items())
+			.find_map(|item| match item {
+				PositionedLayoutItem::GlyphRun(run) => run.glyphs().next().map(|glyph| DVec2::new((run.offset() + glyph.x) as f64, (run.baseline() - glyph.y) as f64)),
+				_ => None,
+			})
+			.unwrap_or_default();
+
+		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
 		for line in layout.lines() {
 			for item in line.items() {

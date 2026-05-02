@@ -418,6 +418,7 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 			click_targets,
 			outlines,
+			text_frames,
 			clip_targets,
 			vector_data,
 			backgrounds: _,
@@ -431,6 +432,7 @@ impl NodeGraphExecutor {
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateOutlines { outlines });
+		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);
