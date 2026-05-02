@@ -914,6 +914,10 @@ impl DiffUpdate {
 				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping);
 				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
 			}
+			Widget::ParameterExposeButton(parameter_expose_button) => {
+				apply_action_shortcut_to_menu_lists(&mut parameter_expose_button.menu_list_children, action_input_mapping);
+				parameter_expose_button.menu_list_children_hash = hash_menu_list_entry_sections(&parameter_expose_button.menu_list_children);
+			}
 			_ => {}
 		};
 

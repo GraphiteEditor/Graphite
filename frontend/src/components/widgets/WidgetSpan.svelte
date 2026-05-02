@@ -167,7 +167,7 @@
 			component: ParameterExposeButton,
 			getProps: (props, index) => ({
 				...props,
-				action: () => widgetValueCommitAndUpdate(index, undefined, true),
+				$$events: { selectedEntryValuePath: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
 			}),
 		},
 		IconButton: {

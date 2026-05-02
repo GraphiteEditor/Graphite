@@ -1,27 +1,44 @@
 <script lang="ts">
+	import { createEventDispatcher } from "svelte";
+	import MenuList from "/src/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import type { FrontendGraphDataType, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { FrontendGraphDataType, ActionShortcut, MenuListEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
+
+	let self: MenuList;
 
 	// Content
 	export let exposed: boolean;
 	export let dataType: FrontendGraphDataType;
+	// Children
+	export let menuListChildren: MenuListEntry[][] = [];
+	export let menuListChildrenHash: bigint = 0n;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	// Callbacks
-	export let action: (e?: MouseEvent) => void;
+
+	function onClick(e: MouseEvent) {
+		// Focus the target so that keyboard inputs are sent to the dropdown
+		if (e.target instanceof HTMLElement) e.target.focus();
+
+		// Open the menu list floating menu
+		if (self) self.open = true;
+	}
 </script>
 
 <LayoutRow class="parameter-expose-button">
 	<button
 		class:exposed
+		class:open={self?.open}
 		style:--data-type-color={`var(--color-data-${dataType.toLowerCase()})`}
 		style:--data-type-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-		on:click={action}
+		on:click={onClick}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
 		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
+		data-floating-menu-spawner
 		tabindex="-1"
 	>
 		{#if !exposed}
@@ -42,6 +59,16 @@
 			</svg>
 		{/if}
 	</button>
+	<MenuList
+		on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
+		open={false}
+		entries={menuListChildren}
+		entriesHash={menuListChildrenHash}
+		direction="Bottom"
+		type="Popover"
+		drawIcon={true}
+		bind:this={self}
+	/>
 </LayoutRow>
 
 <style lang="scss">
@@ -49,6 +76,7 @@
 		display: flex;
 		align-items: center;
 		flex: 0 0 auto;
+		position: relative;
 		max-height: 24px;
 
 		button {
@@ -70,7 +98,8 @@
 				fill: var(--data-type-color);
 			}
 
-			&:hover {
+			&:hover,
+			&.open {
 				.outline {
 					fill: var(--data-type-color);
 				}
@@ -79,6 +108,13 @@
 					fill: var(--data-type-color-dim);
 				}
 			}
+		}
+
+		// Anchor the floating menu's tail to the bottom-center of the small button.
+		// Scoped to the direct child so nested submenu floating menus aren't affected.
+		> :global(.floating-menu) {
+			left: 50%;
+			bottom: 0;
 		}
 	}
 </style>

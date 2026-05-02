@@ -308,7 +308,31 @@ impl LayoutMessageHandler {
 			Widget::ParameterExposeButton(parameter_expose_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (parameter_expose_button.on_commit.callback)(&()),
-					WidgetValueAction::Update => (parameter_expose_button.on_update.callback)(parameter_expose_button),
+					WidgetValueAction::Update => {
+						let Some(value_path) = value.as_array() else {
+							error!("ParameterExposeButton update was not of type: array");
+							return;
+						};
+
+						// Process the bare button click, since no menu is involved if we're given an empty array.
+						if value_path.is_empty() {
+							(parameter_expose_button.on_update.callback)(parameter_expose_button)
+						}
+						// Process the menu list entry click, since we have a path to the value of the contained menu entry.
+						else {
+							let mut current_submenu = &parameter_expose_button.menu_list_children;
+							let mut final_entry: Option<&MenuListEntry> = None;
+
+							for value in value_path.iter().filter_map(|v| v.as_str().map(|s| s.to_string())) {
+								let Some(next_entry) = current_submenu.iter().flatten().find(|e| e.value == value) else { return };
+
+								current_submenu = &next_entry.children;
+								final_entry = Some(next_entry);
+							}
+
+							(final_entry.unwrap().on_commit.callback)(&())
+						}
+					}
 				};
 
 				responses.add(callback_message);

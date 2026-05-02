@@ -724,7 +724,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 								.icon(if message_logging_verbosity_off {
 									#[cfg(not(target_os = "macos"))]
 									{
-										"SmallDot".to_string()
+										"DataSourceValue".to_string()
 									}
 									#[cfg(target_os = "macos")]
 									{
@@ -738,7 +738,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 								.icon(if message_logging_verbosity_names {
 									#[cfg(not(target_os = "macos"))]
 									{
-										"SmallDot".to_string()
+										"DataSourceValue".to_string()
 									}
 									#[cfg(target_os = "macos")]
 									{
@@ -752,7 +752,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 								.icon(if message_logging_verbosity_contents {
 									#[cfg(not(target_os = "macos"))]
 									{
-										"SmallDot".to_string()
+										"DataSourceValue".to_string()
 									}
 									#[cfg(target_os = "macos")]
 									{

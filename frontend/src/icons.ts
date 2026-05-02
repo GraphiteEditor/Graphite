@@ -126,6 +126,9 @@ import Copy from "/../branding/assets/icon-16px-solid/copy.svg";
 import Credits from "/../branding/assets/icon-16px-solid/credits.svg";
 import CustomColor from "/../branding/assets/icon-16px-solid/custom-color.svg";
 import Cut from "/../branding/assets/icon-16px-solid/cut.svg";
+import DataSourceGraph from "/../branding/assets/icon-16px-solid/data-source-graph.svg";
+import DataSourceTimeline from "/../branding/assets/icon-16px-solid/data-source-timeline.svg";
+import DataSourceValue from "/../branding/assets/icon-16px-solid/data-source-value.svg";
 import DeselectAll from "/../branding/assets/icon-16px-solid/deselect-all.svg";
 import Edit from "/../branding/assets/icon-16px-solid/edit.svg";
 import Empty from "/../branding/assets/icon-16px-solid/empty.svg";
@@ -192,7 +195,6 @@ import Save from "/../branding/assets/icon-16px-solid/save.svg";
 import SelectAll from "/../branding/assets/icon-16px-solid/select-all.svg";
 import SelectParent from "/../branding/assets/icon-16px-solid/select-parent.svg";
 import Settings from "/../branding/assets/icon-16px-solid/settings.svg";
-import SmallDot from "/../branding/assets/icon-16px-solid/small-dot.svg";
 import StackBottom from "/../branding/assets/icon-16px-solid/stack-bottom.svg";
 import StackHollow from "/../branding/assets/icon-16px-solid/stack-hollow.svg";
 import StackLower from "/../branding/assets/icon-16px-solid/stack-lower.svg";
@@ -265,6 +267,9 @@ const SOLID_16PX = {
 	Credits: { svg: Credits, size: 16 },
 	CustomColor: { svg: CustomColor, size: 16 },
 	Cut: { svg: Cut, size: 16 },
+	DataSourceGraph: { svg: DataSourceGraph, size: 16 },
+	DataSourceTimeline: { svg: DataSourceTimeline, size: 16 },
+	DataSourceValue: { svg: DataSourceValue, size: 16 },
 	DeselectAll: { svg: DeselectAll, size: 16 },
 	Edit: { svg: Edit, size: 16 },
 	Empty: { svg: Empty, size: 16 },
@@ -331,7 +336,6 @@ const SOLID_16PX = {
 	SelectAll: { svg: SelectAll, size: 16 },
 	SelectParent: { svg: SelectParent, size: 16 },
 	Settings: { svg: Settings, size: 16 },
-	SmallDot: { svg: SmallDot, size: 16 },
 	Stack: { svg: Stack, size: 16 },
 	StackBottom: { svg: StackBottom, size: 16 },
 	StackHollow: { svg: StackHollow, size: 16 },

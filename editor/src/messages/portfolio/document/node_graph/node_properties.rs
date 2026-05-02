@@ -53,7 +53,59 @@ pub fn commit_value<T>(_: &T) -> Message {
 	DocumentMessage::AddTransaction.into()
 }
 
-pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetInstance {
+pub fn expose_widget(
+	node_id: NodeId,
+	index: usize,
+	data_type: FrontendGraphDataType,
+	resolved_type: String,
+	valid_types: Vec<Type>,
+	is_subnetwork: bool,
+	is_wired: bool,
+	exposed: bool,
+) -> WidgetInstance {
+	let input_connector = InputConnector::node(node_id, index);
+
+	// Subnetwork inputs and wired inputs are read-only here: the type follows the subgraph or the upstream wire automatically.
+	// Only unconnected protonode inputs accept a manual choice that picks among multiple type implementations.
+	let entries_clickable = !is_subnetwork && !is_wired;
+
+	let type_entries: Vec<MenuListEntry> = if valid_types.is_empty() {
+		// Fall back to a single read-only entry when no valid types are available (e.g., a type-resolution error).
+		vec![MenuListEntry::new("type").label(resolved_type.clone()).disabled(true)]
+	} else {
+		valid_types
+			.into_iter()
+			.enumerate()
+			.map(|(i, ty)| {
+				let label = ty.nested_type().to_string();
+				let is_active = label == resolved_type;
+				let is_clickable = entries_clickable && !is_active;
+
+				let mut entry = MenuListEntry::new(format!("type-{i}")).label(label).disabled(!is_clickable);
+
+				// The active entry gets a bullet-point icon (the small filled circle) to mark it as the current selection.
+				if is_active {
+					entry = entry.icon("DataSourceValue");
+				}
+
+				if is_clickable {
+					entry = entry.on_commit(move |_| {
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: index,
+							value: TaggedValue::from_type_or_none(&ty),
+						}
+						.into()
+					});
+				}
+
+				entry
+			})
+			.collect()
+	};
+
+	let type_submenu = vec![type_entries];
+
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
@@ -62,14 +114,32 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 		} else {
 			"Expose this parameter as a node input in the graph."
 		})
-		.on_update(move |_parameter| Message::Batched {
-			messages: Box::new([NodeGraphMessage::ExposeInput {
-				input_connector: InputConnector::node(node_id, index),
-				set_to_exposed: !exposed,
-				start_transaction: true,
-			}
-			.into()]),
-		})
+		.menu_list_children(vec![vec![
+			MenuListEntry::new("value")
+				.label("Value")
+				.icon("DataSourceValue")
+				.children(type_submenu.clone())
+				.on_commit(move |_| {
+					NodeGraphMessage::ExposeInput {
+						input_connector,
+						set_to_exposed: false,
+						start_transaction: true,
+					}
+					.into()
+				}),
+			MenuListEntry::new("graph")
+				.label("Graph")
+				.icon("DataSourceGraph")
+				.children(type_submenu)
+				.on_commit(move |_| {
+					NodeGraphMessage::ExposeInput {
+						input_connector,
+						set_to_exposed: true,
+						start_transaction: true,
+					}
+					.into()
+				}),
+		]])
 		.widget_instance()
 }
 
@@ -114,6 +184,10 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		name,
 		description,
 		input_type,
+		resolved_type,
+		valid_types,
+		is_subnetwork,
+		is_wired,
 		blank_assist,
 		exposable,
 		network_interface,
@@ -132,7 +206,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	};
 	let mut widgets = Vec::with_capacity(6);
 	if exposable {
-		widgets.push(expose_widget(node_id, index, input_type, input.is_exposed()));
+		widgets.push(expose_widget(node_id, index, input_type, resolved_type, valid_types, is_subnetwork, is_wired, input.is_exposed()));
 	}
 	widgets.push(TextLabel::new(name).tooltip_description(description).widget_instance());
 
@@ -2342,7 +2416,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
-						if let Some(field) = graphene_std::registry::NODE_METADATA
+						let field_default_type = if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
 							.get(proto_node_identifier)
@@ -2352,9 +2426,21 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
 							step = field.number_step;
-							if let Some(ref default) = field.default_type {
-								break 'early_return default.clone();
-							}
+							field.default_type.clone()
+						} else {
+							None
+						};
+
+						// Prefer the input's currently stored value type over the protonode's default. This is what lets a user-chosen
+						// type (e.g. swapping `f64` for `DVec2`) drive the widget, instead of always rendering the registry default.
+						if let Some(document_node) = context.network_interface.document_node(&node_id, context.selection_network_path)
+							&& let Some(NodeInput::Value { tagged_value, .. }) = document_node.inputs.get(input_index)
+						{
+							break 'early_return tagged_value.ty();
+						}
+
+						if let Some(default) = field_default_type {
+							break 'early_return default;
 						}
 
 						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
@@ -2822,6 +2908,10 @@ pub struct ParameterWidgetsInfo<'a> {
 	name: String,
 	description: String,
 	input_type: FrontendGraphDataType,
+	resolved_type: String,
+	valid_types: Vec<Type>,
+	is_subnetwork: bool,
+	is_wired: bool,
 	blank_assist: bool,
 	exposable: bool,
 }
@@ -2829,11 +2919,28 @@ pub struct ParameterWidgetsInfo<'a> {
 impl<'a> ParameterWidgetsInfo<'a> {
 	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
-		let input_type = context
-			.network_interface
-			.input_type_not_invalid(&InputConnector::node(node_id, index), context.selection_network_path)
-			.displayed_type();
+		let input_connector = InputConnector::node(node_id, index);
+		let type_source = context.network_interface.input_type_not_invalid(&input_connector, context.selection_network_path);
+		let input_type = type_source.displayed_type();
+		let resolved_type = type_source.resolved_type_node_string();
+
+		// Start with the contextually-valid set. When that's empty for a protonode (e.g. a fresh node with no downstream
+		// constraints), fall back to every input type the protonode is registered with so the user can still pick.
+		let mut valid_types = context.network_interface.complete_valid_input_types(&input_connector, context.selection_network_path);
+		let implementation = context.network_interface.implementation(&node_id, context.selection_network_path);
+		let is_subnetwork = matches!(implementation, Some(DocumentNodeImplementation::Network(_)));
+		if valid_types.is_empty()
+			&& let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = implementation
+			&& let Some(implementations) = interpreted_executor::node_registry::NODE_REGISTRY.get(protonode_id)
+		{
+			valid_types = implementations.keys().filter_map(|node_io| node_io.inputs.get(index).cloned()).collect();
+		}
+		// Dedupe by the displayed type name so repeated implementations sharing the same input type collapse to one entry.
+		let mut seen_type_names = std::collections::HashSet::new();
+		valid_types.retain(|ty| seen_type_names.insert(ty.nested_type().to_string()));
+
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
+		let is_wired = document_node.and_then(|node| node.inputs.get(index)).is_some_and(|input| matches!(input, NodeInput::Node { .. }));
 
 		ParameterWidgetsInfo {
 			cached_data: context.cached_data,
@@ -2845,6 +2952,10 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			name,
 			description,
 			input_type,
+			resolved_type,
+			valid_types,
+			is_subnetwork,
+			is_wired,
 			blank_assist,
 			exposable: true,
 		}

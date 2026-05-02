@@ -92,6 +92,13 @@ pub struct ParameterExposeButton {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 
+	// Children
+	#[serde(rename = "menuListChildren")]
+	pub menu_list_children: MenuListEntrySections,
+	#[serde(rename = "menuListChildrenHash")]
+	#[widget_builder(skip)]
+	pub menu_list_children_hash: u64,
+
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
 	pub tooltip_label: String,

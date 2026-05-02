@@ -37,6 +37,8 @@
 	export let interactive = false;
 	export let scrollableY = false;
 	export let virtualScrolling = false;
+	// Use `Popover` to draw a tail pointing at the spawner. Defaults to `Dropdown` (no tail), which the menu bar uses. Recursive submenus always use `Dropdown`.
+	export let type: "Dropdown" | "Popover" = "Dropdown";
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
@@ -453,7 +455,7 @@
 	{open}
 	on:open={({ detail }) => (open = detail)}
 	on:naturalWidth
-	type="Dropdown"
+	{type}
 	windowEdgeMargin={0}
 	escapeCloses={false}
 	{direction}
