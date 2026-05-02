@@ -20,7 +20,7 @@ use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Context, Graphic};
+use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
@@ -441,7 +441,7 @@ impl NodeRuntime {
 			}
 			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
 			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Table<Graphic>>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
 				if update_thumbnails {
 					let bounds = artboard_clip_bounds(&io.output);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
@@ -522,7 +522,7 @@ impl NodeRuntime {
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
 /// framing matches what's actually visible after clipping rather than the unclipped content extents.
-fn artboard_clip_bounds(artboards: &Table<Table<Graphic>>) -> RenderBoundingBox {
+fn artboard_clip_bounds(artboards: &Table<Artboard>) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
 	for index in 0..artboards.len() {
 		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);

@@ -4,8 +4,8 @@ use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::Vector;
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
+use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::{GradientStop, GradientStops, ReferencePoint};
 
@@ -16,7 +16,7 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
-		Table<Table<Graphic>>,
+		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
@@ -48,7 +48,7 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	/// The list of data.
 	#[implementations(
 		Table<String>,
-		Table<Table<Graphic>>,
+		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
@@ -86,7 +86,7 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 		Table<Vector>,
 		Table<Raster<CPU>>,
 		Table<Graphic>,
-		Table<Table<Graphic>>,
+		Table<Artboard>,
 	)]
 	table: Table<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -225,7 +225,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone 
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The `Table` whose items will gain or have replaced the named attribute.
 	#[implementations(
-		Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>, Table<Table<Graphic>>,
+		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
 		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
 		Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>,
 		Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>,
@@ -262,11 +262,11 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone 
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `Table` whose items will appear at the start of the extended `Table`.
-	#[implementations(Table<Table<Graphic>>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	base: Table<T>,
 	/// The `Table` whose items will appear at the end of the extended `Table`.
 	#[expose]
-	#[implementations(Table<Table<Graphic>>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	new: Table<T>,
 ) -> Table<T> {
 	let mut base = base;
@@ -281,9 +281,9 @@ pub async fn extend<T: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Table<Graphic>>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] base: Table<T>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] base: Table<T>,
 	#[expose]
-	#[implementations(Table<Table<Graphic>>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
 	new: Table<T>,
 	nested_node_path: Table<NodeId>,
 ) -> Table<T> {

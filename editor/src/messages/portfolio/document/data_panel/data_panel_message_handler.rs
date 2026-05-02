@@ -6,9 +6,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
-use graphene_std::Context;
-use graphene_std::Graphic;
 use graphene_std::blending::BlendMode;
 use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
@@ -16,6 +13,7 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -183,7 +181,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
-		Table<Table<Graphic>>,
+		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
@@ -298,6 +296,22 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		rows.insert(0, column_headings(&column_names));
 
 		vec![LayoutGroup::table(rows, false)]
+	}
+}
+
+impl TableRowLayout for Artboard {
+	fn type_name() -> &'static str {
+		"Artboard"
+	}
+	fn identifier(&self) -> String {
+		self.as_graphic_table().identifier()
+	}
+	// Don't put a breadcrumb for Artboard
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.as_graphic_table().layout_with_breadcrumb(data)
 	}
 }
 
@@ -871,7 +885,7 @@ impl TableRowLayout for NodeId {
 macro_rules! known_table_row_types {
 	($apply:ident) => {
 		$apply!(
-			Table<Table<Graphic>>,
+			Table<Artboard>,
 			Table<Graphic>,
 			Table<Vector>,
 			Table<Raster<CPU>>,
@@ -900,6 +914,7 @@ macro_rules! known_table_row_types {
 			Raster<CPU>,
 			Raster<GPU>,
 			Graphic,
+			Artboard,
 		);
 	};
 }

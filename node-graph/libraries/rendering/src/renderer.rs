@@ -17,13 +17,12 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::Graphic;
-use graphic_types::Vector;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
+use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
@@ -514,8 +513,8 @@ impl Render for Graphic {
 	}
 }
 
-/// Reads the artboard metadata for the row at `index` from a `Table<Table<Graphic>>` of artboards.
-fn read_artboard_attributes(table: &Table<Table<Graphic>>, index: usize) -> (DVec2, DVec2, Color, bool) {
+/// Reads the artboard metadata for the row at `index` from a `Table<Artboard>`.
+fn read_artboard_attributes(table: &Table<Artboard>, index: usize) -> (DVec2, DVec2, Color, bool) {
 	let location: DVec2 = table.attribute_cloned_or_default(ATTR_LOCATION, index);
 	let dimensions: DVec2 = table.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
 	let background: Color = table.attribute_cloned_or_default(ATTR_BACKGROUND, index);
@@ -523,10 +522,10 @@ fn read_artboard_attributes(table: &Table<Table<Graphic>>, index: usize) -> (DVe
 	(location, dimensions, background, clip)
 }
 
-impl Render for Table<Table<Graphic>> {
+impl Render for Table<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
-			let Some(content) = self.element(index) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_table) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
 			let x = location.x.min(location.x + dimensions.x);
@@ -584,7 +583,7 @@ impl Render for Table<Table<Graphic>> {
 		use vello::peniko;
 
 		for index in 0..self.len() {
-			let Some(content) = self.element(index) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_table) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
 			let [a, b] = [location, location + dimensions];
@@ -614,7 +613,7 @@ impl Render for Table<Table<Graphic>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let Some(content) = self.element(index) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_table) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
 			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
