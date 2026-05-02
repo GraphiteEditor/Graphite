@@ -36,6 +36,11 @@ pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
 
+/// Optional `Vector` that overrides the row's own geometry for click-target generation.
+/// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
+/// by clicking anywhere within their bounds, not just the filled letterform.
+pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
+
 /// Byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_START: &str = "start";
 
