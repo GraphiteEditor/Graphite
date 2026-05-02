@@ -28,6 +28,9 @@ pub struct DocumentMetadata {
 	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
+	/// nodes with an `editor:click_target` override still outline the precise geometry.
+	pub outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
@@ -154,9 +157,15 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
+	/// Outline targets if present, otherwise click targets. Used for bounding boxes and outline
+	/// drawing so layers with an `editor:click_target` override report precise geometry bounds.
+	fn visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+		self.outlines.get(&layer).or_else(|| self.click_targets.get(&layer)).map(|v| v.as_slice())
+	}
+
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets(layer)?
+		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
@@ -164,7 +173,7 @@ impl DocumentMetadata {
 
 	/// Get the loose bounding box of the click target of the specified layer in the specified transform space
 	pub fn loose_bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets(layer)?
+		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
 				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
@@ -210,18 +219,14 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
-		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().filter_map(|target| match target.target_type() {
+		self.visual_targets(layer).unwrap_or(&[]).iter().filter_map(|target| match target.target_type() {
 			ClickTargetType::Subpath(subpath) => Some(subpath),
 			_ => None,
 		})
 	}
 
 	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
-		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
-		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().map(|target| target.target_type())
+		self.visual_targets(layer).unwrap_or(&[]).iter().map(|target| target.target_type())
 	}
 
 	pub fn is_clip(&self, node: NodeId) -> bool {

@@ -1270,6 +1270,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);
 			}
+			DocumentMessage::UpdateOutlines { outlines } => {
+				let layer_outlines = outlines
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, outlines)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, outlines)
+						})
+					})
+					.collect();
+				self.network_interface.update_outlines(layer_outlines);
+			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}

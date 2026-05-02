@@ -3276,6 +3276,7 @@ impl NodeNetworkInterface {
 		self.document_metadata.local_transforms.retain(|node, _| nodes.contains(node));
 		self.document_metadata.vector_modify.retain(|node, _| nodes.contains(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.outlines.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
 
 	/// Update the cached transforms of the layers
@@ -3292,6 +3293,11 @@ impl NodeNetworkInterface {
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
 		self.document_metadata.click_targets = new_click_targets;
+	}
+
+	/// Update the cached source-geometry outline targets of the layers
+	pub fn update_outlines(&mut self, new_outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
+		self.document_metadata.outlines = new_outlines;
 	}
 
 	/// Update the cached clip targets of the layers
