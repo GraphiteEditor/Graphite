@@ -1933,6 +1933,7 @@ impl PortfolioMessageHandler {
 		} else {
 			// Panel is not present, restore it to its default position in the layout tree
 			self.workspace_panel_layout.restore_panel(panel_type);
+			self.workspace_panel_layout.prune();
 			self.refresh_panel_content(panel_type, responses);
 		}
 
