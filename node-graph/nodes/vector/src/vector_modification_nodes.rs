@@ -1,6 +1,6 @@
 use core_types::table::Table;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
+use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
 use graphic_types::Vector;
 use vector_types::vector::VectorModification;
@@ -14,6 +14,9 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 		vector.push(TableRow::default());
 	}
 	modification.apply(vector.element_mut(0).expect("push should give one item"));
+
+	// Drop stale click-target override so hit testing uses the geometry the user is now editing
+	vector.remove_attribute(ATTR_EDITOR_CLICK_TARGET);
 
 	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
 	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.

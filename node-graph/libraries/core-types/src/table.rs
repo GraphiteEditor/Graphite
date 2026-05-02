@@ -489,6 +489,13 @@ impl AttributeColumns {
 		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index)?.downcast_ref::<T>() } else { None })
 	}
 
+	/// Removes the entire column for the given key, if present.
+	fn remove_column(&mut self, key: &str) {
+		if let Some(position) = self.columns.iter().position(|(k, _)| k == key) {
+			self.columns.remove(position);
+		}
+	}
+
 	/// Finds or creates a column for the given key and type, returning its position.
 	/// If a column with the key exists but has the wrong type, it is removed and replaced with a new column of the correct type, padded with defaults.
 	/// A newly created column is filled with `T::default()` for all existing rows.
@@ -751,6 +758,11 @@ impl<T> Table<T> {
 	/// Sets the attribute value at the given row index and key, creating the column with defaults if it doesn't exist.
 	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
 		self.attributes.set_value(key, index, value);
+	}
+
+	/// Removes the entire attribute column for the given key, if present.
+	pub fn remove_attribute(&mut self, key: &str) {
+		self.attributes.remove_column(key);
 	}
 
 	/// Runs the given closure on a mutable reference to the attribute value at the given row index,
