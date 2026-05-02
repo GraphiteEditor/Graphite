@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD, LOREM_IPSUM, LOREM_IPSUM_DEFAULT_WORD_COUNT, SAMPLE_TEXT};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -19,7 +19,7 @@ use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
+use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, bounding_box, lines_clipping};
 use graphene_std::vector::style::Fill;
 use graphene_std::{Color, NodeInputDecleration};
 
@@ -380,6 +380,8 @@ struct TextToolData {
 	layer: LayerNodeIdentifier,
 	editing_text: Option<EditingText>,
 	new_text: String,
+	is_lorem_ipsum: bool,
+	last_lorem_ipsum_constraint: Option<DVec2>,
 	drag_start: DVec2,
 	drag_current: DVec2,
 	resize: Resize,
@@ -457,6 +459,7 @@ impl TextToolData {
 		}
 
 		self.layer = layer;
+		self.is_lorem_ipsum = false; // Editing an existing layer — discard any lorem ipsum state
 		if self.load_layer_text_node(document).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
@@ -596,19 +599,19 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Editing
 			}
-			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				if matches!(self, Self::Placing) {
-					// Get the updated selection box bounds
-					let quad = Quad::from_box(tool_data.cached_resize_bounds);
+			(TextToolFsmState::Placing, TextToolMessage::Overlays { context: mut overlay_context }) => {
+				// Get the updated selection box bounds
+				let quad = Quad::from_box(tool_data.cached_resize_bounds);
 
-					// Draw a bounding box on the layers to be selected
-					for layer in document.intersect_quad_no_artboards(quad, viewport) {
-						overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
-					}
-
-					overlay_context.quad(quad, None, Some(fill_color));
+				// Draw a bounding boxes on the layers to be selected
+				for layer in document.intersect_quad_no_artboards(quad, viewport) {
+					overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
 				}
+				overlay_context.quad(quad, None, Some(fill_color));
 
+				self
+			}
+			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -631,6 +634,7 @@ impl Fsm for TextToolFsmState {
 						let transformed_quad = layer_transform * bounds;
 						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface)
 							&& lines_clipping(text.as_str(), font, font_cache, typesetting)
+							&& !tool_data.is_lorem_ipsum
 						{
 							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
 						}
@@ -731,6 +735,34 @@ impl Fsm for TextToolFsmState {
 				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, viewport, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
+
+				let [start, end] = tool_data.cached_resize_bounds;
+				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
+				let constraint_size = has_dragged.then_some((start - end).abs());
+				let floor_constraint = constraint_size.map(|c| c.floor());
+				if tool_data.last_lorem_ipsum_constraint != floor_constraint {
+					tool_data.last_lorem_ipsum_constraint = floor_constraint;
+
+					if transition_data.preferences.lorem_ipsum_placeholder {
+						let text = get_lorem_ipsum_text(constraint_size, &tool_options.font, font_cache, tool_options.font_size, tool_options.line_height_ratio);
+						let position = start.min(end);
+
+						responses.add(FrontendMessage::DisplayEditableTextbox {
+							text,
+							line_height_ratio: tool_options.line_height_ratio,
+							font_size: tool_options.font_size,
+							color: tool_options
+								.fill
+								.active_color()
+								.map_or(COLOR_OVERLAY_BLACK.to_string(), |color| format!("#{}", color.to_rgba_hex_srgb())),
+							font_data: Vec::new().into(),
+							transform: DAffine2::from_translation(position).to_cols_array(),
+							max_width: constraint_size.map(|size| size.x),
+							max_height: constraint_size.map(|size| size.y),
+							align: tool_options.align,
+						});
+					}
+				}
 
 				// Auto-panning
 				let messages = [
@@ -878,6 +910,7 @@ impl Fsm for TextToolFsmState {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
+				tool_data.last_lorem_ipsum_constraint = None;
 
 				TextToolFsmState::Ready
 			}
@@ -888,14 +921,22 @@ impl Fsm for TextToolFsmState {
 				// Check if the user has clicked (no dragging) on some existing text
 				if !has_dragged && let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, font_cache) {
 					tool_data.start_editing_layer(clicked_text_layer_path, self, document, font_cache, responses);
+					tool_data.last_lorem_ipsum_constraint = None;
 					return TextToolFsmState::Editing;
 				}
 
 				// Otherwise create some new text
 				let constraint_size = has_dragged.then_some((start - end).abs());
+				let text = if transition_data.preferences.lorem_ipsum_placeholder {
+					tool_data.is_lorem_ipsum = true;
+					get_lorem_ipsum_text(constraint_size, &tool_options.font, font_cache, tool_options.font_size, tool_options.line_height_ratio)
+				} else {
+					tool_data.is_lorem_ipsum = false;
+					String::new()
+				};
 				let editing_text = EditingText {
-					text: String::new(),
-					transform: DAffine2::from_translation(start),
+					text,
+					transform: DAffine2::from_translation(start.min(end)),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
 						line_height_ratio: tool_options.line_height_ratio,
@@ -927,6 +968,7 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Editing;
 				}
 				tool_data.layer_dragging.take();
+				tool_data.last_lorem_ipsum_constraint = None;
 
 				TextToolFsmState::Ready
 			}
@@ -942,6 +984,7 @@ impl Fsm for TextToolFsmState {
 				tool_data.new_text = new_text;
 
 				if !is_left_or_right_click {
+					truncate_lorem_ipsum(tool_data, font_cache);
 					tool_data.set_editing(false, font_cache, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
@@ -952,6 +995,7 @@ impl Fsm for TextToolFsmState {
 
 					TextToolFsmState::Ready
 				} else {
+					truncate_lorem_ipsum(tool_data, font_cache);
 					if tool_data.new_text.is_empty() {
 						return tool_data.delete_empty_layer(font_cache, responses);
 					}
@@ -963,6 +1007,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
 				tool_data.new_text = new_text;
+				tool_data.is_lorem_ipsum = false;
 				responses.add(OverlaysMessage::Draw);
 				TextToolFsmState::Editing
 			}
@@ -993,6 +1038,7 @@ impl Fsm for TextToolFsmState {
 					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				}
 				tool_data.resize.cleanup(responses);
+				tool_data.last_lorem_ipsum_constraint = None;
 
 				TextToolFsmState::Ready
 			}
@@ -1035,5 +1081,57 @@ impl Fsm for TextToolFsmState {
 			_ => MouseCursorIcon::Text,
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+	}
+}
+
+/// Get the lorem ipsum text for the specified constraint size
+fn get_lorem_ipsum_text(constraint_size: Option<DVec2>, font: &Font, font_cache: &FontCache, font_size: f64, line_height_ratio: f64) -> String {
+	let word_count = if let Some(size) = constraint_size {
+		let typesetting = TypesettingConfig {
+			font_size,
+			line_height_ratio,
+			..Default::default()
+		};
+		let sample_width = bounding_box(SAMPLE_TEXT, font, font_cache, typesetting, false).x;
+		let average_advance = if sample_width > 0. { sample_width / SAMPLE_TEXT.len() as f64 } else { font_size * 0.45 };
+
+		let line_height = font_size * line_height_ratio;
+		if line_height <= 0. {
+			return LOREM_IPSUM.split_whitespace().take(LOREM_IPSUM_DEFAULT_WORD_COUNT).collect::<Vec<_>>().join(" ");
+		}
+		let chars_per_line = (size.x / average_advance).floor().max(1.) as usize;
+		let lines = (size.y / line_height).floor().max(1.) as usize;
+
+		let chars = (chars_per_line * lines) as f64 * 1.5;
+		(chars / 5.5).ceil() as usize
+	} else {
+		LOREM_IPSUM_DEFAULT_WORD_COUNT
+	};
+
+	LOREM_IPSUM.split_whitespace().cycle().take(word_count).collect::<Vec<_>>().join(" ")
+}
+
+/// Truncate the lorem ipsum text to fit within the specified height
+fn truncate_lorem_ipsum(tool_data: &mut TextToolData, font_cache: &FontCache) {
+	if tool_data.is_lorem_ipsum
+		&& let Some(editing_text) = tool_data.editing_text.as_ref()
+		&& let Some(max_height) = editing_text.typesetting.max_height
+	{
+		let words: Vec<&str> = tool_data.new_text.split_whitespace().collect();
+		let mut low = 1;
+		let mut high = words.len();
+		let mut best_fit = 0;
+		while low <= high {
+			let mid = (low + high) / 2;
+			let test_text = words[..mid].join(" ");
+			let box_y = graphene_std::text::bounding_box(&test_text, &editing_text.font, font_cache, editing_text.typesetting, true).y;
+			if box_y <= max_height {
+				best_fit = mid;
+				low = mid + 1;
+			} else {
+				high = mid - 1;
+			}
+		}
+		tool_data.new_text = words[..best_fit].join(" ");
 	}
 }
