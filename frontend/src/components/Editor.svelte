@@ -144,6 +144,9 @@
 		--color-data-invalid: #d6536e; // Same as --color-error-red
 		--color-data-invalid-dim: #a7324a;
 
+		--color-overlay-blue: #00a8ff;
+		--color-overlay-blue: rgb(0, 168, 255);
+
 		--color-none: white;
 		--color-none-repeat: no-repeat;
 		--color-none-position: center center;

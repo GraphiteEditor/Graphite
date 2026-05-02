@@ -246,6 +246,8 @@ pub enum FrontendMessage {
 		visible: bool,
 		tilt: f64,
 		flip: bool,
+		#[serde(rename = "selectionQuad")]
+		selection_quad: Option<[(f64, f64); 4]>,
 	},
 	UpdateDocumentScrollbars {
 		position: (f64, f64),
