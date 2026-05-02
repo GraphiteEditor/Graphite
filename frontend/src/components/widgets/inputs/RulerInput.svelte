@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 
+	const SELECTION_ENDPOINT_SIZE = 5;
 	const RULER_THICKNESS = 16;
 	const MAJOR_MARK_THICKNESS = 16;
 	const MINOR_MARK_THICKNESS = 6;
@@ -19,6 +20,7 @@
 	export let minorDivisions = 5;
 	export let microDivisions = 2;
 	export let cursorPosition: { x: number; y: number } | undefined = undefined;
+	export let selectionQuad: [number, number][] | undefined = undefined;
 
 	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
@@ -37,6 +39,7 @@
 	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, stretchFactor, minorDivisions, microDivisions, rulerLength, crossAxisDirection);
 	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, crossAxisDirection);
 	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, crossAxisDirection);
+	$: selectionExtent = computeSelectionExtent(direction, selectionQuad, crossAxisDirection);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const normTilt = ((tilt % TAU) + TAU) % TAU;
@@ -165,6 +168,14 @@
 		return `M${sx},${sy}l${dx * length},${dy * length}`;
 	}
 
+	function computeSelectionExtent(direction: RulerDirection, quad: [number, number][] | undefined, crossAxisDirection: [number, number]): { min: number; max: number } | undefined {
+		if (!quad || quad.length === 0) return undefined;
+
+		const projected = quad.map(([x, y]) => projectOntoRuler(direction, x, y, crossAxisDirection));
+
+		return { min: Math.min(...projected), max: Math.max(...projected) };
+	}
+
 	export function resize() {
 		if (!rulerInput) return;
 
@@ -190,56 +201,109 @@
 	onMount(resize);
 </script>
 
-<div class={`ruler-input ${direction.toLowerCase()}`} bind:this={rulerInput}>
-	<svg style:width={svgBounds.width} style:height={svgBounds.height}>
-		<path d={svgPath} />
-		{#each svgTexts as svgText}
-			<text transform={svgText.transform}>{svgText.text}</text>
-		{/each}
-		{#if cursorIndicatorPath}
-			<path class="cursor-indicator" d={cursorIndicatorPath} />
-		{/if}
-	</svg>
+<div class="ruler-input">
+	<div class={`ruler-area ${direction === "Horizontal" ? "horizontal" : "vertical"}`} bind:this={rulerInput}>
+		<svg style:width={svgBounds.width} style:height={svgBounds.height}>
+			<path d={svgPath} />
+			{#each svgTexts as svgText}
+				<text transform={svgText.transform}>{svgText.text}</text>
+			{/each}
+			{#if cursorIndicatorPath}
+				<path class="cursor-indicator" d={cursorIndicatorPath} />
+			{/if}
+		</svg>
+	</div>
+	{#if selectionExtent}
+		{@const isVertical = direction === "Vertical"}
+		{@const minPos = Math.round(selectionExtent.min)}
+		{@const maxPos = Math.round(selectionExtent.max)}
+		{@const half = Math.floor(SELECTION_ENDPOINT_SIZE / 2)}
+		{@const overlap = Math.ceil(SELECTION_ENDPOINT_SIZE / 2)}
+		<div class="selection-overlay-container" style:width={isVertical ? `${RULER_THICKNESS + overlap}px` : "100%"} style:height={isVertical ? "100%" : `${RULER_THICKNESS + overlap}px`}>
+			<div
+				class="selection-line"
+				style:left={isVertical ? `${RULER_THICKNESS}px` : `${minPos}px`}
+				style:top={isVertical ? `${minPos}px` : `${RULER_THICKNESS}px`}
+				style:width={isVertical ? "1px" : `${maxPos - minPos}px`}
+				style:height={isVertical ? `${maxPos - minPos}px` : "1px"}
+			></div>
+			{#each [minPos, maxPos] as pos}
+				<div
+					class="selection-endpoint"
+					style:left={isVertical ? `${RULER_THICKNESS - half}px` : `${pos - half}px`}
+					style:top={isVertical ? `${pos - half}px` : `${RULER_THICKNESS - half}px`}
+					style:width={`${SELECTION_ENDPOINT_SIZE}px`}
+					style:height={`${SELECTION_ENDPOINT_SIZE}px`}
+				></div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style lang="scss">
 	.ruler-input {
 		flex: 1 1 100%;
-		background: var(--color-2-mildblack);
-		overflow: hidden;
 		position: relative;
 		box-sizing: border-box;
 
-		&.horizontal {
-			height: 16px;
-			border-bottom: 1px solid var(--color-5-dullgray);
-		}
+		.ruler-area {
+			background: var(--color-2-mildblack);
+			width: 100%;
+			height: 100%;
+			position: relative;
+			overflow: hidden;
 
-		&.vertical {
-			width: 16px;
-			border-right: 1px solid var(--color-5-dullgray);
-
-			svg text {
-				text-anchor: end;
+			&.horizontal {
+				height: 16px;
+				border-bottom: 1px solid var(--color-5-dullgray);
 			}
-		}
 
-		svg {
-			position: absolute;
+			&.vertical {
+				width: 16px;
+				border-right: 1px solid var(--color-5-dullgray);
 
-			path {
-				stroke-width: 1px;
-				stroke: var(--color-5-dullgray);
-
-				&.cursor-indicator {
-					stroke: var(--color-8-uppergray);
+				svg text {
+					text-anchor: end;
 				}
 			}
 
-			text {
-				font-size: 12px;
-				fill: var(--color-8-uppergray);
+			svg {
+				position: absolute;
+
+				path {
+					stroke-width: 1px;
+					stroke: var(--color-5-dullgray);
+
+					&.cursor-indicator {
+						stroke: var(--color-8-uppergray);
+					}
+				}
+
+				text {
+					font-size: 12px;
+					fill: var(--color-8-uppergray);
+				}
 			}
+		}
+
+		.selection-overlay-container {
+			overflow: hidden;
+			position: absolute;
+			z-index: 1;
+			top: 0;
+			left: 0;
+		}
+
+		.selection-line {
+			position: absolute;
+			background: var(--color-8-uppergray);
+		}
+
+		.selection-endpoint {
+			position: absolute;
+			background: var(--color-2-mildblack);
+			border: 1px solid var(--color-overlay-blue);
+			box-sizing: border-box;
 		}
 	}
 </style>

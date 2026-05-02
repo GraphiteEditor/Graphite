@@ -47,6 +47,7 @@
 	let rulerTilt = 0;
 	let rulerFlip = false;
 	let rulerCursorPosition: { x: number; y: number } | undefined;
+	let rulerSelectionQuad: [number, number][] | undefined;
 	let viewportBounds: DOMRect | undefined;
 
 	// Rendered SVG viewport data
@@ -291,13 +292,14 @@
 		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number, flip: boolean) {
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number, flip: boolean, selectionQuad: [number, number][] | undefined) {
 		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
 		rulerTilt = tilt;
 		rulerFlip = flip;
+		rulerSelectionQuad = selectionQuad;
 	}
 
 	function updateRulerCursorPosition(e: PointerEvent) {
@@ -498,8 +500,8 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible, tilt, flip } = data;
-			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip);
+			const { origin, spacing, interval, visible, tilt, flip, selectionQuad } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined);
 		});
 
 		// Update mouse cursor icon
@@ -615,6 +617,7 @@
 						numberInterval={rulerInterval}
 						direction="Horizontal"
 						cursorPosition={rulerCursorPosition}
+						selectionQuad={rulerSelectionQuad}
 						bind:this={rulerHorizontal}
 					/>
 				</LayoutRow>
@@ -631,6 +634,7 @@
 							numberInterval={rulerInterval}
 							direction="Vertical"
 							cursorPosition={rulerCursorPosition}
+							selectionQuad={rulerSelectionQuad}
 							bind:this={rulerVertical}
 						/>
 					</LayoutCol>

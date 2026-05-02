@@ -838,6 +838,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				let ruler_spacing = ruler_interval * ruler_scale;
 
+				// Compute the selection bounding box as 4 viewport-space corners preserving orientation
+				let selection_quad = if !self.graph_view_overlay_open {
+					self.network_interface
+						.selected_nodes()
+						.0
+						.iter()
+						.filter(|node| self.network_interface.is_layer(node, &[]))
+						.filter_map(|layer| self.metadata().bounding_box_document(LayerNodeIdentifier::new(*layer, &self.network_interface)))
+						.reduce(Quad::combine_bounds)
+						.map(|[min, max]| {
+							let corners = [DVec2::new(min.x, min.y), DVec2::new(max.x, min.y), DVec2::new(max.x, max.y), DVec2::new(min.x, max.y)];
+							corners.map(|c| document_to_viewport.transform_point2(c).into())
+						})
+				} else {
+					None
+				};
+
 				responses.add(FrontendMessage::UpdateDocumentRulers {
 					origin: ruler_origin.into(),
 					spacing: ruler_spacing,
@@ -845,6 +862,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					visible: self.rulers_visible,
 					tilt: if self.graph_view_overlay_open { 0. } else { current_ptz.tilt() },
 					flip: !self.graph_view_overlay_open && current_ptz.flip,
+					selection_quad,
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
