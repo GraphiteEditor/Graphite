@@ -892,7 +892,7 @@
 					}
 				}
 
-				.top-ruler .ruler-wrapper {
+				.top-ruler .ruler-input {
 					margin-right: 16px;
 				}
 
