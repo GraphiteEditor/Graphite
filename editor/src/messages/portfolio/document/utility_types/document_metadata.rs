@@ -223,9 +223,10 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		self.visual_targets(layer).unwrap_or(&[]).iter().filter_map(|target| match target.target_type() {
-			ClickTargetType::Subpath(subpath) => Some(subpath),
-			_ => None,
+		self.visual_targets(layer).unwrap_or(&[]).iter().flat_map(|target| match target.target_type() {
+			ClickTargetType::Subpath(subpath) => std::slice::from_ref(subpath),
+			ClickTargetType::CompoundPath(subpaths) => subpaths.as_slice(),
+			ClickTargetType::FreePoint(_) => &[],
 		})
 	}
 

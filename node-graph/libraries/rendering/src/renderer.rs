@@ -1465,23 +1465,33 @@ impl Render for Table<Vector> {
 	}
 }
 
-/// Build click targets (subpaths and free-floating anchors) from a `Vector`, apply the transform, and append to `targets`.
+/// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
+/// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, transform: DAffine2) {
 	let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 	let filled = vector.style.fill() != &Fill::None;
-	let fill = |mut subpath: Subpath<_>| {
-		if filled {
-			subpath.set_closed(true);
-		}
-		subpath
-	};
-	targets.extend(vector.stroke_bezier_paths().map(fill).map(|subpath| {
-		let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
+	let subpaths: Vec<Subpath<_>> = vector
+		.stroke_bezier_paths()
+		.map(|mut subpath| {
+			if filled {
+				subpath.set_closed(true);
+			}
+			subpath
+		})
+		.collect();
+	if !subpaths.is_empty() {
+		let mut click_target = ClickTarget::new_with_compound_path(subpaths, stroke_width);
 		click_target.apply_transform(transform);
-		click_target
-	}));
+		targets.push(click_target);
+	}
 
-	let single_anchors = vector.point_domain.ids().iter().filter_map(|&point_id| {
+	for click_target in extend_free_point_targets(vector, transform) {
+		targets.push(click_target);
+	}
+}
+
+fn extend_free_point_targets(vector: &Vector, transform: DAffine2) -> impl Iterator<Item = ClickTarget> + '_ {
+	vector.point_domain.ids().iter().filter_map(move |&point_id| {
 		if vector.any_connected(point_id) {
 			return None;
 		}
@@ -1490,8 +1500,7 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, t
 		let mut click_target = ClickTarget::new_with_free_point(FreePoint::new(point_id, anchor));
 		click_target.apply_transform(transform);
 		Some(click_target)
-	});
-	targets.extend(single_anchors);
+	})
 }
 
 impl Render for Table<Raster<CPU>> {
