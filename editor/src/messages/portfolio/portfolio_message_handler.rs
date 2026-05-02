@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::{CachedData, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
+use super::utility_types::{CachedData, FontCatalog, FontCatalogFamily, FontCatalogStyle, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
@@ -34,6 +34,8 @@ use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
+use parley::FontStyle;
+use parley::fontique::{Collection, CollectionOptions};
 use std::path::PathBuf;
 use std::vec;
 
@@ -368,6 +370,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
+			PortfolioMessage::LoadFontCatalog => {
+				if Editor::environment().is_desktop() && preferences.system_fonts {
+					self.cached_data.system_font_collection.0 = Collection::new(CollectionOptions { shared: false, system_fonts: true });
+					// shove font metadata into cached data catalog
+					let system_font_family_names: Vec<String> = self.cached_data.system_font_collection.0.family_names().map(|n| n.to_owned()).collect();
+					let mut families_for_catalog = Vec::new();
+					for name in system_font_family_names {
+						if let Some(family) = self.cached_data.system_font_collection.0.family_by_name(&name) {
+							let mut styles = Vec::new();
+							for font in family.fonts() {
+								let style = FontCatalogStyle {
+									weight: (font.weight().value()) as u32,
+									italic: font.style() == FontStyle::Italic,
+									url: "_SYSTEM".to_owned(),
+								};
+								styles.push(style);
+							}
+							families_for_catalog.push(FontCatalogFamily { name: name.to_owned(), styles });
+						}
+					}
+					responses.add(PortfolioMessage::FontCatalogLoaded {
+						catalog: FontCatalog(families_for_catalog),
+					});
+				} else {
+					// if not desktop or not system fonts, call to frontend as usual
+					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+				}
+			}
 			PortfolioMessage::FontCatalogLoaded { catalog } => {
 				self.cached_data.font_catalog = catalog;
 
@@ -384,7 +414,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let font = Font::new(font.font_family, style.to_named_style());
 
 					if !self.cached_data.font_cache.loaded_font(&font) {
-						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
+						if style.url == "_SYSTEM" {
+							let system_font_family_names: Vec<String> = self.cached_data.system_font_collection.0.family_names().map(|n| n.to_owned()).collect();
+							for name in system_font_family_names {
+								if name == font.font_family {
+									if let Some(family) = self.cached_data.system_font_collection.0.family_by_name(&name) {
+										for system_font_style in family.fonts() {
+											if (system_font_style.weight().value() as u32 == style.weight) && ((system_font_style.style() == FontStyle::Italic) == style.italic) {
+												let mut font_data_vec = Vec::new();
+												match system_font_style.load(None) {
+													Some(loaded_font) => {
+														font_data_vec.extend(loaded_font.data());
+														responses.add(PortfolioMessage::FontLoaded {
+															font_family: name.clone(),
+															font_style: style.to_named_style(),
+															data: font_data_vec,
+														});
+													}
+													_ => {}
+												};
+												return;
+											}
+										}
+									}
+								}
+							}
+						} else {
+							responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
+						}
 					}
 				}
 			}
@@ -439,9 +496,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				let catalog = &self.cached_data.font_catalog;
-
+				// add handling for if font catalog preference has changed or maybe if user
+				// has requested font catalog refresh?
 				if catalog.0.is_empty() {
-					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+					responses.add(PortfolioMessage::LoadFontCatalog);
 					return;
 				}
 

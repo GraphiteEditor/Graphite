@@ -1,6 +1,8 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphene_std::text::{Font, FontCache};
+use parley::fontique;
+use std::fmt;
 
 /// Proportional share (0-1) for the document panel's side when splitting adjacent to non-document panels.
 const DOCUMENT_PANEL_SHARE: f64 = 0.8;
@@ -11,6 +13,16 @@ const EQUAL_PANEL_SHARE: f64 = 0.5;
 pub struct CachedData {
 	pub font_cache: FontCache,
 	pub font_catalog: FontCatalog,
+	pub system_font_collection: FontCollection,
+}
+
+#[derive(Default)]
+pub struct FontCollection(pub fontique::Collection);
+
+impl fmt::Debug for FontCollection {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "Font Collection")
+	}
 }
 
 // TODO: Should this be a BTreeMap instead?

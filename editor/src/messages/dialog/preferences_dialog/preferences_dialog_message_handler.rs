@@ -300,7 +300,32 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool]);
+			let fonts_checkbox_id = CheckboxId::new();
+			let system_fonts_description = "
+				Switch the font catalog to system fonts. On Desktop, this queries the system fonts from the backend. In future versions, this will query system fonts in the browser.\n\
+				\n\
+				This experimental functionality is slated for replacement in future versions of Graphite that will have more detailed font management.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let system_fonts = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.system_fonts)
+					.tooltip_label("System Fonts")
+					.tooltip_description(system_fonts_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::SystemFonts { enabled: checkbox_input.checked }.into())
+					.for_label(fonts_checkbox_id)
+					.widget_instance(),
+				TextLabel::new("System Fonts")
+					.tooltip_label("System Fonts")
+					.tooltip_description(system_fonts_description)
+					.for_checkbox(fonts_checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool, system_fonts]);
 		}
 
 		// =============

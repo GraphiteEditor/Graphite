@@ -2178,6 +2178,7 @@ dependencies = [
  "log",
  "num_enum",
  "once_cell",
+ "parley",
  "preprocessor",
  "serde",
  "serde_bytes",
