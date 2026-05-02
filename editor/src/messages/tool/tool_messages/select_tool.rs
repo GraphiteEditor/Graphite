@@ -1823,7 +1823,10 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	}
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
-	tool_data.layers_dragging.extend(vec![new_selected]);
+	// Duplicates cause `SelectedNodesSet` to carry the layer twice, breaking the Data panel's single-selection check in `node_to_inspect`
+	if !tool_data.layers_dragging.contains(&new_selected) {
+		tool_data.layers_dragging.push(new_selected);
+	}
 	tool_data.layers_dragging.retain(|&selected_layer| !selected_layer.is_child_of(metadata, &new_selected));
 	if remove {
 		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
@@ -1885,7 +1888,10 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 	);
 
 	if !remove {
-		tool_data.layers_dragging.extend(vec![layer]);
+		// Duplicates cause `SelectedNodesSet` to carry the layer twice, breaking the Data panel's single-selection check in `node_to_inspect`
+		if !tool_data.layers_dragging.contains(&layer) {
+			tool_data.layers_dragging.push(layer);
+		}
 	} else {
 		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
 	}
