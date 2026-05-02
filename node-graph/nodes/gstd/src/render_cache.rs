@@ -334,14 +334,14 @@ pub async fn render_output_cache<'a: 'n>(
 	let footprint = ctx.footprint();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
-		let context = OwnedContextImpl::empty().with_footprint(*footprint);
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint);
 		return data.eval(context.into_context()).await;
 	};
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
 	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
-		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(context.into_context()).await;
 	}
 
@@ -396,11 +396,11 @@ pub async fn render_output_cache<'a: 'n>(
 
 	tile_cache.store_regions(new_regions.clone());
 
-	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions.into_iter()).collect();
+	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions).collect();
 
 	// If no regions, fall back to direct render
 	if all_regions.is_empty() {
-		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(context.into_context()).await;
 	}
 
