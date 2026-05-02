@@ -787,6 +787,27 @@ impl Render for Table<Graphic> {
 impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
+			if render_params.for_export {
+				if let Some(ref meta) = row.element.text_on_path_metadata {
+					let path_id = format!("textpath-{}", generate_uuid());
+					write!(&mut render.svg_defs, r#"<path id="{path_id}" d="{}" fill="none"/>"#, meta.path_d).unwrap();
+
+					let font_style_css = format!("font-family: {}; font-size: {}px; font-style: {};", meta.font_family, meta.font_size, meta.font_style);
+					let start_offset_attr = if meta.start_offset_percent { format!("{}%", meta.start_offset * 100.0) } else { format!("{}", meta.start_offset) };
+					let matrix = format_transform_matrix(*row.transform);
+					let transform_attr = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
+					let text_length_attr = meta.text_length.map(|tl| format!(r#" textLength="{tl}" lengthAdjust="{}""#, meta.length_adjust)).unwrap_or_default();
+					let side_attr = if meta.side == "right" { r#" side="right""# } else { "" };
+					let anchor_style = format!("text-anchor: {};", meta.text_anchor);
+					let method = &meta.method;
+					let spacing = &meta.spacing;
+					let text = &meta.text;
+
+					render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}>{text}</textPath></text>"##));
+					continue;
+				}
+			}
+
 			let multiplied_transform = *row.transform;
 			let vector = &row.element;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform

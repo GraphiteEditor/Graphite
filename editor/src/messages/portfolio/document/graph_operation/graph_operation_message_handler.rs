@@ -12,11 +12,10 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
+use graphene_std::renderer::convert_usvg_path::{convert_tiny_skia_path, convert_usvg_path};
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -394,7 +393,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+				let mut options = usvg::Options::default();
+				options.fontdb_mut().load_font_data(include_bytes!("../overlays/source-sans-pro-regular.ttf").to_vec());
+				options.font_family = "Source Sans Pro".to_string();
+
+				let svg = svg.replace("font-family=\"sans-serif\"", "font-family=\"Source Sans Pro\"");
+				let svg = svg.replace("font-family='sans-serif'", "font-family='Source Sans Pro'");
+
+				let tree = match usvg::Tree::from_str(&svg, &options) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DialogMessage::DisplayDialogError {
@@ -424,6 +430,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
 
+				// Pre-parse the raw SVG XML for <textPath> attributes that usvg doesn't expose
+				let mut textpath_attrs = pre_parse_textpath_attrs(&svg);
+
 				// Pass identity so each leaf layer receives only its SVG-native transform from `abs_transform`.
 				// The placement offset is then applied once to the root group layer below.
 				import_usvg_node(
@@ -433,6 +442,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					parent,
 					insert_index,
 					&graphite_gradient_stops,
+					&mut textpath_attrs,
 				);
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
@@ -532,6 +542,36 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
 }
 
+#[derive(Debug, Default, Clone)]
+struct TextPathAttrs {
+	pub method: Option<String>,
+	pub spacing: Option<String>,
+	pub side: Option<String>,
+	pub text_length: Option<f64>,
+	pub length_adjust: Option<String>,
+}
+
+fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<TextPathAttrs>> {
+	let mut map = std::collections::HashMap::<String, Vec<TextPathAttrs>>::new();
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return map,
+	};
+	for node in doc.descendants() {
+		if node.tag_name().name() == "textPath" {
+			let id = node.attribute("id").unwrap_or("").to_string();
+			map.entry(id).or_default().push(TextPathAttrs {
+				method: node.attribute("method").map(str::to_string),
+				spacing: node.attribute("spacing").map(str::to_string),
+				side: node.attribute("side").map(str::to_string),
+				text_length: node.attribute("textLength").and_then(|v| v.parse().ok()),
+				length_adjust: node.attribute("lengthAdjust").map(str::to_string),
+			});
+		}
+	}
+	map
+}
+
 /// Import a usvg node as the root of an SVG import operation.
 ///
 /// The root layer uses the full `move_layer_to_stack` (with push/collision logic) to correctly
@@ -545,6 +585,7 @@ fn import_usvg_node(
 	parent: LayerNodeIdentifier,
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
 ) {
 	let layer = modify_inputs.create_layer(id);
 
@@ -565,7 +606,7 @@ fn import_usvg_node(
 			modify_inputs.import = true;
 
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, &mut group_extents_map, textpath_attrs);
 				child_extents_svg_order.push(extent);
 			}
 
@@ -590,9 +631,7 @@ fn import_usvg_node(
 			warn!("Skip image");
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, textpath_attrs);
 		}
 	}
 }
@@ -610,6 +649,7 @@ fn import_usvg_node_inner(
 	insert_index: usize,
 	graphite_gradient_stops: &HashMap<String, GradientStops>,
 	group_extents_map: &mut HashMap<LayerNodeIdentifier, Vec<u32>>,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
 ) -> u32 {
 	let layer = modify_inputs.create_layer(id);
 	modify_inputs.network_interface.move_layer_to_stack_for_import(layer, parent, insert_index, &[]);
@@ -619,7 +659,7 @@ fn import_usvg_node_inner(
 		usvg::Node::Group(group) => {
 			let mut child_extents: Vec<u32> = Vec::new();
 			for child in group.children() {
-				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map);
+				let extent = import_usvg_node_inner(modify_inputs, child, NodeId::new(), layer, 0, graphite_gradient_stops, group_extents_map, textpath_attrs);
 				child_extents.push(extent);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -633,24 +673,21 @@ fn import_usvg_node_inner(
 			group_extents_map.insert(layer, child_extents);
 			total_extent
 		}
-		usvg::Node::Path(path) => {
-			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
-			0
-		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
 			0
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, textpath_attrs);
+			0
+		}
+		usvg::Node::Path(path) => {
+			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 			0
 		}
 	}
 }
 
-/// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
 fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, path: &usvg::Path, layer: LayerNodeIdentifier, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	let subpaths = convert_usvg_path(path);
 	let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
@@ -671,6 +708,65 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 	if let Some(stroke) = path.stroke() {
 		apply_usvg_stroke(stroke, modify_inputs, node_transform);
+	}
+}
+
+fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, transform: usvg::Transform, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize, textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>) {
+	use graphene_std::text::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing};
+
+	for (i, chunk) in text.chunks().iter().enumerate() {
+		let current_layer = if i == 0 {
+			layer
+		} else {
+			let new_id = NodeId::new();
+			let new_layer = modify_inputs.create_layer(new_id);
+			modify_inputs.network_interface.move_layer_to_stack_for_import(new_layer, parent, insert_index, &[]);
+			new_layer
+		};
+		modify_inputs.layer_node = Some(current_layer);
+
+		let font_family = chunk
+			.spans()
+			.first()
+			.and_then(|span| span.font().families().first().map(|f| f.to_string()))
+			.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
+		let font_style = graphene_std::consts::DEFAULT_FONT_STYLE.to_string();
+		let font = Font::new(font_family, font_style);
+
+		let font_size = chunk.spans().first().map(|s| s.font_size().get()).unwrap_or(24.0) as f64;
+		let letter_spacing = chunk.spans().first().map(|s| s.letter_spacing()).unwrap_or(0.0) as f64;
+
+		if let usvg::TextFlow::Path(text_path) = chunk.text_flow() {
+			let tp_id = text_path.id();
+			let tp_attrs = textpath_attrs.get_mut(tp_id).and_then(|vec| if !vec.is_empty() { Some(vec.remove(0)) } else { None }).unwrap_or_default();
+			let path_subpaths = convert_tiny_skia_path(text_path.path());
+			let start_offset = text_path.start_offset() as f64;
+			let anchor = match chunk.anchor() {
+				usvg::TextAnchor::Start => TextAnchor::Start,
+				usvg::TextAnchor::Middle => TextAnchor::Middle,
+				usvg::TextAnchor::End => TextAnchor::End,
+			};
+
+			let affine = DAffine2::from_cols_array(&[
+				transform.sx as f64,
+				transform.ky as f64,
+				transform.kx as f64,
+				transform.sy as f64,
+				transform.tx as f64,
+				transform.ty as f64,
+			]);
+			let method = if tp_attrs.method.as_deref() == Some("stretch") { TextPathMethod::Stretch } else { TextPathMethod::Align };
+			let spacing = if tp_attrs.spacing.as_deref() == Some("auto") { TextPathSpacing::Auto } else { TextPathSpacing::Exact };
+			let side = if tp_attrs.side.as_deref() == Some("right") { TextPathSide::Right } else { TextPathSide::Left };
+			let length_adjust = if tp_attrs.length_adjust.as_deref() == Some("spacingAndGlyphs") { LengthAdjust::SpacingAndGlyphs } else { LengthAdjust::Spacing };
+
+			modify_inputs.insert_text_on_path(chunk.text().to_string(), font, font_size, letter_spacing, path_subpaths, start_offset, anchor, side, method, spacing, tp_attrs.text_length, length_adjust, affine, current_layer);
+			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+		} else {
+			// Regular text fallback
+			modify_inputs.insert_text(chunk.text().to_string(), font, TypesettingConfig { font_size, ..Default::default() }, current_layer);
+			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+		}
 	}
 }
 

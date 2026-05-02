@@ -150,7 +150,7 @@ kurbo = { version = "0.13", features = ["serde"] }
 vello = "0.7"
 vello_encoding = "0.7"
 resvg = "0.47"
-usvg = "0.47"
+usvg = { version = "0.47", features = ["text", "system-fonts", "memmap-fonts"] }
 parley = "0.6"
 skrifa = "0.40"
 polycool = "0.4"

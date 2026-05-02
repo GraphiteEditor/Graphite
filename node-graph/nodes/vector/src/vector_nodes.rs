@@ -1343,6 +1343,7 @@ async fn sample_polyline(
 				colinear_manipulators: Default::default(),
 				style: std::mem::take(&mut row.element.style),
 				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
 			};
 			// Transfer the stroke transform from the input vector content to the result.
 			result.style.set_stroke_transform(row.transform);

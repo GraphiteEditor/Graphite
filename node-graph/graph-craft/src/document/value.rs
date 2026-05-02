@@ -273,6 +273,11 @@ tagged_value! {
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
+	TextPathSide(text_nodes::text_on_path::TextPathSide),
+	TextAnchor(text_nodes::text_on_path::TextAnchor),
+	TextPathMethod(text_nodes::text_on_path::TextPathMethod),
+	TextPathSpacing(text_nodes::text_on_path::TextPathSpacing),
+	LengthAdjust(text_nodes::text_on_path::LengthAdjust),
 	ScaleType(core_types::transform::ScaleType),
 }
 

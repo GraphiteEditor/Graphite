@@ -3,16 +3,22 @@ use vector_types::subpath::{ManipulatorGroup, Subpath};
 use vector_types::vector::PointId;
 
 pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
+	convert_tiny_skia_path(path.data())
+}
+
+pub fn convert_tiny_skia_path(path_data: &usvg::tiny_skia_path::Path) -> Vec<Subpath<PointId>> {
 	let mut subpaths = Vec::new();
 	let mut manipulators_list = Vec::new();
 
-	let mut points = path.data().points().iter();
+	let mut points = path_data.points().iter();
 	let to_vec = |p: &usvg::tiny_skia_path::Point| DVec2::new(p.x as f64, p.y as f64);
 
-	for verb in path.data().verbs() {
+	for verb in path_data.verbs() {
 		match verb {
 			usvg::tiny_skia_path::PathVerb::Move => {
-				subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), false));
+				if !manipulators_list.is_empty() {
+					subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), false));
+				}
 				let Some(start) = points.next().map(to_vec) else { continue };
 				manipulators_list.push(ManipulatorGroup::new(start, Some(start), Some(start)));
 			}
@@ -38,10 +44,14 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 				manipulators_list.push(ManipulatorGroup::new(end, Some(second_handle), Some(end)));
 			}
 			usvg::tiny_skia_path::PathVerb::Close => {
-				subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), true));
+				if !manipulators_list.is_empty() {
+					subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), true));
+				}
 			}
 		}
 	}
-	subpaths.push(Subpath::new(manipulators_list, false));
+	if !manipulators_list.is_empty() {
+		subpaths.push(Subpath::new(manipulators_list, false));
+	}
 	subpaths
 }

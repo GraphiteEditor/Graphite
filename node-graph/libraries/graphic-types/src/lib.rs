@@ -77,6 +77,7 @@ pub mod migrations {
 					segment_domain: old.segment_domain,
 					region_domain: old.region_domain,
 					upstream_data: old.upstream_graphic_group,
+					text_on_path_metadata: None,
 				});
 				*vector_table.iter_mut().next().unwrap().transform = old.transform;
 				*vector_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;

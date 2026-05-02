@@ -14,6 +14,33 @@ use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, Rect, Shape};
 use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Metadata carried by a text-on-path `Vector` to enable lossless SVG `<textPath>` export.
+/// When present on the first row of a `Table<Vector>`, the SVG renderer emits
+/// `<text><textPath href="...">` instead of raw `<path>` outlines.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TextOnPathMetadata {
+	pub text: String,
+	pub font_family: String,
+	pub font_style: String,
+	pub font_size: f64,
+	/// SVG path `d` attribute string for the reference path.
+	pub path_d: String,
+	pub start_offset: f64,
+	pub start_offset_percent: bool,
+	/// "start" | "middle" | "end"
+	pub text_anchor: String,
+	/// "left" | "right"
+	pub side: String,
+	/// "align" | "stretch"
+	pub method: String,
+	/// "exact" | "auto"
+	pub spacing: String,
+	pub text_length: Option<f64>,
+	/// "spacing" | "spacingAndGlyphs"
+	pub length_adjust: String,
+}
 
 /// Represents vector graphics data, composed of Bézier curves in a path or mesh arrangement.
 ///
@@ -36,6 +63,11 @@ pub struct Vector<Upstream> {
 	/// Without this, the tools would be working with a collapsed version of the data which has no reference to the original child layers that were booleaned together, resulting in the inner layers not being editable.
 	#[serde(alias = "upstream_group")]
 	pub upstream_data: Upstream,
+
+	/// When set, this vector was produced by a text-on-path node. SVG export uses this metadata
+	/// to emit a `<text><textPath>` element instead of raw path outlines.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub text_on_path_metadata: Option<Arc<TextOnPathMetadata>>,
 }
 unsafe impl<Upstream: 'static> StaticType for Vector<Upstream> {
 	type Static = Self;
@@ -50,6 +82,7 @@ impl<Upstream: Default + 'static> Default for Vector<Upstream> {
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),
 			upstream_data: Upstream::default(),
+			text_on_path_metadata: None,
 		}
 	}
 }
@@ -61,7 +94,7 @@ impl<Upstream> std::hash::Hash for Vector<Upstream> {
 		self.region_domain.hash(state);
 		self.style.hash(state);
 		self.colinear_manipulators.hash(state);
-		// We don't hash the upstream_data intentionally
+		// We don't hash upstream_data or text_on_path_metadata intentionally
 	}
 }
 

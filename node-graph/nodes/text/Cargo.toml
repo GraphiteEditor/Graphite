@@ -21,6 +21,7 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 parley = { workspace = true }
 skrifa = { workspace = true }
+kurbo = { workspace = true }
 log = { workspace = true }
 
 # Optional workspace dependencies

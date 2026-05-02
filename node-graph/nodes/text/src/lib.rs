@@ -1,6 +1,7 @@
 mod font_cache;
 mod path_builder;
 mod text_context;
+pub mod text_on_path;
 mod to_path;
 
 use dyn_any::DynAny;
