@@ -24,14 +24,13 @@ unsafe impl<H: CefEventHandler> Send for CefContextBuilder<H> {}
 
 impl<H: CefEventHandler> CefContextBuilder<H> {
 	pub(crate) fn new() -> Self {
-		Self::new_inner(false)
+		Self::new_impl(false)
 	}
-
 	pub(crate) fn new_helper() -> Self {
-		Self::new_inner(true)
+		Self::new_impl(true)
 	}
 
-	fn new_inner(helper: bool) -> Self {
+	fn new_impl(helper: bool) -> Self {
 		#[cfg(target_os = "macos")]
 		let _loader = {
 			let loader = cef::library_loader::LibraryLoader::new(&std::env::current_exe().unwrap(), helper);
@@ -42,12 +41,8 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 		let _ = helper;
 
 		let _ = api_hash(CEF_API_VERSION_LAST, 0);
-
 		let args = Args::new();
-		let cmd = args.as_cmd_line().unwrap();
-		let switch = CefString::from("type");
-		let is_sub_process = cmd.has_switch(Some(&switch)) == 1;
-
+		let is_sub_process = args.as_cmd_line().unwrap().has_switch(Some(&"type".into())) == 1;
 		Self {
 			args,
 			is_sub_process,
@@ -61,8 +56,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	pub(crate) fn execute_sub_process(&self) -> SetupError {
 		let cmd = self.args.as_cmd_line().unwrap();
-		let switch = CefString::from("type");
-		let process_type = CefString::from(&cmd.switch_value(Some(&switch)));
+		let process_type = CefString::from(&cmd.switch_value(Some(&"type".into())));
 		let mut app = RenderProcessAppImpl::<H>::app();
 		let ret = execute_process(Some(self.args.as_main_args()), Some(&mut app), std::ptr::null_mut());
 		if ret >= 0 {
@@ -72,103 +66,96 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 		}
 	}
 
-	fn common_settings(instance_dir: &Path) -> Settings {
-		let log_severity = match std::env::var("GRAPHITE_BROWSER_LOG") {
-			Ok(level) => match level.to_lowercase().as_str() {
-				"debug" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_VERBOSE),
-				"info" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_INFO),
-				"warn" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_WARNING),
-				"error" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_ERROR),
-				"none" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_DISABLE),
-				_ => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_FATAL),
-			},
-			Err(_) => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_FATAL),
-		};
-
-		Settings {
-			windowless_rendering_enabled: 1,
-			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
-			cache_path: CefString::from(""),
-			disable_signal_handlers: 1,
-			log_severity,
-			..Default::default()
-		}
-	}
-
 	#[cfg(target_os = "macos")]
-	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
+	pub(crate) fn create(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
 		let instance_dir = TempDir::new().expect("Failed to create temporary directory for CEF instance");
-
-		let exe = std::env::current_exe().expect("cannot get current exe path");
-		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
-
-		let settings = Settings {
-			main_bundle_path: CefString::from(app_root.to_str().unwrap()),
-			multi_threaded_message_loop: 0,
-			external_message_pump: 1,
-			no_sandbox: 1, // GPU helper crashes when running with sandbox
-			..Self::common_settings(instance_dir.as_ref())
-		};
-
-		self.initialize_inner(&event_handler, settings)?;
-
-		create_browser(event_handler, instance_dir, disable_gpu_acceleration)
+		let accelerated_paint = accelerated_paint(disable_gpu_acceleration);
+		self.build_inner(&event_handler, instance_dir.as_ref(), accelerated_paint)?;
+		create_browser(event_handler, instance_dir, accelerated_paint)
 	}
 
 	#[cfg(not(target_os = "macos"))]
-	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
+	pub(crate) fn create(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
 		let instance_dir = TempDir::new().expect("Failed to create temporary directory for CEF instance");
-
-		let settings = Settings {
-			multi_threaded_message_loop: 1,
-			#[cfg(target_os = "linux")]
-			no_sandbox: 1,
-			..Self::common_settings(instance_dir.as_ref())
-		};
-
-		self.initialize_inner(&event_handler, settings)?;
-
-		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, instance_dir, disable_gpu_acceleration) {
-			Ok(context) => {
-				super::multithreaded::CONTEXT.with(|b| {
-					*b.borrow_mut() = Some(context);
-				});
-			}
-			Err(e) => {
-				panic!("Failed to initialize CEF context: {:?}", e);
-			}
+		let accelerated_paint = accelerated_paint(disable_gpu_acceleration);
+		self.build_inner(&event_handler, instance_dir.as_ref(), accelerated_paint)?;
+		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, instance_dir, accelerated_paint) {
+			Ok(context) => super::multithreaded::CONTEXT.with(|b| *b.borrow_mut() = Some(context)),
+			Err(e) => panic!("Failed to initialize CEF context: {:?}", e),
 		});
-
 		Ok(super::multithreaded::MultiThreadedCefContextProxy)
 	}
 
-	fn initialize_inner(self, event_handler: &H, settings: Settings) -> Result<(), InitError> {
-		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
-		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.duplicate()));
-
-		let result = cef::initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
+	fn build_inner(self, event_handler: &H, instance_dir: &Path, accelerated_paint: bool) -> Result<(), InitError> {
+		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.duplicate(), accelerated_paint));
+		let result = cef::initialize(Some(self.args.as_main_args()), Some(&platform_settings(instance_dir)), Some(&mut cef_app), std::ptr::null_mut());
 		if result != 1 {
-			let cef_exit_code = cef::get_exit_code() as u32;
-			return Err(InitError::InitializationFailureCode(cef_exit_code));
+			return Err(InitError::InitializationFailureCode(cef::get_exit_code() as u32));
 		}
 		Ok(())
 	}
 }
 
-fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, disable_gpu_acceleration: bool) -> Result<SingleThreadedCefContext, InitError> {
-	let mut client = Client::new(BrowserProcessClientImpl::new(&event_handler));
-
+fn accelerated_paint(disable_gpu_acceleration: bool) -> bool {
 	#[cfg(feature = "accelerated_paint")]
-	let use_accelerated_paint = if disable_gpu_acceleration {
+	{
+		!disable_gpu_acceleration && crate::cef::platform::should_enable_hardware_acceleration()
+	}
+	#[cfg(not(feature = "accelerated_paint"))]
+	{
+		let _ = disable_gpu_acceleration;
 		false
-	} else {
-		crate::cef::platform::should_enable_hardware_acceleration()
+	}
+}
+
+fn platform_settings(instance_dir: &Path) -> Settings {
+	let log_severity = match std::env::var("GRAPHITE_BROWSER_LOG").unwrap_or_default().to_lowercase().as_str() {
+		"debug" => cef_log_severity_t::LOGSEVERITY_VERBOSE,
+		"info" => cef_log_severity_t::LOGSEVERITY_INFO,
+		"warn" => cef_log_severity_t::LOGSEVERITY_WARNING,
+		"error" => cef_log_severity_t::LOGSEVERITY_ERROR,
+		"none" => cef_log_severity_t::LOGSEVERITY_DISABLE,
+		_ => cef_log_severity_t::LOGSEVERITY_FATAL,
 	};
+
+	let base = Settings {
+		windowless_rendering_enabled: 1,
+		root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
+		cache_path: "".into(),
+		disable_signal_handlers: 1,
+		log_severity: LogSeverity::from(log_severity),
+		..Default::default()
+	};
+
+	#[cfg(target_os = "macos")]
+	{
+		let exe = std::env::current_exe().expect("cannot get current exe path");
+		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
+		return Settings {
+			main_bundle_path: app_root.to_str().map(CefString::from).unwrap(),
+			multi_threaded_message_loop: 0,
+			external_message_pump: 1,
+			no_sandbox: 1, // GPU helper crashes when running with sandbox
+			..base
+		};
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	Settings {
+		multi_threaded_message_loop: 1,
+		#[cfg(target_os = "linux")]
+		no_sandbox: 1,
+		..base
+	}
+}
+
+fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, accelerated_paint: bool) -> Result<SingleThreadedCefContext, InitError> {
+	let mut client = Client::new(BrowserProcessClientImpl::new(&event_handler));
 
 	let window_info = WindowInfo {
 		windowless_rendering_enabled: 1,
 		#[cfg(feature = "accelerated_paint")]
-		shared_texture_enabled: use_accelerated_paint as i32,
+		shared_texture_enabled: accelerated_paint as i32,
 		..Default::default()
 	};
 
@@ -181,7 +168,7 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, d
 	let Some(mut incognito_request_context) = cef::request_context_create_context(
 		Some(&RequestContextSettings {
 			persist_session_cookies: 0,
-			cache_path: CefString::from(""),
+			cache_path: "".into(),
 			..Default::default()
 		}),
 		Option::<&mut cef::RequestContextHandler>::None,
@@ -191,30 +178,27 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: TempDir, d
 
 	let mut scheme_handler_factory = SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(event_handler.duplicate()));
 	incognito_request_context.clear_scheme_handler_factories();
-	incognito_request_context.register_scheme_handler_factory(Some(&CefString::from(RESOURCE_SCHEME)), Some(&CefString::from(RESOURCE_DOMAIN)), Some(&mut scheme_handler_factory));
+	incognito_request_context.register_scheme_handler_factory(Some(&RESOURCE_SCHEME.into()), Some(&RESOURCE_DOMAIN.into()), Some(&mut scheme_handler_factory));
 
-	let url = CefString::from(format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/").as_str());
-
-	let browser = browser_host_create_browser_sync(
+	let url = format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/");
+	browser_host_create_browser_sync(
 		Some(&window_info),
 		Some(&mut client),
-		Some(&url),
+		Some(&url.as_str().into()),
 		Some(&settings),
 		Option::<&mut DictionaryValue>::None,
 		Some(&mut incognito_request_context),
-	);
-
-	if let Some(browser) = browser {
-		Ok(SingleThreadedCefContext {
-			event_handler: Box::new(event_handler),
-			browser,
-			input_state: InputState::default(),
-			_instance_dir: instance_dir,
-		})
-	} else {
+	)
+	.map(|browser| SingleThreadedCefContext {
+		event_handler: Box::new(event_handler),
+		browser,
+		input_state: InputState::default(),
+		_instance_dir: instance_dir,
+	})
+	.ok_or_else(|| {
 		tracing::error!("Failed to create browser");
-		Err(InitError::BrowserCreationFailed)
-	}
+		InitError::BrowserCreationFailed
+	})
 }
 
 #[derive(thiserror::Error, Debug)]

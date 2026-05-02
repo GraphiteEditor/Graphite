@@ -8,12 +8,14 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+serde = ["dep:serde", "core-types/serde"]
 wgpu = ["dep:wgpu"]
 wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
+graphene-hash = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies

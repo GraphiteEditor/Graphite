@@ -21,22 +21,14 @@ pub enum FrontendGraphDataType {
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::U32(_)
-			| TaggedValue::U64(_)
-			| TaggedValue::F32(_)
-			| TaggedValue::F64(_)
-			| TaggedValue::DVec2(_)
-			| TaggedValue::F64Array4(_)
-			| TaggedValue::VecF64(_)
-			| TaggedValue::VecDVec2(_)
-			| TaggedValue::DAffine2(_) => Self::Number,
+			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Artboard(_) => Self::Artboard,
 			TaggedValue::Graphic(_) => Self::Graphic,
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
-			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
+			TaggedValue::String(_) | TaggedValue::StringTable(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}

@@ -44,7 +44,6 @@ pub mod vector {
 
 pub mod graphic {
 	pub use graphic_nodes::graphic::*;
-	pub use graphic_types::Artboard;
 	pub use graphic_types::graphic::*;
 }
 
@@ -76,10 +75,6 @@ pub mod math {
 	pub mod math_ext {
 		pub use vector_types::{QuadExt, RectExt};
 	}
-}
-
-pub mod logic {
-	pub use graphene_core::logic::*;
 }
 
 pub mod context {

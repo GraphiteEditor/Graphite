@@ -18,7 +18,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let mut intersections_vec = Vec::new();
 		let err = accuracy.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
 		let num_curves = self.len();
-		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
+		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath list
 		self.iter_closed().enumerate().for_each(|(i, other)| {
 			intersections_vec.extend(pathseg_self_intersections(other, accuracy, minimum_separation).iter().flat_map(|value| [(i, value.0), (i, value.1)]));
 			self.iter_closed().enumerate().skip(i + 1).for_each(|(j, curve)| {

@@ -73,7 +73,8 @@ pub enum ApplicationError {
 	InvalidUrl,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeGraphUpdateMessage {}
 
 pub trait NodeGraphUpdateSender {
@@ -90,26 +91,29 @@ pub trait GetEditorPreferences {
 	fn max_render_region_area(&self) -> u32;
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExportFormat {
 	#[default]
 	Svg,
 	Raster,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TimingInformation {
 	pub time: f64,
 	pub animation_time: Duration,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub scale: f64,
 	pub time: TimingInformation,
 	pub pointer: DVec2,
-	#[serde(alias = "view_mode")]
+	#[cfg_attr(feature = "serde", serde(alias = "view_mode"))]
 	pub render_mode: RenderMode,
 	pub export_format: ExportFormat,
 	pub for_export: bool,
@@ -161,6 +165,12 @@ impl<Io> Hash for EditorApi<Io> {
 		self.application_io.as_ref().map_or(0, |io| io.as_ref() as *const _ as usize).hash(state);
 		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
 		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
+	}
+}
+
+impl<Io> core_types::graphene_hash::CacheHash for EditorApi<Io> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(self, state);
 	}
 }
 

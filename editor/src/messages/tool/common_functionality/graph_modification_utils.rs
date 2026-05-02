@@ -10,13 +10,13 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{Fill, Gradient};
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{GradientStops, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -218,14 +218,9 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: Table<Raster<CPU>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image: Image<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
-	responses.add(GraphOperationMessage::NewBitmapLayer {
-		id,
-		image_frame,
-		parent,
-		insert_index,
-	});
+	responses.add(GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index });
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
@@ -285,6 +280,48 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	Some(gradient.clone())
 }
 
+/// Get the gradient table of a layer.
+pub fn get_gradient_table(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Table<GradientStops>> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))?;
+	let TaggedValue::GradientTable(gradient_table) = inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
+		return None;
+	};
+	Some(gradient_table.clone())
+}
+
+/// Compute the transform from a gradient's local space to viewport space for the given layer. For a `Table<GradientStops>`
+/// layer this is the layer's incoming footprint transform; for the legacy `Fill::Gradient` path it composes the layer's
+/// viewport transform with the [0,1]² → bounding-box mapping.
+pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> glam::DAffine2 {
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+
+	let metadata = network_interface.document_metadata();
+	let is_gradient_table = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER));
+	if is_gradient_table {
+		return metadata
+			.upstream_footprints
+			.get(&layer.to_node())
+			.map(|footprint| footprint.transform)
+			.unwrap_or(metadata.document_to_viewport);
+	}
+	let multiplied = metadata.transform_to_viewport(layer);
+	let bounds = metadata.nonzero_bounding_box(layer);
+	let bound_transform = glam::DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+	multiplied * bound_transform
+}
+
+/// True when start→end (mapped through `transform` into viewport space) points predominantly rightward. For purely
+/// vertical lines we fall back to a stable tiebreaker on (x + y) so the choice doesn't flicker between equal alternatives.
+pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, transform: glam::DAffine2) -> bool {
+	let viewport_start = transform.transform_point2(start);
+	let viewport_end = transform.transform_point2(end);
+	if (viewport_end.x - viewport_start.x).abs() > f64::EPSILON * 1e6 {
+		viewport_end.x > viewport_start.x
+	} else {
+		(viewport_start.x + viewport_start.y) < (viewport_end.x + viewport_end.y)
+	}
+}
+
 /// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;
@@ -296,25 +333,28 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(color.to_linear_srgb())
 }
 
-/// Get the current blend mode of a layer from the closest "Blending" node.
+/// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blend_mode::IDENTIFIER))?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest "Blending" node.
+/// Get the current opacity of a layer from the closest upstream "Opacity" node, only when the node's `has_opacity` checkbox is enabled.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
-/// - Multiplied with additional opacity nodes earlier in the chain
+/// - Multiplied with additional Opacity nodes earlier in the chain
 /// - Set by an Opacity node with an exposed input value driven by another node
 /// - Already factored into the pixel alpha channel of an image
-/// - The default value of 100% if no Opacity node is present, but this function returns None in that case
+/// - The default value of 100% if no Opacity node has its checkbox enabled (this function returns `None` in that case)
 ///
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::opacity::IDENTIFIER))?;
+	let TaggedValue::Bool(true) = inputs.get(1)?.as_value()? else {
+		return None;
+	};
 	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
@@ -322,16 +362,20 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::clipping_mask::IDENTIFIER))?;
+	let TaggedValue::Bool(clip) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*clip)
 }
 
+/// Get the current fill of a layer from the closest upstream "Opacity" node, only when the node's `has_fill` checkbox is enabled.
 pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::F64(fill) = inputs.get(3)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::opacity::IDENTIFIER))?;
+	let TaggedValue::Bool(true) = inputs.get(3)?.as_value()? else {
+		return None;
+	};
+	let TaggedValue::F64(fill) = inputs.get(4)?.as_value()? else {
 		return None;
 	};
 	Some(*fill)
@@ -422,7 +466,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::TextAlign(align)) = inputs[graphene_std::text::text::AlignInput::INDEX].as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(per_glyph_instances)) = inputs[graphene_std::text::text::SeparateGlyphElementsInput::INDEX].as_value() else {
+	let Some(&TaggedValue::Bool(per_glyph_items)) = inputs[graphene_std::text::text::SeparateGlyphElementsInput::INDEX].as_value() else {
 		return None;
 	};
 
@@ -435,7 +479,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		tilt,
 		align,
 	};
-	Some((text, font, typesetting, per_glyph_instances))
+	Some((text, font, typesetting, per_glyph_items))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {

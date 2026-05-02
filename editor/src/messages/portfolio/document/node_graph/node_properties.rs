@@ -4,15 +4,18 @@ use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::utility_types::{CachedData, FontCatalogStyle};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
+use graphene_std::ATTR_TRANSFORM;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
@@ -21,13 +24,15 @@ use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
+use graphene_std::raster_types::Image;
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
+use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
-use graphene_std::vector::QRCodeErrorCorrectionLevel;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -132,18 +137,13 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	}
 	widgets.push(TextLabel::new(name).tooltip_description(description).widget_instance());
 
-	let mut blank_assist = blank_assist;
-	if input.is_exposed() {
-		if blank_assist {
-			add_blank_assist(&mut widgets);
-			blank_assist = false;
-		}
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
+	if blank_assist || input.is_exposed() {
+		add_blank_assist(&mut widgets);
 	}
 
-	if blank_assist {
-		add_blank_assist(&mut widgets);
+	if input.is_exposed() {
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
 	}
 
 	widgets
@@ -195,7 +195,6 @@ pub(crate) fn property_from_type(
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
 				Some("Progression") => progression_widget(default_info, number_input.min(min(0.))).into(),
 				Some("SignedInteger") => number_widget(default_info, number_input.int()).into(),
-				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
 				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
 				Some("TextArea") => text_area_widget(default_info).into(),
@@ -214,14 +213,10 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						// ==========================
-						// PRIMITIVE COLLECTION TYPES
-						// ==========================
-						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
 						// ===========
 						// TABLE TYPES
 						// ===========
+						Some(x) if x == TypeId::of::<Table<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						// ============
@@ -230,6 +225,8 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
+						Some(x) if x == TypeId::of::<Box<VectorModification>>() => vector_modification_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Image<Color>>() => image_data_widget(default_info).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
@@ -240,10 +237,12 @@ pub(crate) fn property_from_type(
 						// =========================
 						Some(x) if x == TypeId::of::<FillType>() => enum_choice::<FillType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<GradientType>() => enum_choice::<GradientType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<GradientSpreadMethod>() => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<StringCapitalization>() => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
@@ -395,6 +394,44 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 				.widget_instance(),
 		])
 	}
+	widgets
+}
+
+pub fn vector_modification_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id: _, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return widgets };
+	let Some(input) = document_node.inputs.get(index) else { return widgets };
+
+	if let Some(TaggedValue::VectorModification(modification)) = input.as_non_exposed_value() {
+		let label = modification.summary_label();
+		let tooltip = modification.summary_tooltip();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextLabel::new(label).tooltip_label("Summary of Differential Edits").tooltip_description(tooltip).widget_instance(),
+		]);
+	}
+
+	widgets
+}
+
+pub fn image_data_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id: _, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return widgets };
+	let Some(input) = document_node.inputs.get(index) else { return widgets };
+
+	if let Some(TaggedValue::ImageData(image)) = input.as_non_exposed_value() {
+		let label = format!("{} x {}", image.width, image.height);
+
+		widgets.extend_from_slice(&[Separator::new(SeparatorStyle::Unrelated).widget_instance(), TextLabel::new(label).widget_instance()]);
+	}
+
 	widgets
 }
 
@@ -739,7 +776,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			.map(str::parse::<f64>)
 			.collect::<Result<Vec<_>, _>>()
 			.ok()
-			.map(TaggedValue::VecF64)
+			.map(|values| TaggedValue::F64Table(values.into_iter().map(graphene_std::table::TableRow::new_from_element).collect()))
 	};
 
 	let Some(document_node) = document_node else { return Vec::new() };
@@ -747,43 +784,11 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(TaggedValue::VecF64(x)) = &input.as_non_exposed_value() {
+	if let Some(TaggedValue::F64Table(table)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
-				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
-				.widget_instance(),
-		])
-	}
-	widgets
-}
-
-pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetInstance> {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info);
-
-	let from_string = |string: &str| {
-		string
-			.split(|c: char| !c.is_alphanumeric() && !matches!(c, '.' | '+' | '-'))
-			.filter(|x| !x.is_empty())
-			.map(|x| x.parse::<f64>().ok())
-			.collect::<Option<Vec<_>>>()
-			.map(|numbers| numbers.chunks_exact(2).map(|values| DVec2::new(values[0], values[1])).collect())
-			.map(TaggedValue::VecDVec2)
-	};
-
-	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let Some(TaggedValue::VecDVec2(x)) = &input.as_non_exposed_value() {
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			text_props
-				.value(x.iter().map(|v| format!("({}, {})", v.x, v.y)).collect::<Vec<_>>().join(", "))
+				.value(table.iter_element_values().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_instance(),
 		])
@@ -1141,8 +1146,8 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	match &**tagged_value {
 		TaggedValue::Color(color_table) => widgets.push(
 			color_button
-				.value(match color_table.iter().next() {
-					Some(color) => FillChoice::Solid(*color.element),
+				.value(match color_table.element(0) {
+					Some(color) => FillChoice::Solid(*color),
 					None => FillChoice::None,
 				})
 				.on_update(update_value(
@@ -1153,20 +1158,33 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
-		TaggedValue::GradientTable(gradient_table) => widgets.push(
-			color_button
-				.value(match gradient_table.iter().next() {
-					Some(row) => FillChoice::Gradient(row.element.clone()),
-					None => FillChoice::Gradient(GradientStops::default()),
-				})
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
+		TaggedValue::GradientTable(gradient_table) => {
+			let existing_transform: DAffine2 = gradient_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+
+			widgets.push(
+				color_button
+					.value(match gradient_table.element(0) {
+						Some(gradient) => FillChoice::Gradient(gradient.clone()),
+						None => FillChoice::Gradient(GradientStops::default()),
+					})
+					.on_update(update_value(
+						move |input: &ColorInput| {
+							TaggedValue::GradientTable(
+								input
+									.value
+									.as_gradient()
+									.iter()
+									.map(|&gradient| TableRow::new_from_element(gradient.clone()).with_attribute(ATTR_TRANSFORM, existing_transform))
+									.collect(),
+							)
+						},
+						node_id,
+						index,
+					))
+					.on_commit(commit_value)
+					.widget_instance(),
+			)
+		}
 		x => warn!("Color {x:?}"),
 	}
 
@@ -1530,10 +1548,10 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 }
 
 pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_SPACING: &str = "Use a point sampling density controlled by a distance between, or specific number of, points.";
-pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_SEPARATION: &str = "Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_SEPARATION: &str = "Distance between each point (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
 pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_QUANTITY: &str = "Number of points to place along the path.";
-pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET: &str = "Exclude some distance from the start of the path before the first instance.";
-pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last instance.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET: &str = "Exclude some distance from the start of the path before the first point.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last point.";
 pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
 
 pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1588,6 +1606,190 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
 }
 
+pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::text_nodes::format_number::{DecimalPlacesInput, DecimalSeparatorInput, FixedDecimalsInput, StartAt10000Input, ThousandsSeparatorInput, UseThousandsSeparatorInput};
+
+	// Read current values before borrowing context mutably for widgets
+	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let decimal_places = match document_node.inputs.get(DecimalPlacesInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::U32(x)) => x,
+				_ => 2,
+			};
+			let decimal_sep = match document_node.inputs.get(DecimalSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			let use_thousands = match document_node.inputs.get(UseThousandsSeparatorInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Bool(x)) => x,
+				_ => false,
+			};
+			let use_thousands = use_thousands || document_node.inputs.get(ThousandsSeparatorInput::INDEX).is_some_and(|input| input.is_exposed());
+			let thousands_sep = match document_node.inputs.get(ThousandsSeparatorInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			(decimal_places == 0, decimal_sep, use_thousands, thousands_sep)
+		}
+		Err(err) => {
+			log::error!("Could not get document node in format_number_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	let decimal_places = number_widget(ParameterWidgetsInfo::new(node_id, DecimalPlacesInput::INDEX, true, context), NumberInput::default().min(0.).int());
+
+	// Fixed decimals and decimal separator are disabled when decimal places is 0
+	let fixed_decimals = bool_widget(
+		ParameterWidgetsInfo::new(node_id, FixedDecimalsInput::INDEX, true, context),
+		CheckboxInput::default().disabled(no_decimals),
+	);
+	let mut decimal_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, DecimalSeparatorInput::INDEX, true, context));
+	if let Some(sep) = decimal_sep_value {
+		decimal_sep_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(sep)
+				.disabled(no_decimals)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, DecimalSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Thousands separator: checkbox in assist area
+	let mut thousands_sep_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, ThousandsSeparatorInput::INDEX, false, context));
+	if let Some(sep) = thousands_sep_value {
+		thousands_sep_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(use_thousands)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseThousandsSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(sep)
+				.disabled(!use_thousands)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, ThousandsSeparatorInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Start at 10,000: disabled when thousands separator is off
+	let start_at_10000 = bool_widget(
+		ParameterWidgetsInfo::new(node_id, StartAt10000Input::INDEX, true, context),
+		CheckboxInput::default().disabled(!use_thousands),
+	);
+
+	vec![
+		LayoutGroup::row(decimal_places),
+		LayoutGroup::row(decimal_sep_widgets),
+		LayoutGroup::row(fixed_decimals),
+		LayoutGroup::row(thousands_sep_widgets),
+		LayoutGroup::row(start_at_10000),
+	]
+}
+
+pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::text_nodes::string_capitalization::*;
+
+	// Read the current values before borrowing context mutably for widgets
+	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let capitalization_input = document_node.inputs.get(CapitalizationInput::INDEX);
+			let capitalization_exposed = capitalization_input.is_some_and(|input| input.is_exposed());
+			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
+			let is_simple = !capitalization_exposed
+				&& matches!(
+					capitalization_input.and_then(|input| input.as_value()),
+					Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
+				);
+			let use_joiner = match document_node.inputs.get(UseJoinerInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Bool(x)) => x,
+				_ => true,
+			};
+			let joiner = match document_node.inputs.get(JoinerInput::INDEX).and_then(|input| input.as_non_exposed_value()) {
+				Some(TaggedValue::String(x)) => Some(x.clone()),
+				_ => None,
+			};
+			(is_simple, use_joiner, joiner)
+		}
+		Err(err) => {
+			log::error!("Could not get document node in string_capitalization_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	// The joiner controls are disabled when lowercase/UPPERCASE are selected (they don't use word boundaries)
+	let joiner_disabled = is_simple_case || !use_joiner_enabled;
+
+	let capitalization = enum_choice::<StringCapitalization>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput::INDEX, true, context))
+		.property_row();
+
+	// Joiner row: the UseJoiner checkbox is drawn in the assist area, followed by the Joiner text input
+	let mut joiner_widgets = start_widgets(ParameterWidgetsInfo::new(node_id, JoinerInput::INDEX, false, context));
+	if let Some(joiner) = joiner_value {
+		let joiner_is_empty = joiner.is_empty();
+		joiner_widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(use_joiner_enabled)
+				.disabled(is_simple_case)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseJoinerInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(joiner)
+				.placeholder(if joiner_is_empty { "Empty" } else { "" })
+				.disabled(joiner_disabled)
+				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, JoinerInput::INDEX))
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	// Preset buttons for common joiner values, indented to align with the input field
+	let mut joiner_preset_buttons = vec![TextLabel::new("").widget_instance()];
+	add_blank_assist(&mut joiner_preset_buttons);
+	joiner_preset_buttons.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	for (label, value, tooltip) in [
+		("Empty", "", "Join words without any separator."),
+		("Space", " ", "Join words with a space."),
+		("Kebab", "-", "Join words with a hyphen."),
+		("Snake", "_", "Join words with an underscore."),
+	] {
+		let value = value.to_string();
+		joiner_preset_buttons.push(
+			TextButton::new(label)
+				.tooltip_description(tooltip)
+				.disabled(is_simple_case)
+				.on_update(move |_: &TextButton| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: UseJoinerInput::INDEX,
+							value: TaggedValue::Bool(true),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: JoinerInput::INDEX,
+							value: TaggedValue::String(value.clone()),
+						}
+						.into(),
+					]),
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
+
+	vec![capitalization, LayoutGroup::row(joiner_widgets), LayoutGroup::row(joiner_preset_buttons)]
+}
+
 pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
@@ -1618,13 +1820,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		};
 		let uniform_val = match input.as_non_exposed_value() {
 			Some(TaggedValue::F64(x)) => *x,
-			Some(TaggedValue::F64Array4(x)) => x[0],
+			Some(TaggedValue::F64Table(table)) => table.iter_element_values().copied().next().unwrap_or(0.),
 			_ => 0.,
 		};
 		let individual_val = match input.as_non_exposed_value() {
-			Some(&TaggedValue::F64Array4(x)) => x,
-			Some(&TaggedValue::F64(x)) => [x; 4],
-			_ => [0.; 4],
+			Some(&TaggedValue::F64(x)) => vec![x; 4],
+			Some(TaggedValue::F64Table(table)) => table.iter_element_values().copied().collect(),
+			_ => vec![0.; 4],
 		};
 
 		// Uniform/individual radio input widget
@@ -1647,6 +1849,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 				]),
 			})
 			.on_commit(commit_value);
+		let individual_val_for_switch = individual_val.clone();
 		let individual = RadioEntryData::new("Individual")
 			.label("Individual")
 			.on_update(move |_| Message::Batched {
@@ -1660,7 +1863,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64Array4(individual_val),
+						value: TaggedValue::F64Table(individual_val_for_switch.iter().copied().map(graphene_std::table::TableRow::new_from_element).collect()),
 					}
 					.into(),
 				]),
@@ -1678,11 +1881,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.map(str::parse::<f64>)
 					.collect::<Result<Vec<f64>, _>>()
 					.ok()
-					.map(|v| {
-						let arr: Box<[f64; 4]> = v.into_boxed_slice().try_into().unwrap_or_default();
-						*arr
-					})
-					.map(TaggedValue::F64Array4)
+					.map(|values| TaggedValue::F64Table(values.into_iter().take(4).map(graphene_std::table::TableRow::new_from_element).collect()))
 			};
 			TextInput::default()
 				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
@@ -1829,11 +2028,21 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	LayoutGroup::section(name, description, visible, pinned, node_id.0, Layout(layout))
 }
 
+/// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
+/// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
+fn gradient_orientation_in_fill_node(node_id: NodeId, gradient: &graphene_std::vector::style::Gradient, context: &mut NodePropertiesContext) -> Option<bool> {
+	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
+	let layer = LayerNodeIdentifier::new(layer_node, context.network_interface);
+	let transform = graph_modification_utils::gradient_space_transform(layer, context.network_interface);
+	Some(graph_modification_utils::gradient_orientation_rightward(gradient.start, gradient.end, transform))
+}
+
 /// Fill Node Widgets LayoutGroup
 pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::fill::*;
 
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, true, context));
+	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, false, context));
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1855,6 +2064,30 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let fill2 = fill.clone();
 	let backup_color_fill: Fill = backup_color.clone().into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
+
+	match fill {
+		Fill::Gradient(gradient) => {
+			let reverse_button = IconButton::new("Reverse", 24)
+				.tooltip_label("Reverse Stops")
+				.tooltip_description("Reverse the gradient color stops.")
+				.on_update(update_value(
+					{
+						let gradient = gradient.clone();
+						move |_| {
+							let mut gradient = gradient.clone();
+							gradient.stops = gradient.stops.reversed();
+							TaggedValue::Fill(Fill::Gradient(gradient))
+						}
+					},
+					node_id,
+					FillInput::<Color>::INDEX,
+				))
+				.widget_instance();
+			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			widgets_first_row.push(reverse_button);
+		}
+		_ => add_blank_assist(&mut widgets_first_row),
+	}
 
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
@@ -1893,32 +2126,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.on_commit(commit_value)
 			.widget_instance(),
 	);
+
 	let mut widgets = vec![LayoutGroup::row(widgets_first_row)];
 
 	let fill_type_switch = {
 		let mut row = vec![TextLabel::new("").widget_instance()];
-		match fill {
-			Fill::Solid(_) | Fill::None => add_blank_assist(&mut row),
-			Fill::Gradient(gradient) => {
-				let reverse_button = IconButton::new("Reverse", 24)
-					.tooltip_description("Reverse the gradient color stops.")
-					.on_update(update_value(
-						{
-							let gradient = gradient.clone();
-							move |_| {
-								let mut gradient = gradient.clone();
-								gradient.stops = gradient.stops.reversed();
-								TaggedValue::Fill(Fill::Gradient(gradient))
-							}
-						},
-						node_id,
-						FillInput::<Color>::INDEX,
-					))
-					.widget_instance();
-				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-				row.push(reverse_button);
-			}
-		}
+		add_blank_assist(&mut row);
 
 		let entries = vec![
 			RadioEntryData::new("solid")
@@ -1941,34 +2154,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets.push(fill_type_switch);
 
 	if let Fill::Gradient(gradient) = fill.clone() {
+		// Linear/Radial radio: blank assist (the "Reverse Direction" button has been moved down to the spread method row)
 		let mut row = vec![TextLabel::new("").widget_instance()];
-		match gradient.gradient_type {
-			GradientType::Linear => add_blank_assist(&mut row),
-			GradientType::Radial => {
-				let orientation = if (gradient.end.x - gradient.start.x).abs() > f64::EPSILON * 1e6 {
-					gradient.end.x > gradient.start.x
-				} else {
-					(gradient.start.x + gradient.start.y) < (gradient.end.x + gradient.end.y)
-				};
-				let reverse_radial_gradient_button = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
-					.tooltip_description("Reverse which end the gradient radiates from.")
-					.on_update(update_value(
-						{
-							let gradient = gradient.clone();
-							move |_| {
-								let mut gradient = gradient.clone();
-								std::mem::swap(&mut gradient.start, &mut gradient.end);
-								TaggedValue::Fill(Fill::Gradient(gradient))
-							}
-						},
-						node_id,
-						FillInput::<Color>::INDEX,
-					))
-					.widget_instance();
-				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-				row.push(reverse_radial_gradient_button);
-			}
-		}
+		add_blank_assist(&mut row);
 
 		let gradient_for_closure = gradient.clone();
 
@@ -2007,7 +2195,33 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 		widgets.push(LayoutGroup::row(row));
 
-		let mut spread_methods_row: Vec<WidgetInstance> = vec![TextLabel::new("").widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance()];
+		// "Reverse Direction" button (assist) plus the Pad/Reflect/Repeat radio. Icon orientation is resolved in viewport
+		// space so canvas tilt and layer transforms behave the same as in the Gradient tool's control bar.
+		let mut spread_methods_row = vec![TextLabel::new("").widget_instance()];
+
+		let orientation_rightward = gradient_orientation_in_fill_node(node_id, &gradient, context).unwrap_or(true);
+		let reverse_direction_button = IconButton::new(if orientation_rightward { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+			.tooltip_label("Reverse Direction")
+			.tooltip_description(if gradient.gradient_type == GradientType::Radial {
+				"Reverse which end the gradient radiates from."
+			} else {
+				"Swap the start and end points of the gradient line."
+			})
+			.on_update(update_value(
+				{
+					let gradient = gradient.clone();
+					move |_| {
+						let mut gradient = gradient.clone();
+						std::mem::swap(&mut gradient.start, &mut gradient.end);
+						TaggedValue::Fill(Fill::Gradient(gradient))
+					}
+				},
+				node_id,
+				FillInput::<Color>::INDEX,
+			))
+			.widget_instance();
+		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		spread_methods_row.push(reverse_direction_button);
 
 		let spread_method_entries = [GradientSpreadMethod::Pad, GradientSpreadMethod::Reflect, GradientSpreadMethod::Repeat]
 			.iter()
@@ -2051,8 +2265,10 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			})
 			.collect();
 
-		add_blank_assist(&mut spread_methods_row);
-		spread_methods_row.extend_from_slice(&[RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance()]);
+		spread_methods_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			RadioInput::new(spread_method_entries).selected_index(Some(gradient.spread_method as u32)).widget_instance(),
+		]);
 
 		widgets.push(LayoutGroup::row(spread_methods_row));
 	}
@@ -2075,11 +2291,10 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		_ => &StrokeJoin::Miter,
 	};
 
-	let dash_lengths_val = match &document_node.inputs[DashLengthsInput::<Vec<f64>>::INDEX].as_value() {
-		Some(TaggedValue::VecF64(x)) => x,
-		_ => &vec![],
+	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<Table<f64>>::INDEX].as_value() {
+		Some(TaggedValue::F64Table(table)) => table.is_empty(),
+		_ => true,
 	};
-	let has_dash_lengths = dash_lengths_val.is_empty();
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;
 
 	let color = color_widget(
@@ -2104,7 +2319,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		.property_row();
 	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
 	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<Vec<f64>>::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, DashLengthsInput::<Table<f64>>::INDEX, true, context),
 		TextInput::default().centered(true),
 	);
 	let number_input = disabled_number_input;
@@ -2314,7 +2529,12 @@ pub mod choice {
 						.map(|(item, metadata)| {
 							let updater = updater_factory();
 							let committer = committer_factory();
-							MenuListEntry::new(metadata.name).label(metadata.label).on_update(move |_| updater(item)).on_commit(committer)
+							MenuListEntry::new(metadata.name)
+								.label(metadata.label)
+								.tooltip_label(metadata.label)
+								.tooltip_description(metadata.description.unwrap_or_default())
+								.on_update(move |_| updater(item))
+								.on_commit(committer)
 						})
 						.collect()
 				})

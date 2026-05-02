@@ -144,6 +144,8 @@
 		--color-data-invalid: #d6536e; // Same as --color-error-red
 		--color-data-invalid-dim: #a7324a;
 
+		--color-overlay-blue: #00a8ff;
+
 		--color-none: white;
 		--color-none-repeat: no-repeat;
 		--color-none-position: center center;
@@ -261,7 +263,25 @@
 		font-weight: 400;
 		font-size: 14px;
 		line-height: 1;
+		tab-size: 4;
 		color: var(--color-e-nearwhite);
+	}
+
+	body,
+	textarea,
+	input {
+		&::selection {
+			background-color: var(--color-4-dimgray);
+
+			// Target only Safari
+			@supports (background: -webkit-named-image(i)) {
+				& {
+					// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+					// https://stackoverflow.com/a/71753552/775283
+					background-color: rgba(var(--color-4-dimgray-rgb), calc(254 / 255));
+				}
+			}
+		}
 	}
 
 	svg,

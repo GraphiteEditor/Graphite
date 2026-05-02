@@ -21,6 +21,8 @@ pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use graphene_hash;
+pub use graphene_hash::CacheHash;
 pub use memo::MemoHash;
 pub use no_std_types::AsU32;
 pub use no_std_types::blending;
@@ -31,6 +33,10 @@ pub use num_traits;
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
+pub use table::{
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_END, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_NAME,
+	ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_START, ATTR_TRANSFORM, ATTR_TYPE,
+};
 #[cfg(feature = "wasm")]
 pub use tsify;
 pub use types::Cow;

@@ -26,7 +26,6 @@ identity!(isize);
 identity!(f32);
 identity!(f64);
 
-identity!(spirv_std::arch::SubgroupMask);
 identity!(spirv_std::memory::Semantics);
 identity!(spirv_std::ray_tracing::RayFlags);
 identity!(spirv_std::indirect_command::DrawIndirectCommand);

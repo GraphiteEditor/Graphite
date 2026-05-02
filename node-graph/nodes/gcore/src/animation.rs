@@ -1,7 +1,6 @@
 use core_types::table::Table;
 use core_types::transform::Footprint;
-use core_types::uuid::NodeId;
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -9,7 +8,8 @@ use raster_types::{CPU, GPU, Raster};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, CacheHash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RealTimeMode {
 	#[label("UTC")]
 	Utc,
@@ -60,7 +60,7 @@ fn animation_time(
 	ctx.try_animation_time().unwrap_or_default() * rate
 }
 
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Debug"))]
 async fn quantize_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -73,11 +73,6 @@ async fn quantize_real_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
-		Context -> Vec<f64>,
-		Context -> Vec<f32>,
-		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
@@ -85,6 +80,8 @@ async fn quantize_real_time<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
+		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
@@ -103,7 +100,7 @@ async fn quantize_real_time<T>(
 	value.eval(Some(new_context.into())).await
 }
 
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Debug"))]
 async fn quantize_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -116,11 +113,6 @@ async fn quantize_animation_time<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Vec<DVec2>,
-		Context -> Vec<NodeId>,
-		Context -> Vec<f64>,
-		Context -> Vec<f32>,
-		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
@@ -128,6 +120,8 @@ async fn quantize_animation_time<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
+		Context -> Table<String>,
+		Context -> Table<f64>,
 		Context -> (),
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,

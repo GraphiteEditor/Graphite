@@ -87,19 +87,19 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path<Upstream: Default + 'static>(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector<Upstream>> {
+	pub fn to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_items: bool) -> Table<Vector> {
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
 			return Table::new_from_element(Vector::default());
 		};
 
-		let mut path_builder = PathBuilder::new(per_glyph_instances, layout.scale() as f64);
+		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64);
 
 		for line in layout.lines() {
 			for item in line.items() {
 				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
 					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
 				{
-					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
+					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_items);
 				}
 			}
 		}

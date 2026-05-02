@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["serde"]
+serde = ["dep:serde", "core-types/serde", "vector-types/serde", "raster-types/serde"]
 wasm = [
 	"core-types/wasm",
 	"vector-types/wasm",
@@ -18,6 +19,7 @@ wasm = [
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
+graphene-hash = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 vector-types = { workspace = true }
 node-macro = { workspace = true }

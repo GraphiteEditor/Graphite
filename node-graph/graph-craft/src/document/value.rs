@@ -4,28 +4,27 @@ use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
+use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::{Color, ContextFeatures, MemoHash, Node, Type};
+use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graphic_types::Artboard;
-use graphic_types::Graphic;
-use graphic_types::Vector;
-use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::vector_types::vector;
-use graphic_types::vector_types::vector::ReferencePoint;
-use graphic_types::vector_types::vector::style::Fill;
-use graphic_types::vector_types::vector::style::GradientStops;
+use graphic_types::raster_types::{CPU, Image, Raster};
+use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
+use graphic_types::vector_types::vector::{self, ReferencePoint};
+use graphic_types::{Artboard, Graphic, Vector};
+use raster_nodes::curve::Curve;
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use text_nodes::Font;
 use text_nodes::vector_types::GradientStop;
+use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
 
@@ -43,19 +42,18 @@ macro_rules! tagged_value {
 			EditorApi(Arc<PlatformEditorApi>)
 		}
 
-		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
-		#[allow(clippy::derived_hash_with_manual_eq)]
-		impl Hash for TaggedValue {
-			fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		impl CacheHash for TaggedValue {
+			fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 				core::mem::discriminant(self).hash(state);
 				match self {
 					Self::None => {}
-					$( Self::$identifier(x) => {x.hash(state)}),*
-					Self::RenderOutput(x) => x.hash(state),
-					Self::EditorApi(x) => x.hash(state),
+					$( Self::$identifier(x) => { x.cache_hash(state) }),*
+					Self::RenderOutput(x) => x.cache_hash(state),
+					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
 		}
+
 		impl<'a> TaggedValue {
 			/// Converts to a Box<dyn DynAny>
 			pub fn to_dynany(self) -> DAny<'a> {
@@ -118,7 +116,7 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						Some(match concrete_type.id? {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
-							// Table-wrapped types need a single-row default with the element's default, not an empty table
+							// Table-wrapped types need a single-item default with the element's default, not an empty table
 							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
 							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_element(GradientStops::default())),
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
@@ -167,28 +165,14 @@ macro_rules! tagged_value {
 }
 
 tagged_value! {
-	// ===============
-	// PRIMITIVE TYPES
-	// ===============
-	F32(f32),
-	F64(f64),
-	U32(u32),
-	U64(u64),
-	Bool(bool),
-	String(String),
-	// ========================
-	// LISTS OF PRIMITIVE TYPES
-	// ========================
-	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
-	VecF64(Vec<f64>),
-	VecDVec2(Vec<DVec2>),
-	F64Array4([f64; 4]),
-	VecString(Vec<String>),
-	NodePath(Vec<NodeId>),
 	// ===========
 	// TABLE TYPES
 	// ===========
-	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
+	StringTable(Table<String>),
+	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
+	F64Table(Table<f64>),
+	NodeIdTable(Table<NodeId>),
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
@@ -207,24 +191,33 @@ tagged_value! {
 	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
+	#[serde(deserialize_with = "brush_nodes::migrations::migrate_brush_strokes_to_table")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "BrushStrokes")]
+	BrushStrokeTable(Table<BrushStroke>),
 	// ============
-	// STRUCT TYPES
+	// SCALAR TYPES
 	// ============
+	F32(f32),
+	F64(f64),
+	U32(u32),
+	U64(u64),
+	Bool(bool),
+	String(String),
 	FVec2(Vec2),
 	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Stroke(graphic_types::vector_types::vector::style::Stroke),
-	Gradient(graphic_types::vector_types::vector::style::Gradient),
-	Font(text_nodes::Font),
-	BrushStrokes(Vec<BrushStroke>),
+	Stroke(Stroke),
+	Gradient(Gradient),
+	Font(Font),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
-	Curve(raster_nodes::curve::Curve),
-	Footprint(core_types::transform::Footprint),
-	VectorModification(Box<vector::VectorModification>),
+	Curve(Curve),
+	Footprint(Footprint),
+	VectorModification(Box<VectorModification>),
+	ImageData(Image<Color>),
 	// ==========
 	// ENUM TYPES
 	// ==========
@@ -233,6 +226,7 @@ tagged_value! {
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),
+	StringCapitalization(text_nodes::StringCapitalization),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
 	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
@@ -259,6 +253,7 @@ tagged_value! {
 	PaintOrder(vector::style::PaintOrder),
 	FillType(vector::style::FillType),
 	GradientType(vector::style::GradientType),
+	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
 	CentroidType(vector::misc::CentroidType),
 	BooleanOperation(vector::misc::BooleanOperation),
@@ -493,96 +488,33 @@ pub enum RenderOutputType {
 	},
 }
 
-impl Hash for RenderOutputType {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl CacheHash for RenderOutputType {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::mem::discriminant(self).hash(state);
 		match self {
-			Self::Texture(texture) => {
-				texture.hash(state);
-			}
+			Self::Texture(texture) => texture.hash(state),
 			Self::Buffer { data, width, height } => {
-				data.hash(state);
-				width.hash(state);
-				height.hash(state);
+				data.cache_hash(state);
+				width.cache_hash(state);
+				height.cache_hash(state);
 			}
 			Self::Svg { svg, image_data } => {
-				svg.hash(state);
-				image_data.hash(state);
+				svg.cache_hash(state);
+				image_data.cache_hash(state);
 			}
 			#[cfg(target_family = "wasm")]
 			Self::CanvasFrame { canvas_id, resolution } => {
-				canvas_id.hash(state);
-				resolution.to_array().iter().for_each(|x| x.to_bits().hash(state));
+				canvas_id.cache_hash(state);
+				resolution.cache_hash(state);
 			}
 		}
-	}
-}
-impl Hash for RenderOutput {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.data.hash(state)
 	}
 }
 
-/// We hash the floats and so-forth despite it not being reproducible because all inputs to the node graph must be hashed otherwise the graph execution breaks (so sorry about this hack)
-trait FakeHash {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H);
-}
-mod fake_hash {
-	use super::*;
-	impl FakeHash for f64 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_bits().hash(state)
-		}
-	}
-	impl FakeHash for f32 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_bits().hash(state)
-		}
-	}
-	impl FakeHash for DVec2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl FakeHash for Vec2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl FakeHash for DAffine2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl FakeHash for Affine2 {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
-		}
-	}
-	impl<T: FakeHash> FakeHash for Option<T> {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			if let Some(x) = self {
-				1.hash(state);
-				x.hash(state);
-			} else {
-				0.hash(state);
-			}
-		}
-	}
-	impl<T: FakeHash> FakeHash for Vec<T> {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.len().hash(state);
-			self.iter().for_each(|x| x.hash(state))
-		}
-	}
-	impl<T: FakeHash, const N: usize> FakeHash for [T; N] {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.iter().for_each(|x| x.hash(state))
-		}
-	}
-	impl FakeHash for (f64, Color) {
-		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-			self.0.to_bits().hash(state);
-			self.1.hash(state)
-		}
+// Metadata is excluded because it's editor-side auxiliary data (click targets, transforms)
+// that shouldn't affect render cache invalidation, and it contains HashMaps with non-deterministic iteration order
+impl CacheHash for RenderOutput {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.data.cache_hash(state);
 	}
 }

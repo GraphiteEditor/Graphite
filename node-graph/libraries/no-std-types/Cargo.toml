@@ -14,6 +14,7 @@ license = "MIT OR Apache-2.0"
 # should be in this list instead of `[workspace.dependency]`
 std = [
 	"dep:dyn-any",
+	"dep:graphene-hash",
 	"dep:serde",
 	"dep:log",
 	"glam/debug-glam-assert",
@@ -32,6 +33,7 @@ node-macro = { workspace = true }
 
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
+graphene-hash = { workspace = true, optional = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }

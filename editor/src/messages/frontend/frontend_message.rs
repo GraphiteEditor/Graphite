@@ -139,6 +139,11 @@ pub enum FrontendMessage {
 		preferences: PreferencesMessageHandler,
 	},
 	TriggerTextCommit,
+	/// Asks the frontend to enter inline-rename mode for a layer in the graph view.
+	TriggerEditLayerNameInGraph {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+	},
 	TriggerVisitLink {
 		url: String,
 	},
@@ -239,6 +244,10 @@ pub enum FrontendMessage {
 		spacing: f64,
 		interval: f64,
 		visible: bool,
+		tilt: f64,
+		flip: bool,
+		#[serde(rename = "selectionQuad")]
+		selection_quad: Option<[(f64, f64); 4]>,
 	},
 	UpdateDocumentScrollbars {
 		position: (f64, f64),

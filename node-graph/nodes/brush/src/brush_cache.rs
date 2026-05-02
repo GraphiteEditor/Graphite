@@ -1,5 +1,7 @@
 use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
+use core_types::ATTR_TRANSFORM;
+use core_types::graphene_hash::CacheHashWrapper;
 use core_types::table::TableRow;
 use dyn_any::DynAny;
 use raster_types::CPU;
@@ -13,25 +15,26 @@ use std::sync::{Arc, Mutex};
 // TODO: This is a temporary hack, be sure to not reuse this when the brush system is replaced/rewritten.
 static NEXT_BRUSH_CACHE_IMPL_ID: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct BrushCacheImpl {
-	#[serde(default = "new_unique_id")]
+	#[cfg_attr(feature = "serde", serde(default = "new_unique_id"))]
 	unique_id: u64,
 	// The full previous input that was cached.
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[serde(default, deserialize_with = "raster_types::image::migrate_image_frame_row")]
+	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "raster_types::image::migrate_image_frame_row"))]
 	background: TableRow<Raster<CPU>>,
-	#[serde(default, deserialize_with = "raster_types::image::migrate_image_frame_row")]
+	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "raster_types::image::migrate_image_frame_row"))]
 	blended_image: TableRow<Raster<CPU>>,
-	#[serde(default, deserialize_with = "raster_types::image::migrate_image_frame_row")]
+	#[cfg_attr(feature = "serde", serde(default, deserialize_with = "raster_types::image::migrate_image_frame_row"))]
 	last_stroke_texture: TableRow<Raster<CPU>>,
 
 	// A cache for brush textures.
-	#[serde(skip)]
-	brush_texture_cache: HashMap<BrushStyle, Raster<CPU>>,
+	#[cfg_attr(feature = "serde", serde(skip))]
+	brush_texture_cache: HashMap<CacheHashWrapper<BrushStyle>, Raster<CPU>>,
 }
 
 impl BrushCacheImpl {
@@ -62,11 +65,8 @@ impl BrushCacheImpl {
 		background = std::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = TableRow {
-			element: Raster::<CPU>::default(),
-			transform: glam::DAffine2::ZERO,
-			..Default::default()
-		};
+		// Transform is set to ZERO (not the default IDENTITY) as a sentinel to mark this item as uninitialized.
+		let mut first_stroke_texture = TableRow::new_from_element(Raster::<CPU>::default()).with_attribute(ATTR_TRANSFORM, glam::DAffine2::ZERO);
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
 		if !strokes.is_empty() && self.prev_input.len() > num_blended_strokes {
@@ -134,7 +134,8 @@ pub struct BrushPlan {
 	pub first_stroke_point_skip: usize,
 }
 
-#[derive(Debug, Default, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushCache(Arc<Mutex<BrushCacheImpl>>);
 
 // A bit of a cursed implementation to work around the current node system.
@@ -165,6 +166,12 @@ impl Hash for BrushCache {
 	}
 }
 
+impl graphene_hash::CacheHash for BrushCache {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&self.0.lock().unwrap().unique_id, state);
+	}
+}
+
 impl BrushCache {
 	pub fn compute_brush_plan(&self, background: TableRow<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.0.lock().unwrap();
@@ -178,11 +185,11 @@ impl BrushCache {
 
 	pub fn get_cached_brush(&self, style: &BrushStyle) -> Option<Raster<CPU>> {
 		let inner = self.0.lock().unwrap();
-		inner.brush_texture_cache.get(style).cloned()
+		inner.brush_texture_cache.get(&CacheHashWrapper(style.clone())).cloned()
 	}
 
 	pub fn store_brush(&self, style: BrushStyle, brush: Raster<CPU>) {
 		let mut inner = self.0.lock().unwrap();
-		inner.brush_texture_cache.insert(style, brush);
+		inner.brush_texture_cache.insert(CacheHashWrapper(style), brush);
 	}
 }
