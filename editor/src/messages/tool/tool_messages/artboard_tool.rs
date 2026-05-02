@@ -611,18 +611,15 @@ impl Fsm for ArtboardToolFsmState {
 #[cfg(test)]
 mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
-	use graphene_std::Graphic;
+	use graphene_std::Artboard;
 	use graphene_std::table::Table;
 
-	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<Table<Graphic>> {
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
-		instrumented
-			.grab_all_input::<graphene_std::graphic::extend::NewInput<Table<graphene_std::Graphic>>>(&editor.runtime)
-			.flatten()
-			.collect()
+		instrumented.grab_all_input::<graphene_std::graphic::extend::NewInput<Artboard>>(&editor.runtime).flatten().collect()
 	}
 
 	#[derive(Debug, PartialEq)]

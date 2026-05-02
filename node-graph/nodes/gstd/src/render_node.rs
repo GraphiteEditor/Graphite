@@ -8,7 +8,7 @@ use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::{Graphic, Vector};
+use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub struct RenderIntermediate {
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
-		Context -> Table<Table<Graphic>>,
+		Context -> Table<Artboard>,
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
