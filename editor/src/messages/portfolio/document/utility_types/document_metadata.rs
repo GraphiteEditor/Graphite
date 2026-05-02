@@ -177,6 +177,10 @@ impl DocumentMetadata {
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
 				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
+				ClickTargetType::CompoundPath(subpaths) => subpaths
+					.iter()
+					.filter_map(|subpath| subpath.loose_bounding_box_with_transform(transform))
+					.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]),
 				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)

@@ -35,6 +35,9 @@ impl FreePoint {
 pub enum ClickTargetType {
 	Subpath(Subpath<PointId>),
 	FreePoint(FreePoint),
+	/// Multiple subpaths tested as one compound shape using the non-zero fill rule, so holes
+	/// (e.g. the inside of an "O") correctly count as outside the fill.
+	CompoundPath(Vec<Subpath<PointId>>),
 }
 
 /// Fixed-size ring buffer cache for rotated bounding boxes.
@@ -144,6 +147,19 @@ impl ClickTarget {
 		}
 	}
 
+	pub fn new_with_compound_path(subpaths: Vec<Subpath<PointId>>, stroke_width: f64) -> Self {
+		let bounding_box = subpaths
+			.iter()
+			.filter_map(|subpath| subpath.loose_bounding_box())
+			.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]);
+		Self {
+			target_type: ClickTargetType::CompoundPath(subpaths),
+			stroke_width,
+			bounding_box,
+			bounding_box_cache: Default::default(),
+		}
+	}
+
 	pub fn new_with_free_point(point: FreePoint) -> Self {
 		const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4 / 2.;
 		let stroke_width = 10.;
@@ -199,6 +215,10 @@ impl ClickTarget {
 				let mut write_lock = self.bounding_box_cache.write().unwrap();
 				write_lock.add_to_cache(subpath, rotation, scale, translation, fingerprint)
 			}
+			ClickTargetType::CompoundPath(ref subpaths) => subpaths
+				.iter()
+				.filter_map(|subpath| subpath.bounding_box_with_transform(transform))
+				.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]),
 			// TODO: use point for calculation of bbox
 			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
 		}
@@ -208,6 +228,11 @@ impl ClickTarget {
 		match self.target_type {
 			ClickTargetType::Subpath(ref mut subpath) => {
 				subpath.apply_transform(affine_transform);
+			}
+			ClickTargetType::CompoundPath(ref mut subpaths) => {
+				for subpath in subpaths {
+					subpath.apply_transform(affine_transform);
+				}
 			}
 			ClickTargetType::FreePoint(ref mut point) => {
 				point.apply_transform(affine_transform);
@@ -220,6 +245,12 @@ impl ClickTarget {
 		match self.target_type {
 			ClickTargetType::Subpath(ref subpath) => {
 				self.bounding_box = subpath.bounding_box();
+			}
+			ClickTargetType::CompoundPath(ref subpaths) => {
+				self.bounding_box = subpaths
+					.iter()
+					.filter_map(|subpath| subpath.bounding_box())
+					.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]);
 			}
 			ClickTargetType::FreePoint(ref point) => {
 				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
@@ -256,6 +287,24 @@ impl ClickTarget {
 				// Check if shape is entirely within selection
 				bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None)
 			}
+			ClickTargetType::CompoundPath(subpaths) => {
+				// Outline intersection (catches strokes and both filled/unfilled shapes)
+				let outline_intersects = |path_segment: PathSeg| bezier_iter().any(|line| !filtered_segment_intersections(path_segment, line, None, None).is_empty());
+				if subpaths.iter().flat_map(|subpath| subpath.iter()).any(outline_intersects) {
+					return true;
+				}
+
+				// Selection point inside compound fill (non-zero rule)
+				let combined: BezPath = subpaths.iter().flat_map(|subpath| subpath.to_bezpath()).collect();
+				if bezier_iter().next().is_some_and(|bezier| combined.contains(bezier.start())) {
+					return true;
+				}
+
+				// Build closed selection path, then check if any subpath is entirely within it
+				let mut selection = BezPath::from_path_segments(bezier_iter());
+				selection.close_path();
+				subpaths.iter().any(|subpath| bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None))
+			}
 			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: PathSeg| bezier.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
 		}
 	}
@@ -288,6 +337,10 @@ impl ClickTarget {
 			// Check if the point is within the shape
 			match self.target_type() {
 				ClickTargetType::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
+				ClickTargetType::CompoundPath(subpaths) => {
+					let combined: BezPath = subpaths.iter().flat_map(|subpath| subpath.to_bezpath()).collect();
+					combined.contains(dvec2_to_point(point))
+				}
 				ClickTargetType::FreePoint(free_point) => free_point.position == point,
 			}
 		} else {

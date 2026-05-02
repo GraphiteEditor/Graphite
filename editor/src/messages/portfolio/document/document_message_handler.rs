@@ -1636,6 +1636,11 @@ impl DocumentMessageHandler {
 					subpath.apply_transform(layer_transform);
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
+				ClickTargetType::CompoundPath(subpaths) => subpaths.iter().all(|subpath| {
+					let mut subpath = subpath.clone();
+					subpath.apply_transform(layer_transform);
+					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				}),
 				ClickTargetType::FreePoint(point) => {
 					let mut point = *point;
 					point.apply_transform(layer_transform);
