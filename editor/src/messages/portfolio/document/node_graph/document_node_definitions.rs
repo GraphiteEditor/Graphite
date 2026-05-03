@@ -16,7 +16,6 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graphene_std::brush::brush_cache::BrushCache;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
@@ -1244,62 +1243,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				\n\
 				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
 			),
-			properties: None,
-		},
-		// TODO: Remove this and just use the proto node definition directly
-		DocumentNodeDefinition {
-			identifier: "Brush",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![
-								NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-								NodeInput::import(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
-								NodeInput::import(concrete!(BrushCache), 2),
-							],
-							implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Raster(Default::default()), true),
-						NodeInput::value(TaggedValue::BrushStrokeTable(Default::default()), false),
-						NodeInput::value(TaggedValue::BrushCache(BrushCache::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Background", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [DocumentNodeMetadata {
-								persistent_metadata: DocumentNodePersistentMetadata {
-									node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-									..Default::default()
-								},
-								..Default::default()
-							}]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		#[cfg(feature = "gpu")]

@@ -715,7 +715,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
-		let Some(brush_node_id) = self.existing_network_node_id("Brush", true) else {
+		let Some(brush_node_id) = self.existing_proto_node_id(graphene_std::brush::brush::brush::IDENTIFIER, true) else {
 			return;
 		};
 		let strokes_table = strokes.into_iter().map(graphene_std::table::TableRow::new_from_element).collect();

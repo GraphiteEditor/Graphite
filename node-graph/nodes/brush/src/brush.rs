@@ -187,30 +187,34 @@ pub fn blend_with_mode(background: TableRow<Raster<CPU>>, foreground: TableRow<R
 
 /// Generates the brush strokes painted with the Brush tool as a raster image.
 /// If an input image is supplied, strokes are drawn on top of it, expanding bounds as needed.
-#[node_macro::node(category(""))]
+#[node_macro::node(category("Raster"))]
 async fn brush(
 	_: impl Ctx,
 	/// Optional raster content that may be drawn onto.
-	mut image: Table<Raster<CPU>>,
+	mut background: Table<Raster<CPU>>,
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
-	strokes: Table<BrushStroke>,
+	trace: Table<BrushStroke>,
 	/// Internal cache data used to accelerate rendering of the brush content.
 	cache: BrushCache,
 ) -> Table<Raster<CPU>> {
-	if image.is_empty() {
-		image.push(TableRow::default());
+	if background.is_empty() {
+		background.push(TableRow::default());
 	}
 	// TODO: Find a way to handle more than one item
-	let table_row = image.clone_row(0).expect("Expected the one item we just pushed");
+	let table_row = background.clone_row(0).expect("Expected the one item we just pushed");
 
 	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
-	let image_bbox = AxisAlignedBbox { start, end };
-	let stroke_bbox = strokes.iter_element_values().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
-	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
+	let background_bbox = AxisAlignedBbox { start, end };
+	let stroke_bbox = trace.iter_element_values().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
+	let bbox = if background_bbox.size().length() < 0.1 {
+		stroke_bbox
+	} else {
+		stroke_bbox.union(&background_bbox)
+	};
 	let background_bounds = bbox.to_transform();
 
-	let mut draw_strokes: Vec<_> = strokes
+	let mut draw_strokes: Vec<_> = trace
 		.iter_element_values()
 		.filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore))
 		.cloned()
@@ -278,12 +282,12 @@ async fn brush(
 		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 
-	let has_erase_or_restore_strokes = strokes.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
+	let has_erase_or_restore_strokes = trace.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image)).with_attribute(ATTR_TRANSFORM, background_bounds);
 
-		for stroke in strokes.into_iter().map(|row| row.into_element()) {
+		for stroke in trace.into_iter().map(|row| row.into_element()) {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
 			if brush_texture.is_none() {
 				let tex = create_brush_texture(&stroke.style).await;
@@ -320,15 +324,15 @@ async fn brush(
 	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
 	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 
-	*image.element_mut(0).unwrap() = actual_image.into_element();
-	image.set_attribute(ATTR_TRANSFORM, 0, transform);
-	image.set_attribute(ATTR_BLEND_MODE, 0, blend_mode);
-	image.set_attribute(ATTR_OPACITY, 0, opacity);
-	image.set_attribute(ATTR_OPACITY_FILL, 0, fill);
-	image.set_attribute(ATTR_CLIPPING_MASK, 0, clip);
-	image.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer);
+	*background.element_mut(0).unwrap() = actual_image.into_element();
+	background.set_attribute(ATTR_TRANSFORM, 0, transform);
+	background.set_attribute(ATTR_BLEND_MODE, 0, blend_mode);
+	background.set_attribute(ATTR_OPACITY, 0, opacity);
+	background.set_attribute(ATTR_OPACITY_FILL, 0, fill);
+	background.set_attribute(ATTR_CLIPPING_MASK, 0, clip);
+	background.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer);
 
-	image
+	background
 }
 
 pub fn blend_image_closure(foreground: TableRow<Raster<CPU>>, mut background: TableRow<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> TableRow<Raster<CPU>> {
