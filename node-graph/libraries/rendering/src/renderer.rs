@@ -1371,7 +1371,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		// Aggregate all items' targets per element_id so multi-item tables (e.g. 'Text' node with "Separate Glyph Elements" active) produce hit areas for every glyph.
+		// Aggregate all items' targets per element_id so multi-item tables (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
 		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
 		let item_zero_transform: DAffine2 = if !self.is_empty() {
 			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)

@@ -154,7 +154,7 @@ impl PathBuilder {
 			self.vector_table.push(item);
 		}
 
-		// With "Separate Glyph Elements" inactive, combine the accumulated per-glyph AABBs as one override `Vector`
+		// With "Separate Glyphs" inactive, combine the accumulated per-glyph AABBs as one override `Vector`
 		if !self.merged_click_target_subpaths.is_empty() {
 			self.vector_table
 				.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(self.merged_click_target_subpaths, false));
