@@ -657,19 +657,22 @@ impl<'a> ModifyInputsContext<'a> {
 			TransformIn::Local => transform,
 			TransformIn::Scope { scope } => scope * transform,
 			TransformIn::Viewport => {
-				let layer = self.layer_node.unwrap();
+				let Some(layer) = self.layer_node else { return };
 				let metadata = self.network_interface.document_metadata();
 				let parent_inverse = metadata.downstream_transform_to_viewport(layer).inverse();
 
-				// Compensate for item 0's transform baked into `local_transforms[layer]` (master style).
-				// For single-item shapes this is identity; for multi-item text it's the first glyph's baseline offset, and without this the layer jumps by that offset.
-				let local_transform = metadata.local_transforms.get(&layer.to_node()).copied().unwrap_or(DAffine2::IDENTITY);
-				let current_transform_node_value = transform_node_id
-					.and_then(|id| self.network_interface.document_network().nodes.get(&id))
-					.map(|node| transform_utils::get_current_transform(&node.inputs))
-					.unwrap_or(DAffine2::IDENTITY);
-
-				parent_inverse * transform * local_transform.inverse() * current_transform_node_value
+				// Compensate for item 0's baseline offset (multi-item Text only) so the layer doesn't jump by it.
+				// Gated on `text_frames` because metadata can be stale mid-handler.
+				if metadata.text_frames.contains_key(&layer) {
+					let local_transform = metadata.local_transforms.get(&layer.to_node()).copied().unwrap_or(DAffine2::IDENTITY);
+					let current_transform_node_value = transform_node_id
+						.and_then(|id| self.network_interface.document_network().nodes.get(&id))
+						.map(|node| transform_utils::get_current_transform(&node.inputs))
+						.unwrap_or(DAffine2::IDENTITY);
+					parent_inverse * transform * local_transform.inverse() * current_transform_node_value
+				} else {
+					parent_inverse * transform
+				}
 			}
 		};
 

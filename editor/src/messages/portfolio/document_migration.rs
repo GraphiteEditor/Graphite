@@ -1091,7 +1091,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		&& inner
 			.nodes
 			.values()
-			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend")))
+			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend") || id.as_str().contains("legacy_layer_extend")))
 		&& let Some(reference) = document.network_interface.reference(node_id, network_path)
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
 	{
