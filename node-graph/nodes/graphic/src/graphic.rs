@@ -217,14 +217,14 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> 
 	node_path.into_iter().take(len.saturating_sub(1)).collect()
 }
 
-/// Writes a named attribute on each item of the input `Table`. The value-producing input is evaluated once per item,
-/// with the item's index and the item itself (as a `Table` containing only that item, passed as a vararg) provided via
-/// context, so the upstream pipeline can return a different value per item that may be derived from the item's own data.
-/// If the attribute already exists, its values are replaced; if not, the attribute is added.
-#[node_macro::node(category("General"))]
+/// Sets a named attribute on the input `Table`, computing one value per item via the value-producing input. That input
+/// is evaluated once per item, with the item's index and the item itself (as a `Table` containing only that item,
+/// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
+/// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
+#[node_macro::node(category("Attributes: Write"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
-	/// The `Table` whose items will gain or have replaced the named attribute.
+	/// The `Table` to set the named attribute on (one value per item).
 	#[implementations(
 		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
 		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
@@ -258,9 +258,9 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone 
 	content
 }
 
-/// Zips a new attribute onto each row of the primary table, taking the value from the corresponding element values in the source table. Source elements are wrapped if there are fewer than in the destination table.
-#[node_macro::node(category("General"))]
-fn zip_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: AnyHash + Clone + Send + Sync + CacheHash + Default + std::fmt::Debug + PartialEq + 'static>(
+/// Sets a named attribute on the primary table, with each value taken from the corresponding item's element in the source table (paired by index, wrapping if the source has fewer items).
+#[node_macro::node(category("Attributes: Write"))]
+fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: AnyHash + Clone + Send + Sync + CacheHash + Default + std::fmt::Debug + PartialEq + 'static>(
 	_: impl Ctx,
 	/// The `Table` to attach the new attribute to.
 	#[implementations(
@@ -310,8 +310,8 @@ fn zip_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: AnyHash + Clon
 	content
 }
 
-/// Reads a named `Vector` attribute from each row of the input table, outputting a new table where each row's element is the attribute value. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `Vector` attribute from the input table, outputting each value as an element of a new `Table<Vector>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_vector<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -319,7 +319,7 @@ fn read_attribute_vector<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<Vector> {
 	let mut result = Table::with_capacity(content.len());
@@ -330,8 +330,8 @@ fn read_attribute_vector<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named numeric attribute (`f64` or `u64`) from each row of the input table, outputting a new `Table<f64>`. `u64` values are converted to `f64`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input table, outputting each value as an element of a new `Table<f64>`. Integer values are converted to `f64`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_number<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -339,20 +339,24 @@ fn read_attribute_number<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<f64> {
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
-		let value = content.attribute::<f64>(&name, index).copied().or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64));
+		let value = content
+			.attribute::<f64>(&name, index)
+			.copied()
+			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
+			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
 		result.push(TableRow::new_from_element(value));
 	}
 	result
 }
 
-/// Reads a named `bool` attribute from each row of the input table, outputting a new `Table<bool>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `bool` attribute from the input table, outputting each value as an element of a new `Table<bool>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_bool<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -360,7 +364,7 @@ fn read_attribute_bool<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<bool> {
 	let mut result = Table::with_capacity(content.len());
@@ -371,8 +375,8 @@ fn read_attribute_bool<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named `String` attribute from each row of the input table, outputting a new `Table<String>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `String` attribute from the input table, outputting each value as an element of a new `Table<String>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_string<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -380,7 +384,7 @@ fn read_attribute_string<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<String> {
 	let mut result = Table::with_capacity(content.len());
@@ -391,8 +395,8 @@ fn read_attribute_string<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named `DAffine2` transform attribute from each row of the input table, outputting a new `Table<DAffine2>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `DAffine2` transform attribute from the input table, outputting each value as an element of a new `Table<DAffine2>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_transform<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -400,7 +404,7 @@ fn read_attribute_transform<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<DAffine2> {
 	let mut result = Table::with_capacity(content.len());
@@ -411,8 +415,8 @@ fn read_attribute_transform<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named `Color` attribute from each row of the input table, outputting a new `Table<Color>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `Color` attribute from the input table, outputting each value as an element of a new `Table<Color>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_color<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -420,7 +424,7 @@ fn read_attribute_color<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<Color> {
 	let mut result = Table::with_capacity(content.len());
@@ -431,8 +435,8 @@ fn read_attribute_color<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named `BlendMode` attribute from each row of the input table, outputting a new `Table<BlendMode>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `BlendMode` attribute from the input table, outputting each value as an element of a new `Table<BlendMode>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_blend_mode<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -440,7 +444,7 @@ fn read_attribute_blend_mode<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<BlendMode> {
 	let mut result = Table::with_capacity(content.len());
@@ -451,8 +455,8 @@ fn read_attribute_blend_mode<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named `GradientType` attribute from each row of the input table, outputting a new `Table<GradientType>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `GradientType` attribute from the input table, outputting each value as an element of a new `Table<GradientType>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_gradient_type<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -460,7 +464,7 @@ fn read_attribute_gradient_type<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<GradientType> {
 	let mut result = Table::with_capacity(content.len());
@@ -471,8 +475,8 @@ fn read_attribute_gradient_type<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	result
 }
 
-/// Reads a named `GradientSpreadMethod` attribute from each row of the input table, outputting a new `Table<GradientSpreadMethod>`. Rows without the attribute are omitted.
-#[node_macro::node(category("General"))]
+/// Reads a named `GradientSpreadMethod` attribute from the input table, outputting each value as an element of a new `Table<GradientSpreadMethod>`.
+#[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_spread_method<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
 	#[implementations(
@@ -480,7 +484,7 @@ fn read_attribute_spread_method<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
 	)]
 	content: Table<T>,
-	/// The attribute name (key) to read from each row.
+	/// The attribute name (key) to read.
 	name: String,
 ) -> Table<GradientSpreadMethod> {
 	let mut result = Table::with_capacity(content.len());
