@@ -24,7 +24,7 @@ pub const ATTR_OPACITY: &str = "opacity";
 /// Like opacity but does not affect content clipped to the row.
 pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 
-/// Whether a row inherits the alpha of the content beneath it (clipping mask).
+/// `bool` for whether a row inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
 
 /// `Table<NodeId>` path from the root network to the layer node owning this row.
@@ -47,16 +47,16 @@ pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
 /// its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
 pub const ATTR_EDITOR_TEXT_FRAME: &str = "editor:text_frame";
 
-/// Byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
+/// `u64` byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_START: &str = "start";
 
-/// Byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).
+/// `u64` byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_END: &str = "end";
 
-/// Regex named-capture-group's name, or empty for unnamed groups ('Regex Capture' text node).
+/// `String` for a regex named-capture-group's name, or empty for unnamed groups ('Regex Capture' text node).
 pub const ATTR_NAME: &str = "name";
 
-/// JSON value's type string (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
+/// `String` for a JSON value's type (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
 pub const ATTR_TYPE: &str = "type";
 
 /// Artboard's `DVec2` top-left corner in document coordinates.
@@ -68,7 +68,7 @@ pub const ATTR_DIMENSIONS: &str = "dimensions";
 /// Artboard's `Color` background fill.
 pub const ATTR_BACKGROUND: &str = "background";
 
-/// Whether an artboard clips content to its bounds.
+/// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
 
 /// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).

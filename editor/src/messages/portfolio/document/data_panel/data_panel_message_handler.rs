@@ -12,7 +12,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientType};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -191,6 +191,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<String>,
 		Table<f64>,
 		Table<u8>,
+		Table<bool>,
+		Table<DAffine2>,
+		Table<BlendMode>,
+		Table<GradientType>,
+		Table<GradientSpreadMethod>,
 		GradientStops,
 		f64,
 		u32,
@@ -200,6 +205,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Option<f64>,
 		DVec2,
 		DAffine2,
+		BlendMode,
+		GradientType,
+		GradientSpreadMethod,
 	])
 }
 
@@ -751,6 +759,51 @@ impl TableRowLayout for Affine2 {
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
 		TextLabel::new(format_transform_matrix(matrix)).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for BlendMode {
+	fn type_name() -> &'static str {
+		"BlendMode"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for GradientType {
+	fn type_name() -> &'static str {
+		"GradientType"
+	}
+	fn identifier(&self) -> String {
+		format!("{self:?}")
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for GradientSpreadMethod {
+	fn type_name() -> &'static str {
+		"GradientSpreadMethod"
+	}
+	fn identifier(&self) -> String {
+		format!("{self:?}")
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
