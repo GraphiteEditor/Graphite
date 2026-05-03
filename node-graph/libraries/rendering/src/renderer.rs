@@ -1373,7 +1373,11 @@ impl Render for Table<Vector> {
 		} else {
 			DAffine2::IDENTITY
 		};
-		let item_zero_inverse = item_zero_transform.inverse();
+		let item_zero_inverse = if item_zero_transform.matrix2.determinant() != 0. {
+			item_zero_transform.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
 
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 		let mut accumulated_outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
