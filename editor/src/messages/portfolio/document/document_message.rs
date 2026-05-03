@@ -218,6 +218,9 @@ pub enum DocumentMessage {
 	UpdateOutlines {
 		outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	},
+	UpdateTextFrames {
+		text_frames: HashMap<NodeId, DAffine2>,
+	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
 	},

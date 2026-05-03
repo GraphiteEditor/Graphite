@@ -1,5 +1,5 @@
 use core_types::table::{Table, TableRow};
-use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_TRANSFORM};
+use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
@@ -15,19 +15,26 @@ pub struct PathBuilder {
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
 	pub vector_table: Table<Vector>,
-	/// Per-glyph bbox rectangles collected in single-row mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
+	/// Per-glyph bbox rectangles collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
 	merged_click_target_subpaths: Vec<Subpath<PointId>>,
+	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
+	text_frame_size: DVec2,
+	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
+	/// `local_transforms` stays stable when all glyphs are clipped during a resize drag.
+	first_glyph_offset: DVec2,
 	scale: f64,
 	id: PointId,
 }
 
 impl PathBuilder {
-	pub fn new(per_glyph_items: bool, scale: f64) -> Self {
+	pub fn new(per_glyph_items: bool, scale: f64, text_frame_size: DVec2, first_glyph_offset: DVec2) -> Self {
 		Self {
 			current_subpath: Subpath::new(Vec::new(), false),
 			glyph_subpaths: Vec::new(),
 			vector_table: if per_glyph_items { Table::new() } else { Table::new_from_element(Vector::default()) },
 			merged_click_target_subpaths: Vec::new(),
+			text_frame_size,
+			first_glyph_offset,
 			scale,
 			id: PointId::ZERO,
 			origin: DVec2::default(),
@@ -58,12 +65,18 @@ impl PathBuilder {
 		let glyph_bbox_rectangle = subpaths_bounding_box(&self.glyph_subpaths).map(|[min, max]| Subpath::new_rectangle(min, max));
 
 		if per_glyph_items {
-			let row = TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset));
-			let row = match glyph_bbox_rectangle {
-				Some(rect) => row.with_attribute(ATTR_EDITOR_CLICK_TARGET, Vector::from_subpaths([rect], false)),
-				None => row,
+			// Frame in item-local space: top-left at `-glyph_offset` so the item transform cancels it
+			// back to the layer-local frame origin, regardless of which glyph survived
+			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
+
+			let item = TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
+				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+			let item = match glyph_bbox_rectangle {
+				Some(rect) => item.with_attribute(ATTR_EDITOR_CLICK_TARGET, Vector::from_subpaths([rect], false)),
+				None => item,
 			};
-			self.vector_table.push(row);
+			self.vector_table.push(item);
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item
@@ -130,14 +143,29 @@ impl PathBuilder {
 	}
 
 	pub fn finalize(mut self) -> Table<Vector> {
+		// Empty table = all glyphs clipped by height. Create a placeholder with the same item-0
+		// transform a populated table would have so `local_transforms` stays stable mid-drag.
+		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
 		if self.vector_table.is_empty() {
-			self.vector_table = Table::new_from_element(Vector::default());
+			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
+			let item = TableRow::new_from_element(Vector::default())
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
+				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+			self.vector_table.push(item);
 		}
 
-		// With "Separate Glyph Elements" inactive, combine the accumulated per-glyph AABBs as one override `Vector`
+		// With "Separate Glyphs" inactive, combine the accumulated per-glyph AABBs as one override `Vector`
 		if !self.merged_click_target_subpaths.is_empty() {
 			self.vector_table
 				.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(self.merged_click_target_subpaths, false));
+		}
+
+		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
+		let frame = DAffine2::from_scale(self.text_frame_size);
+		for index in 0..self.vector_table.len() {
+			if self.vector_table.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
+				self.vector_table.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+			}
 		}
 
 		self.vector_table

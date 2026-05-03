@@ -31,6 +31,9 @@ pub struct DocumentMetadata {
 	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
 	/// nodes with an `editor:click_target` override still outline the precise geometry.
 	pub outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Per-layer text frame from item 0's `editor:text_frame` attribute (`DAffine2` mapping the (0, 0)-(1, 1) unit square onto the frame).
+	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
+	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
@@ -161,6 +164,12 @@ impl DocumentMetadata {
 	/// drawing so layers with an `editor:click_target` override report precise geometry bounds.
 	fn visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
 		self.outlines.get(&layer).or_else(|| self.click_targets.get(&layer)).map(|v| v.as_slice())
+	}
+
+	/// Whether to treat this layer as a text layer for tool UI. Checks the surfaced `editor:text_frame`
+	/// metadata rather than upstream topology, so layers that strip the attribute downstream correctly drop out.
+	pub fn is_text_layer(&self, layer: LayerNodeIdentifier) -> bool {
+		self.text_frames.contains_key(&layer)
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space

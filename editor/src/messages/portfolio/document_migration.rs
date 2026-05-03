@@ -1086,6 +1086,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
 
+	// Rebuild stale Merge/Artboard subgraphs that still use the removed LegacyLayerExtendNode internally
+	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+		&& inner
+			.nodes
+			.values()
+			.any(|n| matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(id) if id.as_str().contains("LegacyLayerExtend") || id.as_str().contains("legacy_layer_extend")))
+		&& let Some(reference) = document.network_interface.reference(node_id, network_path)
+		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
+	}
+
 	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
 	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
 		document.network_interface.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context));

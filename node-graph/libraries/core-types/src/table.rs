@@ -41,6 +41,12 @@ pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
 /// by clicking anywhere within their bounds, not just the filled letterform.
 pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
 
+/// `DAffine2` mapping the unit square `[(0, 0), (1, 1)]` (top-left convention) onto the 'Text'
+/// node's text frame in this row's local space. Each row carries the frame relative to its own
+/// glyph origin so it survives `Index Elements` filtering. The Text tool reads this to position
+/// its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
+pub const ATTR_EDITOR_TEXT_FRAME: &str = "editor:text_frame";
+
 /// Byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_START: &str = "start";
 
