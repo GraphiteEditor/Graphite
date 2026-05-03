@@ -170,30 +170,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Cache",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					implementation: DocumentNodeImplementation::ProtoNode(memo::cache::IDENTIFIER),
-					call_argument: generic!(T),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Data", "TODO").into()],
-					output_names: vec!["Data".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed(
-				"Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.\n\
-				\n\
-				Stores the last evaluated data that flowed through this node, and immediately returns that data on subsequent renders if the context has not changed.",
-			),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
 			category: "General",

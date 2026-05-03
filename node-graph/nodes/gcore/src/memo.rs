@@ -6,15 +6,19 @@ use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Caches the output of a given node called with a specific input.
+/// Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.
 ///
-/// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
-///
-/// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
-///
-/// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
-#[node_macro::node(category(""), path(graphene_core::memo), skip_impl)]
-async fn cache<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
+/// Stores the last evaluated data that flowed through this node, and immediately returns that data on subsequent renders if the context has not changed.
+#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
+async fn cache<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, content: impl Node<I, Output = T>) -> T {
+	// Caches the output of a given node called with a specific input.
+	//
+	// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
+	//
+	// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
+	//
+	// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
+
 	let mut hasher = DefaultHasher::new();
 	input.cache_hash(&mut hasher);
 	let hash = hasher.finish();
@@ -23,7 +27,7 @@ async fn cache<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[dat
 		return data;
 	}
 
-	let value = node.eval(input).await;
+	let value = content.eval(input).await;
 	*cache.lock().unwrap() = Some((hash, value.clone()));
 	value
 }
