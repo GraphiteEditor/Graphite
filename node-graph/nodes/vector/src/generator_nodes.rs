@@ -404,6 +404,23 @@ fn grid<T: GridSpacing>(
 	Table::new_from_element(vector)
 }
 
+#[node_macro::node(category("Vector: Shape"), name("Aperiodic Tiling"))]
+fn aperiodic_tiling(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(10.)]
+	#[hard_min(1.)]
+	scale: f64,
+	#[default(3)]
+	#[hard_min(1.)]
+	#[hard_max(6.)]
+	levels: u32,
+) -> Table<Vector> {
+	let vector = crate::aperiodic_tiling::generate_hat_tiling(levels, scale, None);
+	Table::new_from_element(vector)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
