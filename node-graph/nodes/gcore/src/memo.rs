@@ -34,16 +34,16 @@ async fn cache<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[dat
 
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
 
-/// Caches the output of the last graph evaluation for introspection.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), skip_impl)]
+/// The Monitor node is used by the editor to access the data flowing through it.
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
 async fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 	input: I,
 	#[allow(clippy::type_complexity)]
 	#[data]
 	io: MonitorValue<I, T>,
-	node: impl Node<I, Output = T>,
+	content: impl Node<I, Output = T>,
 ) -> T {
-	let output = node.eval(input.clone()).await;
+	let output = content.eval(input.clone()).await;
 	*io.lock().unwrap() = Some(Arc::new(IORecord { input, output: output.clone() }));
 	output
 }

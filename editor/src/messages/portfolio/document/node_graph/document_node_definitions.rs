@@ -133,27 +133,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, 
 /// Only the position can be set for protonodes within a definition. The rest of the metadata comes from the node macro in NODE_METADATA
 fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 	let custom = vec![
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Monitor",
-			category: "",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					call_argument: generic!(T),
-					skip_deduplication: true,
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("In", "TODO").into()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
-			properties: Some("monitor_properties"),
-		},
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
 			category: "General",
@@ -1579,34 +1558,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			properties: None,
 		},
-		// Aims for interoperable compatibility with:
-		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
-		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
-		//
-		// Some further analysis available at:
-		// https://geraldbakker.nl/psnumbers/curves.html
-		// TODO: Fix this, it's currently broken
-		// DocumentNodeDefinition {
-		// 	identifier: "Curves",
-		// 	category: "Raster: Adjustment",
-		// 	node_template: NodeTemplate {
-		// 		document_node: DocumentNode {
-		// 			implementation: DocumentNodeImplementation::proto("core_types::raster::CurvesNode"),
-		// 			inputs: vec![
-		// 				NodeInput::value(TaggedValue::Raster(Default::default()), true),
-		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
-		// 			],
-		// 			..Default::default()
-		// 		},
-		// 		persistent_node_metadata: DocumentNodePersistentMetadata {
-		// 			input_properties: vec![("Image", "TODO").into(), ("Curve", "TODO").into()],
-		// 			output_names: vec!["Image".to_string()],
-		// 			..Default::default()
-		// 		},
-		// 	},
-		// 	description: Cow::Borrowed("TODO"),
-		// 	properties: None,
-		// },
 		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
