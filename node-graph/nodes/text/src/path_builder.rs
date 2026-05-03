@@ -15,9 +15,9 @@ pub struct PathBuilder {
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
 	pub vector_table: Table<Vector>,
-	/// Per-glyph bbox rectangles collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
-	merged_click_target_subpaths: Vec<Subpath<PointId>>,
-	/// Per-glyph baselines, parallel to `merged_click_target_subpaths`. Groups glyphs by line for the widening pass.
+	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
+	merged_click_target_bboxes: Vec<[DVec2; 2]>,
+	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
 	merged_click_target_baselines: Vec<f64>,
 	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
 	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
@@ -36,7 +36,7 @@ impl PathBuilder {
 			current_subpath: Subpath::new(Vec::new(), false),
 			glyph_subpaths: Vec::new(),
 			vector_table: if per_glyph_items { Table::new() } else { Table::new_from_element(Vector::default()) },
-			merged_click_target_subpaths: Vec::new(),
+			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
 			text_frame_size,
@@ -86,8 +86,8 @@ impl PathBuilder {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item
 				self.vector_table.element_mut(0).unwrap().append_subpath(subpath, false);
 			}
-			if let Some([min, max]) = glyph_bbox {
-				self.merged_click_target_subpaths.push(Subpath::new_rectangle(min, max));
+			if let Some(bbox) = glyph_bbox {
+				self.merged_click_target_bboxes.push(bbox);
 				self.merged_click_target_baselines.push(glyph_offset.y);
 			}
 		}
@@ -186,8 +186,8 @@ impl PathBuilder {
 		}
 
 		// "Separate Glyphs" off: widen the accumulated AABBs and bundle as one override `Vector`
-		if !self.merged_click_target_subpaths.is_empty() {
-			let mut bboxes: Vec<[DVec2; 2]> = self.merged_click_target_subpaths.iter().filter_map(|subpath| subpath.bounding_box()).collect();
+		if !self.merged_click_target_bboxes.is_empty() {
+			let mut bboxes = self.merged_click_target_bboxes;
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
 
 			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
@@ -211,8 +211,8 @@ impl PathBuilder {
 /// Assumes input is in reading order. Linear runtime.
 fn widen_horizontal_gaps(bboxes: &mut [[DVec2; 2]], baselines: &[f64]) {
 	for i in 0..bboxes.len().saturating_sub(1) {
-		// Skip cross-line pairs
-		if (baselines[i] - baselines[i + 1]).abs() > f64::EPSILON {
+		// Skip cross-line pairs (loose epsilon since baselines come from layout floats)
+		if (baselines[i] - baselines[i + 1]).abs() > 1e-4 {
 			continue;
 		}
 
