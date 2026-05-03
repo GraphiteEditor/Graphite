@@ -327,7 +327,7 @@ impl BrushToolData {
 				return Some(layer);
 			}
 
-			if reference == DefinitionIdentifier::Network("Transform".into()) {
+			if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER) {
 				self.transform = get_current_transform(&node.inputs) * self.transform;
 			}
 		}

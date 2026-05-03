@@ -1520,131 +1520,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Transform",
-			category: "Math: Transform",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					inputs: vec![
-						// Value
-						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
-						// Translation
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						// Rotation
-						NodeInput::value(TaggedValue::F64(0.), false),
-						// Scale
-						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
-						// Skew
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						// Origin Offset
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						// Scale Appearance
-						NodeInput::value(TaggedValue::Bool(true), false),
-					],
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![
-							// From the Transform node
-							NodeInput::node(NodeId(1), 0),
-						],
-						nodes: [
-							// Monitor node
-							DocumentNode {
-								inputs: vec![
-									// From the Value import
-									NodeInput::import(generic!(T), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								call_argument: generic!(T),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							// Transform node
-							DocumentNode {
-								inputs: vec![
-									// From the Monitor node
-									NodeInput::node(NodeId(0), 0),
-									// From the Translation import
-									NodeInput::import(concrete!(DVec2), 1),
-									// From the Rotation import
-									NodeInput::import(concrete!(f64), 2),
-									// From the Scale import
-									NodeInput::import(concrete!(DVec2), 3),
-									// From the Skew import
-									NodeInput::import(concrete!(DVec2), 4),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_metadata: vec![
-						("Value", "TODO").into(),
-						InputMetadata::with_name_description_override(
-							"Translation",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: " px".to_string(),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Rotation", "TODO", WidgetOverride::Custom("transform_rotation".to_string())),
-						InputMetadata::with_name_description_override(
-							"Scale",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "W".to_string(),
-								y: "H".to_string(),
-								unit: "x".to_string(),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						InputMetadata::with_name_description_override("Origin Offset", "TODO", WidgetOverride::Custom("hidden".to_string())),
-						InputMetadata::with_name_description_override("Scale Appearance", "TODO", WidgetOverride::Custom("hidden".to_string())),
-					],
-					output_names: vec!["Data".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 	];
 
 	document_node_derive::post_process_nodes(custom)
@@ -2099,6 +1974,25 @@ fn static_input_properties() -> InputProperties {
 
 			Ok(vec![LayoutGroup::row(widgets)])
 		}),
+	);
+	// Translation uses a Vec2 widget with X/Y labels and a "px" unit suffix
+	map.insert(
+		"transform_translation".to_string(),
+		Box::new(|node_id, index, context| {
+			Ok(vec![node_properties::vec2_widget(
+				ParameterWidgetsInfo::new(node_id, index, true, context),
+				"X",
+				"Y",
+				" px",
+				None,
+				false,
+			)])
+		}),
+	);
+	// Scale uses a Vec2 widget with W/H labels and an "x" unit suffix
+	map.insert(
+		"transform_scale".to_string(),
+		Box::new(|node_id, index, context| Ok(vec![node_properties::vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), "W", "H", "x", None, false)])),
 	);
 	// Skew has a custom override that maps to degrees
 	map.insert(

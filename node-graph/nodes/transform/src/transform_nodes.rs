@@ -10,7 +10,7 @@ use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
 /// Applies the specified transform to the input value, which may be a graphic type or another transform.
-#[node_macro::node(category(""))]
+#[node_macro::node(category("Math: Transform"))]
 async fn transform<T: ApplyTransform + 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
@@ -24,10 +24,12 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		Context -> Table<GradientStops>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
-	translation: DVec2,
-	rotation: f64,
+	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
+	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: f64,
+	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
+	#[default(1., 1.)]
 	scale: DVec2,
-	skew: DVec2,
+	#[widget(ParsedWidgetOverride::Custom = "transform_skew")] skew: DVec2,
 ) -> T {
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
 	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
