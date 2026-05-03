@@ -135,25 +135,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Passthrough",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Content", "TODO").into()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
-			properties: None,
-		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
 			identifier: "Monitor",
 			category: "",
 			node_template: NodeTemplate {
