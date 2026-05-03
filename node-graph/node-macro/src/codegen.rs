@@ -623,7 +623,17 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
 	if parsed.attributes.skip_impl {
-		return Ok(quote!());
+		// Skip generating a `register_node` implementation, but still emit a Wasm-side shim that registers metadata.
+		// On native, `register_metadata` runs automatically via `#[ctor]`. On Wasm it needs an explicit shim, otherwise
+		// NODE_METADATA stays empty for `skip_impl` nodes on the web target.
+		let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
+		return Ok(quote! {
+			#[cfg(target_family = "wasm")]
+			#[unsafe(no_mangle)]
+			extern "C" fn #registry_name() {
+				register_metadata();
+			}
+		});
 	}
 
 	let mut constructors = Vec::new();

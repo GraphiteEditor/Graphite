@@ -168,10 +168,13 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTypes) -> Vec<NodeInput> {
 	fields
 		.iter()
-		.zip(first_node_io.inputs.iter())
 		.enumerate()
-		.map(|(index, (field, node_io_ty))| {
-			let ty = field.default_type.as_ref().unwrap_or(node_io_ty);
+		.map(|(index, field)| {
+			// `skip_impl` nodes have no concrete implementations, so `first_node_io.inputs` is shorter than `fields`.
+			// When no type info is available for a field, fall through to the unspecified `None` value.
+			let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io.inputs.get(index)) else {
+				return NodeInput::value(TaggedValue::None, true);
+			};
 			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 			match field.value_source {

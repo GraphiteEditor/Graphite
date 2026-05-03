@@ -22,8 +22,13 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		})
 		.collect::<Vec<_>>();
 
-	// Add the rest of the protonodes from the macro
+	// Add the rest of the protonodes from the macro.
+	// `skip_impl` nodes have no entry in `core_types::registry::NODE_REGISTRY` (since the macro skips `register_node`),
+	// even when their implementations are registered manually elsewhere (e.g. via `async_node!` in `interpreted-executor`).
+	// Treat the missing entry as no implementations and fall back to a `Context` call argument below.
 	let node_registry = NODE_REGISTRY.lock().unwrap();
+	let empty_implementations: Vec<(NodeConstructor, NodeIOTypes)> = Vec::new();
+	let context_type = concrete!(Context);
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
 		let identifier = DefinitionIdentifier::ProtoNode(id.clone());
 		if definitions_map.contains_key(&identifier) {
@@ -39,12 +44,18 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			memoize: _,
 		} = metadata;
 
-		let Some(implementations) = &node_registry.get(id) else { continue };
+		let implementations = node_registry.get(id).unwrap_or(&empty_implementations);
 
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
-		let input_type = if valid_inputs.len() > 1 { &const { generic!(D) } } else { &first_node_io.call_argument };
+		let input_type = if valid_inputs.is_empty() {
+			&context_type
+		} else if valid_inputs.len() > 1 {
+			&const { generic!(D) }
+		} else {
+			&first_node_io.call_argument
+		};
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
 		definitions_map.insert(
@@ -81,16 +92,6 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 				properties: *properties,
 			},
 		);
-	}
-
-	// If any protonode does not have metadata then set its display name to its identifier string
-	for definition in definitions_map.values_mut() {
-		let metadata = NODE_METADATA.lock().unwrap();
-		if let DocumentNodeImplementation::ProtoNode(id) = &definition.node_template.document_node.implementation
-			&& !metadata.contains_key(id)
-		{
-			definition.node_template.persistent_node_metadata.display_name = definition.identifier.to_string();
-		}
 	}
 
 	// Add the rest of the network nodes to the map and add the metadata for their internal protonodes
