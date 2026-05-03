@@ -785,10 +785,10 @@ impl TableRowLayout for GradientType {
 		"GradientType"
 	}
 	fn identifier(&self) -> String {
-		format!("{self:?}")
+		self.to_string()
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
@@ -800,10 +800,10 @@ impl TableRowLayout for GradientSpreadMethod {
 		"GradientSpreadMethod"
 	}
 	fn identifier(&self) -> String {
-		format!("{self:?}")
+		self.to_string()
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(format!("{self:?}")).narrow(true).widget_instance()
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
@@ -974,6 +974,9 @@ macro_rules! known_table_row_types {
 
 /// Uses `Display` instead of `Debug` for attribute types that have a nicer human-readable format.
 fn display_value_override(any: &dyn Any) -> Option<String> {
+	if let Some(value) = any.downcast_ref::<DVec2>() {
+		return Some(format_dvec2(*value));
+	}
 	if let Some(value) = any.downcast_ref::<BlendMode>() {
 		return Some(value.to_string());
 	}
