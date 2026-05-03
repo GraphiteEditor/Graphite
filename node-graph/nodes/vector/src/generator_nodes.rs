@@ -201,6 +201,56 @@ fn star<T: AsU64>(
 
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
+/// Generates a teardrop shape with a round body and a pointed tail
+#[node_macro::node(category("Vector: Shape"))]
+fn teardrop(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50.)]
+	radius: f64,
+	#[unit(" px")]
+	#[default(100.)]
+	tail_length: f64,
+) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_teardrop(DVec2::ZERO, radius, tail_length)))
+}
+
+/// Generates a heart shape with top lobes and a bottom point
+#[node_macro::node(category("Vector: Shape"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(100.)]
+	width: f64,
+	#[unit(" px")]
+	#[default(100.)]
+	height: f64,
+	#[default(50.)]
+	#[range((1., 100.))]
+	#[step(1.)]
+	top_lobe_roundness: f64,
+	#[default(0.25)]
+	#[range((0., 1.))]
+	#[step(0.01)]
+	#[display_decimal_places(2)]
+	top_dip_ratio: f64,
+	#[default(1.0)]
+	#[range((0., 2.))]
+	#[step(0.01)]
+	#[display_decimal_places(2)]
+	bottom_spike_ratio: f64,
+) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(
+		DVec2::ZERO,
+		width,
+		height,
+		top_lobe_roundness,
+		top_dip_ratio,
+		bottom_spike_ratio,
+	)))
+}
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]

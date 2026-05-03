@@ -421,6 +421,14 @@ pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetwork
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::spiral::IDENTIFIER))
 }
 
+pub fn get_teardrop_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::teardrop::IDENTIFIER))
+}
+
+pub fn get_heart_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::heart::IDENTIFIER))
+}
+
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))
 }
