@@ -3,14 +3,13 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::portfolio::utility_types::{CachedData, FontCatalog, FontCatalogStyle};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -518,16 +517,12 @@ impl TextToolData {
 	}
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
-		document
-			.metadata()
-			.all_layers()
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)))
-			.find(|&layer| {
-				let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
+		document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).find(|&layer| {
+			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+			let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
 
-				transformed_quad.contains(mouse)
-			})
+			transformed_quad.contains(mouse)
+		})
 	}
 
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache) {
@@ -550,7 +545,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+	if !document.metadata().is_text_layer(layer) {
 		return None;
 	}
 
@@ -612,7 +607,7 @@ impl Fsm for TextToolFsmState {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
+				let layer = all_layers.find(|&layer| document.metadata().is_text_layer(layer));
 				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
 				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
@@ -673,7 +668,7 @@ impl Fsm for TextToolFsmState {
 
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
+				let selected = all_selected.find(|&layer| document.metadata().is_text_layer(layer));
 
 				if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
@@ -712,7 +707,7 @@ impl Fsm for TextToolFsmState {
 				// This ensures the cursor only changes if a layer is selected
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
+				let layer = all_selected.find(|&layer| document.metadata().is_text_layer(layer));
 
 				let mut cursor = tool_data
 					.bounding_box_manager
