@@ -996,7 +996,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::cache::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1268,7 +1268,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::cache::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
 								..Default::default()
 							},
 						]

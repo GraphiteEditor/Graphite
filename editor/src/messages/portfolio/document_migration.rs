@@ -108,7 +108,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::memo::MonitorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::memo::cache::IDENTIFIER,
+		node: graphene_std::memo::memoize::IDENTIFIER,
 		aliases: &["graphene_core::memo::MemoNode", "graphene_core::memo::ImpureMemoNode"],
 	},
 	NodeReplacement {
@@ -2157,7 +2157,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
 	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto node.
 	// The proto node now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
-	// and `Cache` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
+	// and `Memoize` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
 	// old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
 		&& name == "Sample Polyline"
@@ -2172,7 +2172,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	}
 
 	// Collapse the legacy "Scatter Points" wrapper network into the standalone `scatter_points` proto node.
-	// The wrapper's trailing `Cache` node is now produced automatically by the `memoize` attribute on the
+	// The wrapper's trailing `Memoize` node is now produced automatically by the `memoize` attribute on the
 	// proto node, so the wrapper itself is redundant. The 3 user-facing inputs are positionally identical
 	// between the old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
@@ -2188,7 +2188,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	}
 
 	// Collapse the legacy "Boolean Operation" wrapper network into the standalone `boolean_operation` proto node.
-	// The wrapper's trailing `Cache` node is now produced automatically by the `memoize` attribute on the
+	// The wrapper's trailing `Memoize` node is now produced automatically by the `memoize` attribute on the
 	// proto node, so the wrapper itself is redundant. The 2 user-facing inputs are positionally identical
 	// between the old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
