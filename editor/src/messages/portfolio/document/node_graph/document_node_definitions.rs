@@ -320,7 +320,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.
-							// TODO: Check if thumbnail is reversed
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
@@ -1068,59 +1067,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Noise Pattern",
-			category: "Raster: Pattern",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::Bool(true), false),
-						NodeInput::value(TaggedValue::U32(0), false),
-						NodeInput::value(TaggedValue::F64(10.), false),
-						NodeInput::value(TaggedValue::NoiseType(NoiseType::default()), false),
-						NodeInput::value(TaggedValue::DomainWarpType(DomainWarpType::default()), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::FractalType(FractalType::default()), false),
-						NodeInput::value(TaggedValue::U32(3), false),
-						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::F64(0.5), false),
-						NodeInput::value(TaggedValue::F64(0.), false), // 0-1 range
-						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::CellularDistanceFunction(CellularDistanceFunction::default()), false),
-						NodeInput::value(TaggedValue::CellularReturnType(CellularReturnType::default()), false),
-						NodeInput::value(TaggedValue::F64(1.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("Spacer", "TODO").into(),
-						("Clip", "TODO").into(),
-						("Seed", "TODO").into(),
-						InputMetadata::with_name_description_override("Scale", "TODO", WidgetOverride::Custom("noise_properties_scale".to_string())),
-						InputMetadata::with_name_description_override("Noise Type", "TODO", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
-						InputMetadata::with_name_description_override("Domain Warp Type", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
-						InputMetadata::with_name_description_override("Domain Warp Amplitude", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
-						InputMetadata::with_name_description_override("Fractal Type", "TODO", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
-						InputMetadata::with_name_description_override("Fractal Octaves", "TODO", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
-						InputMetadata::with_name_description_override("Fractal Lacunarity", "TODO", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
-						InputMetadata::with_name_description_override("Fractal Gain", "TODO", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
-						InputMetadata::with_name_description_override("Fractal Weighted Strength", "TODO", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
-						InputMetadata::with_name_description_override("Fractal Ping Pong Strength", "TODO", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
-						InputMetadata::with_name_description_override("Cellular Distance Function", "TODO", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
-						InputMetadata::with_name_description_override("Cellular Return Type", "TODO", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
-						InputMetadata::with_name_description_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Generates customizable procedural noise patterns."),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Split Channels",
 			category: "Raster: Channels",
@@ -1631,7 +1577,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Transform",
 			category: "Math: Transform",
