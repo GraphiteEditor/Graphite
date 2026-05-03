@@ -139,7 +139,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+					implementation: DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
 					..Default::default()
 				},

@@ -214,7 +214,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let mid_point = (network_interface.get_output_center(&output_connector, breadcrumb_network_path).unwrap()
 						+ network_interface.get_input_center(&input_connector, breadcrumb_network_path).unwrap())
 						/ 2.;
-					let node_template = Box::new(resolve_proto_node_type(graphene_core::ops::identity::IDENTIFIER).unwrap().default_node_template());
+					let node_template = Box::new(resolve_proto_node_type(graphene_core::ops::passthrough::IDENTIFIER).unwrap().default_node_template());
 
 					let node_id = NodeId::new();
 					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });

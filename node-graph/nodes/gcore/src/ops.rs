@@ -4,11 +4,10 @@ use std::marker::PhantomData;
 // Re-export TypeNode from core-types for convenience
 pub use core_types::ops::TypeNode;
 
-// TODO: Rename to "Passthrough" and make this the node that users use, not the one defined in document_node_definitions.rs
 /// Passes-through the input value without changing it.
 /// This is useful for rerouting wires for organization purposes.
 #[node_macro::node(category(""), skip_impl)]
-fn identity<'i, T: 'i + Send>(value: T) -> T {
+fn passthrough<'i, T: 'i + Send>(value: T) -> T {
 	value
 }
 
@@ -27,7 +26,7 @@ mod test {
 	use super::*;
 
 	#[test]
-	pub fn identity_node() {
-		assert_eq!(identity(&4), &4);
+	pub fn passthrough_node() {
+		assert_eq!(passthrough(&4), &4);
 	}
 }

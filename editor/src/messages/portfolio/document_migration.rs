@@ -91,8 +91,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::ExtractXyNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::ops::identity::IDENTIFIER,
+		node: graphene_std::ops::passthrough::IDENTIFIER,
 		aliases: &[
+			"graphene_core::ops::IdentityNode",
 			"graphene_core::transform::CullNode",
 			"graphene_core::transform::BoundlessFootprintNode",
 			"graphene_core::transform::FreezeRealTimeNode",

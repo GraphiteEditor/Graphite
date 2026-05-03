@@ -61,7 +61,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let input_count = inputs.len();
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
-		let identity_node = ops::identity::IDENTIFIER;
+		let passthrough_node = ops::passthrough::IDENTIFIER;
 
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
@@ -88,7 +88,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
 							} else {
-								identity_node.clone()
+								passthrough_node.clone()
 							};
 							let mut original_location = OriginalLocation::default();
 							original_location.auto_convert_index = Some(i);
@@ -102,7 +102,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 						}
 						_ => DocumentNode {
 							inputs: vec![NodeInput::import(generic!(X), i)],
-							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
+							implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 							visible: false,
 							..Default::default()
 						},
