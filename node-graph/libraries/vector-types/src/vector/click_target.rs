@@ -300,10 +300,10 @@ impl ClickTarget {
 					return true;
 				}
 
-				// Build closed selection path, then check if any subpath is entirely within it
+				// Build closed selection path, then check if all contours are entirely within it
 				let mut selection = BezPath::from_path_segments(bezier_iter());
 				selection.close_path();
-				subpaths.iter().any(|subpath| bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None))
+				subpaths.iter().all(|subpath| bezpath_is_inside_bezpath(&subpath.to_bezpath(), &selection, None, None))
 			}
 			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: PathSeg| bezier.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
 		}
