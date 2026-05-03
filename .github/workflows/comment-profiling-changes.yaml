@@ -22,27 +22,14 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Valgrind
-        run: |
-          sudo apt update
-          sudo apt install -y valgrind
-
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           # Cache on Cargo.lock file
           cache-on-failure: true
 
-      - name: Cache iai-callgrind binary
-        id: cache-iai
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo/bin/iai-callgrind-runner
-          key: ${{ runner.os }}-iai-callgrind-runner-0.16.1
-
-      - name: Install iai-callgrind
-        if: steps.cache-iai.outputs.cache-hit != 'true'
-        run: cargo install iai-callgrind-runner@0.16.1
+      - name: Install gungraun-runner and valgrind
+        uses: gungraun/setup-gungraun@v1
 
       - name: Checkout master branch
         run: |
@@ -66,21 +53,21 @@ jobs:
         id: cache-benchmark-baselines
         uses: actions/cache@v5
         with:
-          path: target/iai
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
+          path: target/gungraun
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-gungraun-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-
+            ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-gungraun-benchmark-baselines-master-
 
       - name: Run baseline benchmarks
         if: steps.cache-benchmark-baselines.outputs.cache-hit != 'true'
         run: |
           # Compile benchmarks
-          cargo bench --bench compile_demo_art_iai -- --save-baseline=master
+          cargo bench --bench compile_demo_art_gungraun -- --save-baseline=master
 
           # Runtime benchmarks
-          cargo bench --bench update_executor_iai -- --save-baseline=master
-          cargo bench --bench run_once_iai -- --save-baseline=master
-          cargo bench --bench run_cached_iai -- --save-baseline=master
+          cargo bench --bench update_executor_gungraun -- --save-baseline=master
+          cargo bench --bench run_once_gungraun -- --save-baseline=master
+          cargo bench --bench run_cached_gungraun -- --save-baseline=master
 
       - name: Checkout PR branch
         run: git checkout ${{ github.event.pull_request.head.sha }}
@@ -88,12 +75,12 @@ jobs:
       - name: Run PR benchmarks
         run: |
           # Compile benchmarks
-          cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/compile_output.json
+          cargo bench --bench compile_demo_art_gungraun -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/compile_output.json
 
           # Runtime benchmarks  
-          cargo bench --bench update_executor_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/update_output.json
-          cargo bench --bench run_once_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_once_output.json
-          cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_cached_output.json
+          cargo bench --bench update_executor_gungraun -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/update_output.json
+          cargo bench --bench run_once_gungraun -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_once_output.json
+          cargo bench --bench run_cached_gungraun -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_cached_output.json
 
       - name: Make old comments collapsed by default
         # Only run if we have write permissions (not a fork)
