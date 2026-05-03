@@ -1,5 +1,5 @@
-use core_types::ATTR_TRANSFORM;
 use core_types::table::{Table, TableRow};
+use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
@@ -15,6 +15,8 @@ pub struct PathBuilder {
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
 	pub vector_table: Table<Vector>,
+	/// Per-glyph bbox rectangles collected in single-row mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
+	merged_click_target_subpaths: Vec<Subpath<PointId>>,
 	scale: f64,
 	id: PointId,
 }
@@ -25,6 +27,7 @@ impl PathBuilder {
 			current_subpath: Subpath::new(Vec::new(), false),
 			glyph_subpaths: Vec::new(),
 			vector_table: if per_glyph_items { Table::new() } else { Table::new_from_element(Vector::default()) },
+			merged_click_target_subpaths: Vec::new(),
 			scale,
 			id: PointId::ZERO,
 			origin: DVec2::default(),
@@ -51,13 +54,23 @@ impl PathBuilder {
 			glyph_subpath.apply_transform(skew);
 		}
 
+		// Bounding-box rectangle for click-targeting the glyph's full bounds (not just the letterform)
+		let glyph_bbox_rectangle = subpaths_bounding_box(&self.glyph_subpaths).map(|[min, max]| Subpath::new_rectangle(min, max));
+
 		if per_glyph_items {
-			self.vector_table
-				.push(TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset)));
+			let row = TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset));
+			let row = match glyph_bbox_rectangle {
+				Some(rect) => row.with_attribute(ATTR_EDITOR_CLICK_TARGET, Vector::from_subpaths([rect], false)),
+				None => row,
+			};
+			self.vector_table.push(row);
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item
 				self.vector_table.element_mut(0).unwrap().append_subpath(subpath, false);
+			}
+			if let Some(rect) = glyph_bbox_rectangle {
+				self.merged_click_target_subpaths.push(rect);
 			}
 		}
 	}
@@ -120,8 +133,22 @@ impl PathBuilder {
 		if self.vector_table.is_empty() {
 			self.vector_table = Table::new_from_element(Vector::default());
 		}
+
+		// With "Separate Glyph Elements" inactive, combine the accumulated per-glyph AABBs as one override `Vector`
+		if !self.merged_click_target_subpaths.is_empty() {
+			self.vector_table
+				.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(self.merged_click_target_subpaths, false));
+		}
+
 		self.vector_table
 	}
+}
+
+fn subpaths_bounding_box(subpaths: &[Subpath<PointId>]) -> Option<[DVec2; 2]> {
+	subpaths
+		.iter()
+		.filter_map(|subpath| subpath.bounding_box())
+		.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)])
 }
 
 impl OutlinePen for PathBuilder {

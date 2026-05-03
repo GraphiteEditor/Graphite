@@ -11,8 +11,8 @@ use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY,
-	ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_LOCATION,
+	ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -324,6 +324,9 @@ pub struct RenderMetadata {
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
+	/// nodes with an `editor:click_target` override still outline the precise geometry.
+	pub outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
 	pub backgrounds: Vec<Background>,
@@ -345,6 +348,7 @@ impl RenderMetadata {
 			local_transforms,
 			first_element_source_id,
 			click_targets,
+			outlines,
 			clip_targets,
 			vector_data,
 			backgrounds,
@@ -353,6 +357,7 @@ impl RenderMetadata {
 		local_transforms.extend(other.local_transforms.iter());
 		first_element_source_id.extend(other.first_element_source_id.iter());
 		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		outlines.extend(other.outlines.iter().map(|(k, v)| (*k, v.clone())));
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 
@@ -379,6 +384,11 @@ pub trait Render: BoundingBox + RenderComplexity {
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	/// Like `add_upstream_click_targets` but for visual outlines. `Table<Vector>` overrides this to ignore `editor:click_target` so outlines reflect the actual geometry.
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		self.add_upstream_click_targets(outlines);
+	}
 
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
@@ -490,6 +500,17 @@ impl Render for Graphic {
 		}
 	}
 
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		match self {
+			Graphic::Graphic(table) => table.add_upstream_outline_targets(outlines),
+			Graphic::Vector(table) => table.add_upstream_outline_targets(outlines),
+			Graphic::RasterCPU(table) => table.add_upstream_outline_targets(outlines),
+			Graphic::RasterGPU(table) => table.add_upstream_outline_targets(outlines),
+			Graphic::Color(table) => table.add_upstream_outline_targets(outlines),
+			Graphic::Gradient(table) => table.add_upstream_outline_targets(outlines),
+		}
+	}
+
 	fn contains_artboard(&self) -> bool {
 		match self {
 			Graphic::Graphic(table) => table.contains_artboard(),
@@ -513,7 +534,7 @@ impl Render for Graphic {
 	}
 }
 
-/// Reads the artboard metadata for the row at `index` from a `Table<Artboard>`.
+/// Reads the artboard metadata for the item at `index` from a `Table<Artboard>`.
 fn read_artboard_attributes(table: &Table<Artboard>, index: usize) -> (DVec2, DVec2, Color, bool) {
 	let location: DVec2 = table.attribute_cloned_or_default(ATTR_LOCATION, index);
 	let dimensions: DVec2 = table.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
@@ -711,8 +732,8 @@ impl Render for Table<Graphic> {
 		let mut mask_element_and_transform = None;
 
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let transform = transform * row_transform;
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform = transform * item_transform;
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
@@ -787,13 +808,13 @@ impl Render for Table<Graphic> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
 			let mut footprint = footprint;
-			footprint.transform *= row_transform;
+			footprint.transform *= item_transform;
 
 			if let Some(element_id) = layer {
 				element.collect_metadata(metadata, footprint, Some(element_id));
@@ -805,37 +826,63 @@ impl Render for Table<Graphic> {
 
 		if let Some(element_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
+			let mut all_upstream_outlines = Vec::new();
 
 			for index in 0..self.len() {
-				let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+				let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 				let element = self.element(index).unwrap();
+
 				let mut new_click_targets = Vec::new();
 				element.add_upstream_click_targets(&mut new_click_targets);
 
 				for click_target in new_click_targets.iter_mut() {
-					click_target.apply_transform(row_transform)
+					click_target.apply_transform(item_transform)
 				}
 
 				all_upstream_click_targets.extend(new_click_targets);
+
+				let mut new_outlines = Vec::new();
+				element.add_upstream_outline_targets(&mut new_outlines);
+				for outline in new_outlines.iter_mut() {
+					outline.apply_transform(item_transform)
+				}
+				all_upstream_outlines.extend(new_outlines);
 			}
 
 			metadata.click_targets.insert(element_id, all_upstream_click_targets.into_iter().map(|x| x.into()).collect());
+			metadata.outlines.insert(element_id, all_upstream_outlines.into_iter().map(|x| x.into()).collect());
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let element = self.element(index).unwrap();
 			let mut new_click_targets = Vec::new();
 
 			element.add_upstream_click_targets(&mut new_click_targets);
 
 			for click_target in new_click_targets.iter_mut() {
-				click_target.apply_transform(row_transform)
+				click_target.apply_transform(item_transform)
 			}
 
 			click_targets.extend(new_click_targets);
+		}
+	}
+
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		for index in 0..self.len() {
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let element = self.element(index).unwrap();
+			let mut new_outlines = Vec::new();
+
+			element.add_upstream_outline_targets(&mut new_outlines);
+
+			for outline in new_outlines.iter_mut() {
+				outline.apply_transform(item_transform)
+			}
+
+			outlines.extend(new_outlines);
 		}
 	}
 
@@ -922,7 +969,7 @@ impl Render for Table<Vector> {
 				cloned_vector.style.clear_stroke();
 				cloned_vector.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_row = Table::new_from_row(
+				let vector_item = Table::new_from_row(
 					TableRow::new_from_element(cloned_vector)
 						.with_attribute(ATTR_TRANSFORM, multiplied_transform)
 						.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
@@ -931,7 +978,7 @@ impl Render for Table<Vector> {
 						.with_attribute(ATTR_CLIPPING_MASK, clipping_mask_attr),
 				);
 
-				(id, mask_type, vector_row)
+				(id, mask_type, vector_item)
 			});
 
 			let use_face_fill = vector.use_face_fill();
@@ -969,9 +1016,9 @@ impl Render for Table<Vector> {
 				}
 
 				let defs = &mut attributes.0.svg_defs;
-				if let Some((ref id, mask_type, ref vector_row)) = push_id {
+				if let Some((ref id, mask_type, ref vector_item)) = push_id {
 					let mut svg = SvgRender::new();
-					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
+					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
 					let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
 					let quad = Quad::from_box(transformed_bounds).inflate(weight);
@@ -1055,12 +1102,12 @@ impl Render for Table<Vector> {
 			use graphic_types::vector_types::vector;
 
 			let Some(element) = self.element(index) else { continue };
-			let row_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let clip_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
-			let multiplied_transform = parent_transform * row_transform;
+			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
@@ -1246,7 +1293,7 @@ impl Render for Table<Vector> {
 
 						let vector_table = Table::new_from_row(
 							TableRow::new_from_element(cloned_element)
-								.with_attribute(ATTR_TRANSFORM, row_transform)
+								.with_attribute(ATTR_TRANSFORM, item_transform)
 								.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
 								.with_attribute(ATTR_OPACITY, opacity_attr)
 								.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
@@ -1319,8 +1366,24 @@ impl Render for Table<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
+		// Aggregate all items' targets per element_id so multi-item tables (e.g. 'Text' node with "Separate Glyph Elements" active) produce hit areas for every glyph.
+		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
+		let item_zero_transform: DAffine2 = if !self.is_empty() {
+			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
+		} else {
+			DAffine2::IDENTITY
+		};
+		let item_zero_inverse = if item_zero_transform.matrix2.determinant() != 0. {
+			item_zero_transform.inverse()
+		} else {
+			DAffine2::IDENTITY
+		};
+
+		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
+		let mut accumulated_outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
+
 		for index in 0..self.len() {
-			let Some(vector) = self.element(index) else { continue };
+			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
@@ -1331,40 +1394,26 @@ impl Render for Table<Vector> {
 				// normally provides but skipped due to the None element_id.
 				if caller_element_id.is_none() {
 					metadata.upstream_footprints.entry(element_id).or_insert(footprint);
-					metadata.local_transforms.entry(element_id).or_insert(transform);
+					metadata.local_transforms.entry(element_id).or_insert(item_zero_transform);
 				}
 
-				let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-				let filled = vector.style.fill() != &Fill::None;
-				let fill = |mut subpath: Subpath<_>| {
-					if filled {
-						subpath.set_closed(true);
-					}
-					subpath
-				};
+				// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes)
+				let click_target_vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
 
-				// For free-floating anchors, we need to add a click target for each
-				let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
-					if !vector.any_connected(point_id) {
-						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-						let point = FreePoint::new(point_id, anchor);
+				let item_relative_transform = item_zero_inverse * transform;
 
-						Some(ClickTarget::new_with_free_point(point).into())
-					} else {
-						None
-					}
-				});
+				let mut click_targets_unwrapped = Vec::new();
+				extend_targets_from_vector(&mut click_targets_unwrapped, click_target_vector, item_relative_transform);
+				accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
 
-				let click_targets = vector
-					.stroke_bezier_paths()
-					.map(fill)
-					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width).into())
-					.chain(single_anchors_targets)
-					.collect::<Vec<_>>();
+				// Outlines always use source geometry so the visual outline reflects actual letterforms
+				let mut outlines_unwrapped = Vec::new();
+				extend_targets_from_vector(&mut outlines_unwrapped, source, item_relative_transform);
+				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
-				metadata.click_targets.entry(element_id).or_insert(click_targets);
-				// Store the full vector data including segment IDs for accurate segment modification
-				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
+				// Source geometry (not the click-target override) so editing tools work on letterforms.
+				// Only item 0 is recorded since editing tools can only target a single item currently.
+				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(source.clone()));
 			}
 
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
@@ -1377,41 +1426,35 @@ impl Render for Table<Vector> {
 				upstream_nested_layers.collect_metadata(metadata, upstream_footprint, None);
 			}
 		}
+
+		// Overwrite with the full accumulated set (not just item 0's contribution)
+		for (element_id, targets) in accumulated_click_targets {
+			metadata.click_targets.insert(element_id, targets);
+		}
+		for (element_id, targets) in accumulated_outlines {
+			metadata.outlines.insert(element_id, targets);
+		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
-			let Some(vector) = self.element(index) else { continue };
+			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
-			let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-			let filled = vector.style.fill() != &Fill::None;
-			let fill = |mut subpath: Subpath<_>| {
-				if filled {
-					subpath.set_closed(true);
-				}
-				subpath
-			};
-			click_targets.extend(vector.stroke_bezier_paths().map(fill).map(|subpath| {
-				let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
-				click_target.apply_transform(transform);
-				click_target
-			}));
+			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
+			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
 
-			// For free-floating anchors, we need to add a click target for each
-			let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
-				if vector.any_connected(point_id) {
-					return None;
-				}
+			extend_targets_from_vector(click_targets, vector, transform);
+		}
+	}
 
-				let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-				let point = FreePoint::new(point_id, anchor);
+	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
+		// Source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms
+		for index in 0..self.len() {
+			let Some(source) = self.element(index) else { continue };
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
-				let mut click_target = ClickTarget::new_with_free_point(point);
-				click_target.apply_transform(transform);
-				Some(click_target)
-			});
-			click_targets.extend(single_anchors_targets);
+			extend_targets_from_vector(outlines, source, transform);
 		}
 	}
 
@@ -1420,6 +1463,35 @@ impl Render for Table<Vector> {
 			vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}
+}
+
+/// Build click targets (subpaths and free-floating anchors) from a `Vector`, apply the transform, and append to `targets`.
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, transform: DAffine2) {
+	let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
+	let filled = vector.style.fill() != &Fill::None;
+	let fill = |mut subpath: Subpath<_>| {
+		if filled {
+			subpath.set_closed(true);
+		}
+		subpath
+	};
+	targets.extend(vector.stroke_bezier_paths().map(fill).map(|subpath| {
+		let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
+		click_target.apply_transform(transform);
+		click_target
+	}));
+
+	let single_anchors = vector.point_domain.ids().iter().filter_map(|&point_id| {
+		if vector.any_connected(point_id) {
+			return None;
+		}
+
+		let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
+		let mut click_target = ClickTarget::new_with_free_point(FreePoint::new(point_id, anchor));
+		click_target.apply_transform(transform);
+		Some(click_target)
+	});
+	targets.extend(single_anchors);
 }
 
 impl Render for Table<Raster<CPU>> {
