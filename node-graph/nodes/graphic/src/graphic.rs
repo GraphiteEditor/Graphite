@@ -2,11 +2,12 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
+use vector_types::gradient::{GradientSpreadMethod, GradientType};
 use vector_types::{GradientStop, GradientStops, ReferencePoint};
 
 /// Returns the value at the specified index in the list.
@@ -255,6 +256,239 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone 
 		content.set_attribute(&name, index, v);
 	}
 	content
+}
+
+/// Zips a new attribute onto each row of the primary table, taking the value from the corresponding element values in the source table. Source elements are wrapped if there are fewer than in the destination table.
+#[node_macro::node(category("General"))]
+fn zip_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: AnyHash + Clone + Send + Sync + CacheHash + Default + std::fmt::Debug + PartialEq + 'static>(
+	_: impl Ctx,
+	/// The `Table` to attach the new attribute to.
+	#[implementations(
+		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
+		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
+		Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>,
+		Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>,
+		Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>,
+		Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>,
+		Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>, Table<f64>,
+		Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>, Table<bool>,
+		Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>, Table<String>,
+		Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>, Table<DAffine2>,
+		Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>, Table<BlendMode>,
+		Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>, Table<GradientType>,
+		Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>, Table<GradientSpreadMethod>,
+	)]
+	mut content: Table<T>,
+	/// The table to draw the element values from.
+	#[expose]
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>, Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	source: Table<U>,
+	/// The name to assign to the new destination attribute.
+	name: String,
+) -> Table<T> {
+	if source.is_empty() {
+		return content;
+	}
+	for index in 0..content.len() {
+		let Some(value) = source.element(index % source.len()).cloned() else { continue };
+		content.set_attribute(&name, index, value);
+	}
+	content
+}
+
+/// Reads a named `Vector` attribute from each row of the input table, outputting a new table where each row's element is the attribute value. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_vector<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<Vector> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
+}
+
+/// Reads a named numeric attribute (`f64` or `u64`) from each row of the input table, outputting a new `Table<f64>`. `u64` values are converted to `f64`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_number<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<f64> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let value = content.attribute::<f64>(&name, index).copied().or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64));
+		let Some(value) = value else { continue };
+		result.push(TableRow::new_from_element(value));
+	}
+	result
+}
+
+/// Reads a named `bool` attribute from each row of the input table, outputting a new `Table<bool>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_bool<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<bool> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `String` attribute from each row of the input table, outputting a new `Table<String>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_string<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<String> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<String>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
+}
+
+/// Reads a named `DAffine2` transform attribute from each row of the input table, outputting a new `Table<DAffine2>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_transform<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<DAffine2> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `Color` attribute from each row of the input table, outputting a new `Table<Color>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_color<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<Color> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `BlendMode` attribute from each row of the input table, outputting a new `Table<BlendMode>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_blend_mode<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<BlendMode> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientType` attribute from each row of the input table, outputting a new `Table<GradientType>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_gradient_type<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<GradientType> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientSpreadMethod` attribute from each row of the input table, outputting a new `Table<GradientSpreadMethod>`. Rows without the attribute are omitted.
+#[node_macro::node(category("General"))]
+fn read_attribute_spread_method<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>,
+		Table<f64>, Table<bool>, Table<String>, Table<DAffine2>, Table<BlendMode>, Table<GradientType>, Table<GradientSpreadMethod>,
+	)]
+	content: Table<T>,
+	/// The attribute name (key) to read from each row.
+	name: String,
+) -> Table<GradientSpreadMethod> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
 }
 
 /// Joins two `Table`s of the same type, extending the base `Table` with the items from the new `Table`.
