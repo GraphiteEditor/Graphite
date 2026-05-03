@@ -74,11 +74,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 
 	// Combined struct type parameters: data field generic idents (T, U, ...) + node generics (Node0, Node1, ...)
-	// For struct type instantiation: MemoNode<T, Node0>
+	// For struct type instantiation: CacheNode<T, Node0>
 	let struct_type_params: Vec<Ident> = data_field_generic_idents.iter().cloned().chain(node_generics.iter().cloned()).collect();
 
 	// Combined struct generic parameters with bounds for struct definition
-	// struct MemoNode<T: Clone, Node0>
+	// struct CacheNode<T: Clone, Node0>
 	let struct_generic_params: Vec<TokenStream2> = data_field_generics.iter().map(|gp| quote!(#gp)).chain(node_generics.iter().map(|id| quote!(#id))).collect();
 	let input_ident = &input.pat_ident;
 

@@ -127,17 +127,17 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		nodes.insert(NodeId(input_count as u64), document_node);
 
-		// If memoize is requested, append a Memo node after the main node and redirect the export through it
+		// If memoize is requested, append a Cache node after the main node and redirect the export through it
 		let export_node_id = if *memoize {
-			let memo_node_id = NodeId(input_count as u64 + 1);
-			let memo_node = DocumentNode {
+			let cache_node_id = NodeId(input_count as u64 + 1);
+			let cache_node = DocumentNode {
 				inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
-				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memo::IDENTIFIER.clone()),
+				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::cache::IDENTIFIER.clone()),
 				visible: true,
 				..Default::default()
 			};
-			nodes.insert(memo_node_id, memo_node);
-			memo_node_id
+			nodes.insert(cache_node_id, cache_node);
+			cache_node_id
 		} else {
 			NodeId(input_count as u64)
 		};

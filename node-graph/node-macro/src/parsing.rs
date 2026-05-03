@@ -52,7 +52,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
-	/// Whether the preprocessor should add a Memo node after this node in the generated subnetwork
+	/// Whether the preprocessor should add a Cache node after this node in the generated subnetwork
 	pub(crate) memoize: bool,
 }
 
@@ -294,7 +294,7 @@ impl Parse for NodeFnAttributes {
 					if display_name.is_some() {
 						return Err(Error::new_spanned(meta, "Multiple 'name' attributes are not allowed"));
 					}
-					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
+					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Cache\")"))?;
 					display_name = Some(parsed_name);
 				}
 				// Override for the fully qualified path used by Graphene to identify the node implementation.
@@ -310,7 +310,7 @@ impl Parse for NodeFnAttributes {
 					}
 					let parsed_path: Path = meta
 						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::MemoizeNode)"))?;
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::CacheNode)"))?;
 					path = Some(parsed_path);
 				}
 				// Indicator that the node should allow generic type arguments but skip the automatic generation of concrete type implementations.
@@ -379,7 +379,7 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
 					serialize = Some(parsed_path);
 				}
-				// Instructs the preprocessor to insert a Memo node after this node in the generated subnetwork,
+				// Instructs the preprocessor to insert a Cache node after this node in the generated subnetwork,
 				// caching its output across evaluations with identical inputs.
 				//
 				// Example usage:

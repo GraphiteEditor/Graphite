@@ -196,7 +196,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
+					implementation: DocumentNodeImplementation::ProtoNode(memo::cache::IDENTIFIER),
 					call_argument: generic!(T),
 					..Default::default()
 				},
@@ -1062,7 +1062,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::cache::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1420,25 +1420,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Memoize",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Upload Texture",
@@ -1462,7 +1443,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::cache::IDENTIFIER),
 								..Default::default()
 							},
 						]

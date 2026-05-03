@@ -14,7 +14,7 @@ use std::sync::Mutex;
 ///
 /// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
 #[node_macro::node(category(""), path(graphene_core::memo), skip_impl)]
-async fn memo<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
+async fn cache<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
 	let mut hasher = DefaultHasher::new();
 	input.cache_hash(&mut hasher);
 	let hash = hasher.finish();
