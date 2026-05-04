@@ -459,9 +459,10 @@ pub struct VisualColorPickersInput {
 	pub disabled: bool,
 
 	// Callbacks
+	// `on_update` receives the raw `VisualColorPickersInputUpdate` (not the mutated widget) so the layout diffing can still detect a change between the stored layout and the rebuilt one, otherwise the selection circle and slider needles never re-render after a drag.
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<VisualColorPickersInput>,
+	pub on_update: WidgetCallback<VisualColorPickersInputUpdate>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,

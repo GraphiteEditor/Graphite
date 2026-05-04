@@ -16,6 +16,7 @@ use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
+use graphene_std::vector::style::FillChoice;
 use std::path::PathBuf;
 
 #[cfg(not(target_family = "wasm"))]
@@ -167,6 +168,14 @@ pub enum FrontendMessage {
 		color: Color, // TODO: Color (without `none`) -> Color (with `none`)
 		position: (f64, f64),
 	},
+	/// The Rust color picker handler picked a new color/gradient. The frontend `<ColorPicker>` forwards this as its `colorOrGradient` event.
+	ColorPickerColorChanged {
+		value: FillChoice,
+	},
+	/// The Rust color picker handler is starting an undo transaction. The frontend `<ColorPicker>` forwards this as its `startHistoryTransaction` event.
+	ColorPickerStartHistoryTransaction,
+	/// The Rust color picker handler is committing the in-flight undo transaction. The frontend `<ColorPicker>` forwards this as its `commitHistoryTransaction` event.
+	ColorPickerCommitHistoryTransaction,
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
 		imports: Vec<Option<FrontendGraphOutput>>,

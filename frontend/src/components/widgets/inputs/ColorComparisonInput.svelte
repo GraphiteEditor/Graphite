@@ -4,7 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import { colorEquals, contrastingOutlineFactor } from "/src/utility-functions/colors";
+	import { colorContrastingColor, colorEquals, colorToHexOptionalAlpha, contrastingOutlineFactor } from "/src/utility-functions/colors";
 	import type { Color } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ swap: undefined }>();
@@ -27,7 +27,13 @@
 <LayoutRow
 	class="color-comparison-input"
 	classes={{ outlined, transparency, disabled }}
-	styles={{ "--outline-amount": outlineFactor }}
+	styles={{
+		"--outline-amount": outlineFactor,
+		"--new-color": newColor ? colorToHexOptionalAlpha(newColor) : undefined,
+		"--new-color-contrasting": colorContrastingColor(newColor),
+		"--old-color": oldColor ? colorToHexOptionalAlpha(oldColor) : undefined,
+		"--old-color-contrasting": colorContrastingColor(oldColor),
+	}}
 	tooltipDescription={differs ? "Comparison between the present color choice (left) and the color before it was changed (right)." : "The present color choice."}
 >
 	{#if differs && !disabled}

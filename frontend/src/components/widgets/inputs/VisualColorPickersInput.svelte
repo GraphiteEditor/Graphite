@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onDestroy } from "svelte";
-	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
+	import { colorContrastingColor, colorOpaque, colorToHexNoAlpha, colorToRgbCSS, createColor, createColorFromHSVA } from "/src/utility-functions/colors";
 
 	const dispatch = createEventDispatcher<{
 		update: { hue: number; saturation: number; value: number; alpha: number };
@@ -19,8 +19,6 @@
 	export let alpha: number;
 	export let isNone: boolean;
 	export let disabled = false;
-	// Provides the parent FloatingMenu's element so Escape doesn't close the popover when aborting a drag.
-	export let getFloatingMenuElement: () => HTMLElement | undefined = () => undefined;
 
 	// Transient drag state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
@@ -114,12 +112,7 @@
 	}
 
 	function onKeyDown(e: KeyboardEvent) {
-		if (e.key === "Escape") {
-			const element = getFloatingMenuElement();
-			if (element) preventEscapeClosingParentFloatingMenu(element);
-
-			abortDrag();
-		}
+		if (e.key === "Escape") abortDrag();
 	}
 
 	function onKeyUp(e: KeyboardEvent) {
@@ -188,9 +181,23 @@
 	onDestroy(() => {
 		removeEvents();
 	});
+
+	$: newColor = isNone ? undefined : createColorFromHSVA(hue, saturation, value, alpha);
+	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
+	$: opaqueColorOnly = newColor ? colorOpaque(newColor) : createColor(0, 0, 0, 1);
 </script>
 
-<LayoutRow class="visual-color-pickers-input" classes={{ disabled }}>
+<LayoutRow
+	class="visual-color-pickers-input"
+	classes={{ disabled }}
+	styles={{
+		"--hue-color": colorToRgbCSS(opaqueHueColor),
+		"--hue-color-contrasting": colorContrastingColor(opaqueHueColor),
+		"--opaque-color": colorToHexNoAlpha(opaqueColorOnly),
+		"--opaque-color-contrasting": colorContrastingColor(opaqueColorOnly),
+		"--new-color-contrasting": colorContrastingColor(newColor),
+	}}
+>
 	{@const hueDescription = "The shade along the spectrum of the rainbow."}
 	<LayoutCol
 		class="saturation-value-picker"

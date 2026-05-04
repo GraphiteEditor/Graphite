@@ -26,6 +26,7 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { ColorPickerStore } from "/src/stores/color-picker";
 	import { parseFillChoice } from "/src/utility-functions/colors";
 	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -37,6 +38,7 @@
 	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
 
 	const editor = getContext<EditorWrapper>("editor");
+	const colorPickerStore = getContext<ColorPickerStore>("colorPicker");
 
 	export let widgets: WidgetInstance[];
 	export let direction: "row" | "column";
@@ -145,7 +147,8 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					preset: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { Preset: e.detail }, true),
+					// The widget dispatches `"None"` or a bare `Color`, wrap the color in `{ Solid: ... }` so the payload matches Rust's `FillChoice` shape (which the `Preset` variant expects).
+					preset: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { Preset: e.detail === "None" ? "None" : { Solid: e.detail } }, true),
 					eyedropperColorCode: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { EyedropperColorCode: e.detail }, true),
 				},
 			}),
@@ -241,6 +244,7 @@
 					gradient: (e: CustomEvent) => widgetValueUpdate(index, { Gradient: e.detail }, false),
 					activeMarkerIndexChange: (e: CustomEvent) =>
 						widgetValueUpdate(index, { ActiveMarker: { activeMarkerIndex: e.detail.activeMarkerIndex, activeMarkerIsMidpoint: e.detail.activeMarkerIsMidpoint } }, false),
+					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
 				},
 			}),
 		},
@@ -252,6 +256,7 @@
 					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					startHistoryTransaction: () => widgetValueCommit(index, undefined),
 					commitHistoryTransaction: () => widgetValueCommit(index, undefined),
+					dragStateChange: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
 				},
 			}),
 		},

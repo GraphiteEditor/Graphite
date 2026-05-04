@@ -44,6 +44,10 @@ macro_rules! define_layout_target {
 	};
 }
 define_layout_target!(
+	/// Left column of the color picker popover, containing the visual H/S/V/A sliders and (optionally) the gradient editor.
+	ColorPickerPickersAndGradient,
+	/// Right column of the color picker popover, containing the new/old color comparison swatch, hex/RGB/HSV/alpha numeric inputs, and color preset buttons.
+	ColorPickerDetails,
 	/// The Data panel visualizes the output data flowing through the selected node in the graph.
 	DataPanel,
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.

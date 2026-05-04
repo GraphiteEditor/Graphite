@@ -256,16 +256,11 @@ impl LayoutMessageHandler {
 							warn!("SpectrumInput update was not able to be parsed as SpectrumInputUpdate");
 							return;
 						};
-						match &update {
-							SpectrumInputUpdate::Gradient(stops) => spectrum_input.gradient = stops.clone(),
-							SpectrumInputUpdate::ActiveMarker {
-								active_marker_index,
-								active_marker_is_midpoint,
-							} => {
-								spectrum_input.active_marker_index = *active_marker_index;
-								spectrum_input.active_marker_is_midpoint = *active_marker_is_midpoint;
-							}
-						}
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state. Otherwise the frontend's stored layout
+						// keeps stale values for `activeMarkerIndex`, etc., and any other widget's diff (e.g. the position
+						// NumberInput) will trigger Svelte to re-spread those stale props onto SpectrumInput, clobbering
+						// its local `activeMarkerIndex` and making subsequent drags target the wrong stop.
 						(spectrum_input.on_update.callback)(&update)
 					}
 				};
@@ -437,11 +432,10 @@ impl LayoutMessageHandler {
 							warn!("VisualColorPickersInput update was not able to be parsed as VisualColorPickersInputUpdate");
 							return;
 						};
-						visual_color_pickers_input.hue = update.hue;
-						visual_color_pickers_input.saturation = update.saturation;
-						visual_color_pickers_input.value = update.value;
-						visual_color_pickers_input.alpha = update.alpha;
-						(visual_color_pickers_input.on_update.callback)(visual_color_pickers_input)
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state, so the visual indicators (selection circle,
+						// hue/alpha needles, saturation-val ue gradient background) actually re-render after a drag.
+						(visual_color_pickers_input.on_update.callback)(&update)
 					}
 				};
 

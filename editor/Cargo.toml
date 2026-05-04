@@ -46,6 +46,7 @@ vello = { workspace = true }
 base64 = { workspace = true }
 spin = { workspace = true }
 image = { workspace = true }
+color = "0.3"
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

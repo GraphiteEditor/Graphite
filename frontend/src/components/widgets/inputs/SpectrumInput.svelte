@@ -1,8 +1,3 @@
-<script lang="ts" context="module">
-	export const MIN_MIDPOINT = 0.01;
-	export const MAX_MIDPOINT = 0.99;
-</script>
-
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
@@ -11,6 +6,9 @@
 	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
 	import { evaluateGradientAtPosition } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import type { Color, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	const MIN_MIDPOINT = 0.01;
+	const MAX_MIDPOINT = 0.99;
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;

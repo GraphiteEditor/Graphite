@@ -98,6 +98,7 @@
 <style lang="scss">
 	.color-presets-input {
 		flex: 0 0 auto;
+		width: 100%;
 
 		.preset-color {
 			border: none;
