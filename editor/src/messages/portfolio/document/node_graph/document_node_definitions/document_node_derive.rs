@@ -27,8 +27,8 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	// `skip_impl` nodes (e.g. Cache, Monitor) bypass that registration but are wired up manually in
 	// `interpreted_executor::node_registry::NODE_REGISTRY` via `async_node!`. We consult that extended registry as a
 	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
-	let node_registry = NODE_REGISTRY.lock().unwrap();
 	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
+	let node_registry = NODE_REGISTRY.lock().unwrap();
 	let empty_implementations: Vec<(NodeConstructor, NodeIOTypes)> = Vec::new();
 	let context_type = concrete!(Context);
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
