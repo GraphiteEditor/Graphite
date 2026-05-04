@@ -63,12 +63,6 @@ export function colorFromCSS(colorCode: string): Color | undefined {
 	return createColor(r / 255, g / 255, b / 255, a / 255);
 }
 
-export function colorEquals(c1: Color | undefined, c2: Color | undefined): boolean {
-	if (c1 === undefined && c2 === undefined) return true;
-	if (c1 === undefined || c2 === undefined) return false;
-	return Math.abs(c1.red - c2.red) < 1e-6 && Math.abs(c1.green - c2.green) < 1e-6 && Math.abs(c1.blue - c2.blue) < 1e-6 && Math.abs(c1.alpha - c2.alpha) < 1e-6;
-}
-
 export function colorToHexNoAlpha(color: Color): string {
 	const r = Math.round(color.red * 255)
 		.toString(16)

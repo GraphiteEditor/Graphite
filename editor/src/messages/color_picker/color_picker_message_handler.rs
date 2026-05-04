@@ -399,6 +399,9 @@ impl ColorPickerMessageHandler {
 		let hex_value = new_color.map(|c| color_to_hex_optional_alpha(&c)).unwrap_or_else(|| "-".to_string());
 		let rgb_255 = new_color.map(|c| (c.r() as f64 * 255., c.g() as f64 * 255., c.b() as f64 * 255.));
 
+		let differs = new_color != old_color;
+		let outline_amount = contrasting_outline_factor(new_color).max(contrasting_outline_factor(old_color));
+
 		let mut groups = Vec::new();
 
 		// New/old comparison swatch with swap button
@@ -407,6 +410,8 @@ impl ColorPickerMessageHandler {
 				.is_none(self.is_none)
 				.old_is_none(self.old_is_none)
 				.disabled(self.disabled)
+				.differs(differs)
+				.outline_amount(outline_amount)
 				.on_update(|_: &()| ColorPickerMessage::SwapNewWithOld.into())
 				.widget_instance(),
 		]));
@@ -563,6 +568,33 @@ fn rgb_to_hsv(red: f64, green: f64, blue: f64) -> [f64; 3] {
 	let value = max;
 
 	[hue, saturation, value]
+}
+
+/// The popover's background color (the `--color-2-mildblack` design token, `#222`). Used by the comparison swatch's
+/// outline computation to brighten the inset border for colors close to this background.
+const POPOVER_BACKGROUND: Color = Color::from_rgbaf32_unchecked(0x22 as f32 / 255., 0x22 as f32 / 255., 0x22 as f32 / 255., 1.);
+/// The luminance window (in linear-light) within which a color is considered close enough to the popover background
+/// to warrant an outline. Mirrors the `proximityRange` argument the legacy frontend passed to `contrastingOutlineFactor`.
+const OUTLINE_PROXIMITY_RANGE: f64 = 0.01;
+
+/// Returns a 0..1 outline strength for the comparison swatch, growing toward 1 as the color's luminance and saturation
+/// both approach the popover background's luminance, when a color would otherwise visually blend into the popover.
+fn contrasting_outline_factor(color: Option<Color>) -> f64 {
+	let Some(color) = color else { return 0. };
+
+	// WCAG-style relative luminance, with alpha composited over white in gamma space
+	let luminance = |color: Color| {
+		// TODO: Remove the `.to_linear_srgb()` once we move to correctly treating `Color` as linear.
+		Color::WHITE
+			.alpha_blend(Color::from_unassociated_alpha(color.r(), color.g(), color.b(), color.a()))
+			.to_linear_srgb()
+			.luminance_srgb() as f64
+	};
+
+	let distance = (luminance(POPOVER_BACKGROUND) - luminance(color)).abs().max(0.);
+	let proximity = 1. - (distance / OUTLINE_PROXIMITY_RANGE).min(1.);
+	let [_, saturation, _] = rgb_to_hsv(color.r() as f64, color.g() as f64, color.b() as f64);
+	proximity * (1. - saturation)
 }
 
 /// Format a Color as a `#`-prefixed hex string, including the alpha component only if it's not fully opaque.

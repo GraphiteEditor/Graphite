@@ -230,7 +230,8 @@ pub struct Color {
 
 impl PartialEq for Color {
 	fn eq(&self, other: &Self) -> bool {
-		self.red == other.red && self.green == other.green && self.blue == other.blue && self.alpha == other.alpha
+		const EPSILON: f32 = 1e-6;
+		(self.red - other.red).abs() < EPSILON && (self.green - other.green).abs() < EPSILON && (self.blue - other.blue).abs() < EPSILON && (self.alpha - other.alpha).abs() < EPSILON
 	}
 }
 

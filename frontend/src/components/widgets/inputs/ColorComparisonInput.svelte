@@ -4,7 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import { colorContrastingColor, colorEquals, colorToHexOptionalAlpha, contrastingOutlineFactor } from "/src/utility-functions/colors";
+	import { colorContrastingColor, colorToHexOptionalAlpha } from "/src/utility-functions/colors";
 	import type { Color } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ swap: undefined }>();
@@ -14,13 +14,10 @@
 	export let isNone: boolean;
 	export let oldIsNone: boolean;
 	export let disabled = false;
+	export let differs: boolean;
+	export let outlineAmount: number;
 
-	$: differs = !colorEquals(newColor, oldColor);
-	$: outlineFactor = Math.max(
-		contrastingOutlineFactor(newColor ? { Solid: newColor } : ("None" as const), "--color-2-mildblack", 0.01),
-		contrastingOutlineFactor(oldColor ? { Solid: oldColor } : ("None" as const), "--color-2-mildblack", 0.01),
-	);
-	$: outlined = outlineFactor > 0.0001;
+	$: outlined = outlineAmount > 0.0001;
 	$: transparency = (newColor?.alpha ?? 1) < 1 || (oldColor?.alpha ?? 1) < 1;
 </script>
 
@@ -28,7 +25,7 @@
 	class="color-comparison-input"
 	classes={{ outlined, transparency, disabled }}
 	styles={{
-		"--outline-amount": outlineFactor,
+		"--outline-amount": outlineAmount,
 		"--new-color": newColor ? colorToHexOptionalAlpha(newColor) : undefined,
 		"--new-color-contrasting": colorContrastingColor(newColor),
 		"--old-color": oldColor ? colorToHexOptionalAlpha(oldColor) : undefined,

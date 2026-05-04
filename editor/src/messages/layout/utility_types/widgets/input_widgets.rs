@@ -493,6 +493,9 @@ pub struct ColorComparisonInput {
 	#[serde(rename = "oldIsNone")]
 	pub old_is_none: bool,
 	pub disabled: bool,
+	pub differs: bool,
+	#[serde(rename = "outlineAmount")]
+	pub outline_amount: f64,
 
 	// Callbacks
 	// The `swap` event has no payload — it just signals the user requested a swap.
