@@ -55,6 +55,7 @@ pub struct ArcLengthLut {
 impl ArcLengthLut {
 	pub fn build(path: &BezPath, samples_per_segment: usize) -> Self {
 		let accuracy = 1e-6;
+		let samples_per_segment = samples_per_segment.max(1);
 		let mut lengths = vec![0.0_f64];
 		let mut params = vec![(0_usize, 0.0_f64)];
 		let mut cumulative = 0.0_f64;
@@ -314,10 +315,11 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 				let outlines = font_ref.outline_glyphs();
 
 				glyph_run.glyphs().for_each(|glyph| {
-					let raw_advance = glyph.advance as f64 * advance_scale;
+					let scaled_advance = glyph.advance as f64 * advance_scale;
 					cumulative_offset += if glyph_index > 0 { spacing_delta } else { 0.0 };
-					let mid = line_start + run_x as f64 * advance_scale + cumulative_offset - glyph_run.offset() as f64 * advance_scale + raw_advance / 2.0;
-					let adjusted_mid = mid + text_path_spacing_adjustment(spacing, &lut, mid, raw_advance);
+					let glyph_origin = line_start + (run_x as f64 - glyph_run.offset() as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
+					let mid = glyph_origin + scaled_advance / 2.0;
+					let adjusted_mid = mid + text_path_spacing_adjustment(spacing, &lut, mid, scaled_advance);
 
 					run_x += glyph.advance;
 					glyph_index += 1;
@@ -327,13 +329,13 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 						let (point, angle) = if lut.is_closed { lut.at_or_zero(effective_mid) } else { at_with_extension(&lut, effective_mid) };
 
 						if let Some(glyph_outline) = outlines.get(skrifa::GlyphId::from(glyph.id)) {
-							let final_transform =
-								DAffine2::from_translation(DVec2::new(point.x, point.y)) * DAffine2::from_angle(angle) * DAffine2::from_translation(DVec2::new(glyph.x as f64, -glyph.y as f64));
+							let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y))
+								* DAffine2::from_angle(angle)
+								* DAffine2::from_translation(DVec2::new(-scaled_advance / 2.0, -glyph.y as f64))
+								* DAffine2::from_scale(DVec2::new(advance_scale, 1.0));
 							path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, true);
 						}
 					}
-
-					cumulative_offset += raw_advance - glyph.advance as f64;
 				});
 			}
 		});
