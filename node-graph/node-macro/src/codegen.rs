@@ -622,18 +622,22 @@ fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::Generi
 }
 
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &Ident) -> Result<TokenStream2, Error> {
+	// On native, `register_node` and `register_metadata` run automatically via `#[ctor]`.
+	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
+	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
+	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
+	let register_node_call = if parsed.attributes.skip_impl { quote!() } else { quote!(register_node();) };
+	let wasm_shim = quote! {
+		#[cfg(target_family = "wasm")]
+		#[unsafe(no_mangle)]
+		extern "C" fn #registry_name() {
+			#register_node_call
+			register_metadata();
+		}
+	};
+
 	if parsed.attributes.skip_impl {
-		// Skip generating a `register_node` implementation, but still emit a Wasm-side shim that registers metadata.
-		// On native, `register_metadata` runs automatically via `#[ctor]`. On Wasm it needs an explicit shim, otherwise
-		// NODE_METADATA stays empty for `skip_impl` nodes on the web target.
-		let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-		return Ok(quote! {
-			#[cfg(target_family = "wasm")]
-			#[unsafe(no_mangle)]
-			extern "C" fn #registry_name() {
-				register_metadata();
-			}
-		});
+		return Ok(wasm_shim);
 	}
 
 	let mut constructors = Vec::new();
@@ -718,8 +722,6 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			)
 		));
 	}
-	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-
 	let native = quote! {
 	#[cfg_attr(not(target_family = "wasm"), ctor)]
 	fn register_node() {
@@ -738,13 +740,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 	Ok(quote! {
 		#native
-
-		#[cfg(target_family = "wasm")]
-		#[unsafe(no_mangle)]
-		extern "C" fn #registry_name() {
-			register_node();
-			register_metadata();
-		}
+		#wasm_shim
 	})
 }
 

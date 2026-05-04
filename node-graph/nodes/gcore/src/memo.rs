@@ -6,9 +6,9 @@ use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.
+/// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
-/// Stores the last evaluated data that flowed through this node, and immediately returns that data on subsequent renders if the context has not changed.
+/// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
 #[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
 async fn cache<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, content: impl Node<I, Output = T>) -> T {
 	// Caches the output of a given node called with a specific input.

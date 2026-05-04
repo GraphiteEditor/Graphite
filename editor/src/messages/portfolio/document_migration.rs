@@ -1126,8 +1126,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					}
 				}
 				Some(NodeInput::Node { .. }) => {
-					// Wired upstream — splice in a Multiply node that converts degrees back to radians so the upstream value (still
-					// representing degrees in the legacy assumption) keeps its meaning relative to the now-degrees Rotation input.
+					// Wired upstream: splice in a Multiply node by 180/π that converts radians to degrees so the upstream value
+					// (which represented radians in the legacy format) reaches the now-degrees Rotation input correctly.
 					if let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) {
 						let mut multiply_template = multiply_node.default_node_template();
 						multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);

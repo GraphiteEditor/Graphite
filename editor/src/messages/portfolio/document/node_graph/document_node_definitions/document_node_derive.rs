@@ -23,10 +23,12 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		.collect::<Vec<_>>();
 
 	// Add the rest of the protonodes from the macro.
-	// `skip_impl` nodes have no entry in `core_types::registry::NODE_REGISTRY` (since the macro skips `register_node`),
-	// even when their implementations are registered manually elsewhere (e.g. via `async_node!` in `interpreted-executor`).
-	// Treat the missing entry as no implementations and fall back to a `Context` call argument below.
+	// Typed nodes are registered in `core_types::NODE_REGISTRY` via the macro's auto-generated `register_node` codegen.
+	// `skip_impl` nodes (e.g. Cache, Monitor) bypass that registration but are wired up manually in
+	// `interpreted_executor::node_registry::NODE_REGISTRY` via `async_node!`. We consult that extended registry as a
+	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
 	let node_registry = NODE_REGISTRY.lock().unwrap();
+	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
 	let empty_implementations: Vec<(NodeConstructor, NodeIOTypes)> = Vec::new();
 	let context_type = concrete!(Context);
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
@@ -48,13 +50,20 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 
-		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
+		let call_arguments: Vec<&Type> = if !implementations.is_empty() {
+			implementations.iter().map(|(_, io)| &io.call_argument).collect()
+		} else if let Some(impls) = extended_node_registry.get(id) {
+			impls.keys().map(|io| &io.call_argument).collect()
+		} else {
+			Vec::new()
+		};
+		let valid_inputs: HashSet<&Type> = call_arguments.iter().copied().collect();
 		let input_type = if valid_inputs.is_empty() {
 			&context_type
 		} else if valid_inputs.len() > 1 {
 			&const { generic!(D) }
 		} else {
-			&first_node_io.call_argument
+			call_arguments[0]
 		};
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
