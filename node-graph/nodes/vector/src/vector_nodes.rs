@@ -229,10 +229,12 @@ async fn stroke<V, L: IntoF64Vec>(
 where
 	Table<V>: VectorTableIterMut + 'n + Send,
 {
+	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
+
 	let stroke = Stroke {
 		color: color.element(0).copied(),
 		weight,
-		dash_lengths: dash_lengths.into_vec(),
+		dash_lengths,
 		dash_offset,
 		cap,
 		join,
@@ -1158,10 +1160,13 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+async fn solidify_stroke<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
-	content
+	let graphic_table = content.into_graphic_table();
+	let flattened: Table<Vector> = graphic_table.clone().into_flattened_table();
+
+	let mut output: Table<Vector> = flattened
 		.into_iter()
 		.flat_map(|row| {
 			let (mut vector, attributes) = row.into_parts();
@@ -1228,7 +1233,27 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
 			}
 		})
-		.collect()
+		.collect();
+
+	// Snapshot the upstream content so the renderer can recurse into it for editor click-target preservation
+	// and surface the original pre-solidified `Vector` to the Path tool for editing.
+	if !output.is_empty() {
+		// Row 0 carries a composed transform inherited from the flattened input, but the merged_layers
+		// already holds the original transforms; pre-compensate by row 0's inverse so the renderer's
+		// `upstream_footprint *= row_0_transform` recursion cancels out and leaves the originals intact.
+		let mut graphic_table = graphic_table;
+		let row_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
+			let inverse = row_0_transform.inverse();
+			for transform in graphic_table.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*transform = inverse * *transform;
+			}
+		}
+
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_table);
+	}
+
+	output
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
