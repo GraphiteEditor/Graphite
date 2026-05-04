@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: graphene_core::ops::identity::IDENTIFIER,
+			identifier: graphene_core::ops::passthrough::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
@@ -317,14 +317,14 @@ impl ProtoNetwork {
 			p.push(NodeId(10))
 		}
 
-		let memo_node_id = NodeId(self.nodes.len() as u64);
+		let memoize_node_id = NodeId(self.nodes.len() as u64);
 
 		self.nodes.push((
-			memo_node_id,
+			memoize_node_id,
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![node_id]),
 				call_argument: concrete!(Context),
-				identifier: graphene_core::memo::memo::IDENTIFIER,
+				identifier: graphene_core::memo::memoize::IDENTIFIER,
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -352,7 +352,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
+				construction_args: ConstructionArgs::Nodes(vec![memoize_node_id, nullification_value_node_id]),
 				call_argument: concrete!(Context),
 				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
 				original_location: OriginalLocation {

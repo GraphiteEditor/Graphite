@@ -61,7 +61,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let input_count = inputs.len();
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
-		let identity_node = ops::identity::IDENTIFIER;
+		let passthrough_node = ops::passthrough::IDENTIFIER;
 
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
@@ -88,7 +88,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
 							} else {
-								identity_node.clone()
+								passthrough_node.clone()
 							};
 							let mut original_location = OriginalLocation::default();
 							original_location.auto_convert_index = Some(i);
@@ -102,7 +102,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 						}
 						_ => DocumentNode {
 							inputs: vec![NodeInput::import(generic!(X), i)],
-							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
+							implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 							visible: false,
 							..Default::default()
 						},
@@ -127,17 +127,17 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		nodes.insert(NodeId(input_count as u64), document_node);
 
-		// If memoize is requested, append a Memo node after the main node and redirect the export through it
+		// If memoize is requested, append a Memoize node after the main node and redirect the export through it
 		let export_node_id = if *memoize {
-			let memo_node_id = NodeId(input_count as u64 + 1);
-			let memo_node = DocumentNode {
+			let memoize_node_id = NodeId(input_count as u64 + 1);
+			let memoize_node = DocumentNode {
 				inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
-				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memo::IDENTIFIER.clone()),
+				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
 				visible: true,
 				..Default::default()
 			};
-			nodes.insert(memo_node_id, memo_node);
-			memo_node_id
+			nodes.insert(memoize_node_id, memoize_node);
+			memoize_node_id
 		} else {
 			NodeId(input_count as u64)
 		};
@@ -168,10 +168,13 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTypes) -> Vec<NodeInput> {
 	fields
 		.iter()
-		.zip(first_node_io.inputs.iter())
 		.enumerate()
-		.map(|(index, (field, node_io_ty))| {
-			let ty = field.default_type.as_ref().unwrap_or(node_io_ty);
+		.map(|(index, field)| {
+			// `skip_impl` nodes have no concrete implementations, so `first_node_io.inputs` is shorter than `fields`.
+			// When no type info is available for a field, fall through to the unspecified `None` value.
+			let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io.inputs.get(index)) else {
+				return NodeInput::value(TaggedValue::None, true);
+			};
 			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 			match field.value_source {

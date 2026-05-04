@@ -147,7 +147,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a transform node to ensure correct tooling modifications
 	let transform_node_id = NodeId::new();
-	let transform_node = document_node_definitions::resolve_network_node_type("Transform")
+	let transform_node = document_node_definitions::resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 		.expect("Failed to create transform node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -251,7 +251,9 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
 	use graphene_std::transform_nodes::transform::*;
 
-	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::Network("Transform".into()), TranslationInput::INDEX)? {
+	if let TaggedValue::DVec2(origin) =
+		NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), TranslationInput::INDEX)?
+	{
 		Some(*origin)
 	} else {
 		None

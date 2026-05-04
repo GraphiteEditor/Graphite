@@ -22,8 +22,15 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		})
 		.collect::<Vec<_>>();
 
-	// Add the rest of the protonodes from the macro
+	// Add the rest of the protonodes from the macro.
+	// Typed nodes are registered in `core_types::NODE_REGISTRY` via the macro's auto-generated `register_node` codegen.
+	// `skip_impl` nodes (e.g. Cache, Monitor) bypass that registration but are wired up manually in
+	// `interpreted_executor::node_registry::NODE_REGISTRY` via `async_node!`. We consult that extended registry as a
+	// fallback when deriving `call_argument` so it reflects the impls actually registered, which will usually be `Context`.
+	let extended_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
 	let node_registry = NODE_REGISTRY.lock().unwrap();
+	let empty_implementations: Vec<(NodeConstructor, NodeIOTypes)> = Vec::new();
+	let context_type = concrete!(Context);
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
 		let identifier = DefinitionIdentifier::ProtoNode(id.clone());
 		if definitions_map.contains_key(&identifier) {
@@ -39,12 +46,25 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			memoize: _,
 		} = metadata;
 
-		let Some(implementations) = &node_registry.get(id) else { continue };
+		let implementations = node_registry.get(id).unwrap_or(&empty_implementations);
 
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 
-		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
-		let input_type = if valid_inputs.len() > 1 { &const { generic!(D) } } else { &first_node_io.call_argument };
+		let call_arguments: Vec<&Type> = if !implementations.is_empty() {
+			implementations.iter().map(|(_, io)| &io.call_argument).collect()
+		} else if let Some(impls) = extended_node_registry.get(id) {
+			impls.keys().map(|io| &io.call_argument).collect()
+		} else {
+			Vec::new()
+		};
+		let valid_inputs: HashSet<&Type> = call_arguments.iter().copied().collect();
+		let input_type = if valid_inputs.is_empty() {
+			&context_type
+		} else if valid_inputs.len() > 1 {
+			&const { generic!(D) }
+		} else {
+			call_arguments[0]
+		};
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
 		definitions_map.insert(
@@ -81,16 +101,6 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 				properties: *properties,
 			},
 		);
-	}
-
-	// If any protonode does not have metadata then set its display name to its identifier string
-	for definition in definitions_map.values_mut() {
-		let metadata = NODE_METADATA.lock().unwrap();
-		if let DocumentNodeImplementation::ProtoNode(id) = &definition.node_template.document_node.implementation
-			&& !metadata.contains_key(id)
-		{
-			definition.node_template.persistent_node_metadata.display_name = definition.identifier.to_string();
-		}
 	}
 
 	// Add the rest of the network nodes to the map and add the metadata for their internal protonodes

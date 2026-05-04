@@ -293,25 +293,40 @@ pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> Table<Raster<CPU
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
+/// Generates customizable procedural noise patterns.
 #[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
-	clip: bool,
+	#[default(true)] clip: bool,
 	seed: u32,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
+	#[default(10.)]
 	scale: f64,
-	noise_type: NoiseType,
-	domain_warp_type: DomainWarpType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: NoiseType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: DomainWarpType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
+	#[default(100.)]
 	domain_warp_amplitude: f64,
-	fractal_type: FractalType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: FractalType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
+	#[default(3)]
 	fractal_octaves: u32,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
+	#[default(2.)]
 	fractal_lacunarity: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
+	#[default(0.5)]
 	fractal_gain: f64,
-	fractal_weighted_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
+	#[default(2.)]
 	fractal_ping_pong_strength: f64,
-	cellular_distance_function: CellularDistanceFunction,
-	cellular_return_type: CellularReturnType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: CellularDistanceFunction,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: CellularReturnType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
+	#[default(1.)]
 	cellular_jitter: f64,
 ) -> Table<Raster<CPU>> {
 	let footprint = ctx.footprint();

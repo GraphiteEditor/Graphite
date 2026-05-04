@@ -49,7 +49,7 @@ pub struct DocumentNode {
 	pub call_argument: Type,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with a passthrough node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
@@ -328,7 +328,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::ProtoNode(graphene_core::ops::identity::IDENTIFIER)
+		Self::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER)
 	}
 }
 
@@ -433,7 +433,7 @@ pub struct OldDocumentNode {
 	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub is_layer: bool,
-	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with a passthrough node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
@@ -798,10 +798,10 @@ impl NodeNetwork {
 			return;
 		};
 
-		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
-		if !node.visible && node.implementation != identity_node {
-			node.implementation = identity_node;
+		// If the node is hidden, replace it with a passthrough node
+		let passthrough_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER);
+		if !node.visible && node.implementation != passthrough_node {
+			node.implementation = passthrough_node;
 
 			// Connect layer node to the group below
 			node.inputs.drain(1..);
@@ -967,12 +967,12 @@ impl NodeNetwork {
 		}
 	}
 
-	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
+	fn remove_passthrough_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation
-			&& *ident == graphene_core::ops::identity::IDENTIFIER
+			&& *ident == graphene_core::ops::passthrough::IDENTIFIER
 		{
-			assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
+			assert_eq!(node.inputs.len(), 1, "Passthrough node has more than one input");
 			if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 				let node_input_output_index = output_index;
 				// TODO fix
@@ -1015,20 +1015,20 @@ impl NodeNetwork {
 		Ok(())
 	}
 
-	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
-	pub fn remove_redundant_id_nodes(&mut self) {
-		let id_nodes = self
+	/// Strips out any [`graphene_core::ops::PassthroughNode`]s that are unnecessary.
+	pub fn remove_redundant_passthrough_nodes(&mut self) {
+		let passthrough_nodes = self
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::identity::IDENTIFIER)
+				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER)
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>();
-		for id in id_nodes {
-			if let Err(e) = self.remove_id_node(id) {
+		for id in passthrough_nodes {
+			if let Err(e) = self.remove_passthrough_node(id) {
 				log::warn!("{e}")
 			}
 		}
@@ -1234,16 +1234,16 @@ mod test {
 
 	#[test]
 	fn extract_node() {
-		let id_node = DocumentNode {
+		let passthrough_node = DocumentNode {
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 			..Default::default()
 		};
 		// TODO: Extend test cases to test nested network
 		let mut extraction_network = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
-				id_node.clone(),
+				passthrough_node.clone(),
 				DocumentNode {
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::Extract,
@@ -1260,7 +1260,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &passthrough_node));
 	}
 
 	#[test]
@@ -1475,7 +1475,7 @@ mod test {
 		}
 	}
 
-	fn two_node_identity() -> NodeNetwork {
+	fn two_node_passthrough() -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 			nodes: [
@@ -1483,7 +1483,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1491,7 +1491,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1510,7 +1510,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
-						implementation: DocumentNodeImplementation::Network(two_node_identity()),
+						implementation: DocumentNodeImplementation::Network(two_node_passthrough()),
 						..Default::default()
 					},
 				),
@@ -1518,7 +1518,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1543,7 +1543,7 @@ mod test {
 		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
 		ids.sort();
-		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain identity and values");
+		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain passthrough and values");
 	}
 
 	// TODO: Write more tests

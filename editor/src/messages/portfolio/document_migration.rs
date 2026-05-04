@@ -91,8 +91,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::ops::ExtractXyNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::ops::identity::IDENTIFIER,
+		node: graphene_std::ops::passthrough::IDENTIFIER,
 		aliases: &[
+			"graphene_core::ops::IdentityNode",
 			"graphene_core::transform::CullNode",
 			"graphene_core::transform::BoundlessFootprintNode",
 			"graphene_core::transform::FreezeRealTimeNode",
@@ -107,7 +108,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::memo::MonitorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::memo::memo::IDENTIFIER,
+		node: graphene_std::memo::memoize::IDENTIFIER,
 		aliases: &["graphene_core::memo::MemoNode", "graphene_core::memo::ImpureMemoNode"],
 	},
 	NodeReplacement {
@@ -1064,6 +1065,95 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// The "Brush" wrapper network was replaced with the `brush` proto node directly. Convert old `Network("Brush")` instances to the proto node, forwarding all 3 inputs (Background, Trace, Cache) one-to-one.
+	// This must run as a pre-pass before the recursive iteration below: replacing the outer Brush's network impl orphans its child paths, and the recursive iteration would log errors for those stale paths.
+	let brush_layers: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Brush".into()))).then_some((*node_id, path)))
+		.collect();
+	for (node_id, network_path) in &brush_layers {
+		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
+		// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		for (index, input) in old_inputs.iter().take(3).enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// The "Transform" wrapper network was replaced with the `transform` proto node directly. Convert old `Network("Transform")` instances to the proto node, forwarding the 5 user-facing inputs (Value, Translation, Rotation, Scale, Skew) and dropping the legacy migration sentinels (Origin Offset, Scale Appearance) at indices 5 and 6 if present.
+	// Pre-pass for the same reason as the Brush migration above: replacing the outer Transform's network impl orphans its child paths.
+	let transform_layers: Vec<(NodeId, Vec<NodeId>, usize)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			(document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Transform".into()))).then_some((*node_id, path, node.inputs.len()))
+		})
+		.collect();
+	for (node_id, network_path, old_inputs_count) in &transform_layers {
+		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
+		// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
+		let _ = document.network_interface.outward_wires(network_path);
+		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		// Forward the first 5 inputs (Value, Translation, Rotation, Scale, Skew); drop indices 5 and 6 if present.
+		for (index, input) in old_inputs.iter().take(5).enumerate() {
+			document.network_interface.set_input(&InputConnector::node(*node_id, index), input.clone(), network_path);
+		}
+
+		// Pre-2024 documents stored Transform with 6 inputs and used radians for Rotation and `tan(radians)` for Skew. Detect that legacy
+		// shape (no input at index 6) and convert the units to degrees so the values match what the new Properties panel widgets expect.
+		if *old_inputs_count == 6 {
+			match old_inputs.get(2) {
+				Some(NodeInput::Value { tagged_value, exposed }) => {
+					if let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() {
+						let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), degrees, network_path);
+					}
+				}
+				Some(NodeInput::Node { .. }) => {
+					// Wired upstream: splice in a Multiply node by 180/π that converts radians to degrees so the upstream value
+					// (which represented radians in the legacy format) reaches the now-degrees Rotation input correctly.
+					if let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) {
+						let mut multiply_template = multiply_node.default_node_template();
+						multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+						let multiply_node_id = NodeId::new();
+						if let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) {
+							let multiply_position = transform_position + IVec2::new(-7, 1);
+							document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
+							document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
+							document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
+						}
+					}
+				}
+				_ => {}
+			}
+
+			if let Some(NodeInput::Value { tagged_value, exposed }) = old_inputs.get(4)
+				&& let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner()
+			{
+				// The previous skew value stored `tan(radians)`, now it stores degrees directly.
+				let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
+				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
+			}
+		}
+	}
+
 	// Apply upgrades to each unmodified node.
 	let nodes = document
 		.network_interface
@@ -1677,79 +1767,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
-	// Migrate the Transform node to use degrees instead of radians
-	if reference == DefinitionIdentifier::Network("Transform".into()) && node.inputs.get(6).is_none() {
-		let mut node_template = resolve_network_node_type("Transform")?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		// Value
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		// Translation
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		// Rotation
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		// Scale
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
-		// Skew
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[4].clone(), network_path);
-		// Origin Offset
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false), network_path);
-		// Scale Appearance
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
-
-		// Migrate rotation from radians to degrees
-		match node.inputs.get(2)? {
-			NodeInput::Value { tagged_value, exposed } => {
-				// Read the existing Properties panel number value, which used to be in radians
-				let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() else { return None };
-
-				// Convert the radians to degrees and set it back as the new input value
-				let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 2), degrees, network_path);
-			}
-			NodeInput::Node { .. } => {
-				// Construct a new Multiply node for converting from degrees to radians
-				let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) else {
-					log::error!("Could not get multiply node from definition when upgrading transform");
-					return None;
-				};
-				let mut multiply_template = multiply_node.default_node_template();
-				multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
-
-				// Decide on the placement position of the new Multiply node
-				let multiply_node_id = NodeId::new();
-				let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
-					log::error!("Could not get positon for transform node {node_id}");
-					return None;
-				};
-				let multiply_position = transform_position + IVec2::new(-7, 1);
-
-				// Insert the new Multiply node into the network directly before it's used
-				document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
-				document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
-				document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
-			}
-			_ => {}
-		};
-
-		// Migrate skew from radians to degrees
-		if let NodeInput::Value { tagged_value, exposed } = node.inputs.get(4)? {
-			// Read the existing Properties panel number value, which used to be in radians
-			let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner() else { return None };
-
-			// The previous value stored the tangent of the displayed degrees. Now it stores the degrees, so take the arctan of it and convert to degrees.
-			let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
-			let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
-			document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
-		}
-	}
-
 	// Upgrade the "Animation" node to add the "Rate" input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::animation::animation_time::IDENTIFIER) && inputs_count < 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -1954,7 +1971,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		if let Some(downstream_input) = downstream {
 			// Create a Transform node with translation = start
-			let Some(transform_node_type) = resolve_network_node_type("Transform") else {
+			let Some(transform_node_type) = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER) else {
 				log::error!("Transform node definition not found during Arrow migration");
 				return None;
 			};
@@ -2015,7 +2032,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		if let Some(downstream_input) = downstream {
 			// Create a Transform node with translation = start
-			let Some(transform_node_type) = resolve_network_node_type("Transform") else {
+			let Some(transform_node_type) = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER) else {
 				log::error!("Transform node definition not found during Line migration");
 				return None;
 			};
@@ -2140,7 +2157,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
 	// Collapse the legacy "Sample Polyline" wrapper network into the standalone `sample_polyline` proto node.
 	// The proto node now computes per-bezpath segment lengths inline, so the wrapper's separate `subpath_segment_lengths`
-	// and `Memo` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
+	// and `Memoize` nodes are no longer needed. The 7 user-facing inputs are positionally identical between the
 	// old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
 		&& name == "Sample Polyline"
@@ -2155,7 +2172,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	}
 
 	// Collapse the legacy "Scatter Points" wrapper network into the standalone `scatter_points` proto node.
-	// The wrapper's trailing `Memo` node is now produced automatically by the `memoize` attribute on the
+	// The wrapper's trailing `Memoize` node is now produced automatically by the `memoize` attribute on the
 	// proto node, so the wrapper itself is redundant. The 3 user-facing inputs are positionally identical
 	// between the old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
@@ -2171,7 +2188,7 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	}
 
 	// Collapse the legacy "Boolean Operation" wrapper network into the standalone `boolean_operation` proto node.
-	// The wrapper's trailing `Memo` node is now produced automatically by the `memoize` attribute on the
+	// The wrapper's trailing `Memoize` node is now produced automatically by the `memoize` attribute on the
 	// proto node, so the wrapper itself is redundant. The 2 user-facing inputs are positionally identical
 	// between the old wrapper and the new proto node.
 	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
