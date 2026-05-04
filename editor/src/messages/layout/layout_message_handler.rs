@@ -167,6 +167,14 @@ impl LayoutMessageHandler {
 				};
 				responses.add(callback_message);
 			}
+			Widget::ColorComparisonInput(color_comparison_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_comparison_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => (color_comparison_input.on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ColorInput(color_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
@@ -177,6 +185,20 @@ impl LayoutMessageHandler {
 						};
 						color_button.value = fill_choice;
 						(color_button.on_update.callback)(color_button)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ColorPresetsInput(color_presets_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_presets_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<ColorPresetsInputUpdate>(value) else {
+							warn!("ColorPresetsInput update was not able to be parsed as ColorPresetsInputUpdate");
+							return;
+						};
+						(color_presets_input.on_update.callback)(&update)
 					}
 				};
 
@@ -221,6 +243,30 @@ impl LayoutMessageHandler {
 							return;
 						};
 						(entry.on_update.callback)(&())
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (spectrum_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<SpectrumInputUpdate>(value) else {
+							warn!("SpectrumInput update was not able to be parsed as SpectrumInputUpdate");
+							return;
+						};
+						match &update {
+							SpectrumInputUpdate::Gradient(stops) => spectrum_input.gradient = stops.clone(),
+							SpectrumInputUpdate::ActiveMarker {
+								active_marker_index,
+								active_marker_is_midpoint,
+							} => {
+								spectrum_input.active_marker_index = *active_marker_index;
+								spectrum_input.active_marker_is_midpoint = *active_marker_is_midpoint;
+							}
+						}
+						(spectrum_input.on_update.callback)(&update)
 					}
 				};
 
@@ -383,6 +429,24 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::TextLabel(_) => {}
+			Widget::VisualColorPickersInput(visual_color_pickers_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (visual_color_pickers_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<VisualColorPickersInputUpdate>(value) else {
+							warn!("VisualColorPickersInput update was not able to be parsed as VisualColorPickersInputUpdate");
+							return;
+						};
+						visual_color_pickers_input.hue = update.hue;
+						visual_color_pickers_input.saturation = update.saturation;
+						visual_color_pickers_input.value = update.value;
+						visual_color_pickers_input.alpha = update.alpha;
+						(visual_color_pickers_input.on_update.callback)(visual_color_pickers_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::WorkingColorsInput(_) => {}
 		};
 	}

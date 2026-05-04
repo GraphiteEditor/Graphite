@@ -6,6 +6,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::raster::curve::Curve;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::style::{FillChoice, GradientStops};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -442,6 +443,123 @@ pub struct CurveInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct VisualColorPickersInput {
+	// Content
+	pub hue: f64,
+	pub saturation: f64,
+	pub value: f64,
+	pub alpha: f64,
+	#[serde(rename = "isNone")]
+	pub is_none: bool,
+	pub disabled: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<VisualColorPickersInput>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VisualColorPickersInputUpdate {
+	pub hue: f64,
+	pub saturation: f64,
+	pub value: f64,
+	pub alpha: f64,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct ColorComparisonInput {
+	// Content
+	#[widget_builder(constructor)]
+	#[serde(rename = "newColor")]
+	pub new_color: Option<Color>,
+	#[widget_builder(constructor)]
+	#[serde(rename = "oldColor")]
+	pub old_color: Option<Color>,
+	#[serde(rename = "isNone")]
+	pub is_none: bool,
+	#[serde(rename = "oldIsNone")]
+	pub old_is_none: bool,
+	pub disabled: bool,
+
+	// Callbacks
+	// The `swap` event has no payload — it just signals the user requested a swap.
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct ColorPresetsInput {
+	// Content
+	pub disabled: bool,
+	#[serde(rename = "showNoneOption")]
+	pub show_none_option: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ColorPresetsInputUpdate>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ColorPresetsInputUpdate {
+	Preset(FillChoice),
+	EyedropperColorCode(String),
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct SpectrumInput {
+	// Content
+	#[widget_builder(constructor)]
+	pub gradient: GradientStops,
+	#[serde(rename = "activeMarkerIndex")]
+	pub active_marker_index: Option<u32>,
+	#[serde(rename = "activeMarkerIsMidpoint")]
+	pub active_marker_is_midpoint: bool,
+	pub disabled: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<SpectrumInputUpdate>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum SpectrumInputUpdate {
+	Gradient(GradientStops),
+	ActiveMarker {
+		#[serde(rename = "activeMarkerIndex")]
+		active_marker_index: Option<u32>,
+		#[serde(rename = "activeMarkerIsMidpoint")]
+		active_marker_is_midpoint: bool,
+	},
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

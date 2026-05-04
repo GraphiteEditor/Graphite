@@ -443,7 +443,11 @@ impl LayoutGroup {
 				| Widget::ShortcutLabel(_)
 				| Widget::WorkingColorsInput(_)
 				| Widget::NodeCatalog(_)
-				| Widget::ParameterExposeButton(_) => continue,
+				| Widget::ParameterExposeButton(_)
+				| Widget::ColorComparisonInput(_)
+				| Widget::ColorPresetsInput(_)
+				| Widget::SpectrumInput(_)
+				| Widget::VisualColorPickersInput(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&description);
@@ -758,9 +762,12 @@ impl<T> Default for WidgetCallback<T> {
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
+	ColorComparisonInput(ColorComparisonInput),
 	ColorInput(ColorInput),
+	ColorPresetsInput(ColorPresetsInput),
 	CurveInput(CurveInput),
 	DropdownInput(DropdownInput),
+	SpectrumInput(SpectrumInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
 	ImageButton(ImageButton),
@@ -777,6 +784,7 @@ pub enum Widget {
 	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
+	VisualColorPickersInput(VisualColorPickersInput),
 	WorkingColorsInput(WorkingColorsInput),
 }
 
@@ -834,7 +842,11 @@ impl DiffUpdate {
 				| Widget::TextAreaInput(_)
 				| Widget::TextInput(_)
 				| Widget::TextLabel(_)
-				| Widget::WorkingColorsInput(_) => None,
+				| Widget::WorkingColorsInput(_)
+				| Widget::ColorComparisonInput(_)
+				| Widget::ColorPresetsInput(_)
+				| Widget::SpectrumInput(_)
+				| Widget::VisualColorPickersInput(_) => None,
 			};
 
 			// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
