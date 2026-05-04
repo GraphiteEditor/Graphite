@@ -3,7 +3,8 @@
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import ColorComparisonInput from "/src/components/widgets/inputs/ColorComparisonInput.svelte";
+	import ColorPresetsInput from "/src/components/widgets/inputs/ColorPresetsInput.svelte";
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import SpectrumInput, { MAX_MIDPOINT, MIN_MIDPOINT } from "/src/components/widgets/inputs/SpectrumInput.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
@@ -12,7 +13,6 @@
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { HSV, RGB } from "/src/utility-functions/colors";
 	import {
-		contrastingOutlineFactor,
 		fillChoiceColor,
 		fillChoiceGradientStops,
 		createColor,
@@ -25,32 +25,9 @@
 		colorToRgbCSS,
 		colorContrastingColor,
 		colorOpaque,
-		colorEquals,
 		gradientFirstColor,
 	} from "/src/utility-functions/colors";
 	import type { FillChoice, MenuDirection, Color } from "/wrapper/pkg/graphite_wasm_wrapper";
-
-	type PresetColors = "None" | "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
-
-	const PURE_COLORS: Record<PresetColors, [number, number, number]> = {
-		None: [0, 0, 0],
-		Black: [0, 0, 0],
-		White: [1, 1, 1],
-		Red: [1, 0, 0],
-		Yellow: [1, 1, 0],
-		Green: [0, 1, 0],
-		Cyan: [0, 1, 1],
-		Blue: [0, 0, 1],
-		Magenta: [1, 0, 1],
-	};
-	const PURE_COLORS_GRAYABLE: [PresetColors, string, string][] = [
-		["Red", "#ff0000", "#4c4c4c"],
-		["Yellow", "#ffff00", "#e3e3e3"],
-		["Green", "#00ff00", "#969696"],
-		["Cyan", "#00ffff", "#b2b2b2"],
-		["Blue", "#0000ff", "#1c1c1c"],
-		["Magenta", "#ff00ff", "#696969"],
-	];
 
 	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
 
@@ -116,12 +93,6 @@
 		];
 	})();
 	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
-	$: outlineFactor = Math.max(
-		contrastingOutlineFactor(newColor ? { Solid: newColor } : ("None" as const), "--color-2-mildblack", 0.01),
-		contrastingOutlineFactor(oldColor ? { Solid: oldColor } : ("None" as const), "--color-2-mildblack", 0.01),
-	);
-	$: outlined = outlineFactor > 0.0001;
-	$: transparency = (newColor?.alpha ?? 1) < 1 || (oldColor?.alpha ?? 1) < 1;
 
 	async function watchOpen(open: boolean) {
 		if (open) {
@@ -222,19 +193,18 @@
 		setColor();
 	}
 
-	function setColorPreset(preset: PresetColors) {
+	function setColorPreset(preset: Color | "None") {
 		dispatch("startHistoryTransaction");
 
 		if (preset === "None") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor("None");
 		} else {
-			const presetColor = createColor(...PURE_COLORS[preset], 1);
-			const hsv = colorToHSV(presetColor);
+			const hsv = colorToHSV(preset);
 			if (!hsv) return;
 
-			setNewHSVA(hsv.h, hsv.s, hsv.v, presetColor.alpha, false);
-			setColor(presetColor);
+			setNewHSVA(hsv.h, hsv.s, hsv.v, preset.alpha, false);
+			setColor(preset);
 		}
 	}
 
@@ -252,26 +222,6 @@
 		oldValue = v;
 		oldAlpha = a;
 		oldIsNone = none;
-	}
-
-	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool
-	function eyedropperSupported(): boolean {
-		// TODO: Implement support in the desktop app for OS-level color picking
-		if (import.meta.env.MODE === "native") return false;
-
-		return window.EyeDropper !== undefined;
-	}
-
-	async function activateEyedropperSample() {
-		if (!eyedropperSupported()) return;
-
-		try {
-			const result = await new EyeDropper().open();
-			dispatch("startHistoryTransaction");
-			setColorCode(result.sRGBHex);
-		} catch {
-			// Do nothing
-		}
 	}
 
 	function gradientActiveMarkerIndexChange({ detail: { activeMarkerIndex, activeMarkerIsMidpoint } }: CustomEvent<{ activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }>) {
@@ -324,7 +274,7 @@
 				on:dragStateChange={({ detail }) => (strayCloses = !detail)}
 			/>
 			{#if gradient}
-				<LayoutRow class="gradient">
+				<LayoutRow>
 					<SpectrumInput
 						{gradient}
 						{disabled}
@@ -354,28 +304,7 @@
 			{/if}
 		</LayoutCol>
 		<LayoutCol class="details">
-			<LayoutRow
-				class="choice-preview"
-				classes={{ outlined, transparency }}
-				styles={{ "--outline-amount": outlineFactor }}
-				tooltipDescription={!colorEquals(newColor, oldColor) ? "Comparison between the present color choice (left) and the color before it was changed (right)." : "The present color choice."}
-			>
-				{#if !colorEquals(newColor, oldColor) && !disabled}
-					<div class="swap-button-background"></div>
-					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltipLabel="Swap" />
-				{/if}
-				<LayoutCol class="new-color" classes={{ none: isNone }}>
-					{#if !colorEquals(newColor, oldColor)}
-						<TextLabel>New</TextLabel>
-					{/if}
-				</LayoutCol>
-				{#if !colorEquals(newColor, oldColor)}
-					<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
-						<TextLabel>Old</TextLabel>
-					</LayoutCol>
-				{/if}
-			</LayoutRow>
-			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltipDescription="Color model, color space, and HDR (coming soon)." /> -->
+			<ColorComparisonInput {newColor} {oldColor} {isNone} {oldIsNone} {disabled} on:swap={swapNewWithOld} />
 			<LayoutRow>
 				{@const hexDescription = "Color code in hexadecimal format. 6 digits if opaque, 8 with alpha. Accepts input of CSS color values including named colors."}
 				<TextLabel tooltipLabel="Hex Color Code" tooltipDescription={hexDescription}>Hex</TextLabel>
@@ -488,53 +417,16 @@
 					tooltipDescription={alphaDescription}
 				/>
 			</LayoutRow>
-			<LayoutRow class="leftover-space" />
-			<LayoutRow>
-				{#if allowNone && !gradient}
-					<button
-						class="preset-color none"
-						{disabled}
-						on:click={() => setColorPreset("None")}
-						data-tooltip-label="Set to No Color"
-						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-						tabindex="0"
-					></button>
-					<Separator style="Related" />
-				{/if}
-				<button
-					class="preset-color black"
-					{disabled}
-					on:click={() => setColorPreset("Black")}
-					data-tooltip-label="Set to Black"
-					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-					tabindex="0"
-				></button>
-				<Separator style="Related" />
-				<button
-					class="preset-color white"
-					{disabled}
-					on:click={() => setColorPreset("White")}
-					data-tooltip-label="Set to White"
-					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-					tabindex="0"
-				></button>
-				<Separator style="Related" />
-				<button class="preset-color pure" {disabled} tabindex="-1">
-					{#each PURE_COLORS_GRAYABLE as [preset, color, gray]}
-						<div
-							on:click={() => setColorPreset(preset)}
-							style:--pure-color={color}
-							style:--pure-color-gray={gray}
-							data-tooltip-label={`Set to ${preset}`}
-							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-						></div>
-					{/each}
-				</button>
-				{#if eyedropperSupported()}
-					<Separator style="Related" />
-					<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
-				{/if}
-			</LayoutRow>
+			<Separator style="Unrelated" />
+			<ColorPresetsInput
+				{disabled}
+				showNoneOption={allowNone && !gradient}
+				on:preset={({ detail }) => setColorPreset(detail)}
+				on:eyedropperColorCode={({ detail }) => {
+					dispatch("startHistoryTransaction");
+					setColorCode(detail);
+				}}
+			/>
 		</LayoutCol>
 	</LayoutRow>
 </FloatingMenu>
@@ -544,7 +436,7 @@
 		--widget-height: 24px;
 
 		.pickers-and-gradient {
-			.gradient {
+			.layout-row:has(.spectrum-input) {
 				margin-top: 16px;
 
 				.spectrum-input {
@@ -566,7 +458,6 @@
 			gap: 8px;
 
 			> .layout-row {
-				height: 24px;
 				flex: 0 0 auto;
 
 				> .text-label {
@@ -574,191 +465,12 @@
 					flex: 0 0 34px;
 					line-height: 24px;
 				}
-
-				&.leftover-space {
-					flex: 1 1 100%;
-				}
 			}
 
-			.choice-preview {
-				flex: 0 0 auto;
-				width: 100%;
-				height: 32px;
-				border-radius: 2px;
-				box-sizing: border-box;
-				overflow: hidden;
-				position: relative;
-
-				&.outlined::after {
-					content: "";
-					pointer-events: none;
-					position: absolute;
-					top: 0;
-					bottom: 0;
-					left: 0;
-					right: 0;
-					box-shadow: inset 0 0 0 1px rgba(var(--color-0-black-rgb), var(--outline-amount));
-				}
-
-				&.transparency {
-					background-image: var(--color-transparent-checkered-background);
-					background-size: var(--color-transparent-checkered-background-size);
-					background-position: var(--color-transparent-checkered-background-position);
-					background-repeat: var(--color-transparent-checkered-background-repeat);
-				}
-
-				.swap-button-background {
-					overflow: hidden;
-					position: absolute;
-					mix-blend-mode: multiply;
-					opacity: 0.25;
-					border-radius: 2px;
-					width: 16px;
-					height: 16px;
-					top: 50%;
-					left: 50%;
-					transform: translate(-50%, -50%);
-
-					&::before,
-					&::after {
-						content: "";
-						position: absolute;
-						width: 50%;
-						height: 100%;
-					}
-
-					&::before {
-						left: 0;
-						background: var(--new-color-contrasting);
-					}
-
-					&::after {
-						right: 0;
-						background: var(--old-color-contrasting);
-					}
-				}
-
-				.swap-button {
-					position: absolute;
-					transform: translate(-50%, -50%);
-					top: 50%;
-					left: 50%;
-				}
-
-				.new-color {
-					background: var(--new-color);
-
-					.text-label {
-						text-align: left;
-						margin: 2px 8px;
-						color: var(--new-color-contrasting);
-					}
-				}
-
-				.old-color {
-					background: var(--old-color);
-
-					.text-label {
-						text-align: right;
-						margin: 2px 8px;
-						color: var(--old-color-contrasting);
-					}
-				}
-
-				.new-color,
-				.old-color {
-					width: 50%;
-					height: 100%;
-
-					&.none {
-						background: var(--color-none);
-						background-repeat: var(--color-none-repeat);
-						background-position: var(--color-none-position);
-						background-size: var(--color-none-size-32px);
-						background-image: var(--color-none-image-32px);
-
-						.text-label {
-							// Many stacked white shadows helps to increase the opacity and approximate shadow spread which does not exist for text shadows
-							text-shadow:
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white,
-								0 0 4px white;
-						}
-					}
-				}
-			}
-
-			.preset-color {
-				border: none;
-				margin: 0;
-				padding: 0;
-				border-radius: 2px;
-				height: 24px;
+			> .separator.unrelated {
 				flex: 1 1 100%;
-
-				&.none {
-					background: var(--color-none);
-					background-repeat: var(--color-none-repeat);
-					background-position: var(--color-none-position);
-					background-size: var(--color-none-size-24px);
-					background-image: var(--color-none-image-24px);
-
-					&,
-					& ~ .black,
-					& ~ .white {
-						width: 48px;
-					}
-				}
-
-				&.black {
-					background: black;
-				}
-
-				&.white {
-					background: white;
-				}
-
-				&.pure {
-					width: 24px;
-					font-size: 0;
-					overflow: hidden;
-					flex: 0 0 auto;
-
-					div {
-						display: inline-block;
-						width: calc(100% / 3);
-						height: 50%;
-						// For the least jarring luminance conversion, these colors are derived by placing a black layer with the "desaturate" blend mode over the colors.
-						// We don't use the CSS `filter: grayscale(1);` property because it produces overly dark tones for bright colors with a noticeable jump on hover.
-						background: var(--pure-color-gray);
-						transition: background-color 0.1s;
-					}
-
-					&:hover div {
-						background: var(--pure-color);
-					}
-				}
+				width: unset;
 			}
-		}
-
-		&.disabled .details .preset-color,
-		&.disabled .details .choice-preview {
-			transition: opacity 0.1s;
-
-			&:hover {
-				opacity: 0.5;
-			}
-		}
-
-		&.disabled .details .preset-color.pure:hover div {
-			background: var(--pure-color-gray);
 		}
 	}
 </style>
