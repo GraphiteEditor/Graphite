@@ -227,6 +227,20 @@ fn text_path_spacing_adjustment(spacing: TextPathSpacing, lut: &ArcLengthLut, mi
 	}
 }
 
+fn point_on_path(lut: &ArcLengthLut, s: f64) -> (kurbo::Point, f64) {
+	if lut.is_closed {
+		lut.at_or_zero(s.rem_euclid(lut.total_length))
+	} else {
+		at_with_extension(lut, s)
+	}
+}
+
+fn stretch_point_on_path(lut: &ArcLengthLut, point: DVec2, origin: f64, advance_scale: f64, baseline_offset: f64) -> DVec2 {
+	let (path_point, angle) = point_on_path(lut, origin + point.x * advance_scale);
+	let normal = DVec2::new(-angle.sin(), angle.cos());
+	DVec2::new(path_point.x, path_point.y) + normal * (point.y + baseline_offset)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn place_text_on_path<Upstream: Default + 'static>(
 	text: &str,
@@ -246,11 +260,6 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 	rtl: bool,
 	font_cache: &crate::FontCache,
 ) -> Table<Vector<Upstream>> {
-	// TODO: Support method="stretch" (warp glyph outlines along path perpendiculars)
-	if method == TextPathMethod::Stretch {
-		log::warn!("textPath method='stretch' is not yet implemented; falling back to 'align'");
-	}
-
 	let Some(original_bezpath) = path_table.iter().next().and_then(|row| row.element.stroke_bezpath_iter().find(|p| p.segments().next().is_some())) else {
 		return Table::new();
 	};
@@ -325,15 +334,23 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 					glyph_index += 1;
 
 					if !is_glyph_hidden(adjusted_mid, abs_offset, lut.total_length, lut.is_closed, text_anchor, rtl) {
-						let effective_mid = if lut.is_closed { adjusted_mid.rem_euclid(lut.total_length) } else { adjusted_mid };
-						let (point, angle) = if lut.is_closed { lut.at_or_zero(effective_mid) } else { at_with_extension(&lut, effective_mid) };
-
 						if let Some(glyph_outline) = outlines.get(skrifa::GlyphId::from(glyph.id)) {
-							let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y))
-								* DAffine2::from_angle(angle)
-								* DAffine2::from_translation(DVec2::new(-scaled_advance / 2.0, -glyph.y as f64))
-								* DAffine2::from_scale(DVec2::new(advance_scale, 1.0));
-							path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, true);
+							match method {
+								TextPathMethod::Align => {
+									let (point, angle) = point_on_path(&lut, adjusted_mid);
+									let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y))
+										* DAffine2::from_angle(angle) * DAffine2::from_translation(DVec2::new(-scaled_advance / 2.0, -glyph.y as f64))
+										* DAffine2::from_scale(DVec2::new(advance_scale, 1.0));
+									path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, true);
+								}
+								TextPathMethod::Stretch => {
+									let stretch_origin = adjusted_mid - scaled_advance / 2.0;
+									let baseline_offset = -glyph.y as f64;
+									path_builder.draw_glyph_with_mapping(&glyph_outline, font_size, &normalized_coords, style_skew, |point| {
+										stretch_point_on_path(&lut, point, stretch_origin, advance_scale, baseline_offset)
+									});
+								}
+							}
 						}
 					}
 				});

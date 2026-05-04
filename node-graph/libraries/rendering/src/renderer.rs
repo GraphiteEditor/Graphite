@@ -50,6 +50,14 @@ impl MaskType {
 	}
 }
 
+fn escape_xml_attr(value: &str) -> String {
+	value.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+fn escape_xml_text(value: &str) -> String {
+	value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
 /// Mutable state used whilst rendering to an SVG
 pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
@@ -790,10 +798,14 @@ impl Render for Table<Vector> {
 			if render_params.for_export {
 				if let Some(ref meta) = row.element.text_on_path_metadata {
 					let path_id = format!("textpath-{}", generate_uuid());
-					write!(&mut render.svg_defs, r#"<path id="{path_id}" d="{}" fill="none"/>"#, meta.path_d).unwrap();
+					write!(&mut render.svg_defs, r#"<path id="{path_id}" d="{}" fill="none"/>"#, escape_xml_attr(&meta.path_d)).unwrap();
 
-					let font_style_css = format!("font-family: {}; font-size: {}px; font-style: {};", meta.font_family, meta.font_size, meta.font_style);
-					let start_offset_attr = if meta.start_offset_percent { format!("{}%", meta.start_offset * 100.0) } else { format!("{}", meta.start_offset) };
+					let font_style_css = escape_xml_attr(&format!("font-family: {}; font-size: {}px; font-style: {};", meta.font_family, meta.font_size, meta.font_style));
+					let start_offset_attr = if meta.start_offset_percent {
+						format!("{}%", meta.start_offset * 100.0)
+					} else {
+						format!("{}", meta.start_offset)
+					};
 					let matrix = format_transform_matrix(*row.transform);
 					let transform_attr = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 					let text_length_attr = meta.text_length.map(|tl| format!(r#" textLength="{tl}" lengthAdjust="{}""#, meta.length_adjust)).unwrap_or_default();
@@ -801,7 +813,7 @@ impl Render for Table<Vector> {
 					let anchor_style = format!("text-anchor: {};", meta.text_anchor);
 					let method = &meta.method;
 					let spacing = &meta.spacing;
-					let text = &meta.text;
+					let text = escape_xml_text(&meta.text);
 
 					render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}>{text}</textPath></text>"##));
 					continue;

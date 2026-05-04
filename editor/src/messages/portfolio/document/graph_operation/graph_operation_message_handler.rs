@@ -402,6 +402,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				let svg = svg.replace("font-family=\"sans-serif\"", "font-family=\"Source Sans Pro\"");
 				let svg = svg.replace("font-family='sans-serif'", "font-family='Source Sans Pro'");
+				let svg = prepare_svg_textpath_direct_paths(&svg);
 
 				let tree = match usvg::Tree::from_str(&svg, &options) {
 					Ok(t) => t,
@@ -544,6 +545,76 @@ fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
 	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
 	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
 	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+}
+
+fn prepare_svg_textpath_direct_paths(svg: &str) -> String {
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return svg.to_string(),
+	};
+
+	let mut edits = Vec::new();
+	let mut defs = String::new();
+	for (index, node) in doc.descendants().filter(|node| node.tag_name().name() == "textPath").enumerate() {
+		let Some(path_data) = node.attribute("path").filter(|path| !path.trim().is_empty()) else {
+			continue;
+		};
+
+		let path_id = format!("graphite-textpath-direct-{index}");
+		defs.push_str(&format!(r#"<path id="{path_id}" d="{}"/>"#, escape_xml_attr(path_data)));
+
+		if let Some(href_attr) = node
+			.attributes()
+			.find(|attr| attr.name() == "href" && (attr.namespace().is_none() || attr.namespace() == Some(XLINK_NAMESPACE)))
+		{
+			edits.push((href_attr.range_value(), format!("#{path_id}")));
+		} else if let Some(insert_at) = textpath_start_tag_name_end(svg, node) {
+			edits.push((insert_at..insert_at, format!(r##" href="#{path_id}""##)));
+		}
+	}
+
+	if defs.is_empty() {
+		return svg.to_string();
+	}
+
+	if let Some(insert_at) = svg_root_start_tag_end(svg, doc.root_element()) {
+		edits.push((insert_at..insert_at, format!("<defs>{defs}</defs>")));
+	}
+
+	apply_string_edits(svg, edits)
+}
+
+fn textpath_start_tag_name_end(svg: &str, node: usvg::roxmltree::Node) -> Option<usize> {
+	let start = node.range().start + 1;
+	svg.get(start..)?
+		.char_indices()
+		.find_map(|(offset, c)| matches!(c, ' ' | '\t' | '\n' | '\r' | '/' | '>').then_some(start + offset))
+}
+
+fn svg_root_start_tag_end(svg: &str, root: usvg::roxmltree::Node) -> Option<usize> {
+	let mut quote = None;
+	for (offset, c) in svg.get(root.range().start..)?.char_indices() {
+		match (quote, c) {
+			(Some(q), c) if c == q => quote = None,
+			(None, '"' | '\'') => quote = Some(c),
+			(None, '>') => return Some(root.range().start + offset + 1),
+			_ => {}
+		}
+	}
+	None
+}
+
+fn apply_string_edits(source: &str, mut edits: Vec<(std::ops::Range<usize>, String)>) -> String {
+	edits.sort_by_key(|(range, _)| range.start);
+	let mut result = source.to_string();
+	for (range, replacement) in edits.into_iter().rev() {
+		result.replace_range(range, &replacement);
+	}
+	result
+}
+
+fn escape_xml_attr(value: &str) -> String {
+	value.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 #[derive(Debug, Default, Clone)]

@@ -32,7 +32,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		Point::new(x as f64, -y as f64)
 	}
 
-	pub fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, final_transform: DAffine2, per_glyph_instances: bool) {
+	fn outline_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord]) -> bool {
 		self.glyph_subpaths.clear();
 		self.current_segments.clear();
 		self.current_point = Point::ZERO;
@@ -40,12 +40,20 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		let settings = DrawSettings::unhinted(Size::new(size), normalized_coords);
 		if let Err(e) = glyph.draw(settings, self) {
 			log::error!("Failed to draw glyph: {:?}", e);
-			return;
+			return false;
 		}
 
 		if !self.current_segments.is_empty() {
 			self.glyph_subpaths.push(Subpath::from_beziers(&self.current_segments, false));
 			self.current_segments.clear();
+		}
+
+		true
+	}
+
+	pub fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, final_transform: DAffine2, per_glyph_instances: bool) {
+		if !self.outline_glyph(glyph, size, normalized_coords) {
+			return;
 		}
 
 		let transform = if self.is_text_on_path {
@@ -70,6 +78,30 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 				current_vector.element.concat(&vector, DAffine2::IDENTITY, 0);
 			}
 		}
+	}
+
+	pub fn draw_glyph_with_mapping(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, mapping_function: impl Fn(DVec2) -> DVec2) {
+		if !self.outline_glyph(glyph, size, normalized_coords) {
+			return;
+		}
+
+		let subpaths = std::mem::take(&mut self.glyph_subpaths)
+			.into_iter()
+			.map(|mut subpath| {
+				for manipulator_group in subpath.manipulator_groups_mut() {
+					let transform_point = |point| {
+						let point = style_skew.map_or(point, |skew| skew.transform_point2(point));
+						mapping_function(point)
+					};
+					manipulator_group.anchor = transform_point(manipulator_group.anchor);
+					manipulator_group.in_handle = manipulator_group.in_handle.map(transform_point);
+					manipulator_group.out_handle = manipulator_group.out_handle.map(transform_point);
+				}
+				subpath
+			})
+			.collect::<Vec<_>>();
+
+		self.vector_table.push(TableRow::new_from_element(Vector::from_subpaths(subpaths, false)));
 	}
 
 	pub fn render_glyph_run(&mut self, glyph_run: &parley::GlyphRun<'_, ()>, tilt: f64, per_glyph_instances: bool) {
