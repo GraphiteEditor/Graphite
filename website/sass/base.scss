@@ -227,23 +227,34 @@ body > .page {
 		.ripple {
 			display: block;
 			background: none;
-			// Covers up content that extends up underneath the header
-			fill: white;
-			stroke: currentColor;
-			--ripple-height: 16px;
+			// Total SVG height splits into space above the baseline (for raised bumps and wave crests) and space below (for wave troughs that dip into the page body)
+			--ripple-height: 32px;
+			--ripple-baseline-from-top: 16px;
+			--ripple-taper-half-width: 40px;
 			height: var(--ripple-height);
-			margin-top: calc(-1 * var(--ripple-height) + var(--border-thickness));
-			margin-bottom: calc(-1 * var(--border-thickness));
-			stroke-width: var(--border-thickness);
+			margin-top: calc(-1 * var(--ripple-baseline-from-top) + var(--border-thickness));
+			margin-bottom: calc(-1 * (var(--ripple-height) - var(--ripple-baseline-from-top)) - var(--border-thickness));
+			// Allow taper polygons (apex at +/- 40px) and wave crests/troughs to spill outside the SVG box; the path's off-screen fill corners are still drawn within bounds since the line/mask are split
+			overflow: visible;
+			clip-path: inset(-100px calc(-1 * var(--ripple-taper-half-width)) -100px calc(-1 * var(--ripple-taper-half-width)));
+			pointer-events: none;
 
-			&::before,
-			&::after {
-				content: none;
+			.ripple-mask {
+				// Covers up content that extends up underneath the header
+				fill: white;
+				stroke: none;
 			}
-		}
 
-		hr {
-			background: none;
+			.ripple-line {
+				fill: none;
+				stroke: currentColor;
+				stroke-width: var(--border-thickness);
+			}
+
+			polygon {
+				fill: currentColor;
+				stroke: none;
+			}
 		}
 
 		@media screen and (max-width: 1400px) {
