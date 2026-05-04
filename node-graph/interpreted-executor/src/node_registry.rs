@@ -17,7 +17,7 @@ use graphene_std::raster::color::Color;
 use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::render_node::RenderIntermediate;
-use graphene_std::table::Table;
+use graphene_std::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn};
 use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
@@ -42,6 +42,54 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: Table<Raster<CPU>>, to: Table<Graphic>),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: Table<Raster<GPU>>, to: Table<Graphic>),
+		// Type-erased attribute column conversions for the `Attach Attribute` node, so it monomorphizes only over the destination table type.
+		convert_node!(from: Table<Artboard>, to: AttributeColumnDyn),
+		convert_node!(from: Table<Graphic>, to: AttributeColumnDyn),
+		convert_node!(from: Table<Vector>, to: AttributeColumnDyn),
+		convert_node!(from: Table<Raster<CPU>>, to: AttributeColumnDyn),
+		convert_node!(from: Table<Color>, to: AttributeColumnDyn),
+		convert_node!(from: Table<GradientStops>, to: AttributeColumnDyn),
+		convert_node!(from: Table<f64>, to: AttributeColumnDyn),
+		convert_node!(from: Table<bool>, to: AttributeColumnDyn),
+		convert_node!(from: Table<String>, to: AttributeColumnDyn),
+		convert_node!(from: Table<DAffine2>, to: AttributeColumnDyn),
+		convert_node!(from: Table<BlendMode>, to: AttributeColumnDyn),
+		convert_node!(from: Table<graphene_std::vector::style::GradientType>, to: AttributeColumnDyn),
+		convert_node!(from: Table<graphene_std::vector::style::GradientSpreadMethod>, to: AttributeColumnDyn),
+		convert_node!(from: Table<Artboard>, to: TableDyn),
+		convert_node!(from: Table<Graphic>, to: TableDyn),
+		convert_node!(from: Table<Vector>, to: TableDyn),
+		convert_node!(from: Table<Raster<CPU>>, to: TableDyn),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Raster<GPU>>, to: TableDyn),
+		convert_node!(from: Table<Color>, to: TableDyn),
+		convert_node!(from: Table<GradientStops>, to: TableDyn),
+		convert_node!(from: Table<f64>, to: TableDyn),
+		convert_node!(from: Table<bool>, to: TableDyn),
+		convert_node!(from: Table<String>, to: TableDyn),
+		convert_node!(from: Table<u8>, to: TableDyn),
+		convert_node!(from: Table<NodeId>, to: TableDyn),
+		convert_node!(from: Table<DAffine2>, to: TableDyn),
+		convert_node!(from: Table<BlendMode>, to: TableDyn),
+		convert_node!(from: Table<graphene_std::vector::style::GradientType>, to: TableDyn),
+		convert_node!(from: Table<graphene_std::vector::style::GradientSpreadMethod>, to: TableDyn),
+		// Type-erased attribute value conversions for the `Write Attribute` node, so it monomorphizes only over the destination table type.
+		convert_node!(from: f64, to: AttributeValueDyn),
+		convert_node!(from: u32, to: AttributeValueDyn),
+		convert_node!(from: u64, to: AttributeValueDyn),
+		convert_node!(from: bool, to: AttributeValueDyn),
+		convert_node!(from: String, to: AttributeValueDyn),
+		convert_node!(from: DVec2, to: AttributeValueDyn),
+		convert_node!(from: DAffine2, to: AttributeValueDyn),
+		convert_node!(from: Color, to: AttributeValueDyn),
+		convert_node!(from: BlendMode, to: AttributeValueDyn),
+		convert_node!(from: graphene_std::vector::style::GradientType, to: AttributeValueDyn),
+		convert_node!(from: graphene_std::vector::style::GradientSpreadMethod, to: AttributeValueDyn),
+		convert_node!(from: Table<String>, to: AttributeValueDyn),
+		convert_node!(from: Table<NodeId>, to: AttributeValueDyn),
+		convert_node!(from: Table<Color>, to: AttributeValueDyn),
+		convert_node!(from: Table<GradientStops>, to: AttributeValueDyn),
+		convert_node!(from: Table<Graphic>, to: AttributeValueDyn),
 		// into_node!(from: Table<Raster<CPU>>, to: Table<Raster<SRGBA8>>),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &PlatformEditorApi, to: &WgpuExecutor),
@@ -104,6 +152,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Table<BlendMode>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Table<graphene_std::vector::style::GradientType>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Table<graphene_std::vector::style::GradientSpreadMethod>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeColumnDyn]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => TableDyn]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Graphic]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::text::Font]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Table<BrushStroke>]),
@@ -143,6 +194,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => &PlatformEditorApi, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderOutput, Context => graphene_std::ContextFeatures]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeColumnDyn, Context => graphene_std::ContextFeatures]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn, Context => graphene_std::ContextFeatures]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => TableDyn, Context => graphene_std::ContextFeatures]),
 		#[cfg(target_family = "wasm")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => CanvasHandle, Context => graphene_std::ContextFeatures]),
 		// ==========
@@ -166,6 +220,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Table<BlendMode>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Table<graphene_std::vector::style::GradientType>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Table<graphene_std::vector::style::GradientSpreadMethod>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeColumnDyn]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => AttributeValueDyn]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => TableDyn]),
 		#[cfg(target_family = "wasm")]
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => CanvasHandle]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => f64]),

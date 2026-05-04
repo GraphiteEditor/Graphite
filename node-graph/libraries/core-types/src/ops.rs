@@ -1,7 +1,8 @@
 use crate::Node;
-use crate::table::{Table, TableRow};
+use crate::table::{AttributeColumnDyn, AttributeValueDyn, Column, Table, TableDyn, TableRow};
 use crate::transform::Footprint;
 use glam::DVec2;
+use graphene_hash::CacheHash;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -68,6 +69,34 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 			})
 			.collect();
 		table
+	}
+}
+
+/// Wraps each row's element into a type-erased column. Lets nodes that accept a source attribute
+/// from any `Table<U>` express their signature as `AttributeColumnDyn` and avoid monomorphizing
+/// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
+impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeColumnDyn, ()> for Table<T> {
+	async fn convert(self, _: Footprint, _: ()) -> AttributeColumnDyn {
+		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
+		AttributeColumnDyn(Box::new(Column(values)))
+	}
+}
+
+/// Wraps a value into a type-erased attribute value. Lets nodes that take a per-item value source
+/// (such as `write_attribute`'s value-producing input) be generic over the destination table type
+/// alone, with the compiler-inserted convert handling each concrete value type at the wire level.
+impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeValueDyn, ()> for T {
+	async fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
+		AttributeValueDyn(Box::new(self))
+	}
+}
+
+/// Erases a `Table<T>`'s element type, exposing only its attributes and row count. Lets nodes that
+/// only need attribute access (such as the `read_attribute_*` family) take a single `TableDyn` input
+/// instead of monomorphizing over every possible carrier table type.
+impl<T: Send> Convert<TableDyn, ()> for Table<T> {
+	async fn convert(self, _: Footprint, _: ()) -> TableDyn {
+		self.into()
 	}
 }
 
