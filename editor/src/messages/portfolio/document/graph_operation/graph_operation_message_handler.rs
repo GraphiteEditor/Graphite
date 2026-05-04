@@ -394,8 +394,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				center,
 			} => {
 				let mut options = usvg::Options::default();
-				options.fontdb_mut().load_font_data(include_bytes!("../overlays/source-sans-pro-regular.ttf").to_vec());
 				options.font_family = "Source Sans Pro".to_string();
+				let fontdb = options.fontdb_mut();
+				fontdb.load_font_data(include_bytes!("../overlays/source-sans-pro-regular.ttf").to_vec());
+				fontdb.set_serif_family("Source Sans Pro");
+				fontdb.set_sans_serif_family("Source Sans Pro");
 
 				let svg = svg.replace("font-family=\"sans-serif\"", "font-family=\"Source Sans Pro\"");
 				let svg = svg.replace("font-family='sans-serif'", "font-family='Source Sans Pro'");
@@ -473,6 +476,7 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
+const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
 
 /// Pre-parses the raw SVG XML to extract gradient stops that have `graphite:midpoint` attributes.
 /// Graphite exports gradients with midpoint curve data by writing interpolated approximation stops
@@ -559,8 +563,10 @@ fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<
 	};
 	for node in doc.descendants() {
 		if node.tag_name().name() == "textPath" {
-			let id = node.attribute("id").unwrap_or("").to_string();
-			map.entry(id).or_default().push(TextPathAttrs {
+			let Some(path_id) = textpath_href_id(node) else {
+				continue;
+			};
+			map.entry(path_id).or_default().push(TextPathAttrs {
 				method: node.attribute("method").map(str::to_string),
 				spacing: node.attribute("spacing").map(str::to_string),
 				side: node.attribute("side").map(str::to_string),
@@ -570,6 +576,13 @@ fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<
 		}
 	}
 	map
+}
+
+fn textpath_href_id(node: usvg::roxmltree::Node) -> Option<String> {
+	node.attribute((XLINK_NAMESPACE, "href"))
+		.or_else(|| node.attribute("href"))
+		.and_then(|href| href.strip_prefix('#'))
+		.map(str::to_string)
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -625,12 +638,14 @@ fn import_usvg_node(
 			modify_inputs.network_interface.unload_all_nodes_bounding_box(&[]);
 		}
 		usvg::Node::Path(path) => {
+			log::info!("Importing node as Path: id={}", node.id());
 			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 		}
 		usvg::Node::Image(_image) => {
 			warn!("Skip image");
 		}
 		usvg::Node::Text(text) => {
+			log::info!("Importing node as Text: id={}", node.id());
 			import_usvg_text(modify_inputs, text, node.abs_transform(), layer, parent, insert_index, textpath_attrs);
 		}
 	}
@@ -711,8 +726,16 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	}
 }
 
-fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, transform: usvg::Transform, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize, textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>) {
-	use graphene_std::text::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing};
+fn import_usvg_text(
+	modify_inputs: &mut ModifyInputsContext,
+	text: &usvg::Text,
+	transform: usvg::Transform,
+	layer: LayerNodeIdentifier,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
+) {
+	log::info!("Importing usvg text node with {} chunks", text.chunks().len());
 
 	for (i, chunk) in text.chunks().iter().enumerate() {
 		let current_layer = if i == 0 {
@@ -738,35 +761,76 @@ fn import_usvg_text(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text, 
 
 		if let usvg::TextFlow::Path(text_path) = chunk.text_flow() {
 			let tp_id = text_path.id();
-			let tp_attrs = textpath_attrs.get_mut(tp_id).and_then(|vec| if !vec.is_empty() { Some(vec.remove(0)) } else { None }).unwrap_or_default();
+			let tp_attrs = take_textpath_attrs(textpath_attrs, tp_id);
 			let path_subpaths = convert_tiny_skia_path(text_path.path());
 			let start_offset = text_path.start_offset() as f64;
-			let anchor = match chunk.anchor() {
-				usvg::TextAnchor::Start => TextAnchor::Start,
-				usvg::TextAnchor::Middle => TextAnchor::Middle,
-				usvg::TextAnchor::End => TextAnchor::End,
-			};
 
-			let affine = DAffine2::from_cols_array(&[
-				transform.sx as f64,
-				transform.ky as f64,
-				transform.kx as f64,
-				transform.sy as f64,
-				transform.tx as f64,
-				transform.ty as f64,
-			]);
-			let method = if tp_attrs.method.as_deref() == Some("stretch") { TextPathMethod::Stretch } else { TextPathMethod::Align };
-			let spacing = if tp_attrs.spacing.as_deref() == Some("auto") { TextPathSpacing::Auto } else { TextPathSpacing::Exact };
-			let side = if tp_attrs.side.as_deref() == Some("right") { TextPathSide::Right } else { TextPathSide::Left };
-			let length_adjust = if tp_attrs.length_adjust.as_deref() == Some("spacingAndGlyphs") { LengthAdjust::SpacingAndGlyphs } else { LengthAdjust::Spacing };
-
-			modify_inputs.insert_text_on_path(chunk.text().to_string(), font, font_size, letter_spacing, path_subpaths, start_offset, anchor, side, method, spacing, tp_attrs.text_length, length_adjust, affine, current_layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			modify_inputs.insert_text_on_path(
+				chunk.text().to_string(),
+				font,
+				font_size,
+				letter_spacing,
+				path_subpaths,
+				start_offset,
+				text_anchor(chunk.anchor()),
+				text_path_side(&tp_attrs),
+				text_path_method(&tp_attrs),
+				text_path_spacing(&tp_attrs),
+				tp_attrs.text_length,
+				text_length_adjust(&tp_attrs),
+				usvg_transform(transform),
+				current_layer,
+			);
+			if let Some(fill) = chunk.spans().first().and_then(|span| span.fill()) {
+				apply_usvg_fill(fill, modify_inputs, DAffine2::IDENTITY, &HashMap::new());
+			}
 		} else {
 			// Regular text fallback
 			modify_inputs.insert_text(chunk.text().to_string(), font, TypesettingConfig { font_size, ..Default::default() }, current_layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+			if let Some(fill) = chunk.spans().first().and_then(|span| span.fill()) {
+				apply_usvg_fill(fill, modify_inputs, DAffine2::IDENTITY, &HashMap::new());
+			}
 		}
+	}
+}
+
+fn take_textpath_attrs(textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>, path_id: &str) -> TextPathAttrs {
+	textpath_attrs.get_mut(path_id).and_then(|attrs| (!attrs.is_empty()).then(|| attrs.remove(0))).unwrap_or_default()
+}
+
+fn text_anchor(anchor: usvg::TextAnchor) -> graphene_std::text::TextAnchor {
+	match anchor {
+		usvg::TextAnchor::Start => graphene_std::text::TextAnchor::Start,
+		usvg::TextAnchor::Middle => graphene_std::text::TextAnchor::Middle,
+		usvg::TextAnchor::End => graphene_std::text::TextAnchor::End,
+	}
+}
+
+fn text_path_side(attrs: &TextPathAttrs) -> graphene_std::text::TextPathSide {
+	match attrs.side.as_deref() {
+		Some("right") => graphene_std::text::TextPathSide::Right,
+		_ => graphene_std::text::TextPathSide::Left,
+	}
+}
+
+fn text_path_method(attrs: &TextPathAttrs) -> graphene_std::text::TextPathMethod {
+	match attrs.method.as_deref() {
+		Some("stretch") => graphene_std::text::TextPathMethod::Stretch,
+		_ => graphene_std::text::TextPathMethod::Align,
+	}
+}
+
+fn text_path_spacing(attrs: &TextPathAttrs) -> graphene_std::text::TextPathSpacing {
+	match attrs.spacing.as_deref() {
+		Some("auto") => graphene_std::text::TextPathSpacing::Auto,
+		_ => graphene_std::text::TextPathSpacing::Exact,
+	}
+}
+
+fn text_length_adjust(attrs: &TextPathAttrs) -> graphene_std::text::LengthAdjust {
+	match attrs.length_adjust.as_deref() {
+		Some("spacingAndGlyphs") => graphene_std::text::LengthAdjust::SpacingAndGlyphs,
+		_ => graphene_std::text::LengthAdjust::Spacing,
 	}
 }
 

@@ -196,26 +196,34 @@ fn maybe_reverse_path(path: BezPath, side: TextPathSide) -> BezPath {
 	}
 }
 
-fn is_glyph_hidden(mid: f64, start_offset: f64, total_length: f64, is_closed: bool, text_anchor: TextAnchor, rtl: bool) -> bool {
-	if !is_closed { return mid < 0.0 || mid > total_length; }
-	let d = mid - start_offset;
-	let effective_anchor = if rtl { match text_anchor { TextAnchor::Start => TextAnchor::End, TextAnchor::End => TextAnchor::Start, _ => text_anchor } } else { text_anchor };
-	match effective_anchor {
-		TextAnchor::Start => d < 0.0 || d > total_length,
-		TextAnchor::Middle => d < -total_length / 2.0 || d > total_length / 2.0,
-		TextAnchor::End => d < -total_length || d > 0.0,
+fn is_glyph_hidden(mid: f64, _start_offset: f64, total_length: f64, is_closed: bool, _text_anchor: TextAnchor, _rtl: bool) -> bool {
+	if is_closed {
+		return false;
 	}
+	mid < -1e-3 || mid > total_length + 1e-3
 }
 
 fn resolve_startpoint(abs_offset: f64, total_advance: f64, text_anchor: TextAnchor) -> f64 {
-	match text_anchor { TextAnchor::Start => abs_offset, TextAnchor::Middle => abs_offset - total_advance / 2.0, TextAnchor::End => abs_offset - total_advance }
+	match text_anchor {
+		TextAnchor::Start => abs_offset,
+		TextAnchor::Middle => abs_offset - total_advance / 2.0,
+		TextAnchor::End => abs_offset - total_advance,
+	}
 }
 
 fn curvature_spacing_adjustment(lut: &ArcLengthLut, mid: f64, advance: f64) -> f64 {
 	let half = advance / 2.0;
 	let (_, a0) = at_with_extension(lut, mid - half);
 	let (_, a1) = at_with_extension(lut, mid + half);
-	advance * (a1 - a0).abs() * 0.1
+	let angle_delta = (a1 - a0 + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
+	advance * angle_delta.abs() * 0.1
+}
+
+fn text_path_spacing_adjustment(spacing: TextPathSpacing, lut: &ArcLengthLut, mid: f64, advance: f64) -> f64 {
+	match spacing {
+		TextPathSpacing::Exact => 0.0,
+		TextPathSpacing::Auto => curvature_spacing_adjustment(lut, mid, advance),
+	}
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -242,12 +250,16 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 		log::warn!("textPath method='stretch' is not yet implemented; falling back to 'align'");
 	}
 
-	let Some(original_bezpath) = path_table.iter().next().and_then(|row| row.element.stroke_bezpath_iter().find(|p| p.segments().next().is_some())) else { return Table::new() };
+	let Some(original_bezpath) = path_table.iter().next().and_then(|row| row.element.stroke_bezpath_iter().find(|p| p.segments().next().is_some())) else {
+		return Table::new();
+	};
 	let path_d_for_export = original_bezpath.to_svg();
 
 	let bezpath = maybe_reverse_path(original_bezpath, side);
 	let lut = ArcLengthLut::build(&bezpath, 100);
-	if lut.total_length < 1e-9 { return Table::new(); }
+	if lut.total_length < 1e-9 {
+		return Table::new();
+	}
 
 	let typesetting = crate::TypesettingConfig {
 		font_size,
@@ -256,10 +268,17 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 	};
 
 	let layout = crate::TextContext::with_thread_local(|ctx| ctx.layout_text(text, font, font_cache, typesetting));
-	let Some(layout) = layout else { return Table::new() };
+	let Some(layout) = layout else {
+		log::error!("Text layout failed for: {}", text);
+		return Table::new();
+	};
+
+	log::info!("Placing text on path: {} (length: {})", text, lut.total_length);
 
 	let mut abs_offset = if start_offset_percent { start_offset * lut.total_length } else { start_offset };
-	if let Some(author_length) = path_length.filter(|&l| l > 1e-9) { abs_offset *= lut.total_length / author_length; }
+	if let Some(author_length) = path_length.filter(|&l| l > 1e-9) {
+		abs_offset *= lut.total_length / author_length;
+	}
 
 	let mut path_builder = crate::path_builder::PathBuilder::new(true, layout.scale() as f64);
 
@@ -298,7 +317,7 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 					let raw_advance = glyph.advance as f64 * advance_scale;
 					cumulative_offset += if glyph_index > 0 { spacing_delta } else { 0.0 };
 					let mid = line_start + run_x as f64 * advance_scale + cumulative_offset - glyph_run.offset() as f64 * advance_scale + raw_advance / 2.0;
-					let adjusted_mid = mid + if spacing == TextPathSpacing::Auto { curvature_spacing_adjustment(&lut, mid, raw_advance) } else { 0.0 };
+					let adjusted_mid = mid + text_path_spacing_adjustment(spacing, &lut, mid, raw_advance);
 
 					run_x += glyph.advance;
 					glyph_index += 1;
@@ -308,9 +327,8 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 						let (point, angle) = if lut.is_closed { lut.at_or_zero(effective_mid) } else { at_with_extension(&lut, effective_mid) };
 
 						if let Some(glyph_outline) = outlines.get(skrifa::GlyphId::from(glyph.id)) {
-							let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y))
-								* DAffine2::from_angle(angle)
-								* DAffine2::from_translation(DVec2::new(glyph.x as f64, -glyph.y as f64));
+							let final_transform =
+								DAffine2::from_translation(DVec2::new(point.x, point.y)) * DAffine2::from_angle(angle) * DAffine2::from_translation(DVec2::new(glyph.x as f64, -glyph.y as f64));
 							path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, final_transform, true);
 						}
 					}
@@ -332,12 +350,33 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 		path_d: path_d_for_export,
 		start_offset,
 		start_offset_percent,
-		text_anchor: match text_anchor { TextAnchor::Start => "start", TextAnchor::Middle => "middle", TextAnchor::End => "end" }.to_string(),
-		side: match side { TextPathSide::Left => "left", TextPathSide::Right => "right" }.to_string(),
-		method: match method { TextPathMethod::Align => "align", TextPathMethod::Stretch => "stretch" }.to_string(),
-		spacing: match spacing { TextPathSpacing::Exact => "exact", TextPathSpacing::Auto => "auto" }.to_string(),
+		text_anchor: match text_anchor {
+			TextAnchor::Start => "start",
+			TextAnchor::Middle => "middle",
+			TextAnchor::End => "end",
+		}
+		.to_string(),
+		side: match side {
+			TextPathSide::Left => "left",
+			TextPathSide::Right => "right",
+		}
+		.to_string(),
+		method: match method {
+			TextPathMethod::Align => "align",
+			TextPathMethod::Stretch => "stretch",
+		}
+		.to_string(),
+		spacing: match spacing {
+			TextPathSpacing::Exact => "exact",
+			TextPathSpacing::Auto => "auto",
+		}
+		.to_string(),
 		text_length,
-		length_adjust: match length_adjust { LengthAdjust::Spacing => "spacing", LengthAdjust::SpacingAndGlyphs => "spacingAndGlyphs" }.to_string(),
+		length_adjust: match length_adjust {
+			LengthAdjust::Spacing => "spacing",
+			LengthAdjust::SpacingAndGlyphs => "spacingAndGlyphs",
+		}
+		.to_string(),
 	});
 	for row in result.iter_mut() {
 		row.element.text_on_path_metadata = Some(Arc::clone(&metadata));

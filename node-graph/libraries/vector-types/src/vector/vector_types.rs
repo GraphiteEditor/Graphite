@@ -94,13 +94,20 @@ impl<Upstream> std::hash::Hash for Vector<Upstream> {
 		self.region_domain.hash(state);
 		self.style.hash(state);
 		self.colinear_manipulators.hash(state);
-		// We don't hash upstream_data or text_on_path_metadata intentionally
+		if let Some(metadata) = &self.text_on_path_metadata {
+			metadata.text.hash(state);
+			metadata.font_family.hash(state);
+			metadata.font_style.hash(state);
+			(metadata.font_size as u64).hash(state);
+			metadata.path_d.hash(state);
+		}
 	}
 }
 
 impl<Upstream> Vector<Upstream> {
 	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
+		self.text_on_path_metadata = None;
 		let subpath: &Subpath<PointId> = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
 		let mut point_id = self.point_domain.next_id();

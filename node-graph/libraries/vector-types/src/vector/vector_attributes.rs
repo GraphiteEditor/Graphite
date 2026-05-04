@@ -1207,6 +1207,7 @@ impl<Upstream> Vector<Upstream> {
 	pub fn transform(&mut self, transform: DAffine2) {
 		self.point_domain.transform(transform);
 		self.segment_domain.transform(transform);
+		self.text_on_path_metadata = None;
 	}
 
 	pub fn vector_new_ids_from_hash(&mut self, node_id: u64) {

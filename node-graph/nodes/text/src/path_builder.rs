@@ -38,7 +38,10 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		self.current_point = Point::ZERO;
 
 		let settings = DrawSettings::unhinted(Size::new(size), normalized_coords);
-		glyph.draw(settings, self).unwrap();
+		if let Err(e) = glyph.draw(settings, self) {
+			log::error!("Failed to draw glyph: {:?}", e);
+			return;
+		}
 
 		if !self.current_segments.is_empty() {
 			self.glyph_subpaths.push(Subpath::from_beziers(&self.current_segments, false));

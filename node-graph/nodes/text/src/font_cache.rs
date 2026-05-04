@@ -122,8 +122,7 @@ impl FontCache {
 			let fallback = self
 				.font_file_data
 				.keys()
-				.find(|font| font.font_family == core_types::consts::DEFAULT_FONT_FAMILY && font.font_style == core_types::consts::DEFAULT_FONT_STYLE)
-				.or_else(|| self.font_file_data.keys().next());
+				.find(|font| font.font_family == core_types::consts::DEFAULT_FONT_FAMILY && font.font_style == core_types::consts::DEFAULT_FONT_STYLE);
 			fallback
 		}
 	}
