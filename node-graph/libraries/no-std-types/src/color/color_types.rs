@@ -220,7 +220,7 @@ impl Pixel for Luma {}
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
-#[derive(Debug, Default, Clone, Copy, Pod, Zeroable, BufferStruct)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -228,13 +228,7 @@ pub struct Color {
 	alpha: f32,
 }
 
-impl PartialEq for Color {
-	fn eq(&self, other: &Self) -> bool {
-		const EPSILON: f32 = 1e-6;
-		(self.red - other.red).abs() < EPSILON && (self.green - other.green).abs() < EPSILON && (self.blue - other.blue).abs() < EPSILON && (self.alpha - other.alpha).abs() < EPSILON
-	}
-}
-
+// `f32` channels mean `Color` doesn't qualify for a derived `Eq`, but in practice we never store NaN here, and the renderer's `HashMap<CacheHashWrapper<Image<Color>>, _>` deduplication needs `Color: Eq` to propagate up through the wrapper.
 impl Eq for Color {}
 
 impl RGB for Color {

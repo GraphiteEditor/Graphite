@@ -50,6 +50,8 @@
 
 		saturationStartOfAxisAlign = undefined;
 		valueStartOfAxisAlign = undefined;
+		saturationRestoreWhenShiftReleased = undefined;
+		valueRestoreWhenShiftReleased = undefined;
 
 		addEvents();
 
@@ -151,7 +153,7 @@
 	}
 
 	function applyAxisLock(s: number, v: number): { saturation: number; value: number } {
-		if (!saturationStartOfAxisAlign || !valueStartOfAxisAlign) return { saturation: s, value: v };
+		if (saturationStartOfAxisAlign === undefined || valueStartOfAxisAlign === undefined) return { saturation: s, value: v };
 
 		const deltaSaturation = s - saturationStartOfAxisAlign;
 		const deltaValue = v - valueStartOfAxisAlign;

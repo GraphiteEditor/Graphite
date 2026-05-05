@@ -339,7 +339,7 @@ impl ColorPickerMessageHandler {
 			}
 			SpectrumInputUpdate::DeleteMarker { index } => {
 				// Enforce minimum stop count. The gradient editor needs at least 2 stops to remain meaningful.
-				if gradient.position.len() <= 2 {
+				if gradient.position.len() <= 2 || (index as usize) >= gradient.position.len() {
 					return;
 				}
 				gradient.remove(index as usize);
@@ -449,7 +449,15 @@ impl ColorPickerMessageHandler {
 		let hex_value = new_color.map(|c| color_to_hex_optional_alpha(&c)).unwrap_or_else(|| "-".to_string());
 		let rgb_255 = new_color.map(|c| (c.r() as f64 * 255., c.g() as f64 * 255., c.b() as f64 * 255.));
 
-		let differs = new_color != old_color;
+		// Epsilon comparison since the picker round-trips through HSV
+		let differs = match (new_color, old_color) {
+			(Some(a), Some(b)) => {
+				const EPSILON: f32 = 1e-6;
+				(a.r() - b.r()).abs() >= EPSILON || (a.g() - b.g()).abs() >= EPSILON || (a.b() - b.b()).abs() >= EPSILON || (a.a() - b.a()).abs() >= EPSILON
+			}
+			(None, None) => false,
+			_ => true,
+		};
 		let outline_amount = contrasting_outline_factor(new_color).max(contrasting_outline_factor(old_color));
 
 		let mut groups = Vec::new();

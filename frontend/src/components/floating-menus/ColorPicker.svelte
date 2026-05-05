@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, getContext } from "svelte";
+	import { createEventDispatcher, getContext, onDestroy } from "svelte";
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
@@ -52,6 +52,12 @@
 	export function div(): HTMLDivElement | undefined {
 		return self?.div();
 	}
+
+	onDestroy(() => {
+		if (!lastOpen) return;
+		colorPickerStore.clearCallbacks();
+		editor.closeColorPicker();
+	});
 </script>
 
 <FloatingMenu class="color-picker" classes={{ disabled }} {open} on:open {strayCloses} escapeCloses={strayCloses} {direction} type="Popover" bind:this={self}>
