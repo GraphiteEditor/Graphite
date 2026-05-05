@@ -794,9 +794,14 @@ impl Render for Table<Graphic> {
 
 impl Render for Table<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let mut text_on_path_exported = false;
 		for row in self.iter() {
 			if render_params.for_export {
 				if let Some(ref meta) = row.element.text_on_path_metadata {
+					if text_on_path_exported {
+						continue;
+					}
+					text_on_path_exported = true;
 					let path_id = format!("textpath-{}", generate_uuid());
 					write!(&mut render.svg_defs, r#"<path id="{path_id}" d="{}" fill="none"/>"#, escape_xml_attr(&meta.path_d)).unwrap();
 
@@ -813,9 +818,11 @@ impl Render for Table<Vector> {
 					let anchor_style = format!("text-anchor: {};", meta.text_anchor);
 					let method = &meta.method;
 					let spacing = &meta.spacing;
+					let direction_attr = if meta.rtl { r#" direction="rtl""# } else { "" };
+					let path_length_attr = meta.path_length.map(|pl| format!(r#" pathLength="{pl}""#)).unwrap_or_default();
 					let text = escape_xml_text(&meta.text);
 
-					render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}>{text}</textPath></text>"##));
+					render.leaf_node(format!(r##"<text style="{font_style_css} {anchor_style}"{transform_attr}{direction_attr}><textPath href="#{path_id}" startOffset="{start_offset_attr}" method="{method}" spacing="{spacing}"{side_attr}{text_length_attr}{path_length_attr}>{text}</textPath></text>"##));
 					continue;
 				}
 			}

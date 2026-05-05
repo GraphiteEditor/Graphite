@@ -619,11 +619,14 @@ fn escape_xml_attr(value: &str) -> String {
 
 #[derive(Debug, Default, Clone)]
 struct TextPathAttrs {
+	pub start_offset: Option<String>,
 	pub method: Option<String>,
 	pub spacing: Option<String>,
 	pub side: Option<String>,
 	pub text_length: Option<f64>,
 	pub length_adjust: Option<String>,
+	pub path_length: Option<f64>,
+	pub direction: Option<String>,
 }
 
 fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<TextPathAttrs>> {
@@ -638,11 +641,14 @@ fn pre_parse_textpath_attrs(svg: &str) -> std::collections::HashMap<String, Vec<
 				continue;
 			};
 			map.entry(path_id).or_default().push(TextPathAttrs {
+				start_offset: node.attribute("startOffset").map(str::to_string),
 				method: node.attribute("method").map(str::to_string),
 				spacing: node.attribute("spacing").map(str::to_string),
 				side: node.attribute("side").map(str::to_string),
 				text_length: node.attribute("textLength").and_then(|v| v.parse().ok()),
 				length_adjust: node.attribute("lengthAdjust").map(str::to_string),
+				path_length: node.attribute("pathLength").and_then(|v| v.parse().ok()),
+				direction: node.attribute("direction").or_else(|| node.attribute("style").and_then(|s| s.split(';').find(|p| p.trim().starts_with("direction")).and_then(|p| p.split(':').last()).map(|v| v.trim()))).map(str::to_string),
 			});
 		}
 	}
@@ -802,20 +808,21 @@ fn import_usvg_text(
 	text: &usvg::Text,
 	transform: usvg::Transform,
 	layer: LayerNodeIdentifier,
-	parent: LayerNodeIdentifier,
-	insert_index: usize,
+	_parent: LayerNodeIdentifier,
+	_insert_index: usize,
 	textpath_attrs: &mut HashMap<String, Vec<TextPathAttrs>>,
 ) {
 	log::info!("Importing usvg text node with {} chunks", text.chunks().len());
 
-	for (i, chunk) in text.chunks().iter().enumerate() {
-		let current_layer = if i == 0 {
-			layer
-		} else {
+	let chunks = text.chunks();
+	for (i, chunk) in chunks.iter().enumerate() {
+		let current_layer = if chunks.len() > 1 {
 			let new_id = NodeId::new();
 			let new_layer = modify_inputs.create_layer(new_id);
-			modify_inputs.network_interface.move_layer_to_stack_for_import(new_layer, parent, insert_index, &[]);
+			modify_inputs.network_interface.move_layer_to_stack_for_import(new_layer, layer, i, &[]);
 			new_layer
+		} else {
+			layer
 		};
 		modify_inputs.layer_node = Some(current_layer);
 
@@ -834,7 +841,12 @@ fn import_usvg_text(
 			let tp_id = text_path.id();
 			let tp_attrs = take_textpath_attrs(textpath_attrs, tp_id);
 			let path_subpaths = convert_tiny_skia_path(text_path.path());
-			let start_offset = text_path.start_offset() as f64;
+
+			let (start_offset, start_offset_percent) = match tp_attrs.start_offset.as_deref() {
+				Some(s) if s.ends_with('%') => (s.trim_end_matches('%').parse::<f64>().unwrap_or(0.0) / 100.0, true),
+				Some(s) => (s.parse::<f64>().unwrap_or(0.0), false),
+				None => (text_path.start_offset() as f64, false),
+			};
 
 			modify_inputs.insert_text_on_path(
 				chunk.text().to_string(),
@@ -843,12 +855,15 @@ fn import_usvg_text(
 				letter_spacing,
 				path_subpaths,
 				start_offset,
+				start_offset_percent,
 				text_anchor(chunk.anchor()),
 				text_path_side(&tp_attrs),
 				text_path_method(&tp_attrs),
 				text_path_spacing(&tp_attrs),
 				tp_attrs.text_length,
 				text_length_adjust(&tp_attrs),
+				tp_attrs.path_length,
+				tp_attrs.direction.as_deref() == Some("rtl"),
 				usvg_transform(transform),
 				current_layer,
 			);

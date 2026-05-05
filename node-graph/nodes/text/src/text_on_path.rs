@@ -204,11 +204,19 @@ fn is_glyph_hidden(mid: f64, _start_offset: f64, total_length: f64, is_closed: b
 	mid < -1e-3 || mid > total_length + 1e-3
 }
 
-fn resolve_startpoint(abs_offset: f64, total_advance: f64, text_anchor: TextAnchor) -> f64 {
-	match text_anchor {
-		TextAnchor::Start => abs_offset,
-		TextAnchor::Middle => abs_offset - total_advance / 2.0,
-		TextAnchor::End => abs_offset - total_advance,
+fn resolve_startpoint(abs_offset: f64, total_advance: f64, text_anchor: TextAnchor, rtl: bool) -> f64 {
+	if !rtl {
+		match text_anchor {
+			TextAnchor::Start => abs_offset,
+			TextAnchor::Middle => abs_offset - total_advance / 2.0,
+			TextAnchor::End => abs_offset - total_advance,
+		}
+	} else {
+		match text_anchor {
+			TextAnchor::Start => abs_offset,
+			TextAnchor::Middle => abs_offset + total_advance / 2.0,
+			TextAnchor::End => abs_offset + total_advance,
+		}
 	}
 }
 
@@ -285,10 +293,18 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 
 	log::info!("Placing text on path: {} (length: {})", text, lut.total_length);
 
-	let mut abs_offset = if start_offset_percent { start_offset * lut.total_length } else { start_offset };
-	if let Some(author_length) = path_length.filter(|&l| l > 1e-9) {
-		abs_offset *= lut.total_length / author_length;
-	}
+	let abs_offset = if let Some(pl) = path_length.filter(|&l| l > 1e-9) {
+		let scale = lut.total_length / pl;
+		let offset = if start_offset_percent { start_offset * lut.total_length } else { start_offset * scale };
+		if rtl { lut.total_length - offset } else { offset }
+	} else if start_offset_percent {
+		let offset = start_offset * lut.total_length;
+		if rtl { lut.total_length - offset } else { offset }
+	} else if rtl {
+		lut.total_length - start_offset
+	} else {
+		start_offset
+	};
 
 	let mut path_builder = crate::path_builder::PathBuilder::new(true, layout.scale() as f64);
 
@@ -307,7 +323,7 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 		};
 
 		let effective_line_width = line_width * advance_scale + spacing_delta * glyph_count.saturating_sub(1) as f64;
-		let line_start = resolve_startpoint(abs_offset, effective_line_width, text_anchor);
+		let line_start = resolve_startpoint(abs_offset, effective_line_width, text_anchor, rtl);
 
 		let mut cumulative_offset = 0.0_f64;
 		let mut glyph_index = 0_usize;
@@ -326,9 +342,12 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 				glyph_run.glyphs().for_each(|glyph| {
 					let scaled_advance = glyph.advance as f64 * advance_scale;
 					cumulative_offset += if glyph_index > 0 { spacing_delta } else { 0.0 };
-					let glyph_origin = line_start + (run_x as f64 - glyph_run.offset() as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
-					let mid = glyph_origin + scaled_advance / 2.0;
-					let adjusted_mid = mid + text_path_spacing_adjustment(spacing, &lut, mid, scaled_advance);
+					
+					let glyph_x_offset = (run_x as f64 - glyph_run.offset() as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
+					let mid = if rtl { line_start - glyph_x_offset - scaled_advance / 2.0 } else { line_start + glyph_x_offset + scaled_advance / 2.0 };
+					
+					let spacing_adj = text_path_spacing_adjustment(spacing, &lut, mid, scaled_advance);
+					let adjusted_mid = if rtl { mid - spacing_adj } else { mid + spacing_adj };
 
 					run_x += glyph.advance;
 					glyph_index += 1;
@@ -396,6 +415,8 @@ pub fn place_text_on_path<Upstream: Default + 'static>(
 			LengthAdjust::SpacingAndGlyphs => "spacingAndGlyphs",
 		}
 		.to_string(),
+		path_length,
+		rtl,
 	});
 	for row in result.iter_mut() {
 		row.element.text_on_path_metadata = Some(Arc::clone(&metadata));

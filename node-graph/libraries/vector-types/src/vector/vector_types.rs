@@ -40,6 +40,8 @@ pub struct TextOnPathMetadata {
 	pub text_length: Option<f64>,
 	/// "spacing" | "spacingAndGlyphs"
 	pub length_adjust: String,
+	pub path_length: Option<f64>,
+	pub rtl: bool,
 }
 
 /// Represents vector graphics data, composed of Bézier curves in a path or mesh arrangement.
@@ -98,8 +100,18 @@ impl<Upstream> std::hash::Hash for Vector<Upstream> {
 			metadata.text.hash(state);
 			metadata.font_family.hash(state);
 			metadata.font_style.hash(state);
-			(metadata.font_size as u64).hash(state);
+			metadata.font_size.to_bits().hash(state);
 			metadata.path_d.hash(state);
+			metadata.start_offset.to_bits().hash(state);
+			metadata.start_offset_percent.hash(state);
+			metadata.text_anchor.hash(state);
+			metadata.side.hash(state);
+			metadata.method.hash(state);
+			metadata.spacing.hash(state);
+			metadata.text_length.map(|tl| tl.to_bits()).hash(state);
+			metadata.length_adjust.hash(state);
+			metadata.path_length.map(|pl| pl.to_bits()).hash(state);
+			metadata.rtl.hash(state);
 		}
 	}
 }

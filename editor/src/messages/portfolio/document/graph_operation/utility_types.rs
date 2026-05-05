@@ -298,12 +298,15 @@ impl<'a> ModifyInputsContext<'a> {
 		character_spacing: f64,
 		path_subpaths: Vec<Subpath<PointId>>,
 		start_offset: f64,
+		start_offset_percent: bool,
 		text_anchor: TextAnchor,
 		side: graphene_std::text::TextPathSide,
 		method: graphene_std::text::TextPathMethod,
 		spacing: graphene_std::text::TextPathSpacing,
 		text_length: Option<f64>,
 		length_adjust: graphene_std::text::LengthAdjust,
+		path_length: Option<f64>,
+		rtl: bool,
 		transform: DAffine2,
 		layer: LayerNodeIdentifier,
 	) {
@@ -318,7 +321,7 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::F64(font_size), false)),
 				Some(NodeInput::value(TaggedValue::F64(character_spacing), false)),
 				Some(NodeInput::value(TaggedValue::F64(start_offset), false)),
-				Some(NodeInput::value(TaggedValue::Bool(false), false)),
+				Some(NodeInput::value(TaggedValue::Bool(start_offset_percent), false)),
 				Some(NodeInput::value(TaggedValue::TextPathSide(side), false)),
 				Some(NodeInput::value(TaggedValue::TextAnchor(text_anchor), false)),
 				Some(NodeInput::value(TaggedValue::TextPathMethod(method), false)),
@@ -326,9 +329,9 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::Bool(text_length.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::F64(text_length.unwrap_or(0.0)), false)),
 				Some(NodeInput::value(TaggedValue::LengthAdjust(length_adjust), false)),
-				Some(NodeInput::value(TaggedValue::Bool(false), false)),
-				Some(NodeInput::value(TaggedValue::F64(0.0), false)),
-				Some(NodeInput::value(TaggedValue::Bool(false), false)),
+				Some(NodeInput::value(TaggedValue::Bool(path_length.is_some()), false)),
+				Some(NodeInput::value(TaggedValue::F64(path_length.unwrap_or(0.0)), false)),
+				Some(NodeInput::value(TaggedValue::Bool(rtl), false)),
 			]);
 
 		let text_on_path_id = NodeId::new();

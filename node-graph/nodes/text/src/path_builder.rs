@@ -14,6 +14,7 @@ pub struct PathBuilder<Upstream: Default + 'static> {
 	current_point: Point,
 	is_text_on_path: bool,
 	scale: f64,
+	glyph_index: u64,
 }
 
 impl<Upstream: Default + 'static> PathBuilder<Upstream> {
@@ -25,6 +26,7 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 			current_point: Point::ZERO,
 			is_text_on_path,
 			scale,
+			glyph_index: 0,
 		}
 	}
 
@@ -63,21 +65,17 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		};
 		let transform = if let Some(skew) = style_skew { transform * skew } else { transform };
 
-		let subpaths = std::mem::take(&mut self.glyph_subpaths);
+		let mut vector = Vector::from_subpaths(self.glyph_subpaths.clone(), false);
+		vector.transform(transform);
 		if per_glyph_instances {
-			let mut vector = Vector::from_subpaths(subpaths, false);
-			vector.transform(transform);
 			self.vector_table.push(TableRow::new_from_element(vector));
+		} else if self.vector_table.is_empty() {
+			self.vector_table = Table::new_from_element(vector);
 		} else {
-			let mut vector = Vector::from_subpaths(subpaths, false);
-			vector.transform(transform);
-			if self.vector_table.is_empty() {
-				self.vector_table = Table::new_from_element(vector);
-			} else {
-				let current_vector = self.vector_table.iter_mut().next().unwrap();
-				current_vector.element.concat(&vector, DAffine2::IDENTITY, 0);
-			}
+			let current_vector = self.vector_table.iter_mut().next().unwrap();
+			current_vector.element.concat(&vector, DAffine2::IDENTITY, self.glyph_index);
 		}
+		self.glyph_index += 1;
 	}
 
 	pub fn draw_glyph_with_mapping(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, mapping_function: impl Fn(DVec2) -> DVec2) {
@@ -110,7 +108,14 @@ impl<Upstream: Default + 'static> PathBuilder<Upstream> {
 		let run_y = glyph_run.baseline();
 
 		let synthesis = run.synthesis();
-		let style_skew = synthesis.skew().map(|angle| DAffine2::from_cols_array(&[1., 0., -(angle as f64).to_radians().tan(), 1., 0., 0.]));
+		let style_skew = synthesis.skew().map(|angle| {
+			let skew = DAffine2::from_cols_array(&[1., 0., -(angle as f64).to_radians().tan(), 1., 0., 0.]);
+			if per_glyph_instances || self.is_text_on_path {
+				skew
+			} else {
+				DAffine2::from_translation(DVec2::new(0., run_y as f64)) * skew * DAffine2::from_translation(DVec2::new(0., -run_y as f64))
+			}
+		});
 		let tilt_skew = (tilt != 0.).then(|| DAffine2::from_cols_array(&[1., 0., -tilt.to_radians().tan(), 1., 0., 0.]));
 
 		let font = run.font();
