@@ -264,7 +264,7 @@ impl Fsm for FreehandToolFsmState {
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
+				if let Some((layer, point, position)) = should_extend(document, input.pointer.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
@@ -280,7 +280,7 @@ impl Fsm for FreehandToolFsmState {
 						tool_data.layer = Some(layer);
 
 						let transform = document.metadata().transform_to_viewport(layer);
-						let position = transform.inverse().transform_point2(input.mouse.position);
+						let position = transform.inverse().transform_point2(input.pointer.position);
 
 						extend_path_with_next_segment(tool_data, position, false, responses);
 
@@ -300,14 +300,14 @@ impl Fsm for FreehandToolFsmState {
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_data.layer = Some(layer);
-				tool_data.new_layer_viewport_start = Some(input.mouse.position);
+				tool_data.new_layer_viewport_start = Some(input.pointer.position);
 
 				// Position the layer at the initial mouse position via Transform
 				responses.add(DeferMessage::AfterGraphRun {
 					messages: vec![
 						GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_translation(input.mouse.position),
+							transform: DAffine2::from_translation(input.pointer.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						}
@@ -332,9 +332,9 @@ impl Fsm for FreehandToolFsmState {
 						tool_data.new_layer_viewport_start = None;
 					}
 					let position = if let Some(start) = tool_data.new_layer_viewport_start {
-						input.mouse.position - start
+						input.pointer.position - start
 					} else {
-						transform.inverse().transform_point2(input.mouse.position)
+						transform.inverse().transform_point2(input.pointer.position)
 					};
 
 					extend_path_with_next_segment(tool_data, position, true, responses);
@@ -424,7 +424,7 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 
 #[cfg(test)]
 mod test_freehand {
-	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+	use crate::messages::input_mapper::utility_types::input_pointer::{EditorPointerState, MouseKeys, ScrollDelta};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
@@ -531,10 +531,11 @@ mod test_freehand {
 		let last_initial_point = initial_points[initial_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)
@@ -590,10 +591,11 @@ mod test_freehand {
 		let last_extension_point = extension_points[extension_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_extension_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)
@@ -644,10 +646,11 @@ mod test_freehand {
 		let last_initial_point = initial_points[initial_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_initial_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)
@@ -679,10 +682,11 @@ mod test_freehand {
 
 		editor
 			.mousedown(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: first_second_point,
 					mouse_keys: MouseKeys::LEFT,
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::SHIFT,
 			)
@@ -695,10 +699,11 @@ mod test_freehand {
 		let last_second_point = second_path_points[second_path_points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_second_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::SHIFT,
 			)
@@ -768,10 +773,11 @@ mod test_freehand {
 		let last_point = points[points.len() - 1];
 		editor
 			.mouseup(
-				EditorMouseState {
+				EditorPointerState {
 					editor_position: last_point,
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
+					pressure: 1.,
 				},
 				ModifierKeys::empty(),
 			)

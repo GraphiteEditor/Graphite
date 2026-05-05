@@ -17,7 +17,7 @@ impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) {
 		let root_transform = document.metadata().document_to_viewport;
-		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
+		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.pointer.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 		self.drag_start = snapped.snapped_point_document;
 	}
@@ -109,7 +109,7 @@ impl Resize {
 		in_document: bool,
 	) -> [DVec2; 2] {
 		let start = self.viewport_drag_start(document);
-		let mouse = input.mouse.position;
+		let mouse = input.pointer.position;
 		let document_to_viewport = document
 			.navigation_handler
 			.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);

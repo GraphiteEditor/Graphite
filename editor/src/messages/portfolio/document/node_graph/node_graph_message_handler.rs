@@ -400,17 +400,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				}
 
-				let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, selection_network_path) else {
+				let Some(node_id) = network_interface.node_from_click(ipp.pointer.position, selection_network_path) else {
 					return;
 				};
 				if network_interface
-					.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Visibility, selection_network_path)
+					.layer_click_target_from_click(ipp.pointer.position, network_interface::LayerClickTargetTypes::Visibility, selection_network_path)
 					.is_some()
 				{
 					return;
 				};
 				// Double-clicking the layer's name area triggers inline rename instead of drilling into the subgraph.
-				if let Some(layer_id) = network_interface.layer_click_target_from_click(ipp.mouse.position, network_interface::LayerClickTargetTypes::Name, selection_network_path) {
+				if let Some(layer_id) = network_interface.layer_click_target_from_click(ipp.pointer.position, network_interface::LayerClickTargetTypes::Name, selection_network_path) {
 					responses.add(NodeGraphMessage::BeginEditLayerName { node_id: layer_id });
 					return;
 				}
@@ -772,7 +772,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let click = ipp.mouse.position;
+				let click = ipp.pointer.position;
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
@@ -1064,7 +1064,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
 
-				let viewport_location = ipp.mouse.position;
+				let viewport_location = ipp.pointer.position;
 				let point = network_metadata
 					.persistent_metadata
 					.navigation_metadata
@@ -1073,7 +1073,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
-					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
+					let to_connector = network_interface.input_connector_from_click(ipp.pointer.position, selection_network_path);
 					if let Some(to_connector) = &to_connector {
 						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
@@ -1258,7 +1258,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.navigation_metadata
 					.node_graph_to_viewport
 					.inverse()
-					.transform_point2(ipp.mouse.position);
+					.transform_point2(ipp.pointer.position);
 				// Disconnect if the wire was previously connected to an input
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
@@ -1292,8 +1292,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							return;
 						};
 
-						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().y() - 173. { -173. } else { 0. };
-						let appear_above_mouse = if ipp.mouse.position.y > viewport.size().y() - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if ipp.pointer.position.x > viewport.size().y() - 173. { -173. } else { 0. };
+						let appear_above_mouse = if ipp.pointer.position.y > viewport.size().y() - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
@@ -1500,7 +1500,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let viewport_location = ipp.mouse.position;
+				let viewport_location = ipp.pointer.position;
 				let point = network_metadata
 					.persistent_metadata
 					.navigation_metadata
@@ -2006,15 +2006,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let box_selection = Some(BoxSelection {
 						start_x: box_selection_start_viewport.x.max(0.) as u32,
 						start_y: box_selection_start_viewport.y.max(0.) as u32,
-						end_x: ipp.mouse.position.x.max(0.) as u32,
-						end_y: ipp.mouse.position.y.max(0.) as u32,
+						end_x: ipp.pointer.position.x.max(0.) as u32,
+						end_y: ipp.pointer.position.y.max(0.) as u32,
 					});
 					let box_selection_end_graph = network_metadata
 						.persistent_metadata
 						.navigation_metadata
 						.node_graph_to_viewport
 						.inverse()
-						.transform_point2(ipp.mouse.position);
+						.transform_point2(ipp.pointer.position);
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
 					let alt = ipp.keyboard.get(Key::Alt as usize);

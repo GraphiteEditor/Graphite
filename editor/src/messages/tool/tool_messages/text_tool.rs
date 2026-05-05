@@ -518,11 +518,11 @@ impl TextToolData {
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) -> Option<LayerNodeIdentifier> {
 		document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).find(|&layer| {
-			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-			let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
+				let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+				let mouse = DVec2::new(input.pointer.position.x, input.pointer.position.y);
 
-			transformed_quad.contains(mouse)
-		})
+				transformed_quad.contains(mouse)
+			})
 	}
 
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache) {
@@ -651,11 +651,11 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
 				tool_data.resize.start(document, input, viewport);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
+				tool_data.drag_start = input.pointer.position;
+				tool_data.drag_current = input.pointer.position;
 
 				let dragging_bounds = tool_data.bounding_box_manager.as_mut().and_then(|bounding_box| {
-					let edges = bounding_box.check_selected_edges(input.mouse.position);
+					let edges = bounding_box.check_selected_edges(input.pointer.position);
 
 					bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
 						let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
@@ -738,8 +738,8 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(dragging_layer) = &tool_data.layer_dragging {
-					let delta = input.mouse.position - tool_data.drag_current;
-					tool_data.drag_current = input.mouse.position;
+					let delta = input.pointer.position - tool_data.drag_current;
+					tool_data.drag_current = input.pointer.position;
 
 					responses.add(GraphOperationMessage::TransformChange {
 						layer: dragging_layer.id,
@@ -781,7 +781,7 @@ impl Fsm for TextToolFsmState {
 						snap_data: SnapData::ignore(document, input, viewport, &selected),
 					});
 
-					let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, constrain, snap);
+					let (position, size) = movement.new_size(input.pointer.position, bounds.original_bound_transform, center_position, constrain, snap);
 					// Normalize so the size is always positive
 					let (position, size) = (position.min(position + size), size.abs());
 
@@ -831,7 +831,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::ResizingBounds
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
-				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.pointer.position);
 				responses.add(OverlaysMessage::Draw);
 
 				self
@@ -864,7 +864,7 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::DragStop) => {
-				let drag_too_small = input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON;
+				let drag_too_small = input.pointer.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
@@ -907,7 +907,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
-				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let drag_too_small = input.pointer.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
@@ -985,7 +985,7 @@ impl Fsm for TextToolFsmState {
 						tool_data.layer_dragging.take();
 					}
 				} else {
-					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
+					input.pointer.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				}
 				tool_data.resize.cleanup(responses);
 

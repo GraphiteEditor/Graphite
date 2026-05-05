@@ -50,15 +50,16 @@ impl ScrollDelta {
 	}
 }
 
-// TODO: Document the difference between this and EditorMouseState
+// TODO: Document the difference between this and EditorPointerState
 #[derive(Debug, Copy, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MouseState {
+pub struct PointerState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+	pub pressure: f64,
 }
 
-impl MouseState {
+impl PointerState {
 	pub fn finish_transaction(&self, drag_start: DVec2, responses: &mut VecDeque<Message>) {
 		let drag_too_small = drag_start.distance(self.position) <= DRAG_THRESHOLD;
 		let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
@@ -66,16 +67,25 @@ impl MouseState {
 	}
 }
 
-// TODO: Document the difference between this and MouseState
+// TODO: Document the difference between this and PointerState
 #[derive(Debug, Copy, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EditorMouseState {
+pub struct EditorPointerState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
 	pub scroll_delta: ScrollDelta,
+
+	/// Tablet Pointer attributes
+	pub pressure: f64,
+	//TODO: tangential pressure, azimuth & altitude, twist
 }
 
-impl EditorMouseState {
+impl EditorPointerState {
 	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
+		let pressure: f64 = 1.0;
+		Self::from_keys_with_pressure_and_editor_position(keys, pressure, editor_position)
+	}
+
+	pub fn from_keys_with_pressure_and_editor_position(keys: u8, pressure: f64, editor_position: EditorPosition) -> Self {
 		// TODO: Some graphic tablets send key codes not mentioned in the spec. In the future we would like to support these as well.
 		let mouse_keys = MouseKeys::from_bits_truncate(keys);
 
@@ -83,14 +93,16 @@ impl EditorMouseState {
 			editor_position,
 			mouse_keys,
 			scroll_delta: ScrollDelta::default(),
+			pressure,
 		}
 	}
 
-	pub fn to_mouse_state(&self, viewport: &ViewportMessageHandler) -> MouseState {
-		MouseState {
+	pub fn to_pointer_state(&self, viewport: &ViewportMessageHandler) -> PointerState {
+		PointerState {
 			position: (viewport.logical(self.editor_position) - viewport.offset()).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
+			pressure: self.pressure,
 		}
 	}
 }

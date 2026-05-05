@@ -407,7 +407,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_to_viewport = document
 						.navigation_handler
 						.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
-					let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+					let pointer_position = document_to_viewport.inverse().transform_point2(ipp.pointer.position);
 
 					let scale = viewport.scale();
 					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
@@ -1479,7 +1479,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let document_to_viewport = document
 					.navigation_handler
 					.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
-				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.pointer.position);
 
 				let scale = viewport.scale();
 				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
@@ -1515,13 +1515,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let resolution = glam::UVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION);
 				let scale = viewport.scale();
 
-				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
+				let preview_offset_in_viewport = ipp.pointer.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
 				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
 
 				let document_to_viewport = document.metadata().document_to_viewport;
 
 				let preview_transform = preview_offset_in_viewport.inverse() * document_to_viewport;
-				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.pointer.position);
 
 				let result = self
 					.executor

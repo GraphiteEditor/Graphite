@@ -15,7 +15,7 @@ use editor::application::{Editor, Environment, Host, Platform};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::input_mapper::utility_types::input_pointer::{EditorPointerState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
@@ -537,67 +537,98 @@ impl EditorWrapper {
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
 	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerMove { editor_pointer_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	/// Pointer movement within the screenspace bounds of the viewport
+	#[wasm_bindgen(js_name = onPointerMove)]
+	pub fn on_pointer_move(&self, x: f64, y: f64, pressure: f64, _tangential_pressure: f64, _azimuth_angle: f64, _altitude_angle: f64, _twist: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_pointer_state = EditorPointerState::from_keys_with_pressure_and_editor_position(mouse_keys, pressure, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerMove { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// Mouse scrolling within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onWheelScroll)]
 	pub fn on_wheel_scroll(&self, x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f64, wheel_delta_y: f64, wheel_delta_z: f64, modifiers: u8) {
-		let mut editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
-		editor_mouse_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
+		let mut editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		editor_pointer_state.scroll_delta = ScrollDelta::new(wheel_delta_x, wheel_delta_y, wheel_delta_z);
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::WheelScroll { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// A mouse button depressed within screenspace the bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseDown)]
 	pub fn on_mouse_down(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = onPointerDown)]
+	pub fn on_pointer_down(&self, x: f64, y: f64, pressure: f64, _tangential_pressure: f64, _azimuth_angle: f64, _altitude_angle: f64, _twist: f64, mouse_keys: u8, modifiers: u8) {
+	let editor_pointer_state = EditorPointerState::from_keys_with_pressure_and_editor_position(mouse_keys, pressure, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// A mouse button released
 	#[wasm_bindgen(js_name = onMouseUp)]
 	pub fn on_mouse_up(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerUp { editor_pointer_state, modifier_keys };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = onPointerUp)]
+	pub fn on_pointer_up(&self, x: f64, y: f64, pressure: f64, _tangential_pressure: f64, _azimuth_angle: f64, _altitude_angle: f64, _twist: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_pointer_state = EditorPointerState::from_keys_with_pressure_and_editor_position(mouse_keys, pressure, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerUp { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// Mouse shaken
 	#[wasm_bindgen(js_name = onMouseShake)]
 	pub fn on_mouse_shake(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerShake { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
 
 	/// Mouse double clicked
 	#[wasm_bindgen(js_name = onDoubleClick)]
 	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
-		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+		let editor_pointer_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
 
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 
-		let message = InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::DoubleClick { editor_pointer_state, modifier_keys };
 		self.dispatch(message);
 	}
 

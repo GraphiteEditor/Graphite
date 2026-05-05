@@ -35,7 +35,7 @@ impl AutoPanning {
 	}
 
 	pub fn setup_by_mouse_position(&mut self, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
-		let mouse_position = input.mouse.position;
+		let mouse_position = input.pointer.position;
 		let viewport_size = viewport.size().into_dvec2();
 		let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
 
@@ -56,7 +56,7 @@ impl AutoPanning {
 		}
 
 		let viewport_size = viewport.size().into_dvec2();
-		let mouse_position = input.mouse.position.clamp(
+		let mouse_position = input.pointer.position.clamp(
 			DVec2::ZERO - DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 			viewport_size + DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 		);

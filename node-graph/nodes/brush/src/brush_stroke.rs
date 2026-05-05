@@ -4,6 +4,8 @@ use core_types::color::Color;
 use core_types::math::bbox::AxisAlignedBbox;
 use dyn_any::DynAny;
 use glam::DVec2;
+use std::hash::{Hash, Hasher};
+
 /// The style of a brush.
 #[derive(Clone, Debug, CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -47,6 +49,28 @@ impl PartialEq for BrushStyle {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BrushInputSample {
 	pub position: DVec2,
+	pub pressure: f64,
+	// Future work: stylus angle, etc.
+}
+
+impl Hash for BrushInputSample {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.position.x.to_bits().hash(state);
+		self.position.y.to_bits().hash(state);
+		self.pressure.to_bits().hash(state);
+	}
+}
+
+/// Samples of blit point parameters along the brush stroke trace path.
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct BrushOutputSample {
+	// The position of the sample in layer space, in pixels.
+	// The origin of layer space is not specified.
+	pub position: DVec2,
+
+	// The scale multiplier for the brush stamp diameter
+	pub scale: f64,
+	// Future work: stylus angle, etc.
 }
 
 /// The parameters for a single stroke brush.
@@ -62,45 +86,51 @@ impl BrushStroke {
 		let radius = self.style.diameter / 2.;
 		self.compute_blit_points()
 			.iter()
-			.map(|pos| AxisAlignedBbox {
-				start: *pos + DVec2::new(-radius, -radius),
-				end: *pos + DVec2::new(radius, radius),
+			.map(|sample| AxisAlignedBbox {
+				start: sample.position + DVec2::new(-radius, -radius),
+				end: sample.position + DVec2::new(radius, radius),
 			})
 			.reduce(|a, b| a.union(&b))
 			.unwrap_or(AxisAlignedBbox::ZERO)
 	}
 
-	pub fn compute_blit_points(&self) -> Vec<DVec2> {
+	pub fn compute_blit_points(&self) -> Vec<BrushOutputSample> {
 		// We always travel in a straight line towards the next user input,
 		// placing a blit point every time we travelled our spacing distance.
-		let spacing_dist = self.style.spacing / 100. * self.style.diameter;
-
-		let Some(first_sample) = self.trace.first() else {
+		let spacing_distance = (self.style.spacing / 100.) * self.style.diameter;
+		if self.trace.is_empty() {
 			return Vec::new();
 		};
 
-		let mut cur_pos = first_sample.position;
-		let mut result = vec![cur_pos];
-		let mut dist_until_next_blit = spacing_dist;
+		let mut current_position = self.trace[0].position;
+		let mut current_pressure = self.trace[0].pressure;
+		let mut result = vec![BrushOutputSample {
+			position: current_position,
+			scale: current_pressure,
+		}];
+
+		// We iterate over all input points and take uniform steps of length equal to our spacing distance across the entire stroke
 		for sample in &self.trace[1..] {
-			// Travel to the next sample.
-			let delta = sample.position - cur_pos;
-			let mut dist_left = delta.length();
-			let unit_step = delta / dist_left;
+			let position_delta = (sample.position - current_position).length();
+			let pressure_delta = sample.pressure - current_pressure;
 
-			while dist_left >= dist_until_next_blit {
-				// Take a step to the next blit point.
-				cur_pos += dist_until_next_blit * unit_step;
-				dist_left -= dist_until_next_blit;
-
-				// Blit.
-				result.push(cur_pos);
-				dist_until_next_blit = spacing_dist;
+			// Skip input sample pairs with negligible position and pressure differences.
+			if position_delta < f64::EPSILON && pressure_delta < f64::EPSILON {
+				continue;
 			}
 
-			// Take the partial step to land at the sample.
-			dist_until_next_blit -= dist_left;
-			cur_pos = sample.position;
+			let spacing_step = (sample.position - current_position).normalize() * spacing_distance;
+			let mut space_remaining = position_delta;
+			while space_remaining > spacing_distance {
+				current_position += spacing_step;
+				current_pressure = sample.pressure - (space_remaining / position_delta) * pressure_delta;
+				result.push(BrushOutputSample {
+					position: current_position,
+					scale: current_pressure,
+				});
+
+				space_remaining -= spacing_distance;
+			}
 		}
 
 		result

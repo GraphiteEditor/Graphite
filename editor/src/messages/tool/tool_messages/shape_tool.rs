@@ -600,7 +600,7 @@ impl ShapeToolData {
 		let dragging_bounds = self
 			.bounding_box_manager
 			.as_mut()
-			.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+			.and_then(|bounding_box| bounding_box.check_selected_edges(input.pointer.position))
 			.is_some();
 
 		self.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Crosshair, |bounds| {
@@ -660,7 +660,7 @@ impl Fsm for ShapeToolFsmState {
 					.snap_manager
 					.indicator_pos()
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
-					.unwrap_or(input.mouse.position);
+					.unwrap_or(input.pointer.position);
 
 				if matches!(self, Self::Ready(_)) && !input.keyboard.key(Key::Control) {
 					tool_data.gizmo_manager.handle_actions(mouse_position, document, responses);
@@ -682,7 +682,7 @@ impl Fsm for ShapeToolFsmState {
 					let transform = document.metadata().transform_to_viewport(*layer);
 					endpoints
 						.iter()
-						.any(|&local_pos| (transform.transform_point2(local_pos) - input.mouse.position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2))
+						.any(|&local_pos| (transform.transform_point2(local_pos) - input.pointer.position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2))
 				});
 
 				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo && !hovering_over_endpoint {
@@ -698,8 +698,8 @@ impl Fsm for ShapeToolFsmState {
 					anchor_overlays(document, &mut overlay_context);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
-					Line::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
-					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
+					Line::overlays(document, tool_data, input.pointer.position, &mut overlay_context);
+					Arrow::overlays(document, tool_data, input.pointer.position, &mut overlay_context);
 
 					if all_selected_layers_line_or_arrow {
 						let cursor = if hovering_over_endpoint { MouseCursorIcon::Default } else { MouseCursorIcon::Crosshair };
@@ -715,13 +715,13 @@ impl Fsm for ShapeToolFsmState {
 					let dragging_bounds = tool_data
 						.bounding_box_manager
 						.as_mut()
-						.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+						.and_then(|bounding_box| bounding_box.check_selected_edges(input.pointer.position))
 						.is_some();
 
 					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
-						let edges = bounds.check_selected_edges(input.mouse.position);
+						let edges = bounds.check_selected_edges(input.pointer.position);
 						let is_skewing = matches!(self, ShapeToolFsmState::SkewingBounds { .. });
-						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.pointer.position, hover_edge));
 						if is_skewing || (dragging_bounds && is_near_square && !hovering_over_gizmo) {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
@@ -729,7 +729,7 @@ impl Fsm for ShapeToolFsmState {
 							&& !is_skewing && !hovering_over_gizmo
 							&& let Some(edges) = edges
 						{
-							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
+							tool_data.skew_edge = bounds.get_closest_edge(edges, input.pointer.position);
 						}
 					}
 
@@ -744,8 +744,8 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
-					Line::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
-					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
+					Line::overlays(document, tool_data, input.pointer.position, &mut overlay_context);
+					Arrow::overlays(document, tool_data, input.pointer.position, &mut overlay_context);
 
 					if tool_options.shape_type == ShapeType::Circle {
 						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
@@ -825,7 +825,7 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
-				tool_data.line_data.drag_start = input.mouse.position;
+				tool_data.line_data.drag_start = input.pointer.position;
 
 				// Snapped position in viewport space
 				let mouse_pos = tool_data
@@ -833,7 +833,7 @@ impl Fsm for ShapeToolFsmState {
 					.snap_manager
 					.indicator_pos()
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
-					.unwrap_or(input.mouse.position);
+					.unwrap_or(input.pointer.position);
 
 				tool_data.line_data.drag_current = mouse_pos;
 
@@ -909,7 +909,7 @@ impl Fsm for ShapeToolFsmState {
 						tool_data.data.start(document, input, viewport);
 					}
 					ShapeType::Arrow | ShapeType::Line => {
-						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 						let snapped = tool_data
 							.data
 							.snap_manager
@@ -942,7 +942,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.pointer.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
@@ -1066,7 +1066,7 @@ impl Fsm for ShapeToolFsmState {
 						bounds,
 						&mut tool_data.layers_dragging,
 						tool_data.data.drag_start,
-						input.mouse.position,
+						input.pointer.position,
 						input.keyboard.key(modifier[1]),
 						ToolType::Shape,
 					);
@@ -1082,7 +1082,7 @@ impl Fsm for ShapeToolFsmState {
 						bounds,
 						input.keyboard.key(skew),
 						&mut tool_data.layers_dragging,
-						input.mouse.position,
+						input.pointer.position,
 						ToolType::Shape,
 					);
 				}
@@ -1094,7 +1094,7 @@ impl Fsm for ShapeToolFsmState {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
-					.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+					.and_then(|bounding_box| bounding_box.check_selected_edges(input.pointer.position))
 					.is_some();
 
 				let cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Crosshair, |bounds| {
@@ -1107,7 +1107,7 @@ impl Fsm for ShapeToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.pointer.position);
 
 				responses.add(OverlaysMessage::Draw);
 				self
@@ -1138,7 +1138,7 @@ impl Fsm for ShapeToolFsmState {
 				| ShapeToolFsmState::ModifyingGizmo,
 				ShapeToolMessage::DragStop,
 			) => {
-				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
+				input.pointer.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup(responses);
 
 				tool_data.gizmo_manager.handle_cleanup();

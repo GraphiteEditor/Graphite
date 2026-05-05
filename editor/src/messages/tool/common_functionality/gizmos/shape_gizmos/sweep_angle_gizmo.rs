@@ -198,7 +198,7 @@ impl SweepAngleGizmo {
 		let angle_delta = viewport
 			.inverse()
 			.transform_point2(self.previous_mouse_position)
-			.angle_to(viewport.inverse().transform_point2(input.mouse.position))
+			.angle_to(viewport.inverse().transform_point2(input.pointer.position))
 			.to_degrees();
 		let angle = self.total_angle_delta + angle_delta;
 
@@ -340,7 +340,7 @@ impl SweepAngleGizmo {
 			input: NodeInput::value(TaggedValue::F64(sweep_angle), false),
 		});
 
-		self.previous_mouse_position = input.mouse.position;
+		self.previous_mouse_position = input.pointer.position;
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 

@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
-use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+use crate::messages::input_mapper::utility_types::input_pointer::MouseKeys;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -682,7 +682,7 @@ impl PenToolData {
 		let document = snap_data.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
-		let mouse = snap_data.input.mouse.position;
+		let mouse = snap_data.input.pointer.position;
 		self.handle_swapped = false;
 		self.handle_end_offset = None;
 		self.handle_start_offset = None;
@@ -892,7 +892,7 @@ impl PenToolData {
 				self.handle_swapped = false;
 				return;
 			}
-			self.handle_end_offset = Some(viewport.transform_point2(handle_pos) - input.mouse.position);
+			self.handle_end_offset = Some(viewport.transform_point2(handle_pos) - input.pointer.position);
 
 			// Update selections if in closed path mode
 			if self.path_closed {
@@ -906,7 +906,7 @@ impl PenToolData {
 			// Calculate offset from mouse position to next handle start
 			if let Some(layer_id) = layer {
 				let transform = document.metadata().transform_to_viewport(layer_id);
-				self.handle_start_offset = Some(transform.transform_point2(self.next_handle_start) - input.mouse.position);
+				self.handle_start_offset = Some(transform.transform_point2(self.next_handle_start) - input.pointer.position);
 			}
 
 			self.update_handle_type(TargetHandle::FuturePreviewOutHandle);
@@ -1228,7 +1228,7 @@ impl PenToolData {
 		append: bool,
 		shape_editor: &mut ShapeState,
 	) {
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 		let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 		self.handle_type = TargetHandle::FuturePreviewOutHandle;
@@ -1389,7 +1389,7 @@ impl PenToolData {
 		let mut unselected = Vec::new();
 		let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
 
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
@@ -1575,8 +1575,8 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::GRSHandle
 			}
 			(PenToolFsmState::GRSHandle, PenToolMessage::Confirm) => {
-				tool_data.next_point = input.mouse.position;
-				tool_data.next_handle_start = input.mouse.position;
+				tool_data.next_point = input.pointer.position;
+				tool_data.next_handle_start = input.pointer.position;
 
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PenToolMessage::PointerMove {
@@ -1590,8 +1590,8 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::PlacingAnchor
 			}
 			(PenToolFsmState::GRSHandle, PenToolMessage::Abort) => {
-				tool_data.next_point = input.mouse.position;
-				tool_data.next_handle_start = input.mouse.position;
+				tool_data.next_point = input.pointer.position;
+				tool_data.next_handle_start = input.pointer.position;
 
 				let Some(layer) = layer else { return PenToolFsmState::GRSHandle };
 				let vector = document.network_interface.compute_modified_vector(layer).unwrap();
@@ -1636,7 +1636,7 @@ impl Fsm for PenToolFsmState {
 				// Check if there is an anchor within threshold
 				// If not check if there is a closest segment within threshold, if yes then draw overlay
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
@@ -1762,7 +1762,7 @@ impl Fsm for PenToolFsmState {
 
 				if self == PenToolFsmState::PlacingAnchor {
 					let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 					let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false).is_some();
@@ -1852,7 +1852,7 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
@@ -1862,7 +1862,7 @@ impl Fsm for PenToolFsmState {
 						tool_data.buffering_merged_vector = false;
 						tool_data.handle_mode = HandleMode::ColinearLocked;
 						tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
-						tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+						tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.pointer.position, responses);
 					}
 					tool_data.buffering_merged_vector = false;
 					PenToolFsmState::DraggingHandle(tool_data.handle_mode)
@@ -1959,7 +1959,7 @@ impl Fsm for PenToolFsmState {
 							.transform_to_viewport(layer)
 							.transform_point2(tool_data.target_handle_position(reference_handle, &vector).unwrap())
 					});
-					tool_data.handle_start_offset = handle_start.map(|start| start - input.mouse.position);
+					tool_data.handle_start_offset = handle_start.map(|start| start - input.pointer.position);
 					tool_data.space_pressed = true;
 				}
 
@@ -1976,7 +1976,7 @@ impl Fsm for PenToolFsmState {
 				}
 
 				let state = tool_data
-					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input, viewport)
+					.drag_handle(snap_data, transform, input.pointer.position, responses, layer, input, viewport)
 					.unwrap_or(PenToolFsmState::Ready);
 
 				if tool_data.handle_swapped {
@@ -2026,7 +2026,7 @@ impl Fsm for PenToolFsmState {
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
 				let state = tool_data
-					.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
+					.place_anchor(SnapData::new(document, input, viewport), transform, input.pointer.position, responses)
 					.unwrap_or(PenToolFsmState::Ready);
 
 				// Auto-panning
@@ -2077,7 +2077,7 @@ impl Fsm for PenToolFsmState {
 					colinear: input.keyboard.key(colinear),
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
-				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.pointer.position);
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -2088,7 +2088,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::DraggingHandle(mode)
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerOutsideViewport { .. }) => {
-				if !input.mouse.mouse_keys.contains(MouseKeys::LEFT) {
+				if !input.pointer.mouse_keys.contains(MouseKeys::LEFT) {
 					return self;
 				}
 				// Auto-panning
@@ -2180,7 +2180,7 @@ impl Fsm for PenToolFsmState {
 					PenToolFsmState::Ready
 				} else {
 					tool_data
-						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
+						.place_anchor(SnapData::new(document, input, viewport), transform, input.pointer.position, responses)
 						.unwrap_or(PenToolFsmState::Ready)
 				}
 			}
@@ -2211,7 +2211,7 @@ impl Fsm for PenToolFsmState {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
 					tool_data
-						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
+						.place_anchor(SnapData::new(document, input, viewport), transform, input.pointer.position, responses)
 						.unwrap_or(PenToolFsmState::PlacingAnchor)
 				} else {
 					responses.add(PenToolMessage::Abort);
@@ -2220,7 +2220,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Redo) => {
 				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
-				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.pointer.position, responses);
 				match tool_data.point_index {
 					0 => PenToolFsmState::Ready,
 					_ => PenToolFsmState::PlacingAnchor,

@@ -1666,7 +1666,7 @@ impl DocumentMessageHandler {
 	/// Find all of the layers that were clicked on from a viewport space location
 	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'_> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+		let point = document_to_viewport.inverse().transform_point2(ipp.pointer.position);
 		ClickXRayIter::new(&self.network_interface, XRayTarget::Point(point))
 	}
 

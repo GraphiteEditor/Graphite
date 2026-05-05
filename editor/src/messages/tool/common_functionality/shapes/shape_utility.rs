@@ -171,7 +171,7 @@ pub fn clicked_on_shape_endpoints(layer: LayerNodeIdentifier, document: &Documen
 	let local_end = endpoint;
 
 	let transform = document.metadata().transform_to_viewport(layer);
-	let mouse_pos = input.mouse.position;
+	let mouse_pos = input.pointer.position;
 	let [start, end] = [local_start, local_end].map(|point| transform.transform_point2(point));
 
 	let start_click = (mouse_pos - start).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2);

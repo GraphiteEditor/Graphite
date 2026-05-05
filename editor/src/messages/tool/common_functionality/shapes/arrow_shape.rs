@@ -43,7 +43,7 @@ impl Arrow {
 	) {
 		let [center, snap_angle, lock_angle] = modifier;
 
-		tool_data.line_data.drag_current = input.mouse.position;
+		tool_data.line_data.drag_current = input.pointer.position;
 
 		let keyboard = &input.keyboard;
 		let ignore = [layer];

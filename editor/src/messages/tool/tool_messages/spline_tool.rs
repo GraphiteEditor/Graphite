@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
-use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+use crate::messages::input_mapper::utility_types::input_pointer::MouseKeys;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
@@ -275,7 +275,7 @@ impl SplineToolData {
 
 	/// Get the snapped point while ignoring current layer
 	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> SnappedPoint {
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 		let ignore = if let Some(layer) = self.current_layer { vec![layer] } else { vec![] };
 		let snap_data = SnapData::ignore(document, input, viewport, &ignore);
 		self.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default())
@@ -346,7 +346,7 @@ impl Fsm for SplineToolFsmState {
 				tool_data.cleanup();
 				tool_data.weight = tool_options.line_weight;
 
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
@@ -383,7 +383,7 @@ impl Fsm for SplineToolFsmState {
 					tool_data.current_layer = Some(layer);
 
 					let transform = document.metadata().transform_to_viewport(layer);
-					let position = transform.inverse().transform_point2(input.mouse.position);
+					let position = transform.inverse().transform_point2(input.pointer.position);
 					tool_data.next_point = position;
 
 					return SplineToolFsmState::Drawing;
@@ -461,7 +461,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
 				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
-				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
+				let join_point = closest_point(document, input.pointer.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
 
 				// Endpoints snapping - closest_point returns local-space positions
 				if let Some((_, _, point)) = join_point {
@@ -493,12 +493,12 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(_, SplineToolMessage::PointerMove) => {
-				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.pointer.position);
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerOutsideViewport) => {
-				if !input.mouse.mouse_keys.contains(MouseKeys::LEFT) {
+				if !input.pointer.mouse_keys.contains(MouseKeys::LEFT) {
 					return self;
 				}
 				// Auto-panning

@@ -11,7 +11,7 @@ use crate::cef::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT};
 pub(crate) struct InputState {
 	modifiers: ModifiersState,
 	mouse_position: MousePosition,
-	mouse_state: MouseState,
+	pointer_state: PointerState,
 	mouse_click_tracker: ClickTracker,
 }
 impl InputState {
@@ -41,7 +41,7 @@ impl InputState {
 	}
 
 	pub(crate) fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
-		self.mouse_state.update(button, state);
+		self.pointer_state.update(button, state);
 		self.mouse_click_tracker.input(button, state, self.mouse_position)
 	}
 
@@ -93,12 +93,12 @@ impl From<&PhysicalPosition<f64>> for MousePosition {
 }
 
 #[derive(Default, Clone)]
-pub(crate) struct MouseState {
+pub(crate) struct PointerState {
 	left: bool,
 	right: bool,
 	middle: bool,
 }
-impl MouseState {
+impl PointerState {
 	pub(crate) fn update(&mut self, button: &MouseButton, state: &ElementState) {
 		match state {
 			ElementState::Pressed => match button {
@@ -233,13 +233,13 @@ impl CefModifiers {
 			inner |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN;
 		}
 
-		if input_state.mouse_state.left {
+		if input_state.pointer_state.left {
 			inner |= cef_event_flags_t::EVENTFLAG_LEFT_MOUSE_BUTTON;
 		}
-		if input_state.mouse_state.right {
+		if input_state.pointer_state.right {
 			inner |= cef_event_flags_t::EVENTFLAG_RIGHT_MOUSE_BUTTON;
 		}
-		if input_state.mouse_state.middle {
+		if input_state.pointer_state.middle {
 			inner |= cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON;
 		}
 
