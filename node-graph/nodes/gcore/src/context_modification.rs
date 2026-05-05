@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::table::Table;
+use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
@@ -37,6 +37,9 @@ async fn context_modification<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
+		Context -> AttributeColumnDyn,
+		Context -> AttributeValueDyn,
+		Context -> TableDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.

@@ -1,12 +1,13 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::table::{Table, TableRow};
+use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
+use vector_types::gradient::{GradientSpreadMethod, GradientType};
 use vector_types::{GradientStop, GradientStops, ReferencePoint};
 
 /// Returns the value at the specified index in the list.
@@ -216,45 +217,277 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> 
 	node_path.into_iter().take(len.saturating_sub(1)).collect()
 }
 
-/// Writes a named attribute on each item of the input `Table`. The value-producing input is evaluated once per item,
-/// with the item's index and the item itself (as a `Table` containing only that item, passed as a vararg) provided via
-/// context, so the upstream pipeline can return a different value per item that may be derived from the item's own data.
-/// If the attribute already exists, its values are replaced; if not, the attribute is added.
-#[node_macro::node(category("General"))]
-async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash, U: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(
+/// Sets a named attribute on the input `Table`, computing one value per item via the value-producing input. That input
+/// is evaluated once per item, with the item's index and the item itself (as a `Table` containing only that item,
+/// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
+/// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
+/// The value is type-erased into an `AttributeValueDyn` by an auto-inserted convert node, so this node only
+/// monomorphizes over `T` instead of the cartesian product `(T, U)`.
+#[node_macro::node(category("Attributes: Write"))]
+async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
-	/// The `Table` whose items will gain or have replaced the named attribute.
+	/// The `Table` to set the named attribute on (one value per item).
 	#[implementations(
-		Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>, Table<Artboard>,
-		Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>, Table<Graphic>,
-		Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>, Table<Vector>,
-		Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>, Table<Raster<CPU>>,
-		Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>, Table<Raster<GPU>>,
-		Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>, Table<Color>,
-		Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>, Table<GradientStops>,
+		Table<Artboard>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		Table<f64>,
+		Table<bool>,
+		Table<String>,
+		Table<DAffine2>,
+		Table<BlendMode>,
+		Table<GradientType>,
+		Table<GradientSpreadMethod>,
 	)]
 	mut content: Table<T>,
 	/// The attribute name (key) to write or replace.
 	name: String,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	#[implementations(
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-		Context -> f64, Context -> u32, Context -> bool, Context -> String, Context -> Table<String>, Context -> DVec2, Context -> DAffine2, Context -> Table<NodeId>, Context -> Table<Color>, Context -> Table<GradientStops>,
-	)]
-	value: impl Node<'n, Context<'static>, Output = U>,
+	#[implementations(Context -> AttributeValueDyn)]
+	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
 ) -> Table<T> {
 	for index in 0..content.len() {
 		let row = content.clone_row(index).expect("index is within bounds");
 		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_row(row))).with_index(index);
 		let v = value.eval(owned_ctx.into_context()).await;
-		content.set_attribute(&name, index, v);
+		content.set_attribute_dyn(&name, index, v);
 	}
 	content
+}
+
+/// Sets a named attribute on the primary table, with each value taken from the corresponding item's element in the source table (paired by index, wrapping if the source has fewer items).
+/// The source is type-erased into an `AttributeColumnDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
+#[node_macro::node(category("Attributes: Write"))]
+fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
+	_: impl Ctx,
+	/// The `Table` to attach the new attribute to.
+	#[implementations(
+		Table<Artboard>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		Table<f64>,
+		Table<bool>,
+		Table<String>,
+		Table<DAffine2>,
+		Table<BlendMode>,
+		Table<GradientType>,
+		Table<GradientSpreadMethod>,
+	)]
+	mut content: Table<T>,
+	/// The source values to attach. Any `Table<U>` wired here is type-erased via an auto-inserted convert.
+	#[expose]
+	source: AttributeColumnDyn,
+	/// The name to assign to the new destination attribute.
+	name: String,
+) -> Table<T> {
+	if source.is_empty() {
+		return content;
+	}
+	content.set_column_dyn(name, source);
+	content
+}
+
+/// Reads a named `Vector` attribute from the input table, outputting each value as an element of a new `Table<Vector>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_vector(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<Vector> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
+}
+
+/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input table, outputting each value as an element of a new `Table<f64>`. Integer values are converted to `f64`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_number(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<f64> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let value = content
+			.attribute::<f64>(&name, index)
+			.copied()
+			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
+			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
+		let Some(value) = value else { continue };
+		result.push(TableRow::new_from_element(value));
+	}
+	result
+}
+
+/// Reads a named `bool` attribute from the input table, outputting each value as an element of a new `Table<bool>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_bool(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<bool> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `String` attribute from the input table, outputting each value as an element of a new `Table<String>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_string(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<String> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<String>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
+}
+
+/// Reads a named `DAffine2` transform attribute from the input table, outputting each value as an element of a new `Table<DAffine2>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_transform(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<DAffine2> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `Color` attribute from the input table, outputting each value as an element of a new `Table<Color>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_color(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<Color> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `BlendMode` attribute from the input table, outputting each value as an element of a new `Table<BlendMode>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_blend_mode(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<BlendMode> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientType` attribute from the input table, outputting each value as an element of a new `Table<GradientType>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_type(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<GradientType> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientSpreadMethod` attribute from the input table, outputting each value as an element of a new `Table<GradientSpreadMethod>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_spread_method(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<GradientSpreadMethod> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(*value));
+	}
+	result
+}
+
+/// Reads a named `GradientStops` attribute from the input table, outputting each value as an element of a new `Table<GradientStops>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_gradient_stops(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<GradientStops> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<GradientStops>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
+}
+
+/// Reads a named `Artboard` attribute from the input table, outputting each value as an element of a new `Table<Artboard>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_artboard(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<Artboard> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
+}
+
+/// Reads a named `Raster<CPU>` attribute from the input table, outputting each value as an element of a new `Table<Raster<CPU>>`.
+#[node_macro::node(category("Attributes: Read"))]
+fn read_attribute_raster(
+	_: impl Ctx,
+	content: TableDyn,
+	/// The attribute name (key) to read.
+	name: String,
+) -> Table<Raster<CPU>> {
+	let mut result = Table::with_capacity(content.len());
+	for index in 0..content.len() {
+		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
+		result.push(TableRow::new_from_element(value.clone()));
+	}
+	result
 }
 
 /// Joins two `Table`s of the same type, extending the base `Table` with the items from the new `Table`.

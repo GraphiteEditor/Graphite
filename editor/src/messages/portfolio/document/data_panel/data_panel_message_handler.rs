@@ -12,7 +12,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientType};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -191,6 +191,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<String>,
 		Table<f64>,
 		Table<u8>,
+		Table<bool>,
+		Table<DAffine2>,
+		Table<BlendMode>,
+		Table<GradientType>,
+		Table<GradientSpreadMethod>,
 		GradientStops,
 		f64,
 		u32,
@@ -200,6 +205,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Option<f64>,
 		DVec2,
 		DAffine2,
+		BlendMode,
+		GradientType,
+		GradientSpreadMethod,
 	])
 }
 
@@ -757,6 +765,51 @@ impl TableRowLayout for Affine2 {
 	}
 }
 
+impl TableRowLayout for BlendMode {
+	fn type_name() -> &'static str {
+		"BlendMode"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for GradientType {
+	fn type_name() -> &'static str {
+		"GradientType"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for GradientSpreadMethod {
+	fn type_name() -> &'static str {
+		"GradientSpreadMethod"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
 /// Resolves the value/breadcrumb label for a `NodeId` against `network_interface` at the given `network_path`,
 /// falling back to "Node {id}" if the node isn't present (e.g. an ID that no longer maps to a real node).
 fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> String {
@@ -921,6 +974,9 @@ macro_rules! known_table_row_types {
 
 /// Uses `Display` instead of `Debug` for attribute types that have a nicer human-readable format.
 fn display_value_override(any: &dyn Any) -> Option<String> {
+	if let Some(value) = any.downcast_ref::<DVec2>() {
+		return Some(format_dvec2(*value));
+	}
 	if let Some(value) = any.downcast_ref::<BlendMode>() {
 		return Some(value.to_string());
 	}

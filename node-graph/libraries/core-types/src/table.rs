@@ -24,7 +24,7 @@ pub const ATTR_OPACITY: &str = "opacity";
 /// Like opacity but does not affect content clipped to the row.
 pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 
-/// Whether a row inherits the alpha of the content beneath it (clipping mask).
+/// `bool` for whether a row inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
 
 /// `Table<NodeId>` path from the root network to the layer node owning this row.
@@ -47,16 +47,16 @@ pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
 /// its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
 pub const ATTR_EDITOR_TEXT_FRAME: &str = "editor:text_frame";
 
-/// Byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
+/// `u64` byte offset where a regex match begins ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_START: &str = "start";
 
-/// Byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).
+/// `u64` byte offset where a regex match ends ('Regex Find All', 'Regex Capture' text nodes).
 pub const ATTR_END: &str = "end";
 
-/// Regex named-capture-group's name, or empty for unnamed groups ('Regex Capture' text node).
+/// `String` for a regex named-capture-group's name, or empty for unnamed groups ('Regex Capture' text node).
 pub const ATTR_NAME: &str = "name";
 
-/// JSON value's type string (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
+/// `String` for a JSON value's type (`"string"`, `"number"`, `"object"`, etc.) from 'JSON Query All'.
 pub const ATTR_TYPE: &str = "type";
 
 /// Artboard's `DVec2` top-left corner in document coordinates.
@@ -68,7 +68,7 @@ pub const ATTR_DIMENSIONS: &str = "dimensions";
 /// Artboard's `Color` background fill.
 pub const ATTR_BACKGROUND: &str = "background";
 
-/// Whether an artboard clips content to its bounds.
+/// `bool` for whether an artboard clips content to its bounds.
 pub const ATTR_CLIP: &str = "clip";
 
 /// Gradient's `GradientSpreadMethod` (`Pad`, `Reflect`, or `Repeat`).
@@ -83,7 +83,7 @@ pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
 /// Enables type-erased scalar storage that supports Clone, Send, Sync, and downcasting.
 /// Used for individual attribute values in a TableRow.
-trait AttributeValue: std::any::Any + Send + Sync {
+pub trait AttributeValue: std::any::Any + Send + Sync {
 	/// Clones this value into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AttributeValue>;
 
@@ -149,7 +149,7 @@ impl Clone for Box<dyn AttributeValue> {
 // ======================
 
 /// Enables type-erased columnar storage for parallel attribute lists in a Table.
-trait AttributeColumn: std::any::Any + Send + Sync {
+pub trait AttributeColumn: std::any::Any + Send + Sync {
 	/// Clones this column into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AttributeColumn>;
 
@@ -165,11 +165,20 @@ trait AttributeColumn: std::any::Any + Send + Sync {
 	/// Pushes a default value onto the end of this column.
 	fn push_default(&mut self);
 
+	/// Sets the value at the given index, padding with defaults if the column is shorter than `index`.
+	/// Falls back to a default if the value's type doesn't match.
+	fn set_at(&mut self, index: usize, value: Box<dyn AttributeValue>);
+
 	/// Creates a new column of the same type filled with `count` number of default values.
 	fn new_with_defaults(&self, count: usize) -> Box<dyn AttributeColumn>;
 
 	/// Returns the number of elements in this column.
 	fn len(&self) -> usize;
+
+	/// Returns whether this column has any elements.
+	fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 
 	/// Appends all values from another column of the same type.
 	fn extend(&mut self, other: Box<dyn AttributeColumn>);
@@ -217,7 +226,7 @@ impl Clone for Box<dyn AttributeColumn> {
 // =========
 
 /// Wraps a Vec<T> for column-major attribute storage in a Table.
-struct Column<T>(Vec<T>);
+pub struct Column<T>(pub Vec<T>);
 
 impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static> AttributeColumn for Column<T> {
 	/// Clones this column into a new boxed trait object.
@@ -248,6 +257,20 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	/// Pushes a default `T` value onto the end of this column.
 	fn push_default(&mut self) {
 		self.0.push(T::default());
+	}
+
+	/// Sets the value at the given index, padding with defaults if the column is shorter than `index`.
+	/// Falls back to a default if the value's type doesn't match.
+	fn set_at(&mut self, index: usize, value: Box<dyn AttributeValue>) {
+		while self.0.len() < index {
+			self.0.push(T::default());
+		}
+		let value = value.into_any().downcast::<T>().map(|v| *v).unwrap_or_default();
+		if self.0.len() == index {
+			self.0.push(value);
+		} else {
+			self.0[index] = value;
+		}
 	}
 
 	/// Creates a new column filled with `count` default `T` values.
@@ -300,6 +323,202 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	fn eq_dyn(&self, other: &dyn AttributeColumn) -> bool {
 		other.as_any().downcast_ref::<Self>().is_some_and(|other| self.0 == other.0)
 	}
+}
+
+// ===================
+// AttributeColumnDyn
+// ===================
+
+/// Type-erased column of attribute values, used as a node graph parameter type.
+/// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<AttributeColumnDyn, ()>`
+/// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
+pub struct AttributeColumnDyn(pub Box<dyn AttributeColumn>);
+
+impl AttributeColumnDyn {
+	/// Number of values in this column.
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	/// Whether this column has zero values.
+	pub fn is_empty(&self) -> bool {
+		self.0.len() == 0
+	}
+
+	/// Builds a new column matching `target_len` items, taking values from this column (wrapping if shorter, truncating if longer).
+	pub fn cloned_to_length(&self, target_len: usize) -> Box<dyn AttributeColumn> {
+		let mut result = self.0.new_with_defaults(0);
+		let source_len = self.0.len();
+		if source_len == 0 {
+			for _ in 0..target_len {
+				result.push_default();
+			}
+			return result;
+		}
+		for i in 0..target_len {
+			let value = self.0.clone_value(i % source_len).expect("source_len > 0");
+			result.push(value);
+		}
+		result
+	}
+}
+
+impl Clone for AttributeColumnDyn {
+	fn clone(&self) -> Self {
+		Self(self.0.clone_box())
+	}
+}
+
+impl Default for AttributeColumnDyn {
+	fn default() -> Self {
+		Self(Box::new(Column::<bool>(Vec::new())))
+	}
+}
+
+impl Debug for AttributeColumnDyn {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "AttributeColumnDyn(len: {})", self.0.len())
+	}
+}
+
+impl PartialEq for AttributeColumnDyn {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.eq_dyn(&*other.0)
+	}
+}
+
+impl CacheHash for AttributeColumnDyn {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.cache_hash_dyn(state);
+	}
+}
+
+unsafe impl StaticType for AttributeColumnDyn {
+	type Static = Self;
+}
+
+// ==================
+// AttributeValueDyn
+// ==================
+
+/// Type-erased single attribute value, used as a node graph parameter type.
+/// Lets a node accept a value of any concrete type via the auto-inserted `Convert<AttributeValueDyn, ()>`
+/// without monomorphizing over the value type.
+pub struct AttributeValueDyn(pub Box<dyn AttributeValue>);
+
+impl Clone for AttributeValueDyn {
+	fn clone(&self) -> Self {
+		Self(self.0.clone_box())
+	}
+}
+
+impl Default for AttributeValueDyn {
+	fn default() -> Self {
+		Self(Box::new(false))
+	}
+}
+
+impl Debug for AttributeValueDyn {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "AttributeValueDyn({})", self.0.display_string())
+	}
+}
+
+impl PartialEq for AttributeValueDyn {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.display_string() == other.0.display_string()
+	}
+}
+
+impl CacheHash for AttributeValueDyn {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.display_string().cache_hash(state);
+	}
+}
+
+unsafe impl StaticType for AttributeValueDyn {
+	type Static = Self;
+}
+
+// ========
+// TableDyn
+// ========
+
+/// Type-erased view of a `Table<T>` exposing only its attribute columns and row count, used as a node graph parameter type.
+/// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<TableDyn, ()>` without monomorphizing over `U`,
+/// for cases where the element type is irrelevant (such as nodes that read out a named attribute regardless of the carrier table).
+#[derive(Default)]
+pub struct TableDyn {
+	columns: Vec<(String, Box<dyn AttributeColumn>)>,
+	len: usize,
+}
+
+impl TableDyn {
+	/// Number of items in the underlying table.
+	pub fn len(&self) -> usize {
+		self.len
+	}
+
+	/// Whether the underlying table has zero items.
+	pub fn is_empty(&self) -> bool {
+		self.len == 0
+	}
+
+	/// Returns a reference to the attribute value at the given key and item index, downcast to `U`, if present and matching.
+	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
+		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index)?.downcast_ref::<U>() } else { None })
+	}
+}
+
+impl<T> From<Table<T>> for TableDyn {
+	fn from(table: Table<T>) -> Self {
+		Self {
+			columns: table.attributes.columns,
+			len: table.attributes.len,
+		}
+	}
+}
+
+impl Clone for TableDyn {
+	fn clone(&self) -> Self {
+		Self {
+			columns: self.columns.iter().map(|(key, column)| (key.clone(), column.clone_box())).collect(),
+			len: self.len,
+		}
+	}
+}
+
+impl Debug for TableDyn {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let keys: Vec<&str> = self.columns.iter().map(|(k, _)| k.as_str()).collect();
+		f.debug_struct("TableDyn").field("keys", &keys).field("len", &self.len).finish()
+	}
+}
+
+impl PartialEq for TableDyn {
+	fn eq(&self, other: &Self) -> bool {
+		self.len == other.len
+			&& self.columns.len() == other.columns.len()
+			&& self
+				.columns
+				.iter()
+				.zip(&other.columns)
+				.all(|((key_a, column_a), (key_b, column_b))| key_a == key_b && column_a.eq_dyn(&**column_b))
+	}
+}
+
+impl CacheHash for TableDyn {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.len.cache_hash(state);
+		for (key, column) in &self.columns {
+			key.cache_hash(state);
+			column.cache_hash_dyn(state);
+		}
+	}
+}
+
+unsafe impl StaticType for TableDyn {
+	type Static = Self;
 }
 
 // ===============
@@ -764,6 +983,28 @@ impl<T> Table<T> {
 	/// Sets the attribute value at the given row index and key, creating the column with defaults if it doesn't exist.
 	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
 		self.attributes.set_value(key, index, value);
+	}
+
+	/// Replaces (or adds) an attribute column from a type-erased source. The source is wrapped or truncated to match this table's item count.
+	pub fn set_column_dyn(&mut self, key: impl Into<String>, source: AttributeColumnDyn) {
+		let key = key.into();
+		self.attributes.columns.retain(|(k, _)| k != &key);
+		let new_column = source.cloned_to_length(self.element.len());
+		self.attributes.columns.push((key, new_column));
+	}
+
+	/// Sets a single type-erased attribute value at the given index, creating the column from the value's underlying type if it doesn't exist (padded with defaults to match the table's length). Falls back to default if the value's type doesn't match an existing column.
+	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, index: usize, value: AttributeValueDyn) {
+		let key = key.into();
+		if let Some(position) = self.attributes.columns.iter().position(|(k, _)| k == &key) {
+			self.attributes.columns[position].1.set_at(index, value.0);
+		} else {
+			let mut new_column = value.0.into_column(index);
+			while new_column.len() < self.element.len() {
+				new_column.push_default();
+			}
+			self.attributes.columns.push((key, new_column));
+		}
 	}
 
 	/// Removes the entire attribute column for the given key, if present.

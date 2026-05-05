@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
-use core_types::table::{Table, TableRow};
+use core_types::table::{Table, TableDyn, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
@@ -2883,35 +2883,11 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 	})
 }
 
-trait Count {
-	fn count(&self) -> usize;
-}
-impl<T> Count for Table<T> {
-	fn count(&self) -> usize {
-		self.len()
-	}
-}
-
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I: Count>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<String>,
-		Table<f64>,
-		Table<u8>,
-		Table<NodeId>,
-	)]
-	content: I,
-) -> f64 {
-	content.count() as f64
+async fn count_elements(_: impl Ctx, content: TableDyn) -> f64 {
+	content.len() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
