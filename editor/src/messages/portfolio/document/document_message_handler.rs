@@ -273,12 +273,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, context);
 			}
-			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
+			DocumentMessage::AlignSelectedLayers { axis, aggregate, align_to_artboard } => {
 				let axis = match axis {
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let Some(combined_box) = self.network_interface.selected_layers_artwork_bounding_box_viewport() else {
+				let combined_box = if align_to_artboard {
+					self.selected_layers_shared_artboard_bounding_box_viewport()
+				} else {
+					self.network_interface.selected_layers_artwork_bounding_box_viewport()
+				};
+				let Some(combined_box) = combined_box else {
 					return;
 				};
 
@@ -1578,11 +1583,38 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 }
 
 impl DocumentMessageHandler {
+<<<<<<< HEAD
 	/// Translates a viewport mouse position to a document-space transform, or uses the viewport center if no mouse position is given.
 	fn document_transform_from_mouse(&self, mouse: Option<(f64, f64)>, viewport: &ViewportMessageHandler) -> DAffine2 {
 		let viewport_pos: DVec2 = mouse.map_or_else(|| viewport.center_in_viewport_space().into_dvec2() + viewport.offset().into_dvec2(), |pos| pos.into());
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 		DAffine2::from_translation(document_to_viewport.inverse().transform_point2(viewport_pos - viewport.offset().into_dvec2()))
+=======
+	fn selected_layers_shared_artboard_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		let selected_nodes = self.network_interface.selected_nodes();
+		let mut selected_layers = selected_nodes.selected_unlocked_layers(&self.network_interface).peekable();
+		selected_layers.peek()?;
+
+		let mut shared_artboard = None;
+
+		for layer in selected_layers {
+			let layer_artboard = if self.network_interface.is_artboard(&layer.to_node(), &[]) {
+				Some(layer)
+			} else {
+				layer
+					.ancestors(self.metadata())
+					.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.network_interface.is_artboard(&ancestor.to_node(), &[]))
+			};
+
+			match (shared_artboard, layer_artboard) {
+				(None, Some(artboard)) => shared_artboard = Some(artboard),
+				(Some(shared_artboard), Some(artboard)) if shared_artboard == artboard => {}
+				_ => return None,
+			}
+		}
+
+		shared_artboard.and_then(|artboard| self.metadata().bounding_box_viewport(artboard))
+>>>>>>> 6525a73f6 (Add 'Align to Artboard' feature (issue #1720))
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad

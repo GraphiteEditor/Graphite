@@ -42,6 +42,7 @@ pub enum DocumentMessage {
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
+		align_to_artboard: bool,
 	},
 	RemoveArtboards,
 	ClearLayersPanel,

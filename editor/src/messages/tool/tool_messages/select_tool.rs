@@ -108,6 +108,9 @@ pub enum SelectToolMessage {
 	SelectOptions {
 		options: SelectOptionsUpdate,
 	},
+	SetAlignToArtboard {
+		align_to_artboard: bool,
+	},
 	SetPivot {
 		position: ReferencePoint,
 	},
@@ -157,7 +160,7 @@ impl SelectTool {
 			.widget_instance()
 	}
 
-	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
+	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
@@ -172,10 +175,16 @@ impl SelectTool {
 				};
 				IconButton::new(icon, 24)
 					.tooltip_label(label)
-					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into())
+					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate, align_to_artboard }.into())
 					.disabled(disabled)
 					.widget_instance()
 			})
+	}
+
+	fn should_refresh_align_to_artboard(&mut self) -> bool {
+		let align_to_artboard_changed = self.tool_data.align_to_artboard_changed;
+		self.tool_data.align_to_artboard_changed = false;
+		align_to_artboard_changed
 	}
 
 	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
@@ -250,9 +259,33 @@ impl LayoutHolder for SelectTool {
 		}
 
 		// Align
-		let disabled = self.tool_data.selected_layers_count < 2;
+		let align_to_artboard = self.tool_data.align_to_artboard;
+		let disabled = self.tool_data.selected_layers_count == 0 || (!align_to_artboard && self.tool_data.selected_layers_count < 2);
+		let align_to_artboard_checkbox_id = CheckboxId::new();
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.extend(self.alignment_widgets(disabled));
+		widgets.extend(self.alignment_widgets(disabled, align_to_artboard));
+		widgets.push(
+			PopoverButton::new()
+				.icon("AlignVerticalCenter")
+				.tooltip_label("Alignment Options")
+				.tooltip_description("Change how alignment uses the selection bounds or artboard bounds.")
+				.popover_min_width(Some(190))
+				.popover_layout(Layout(vec![LayoutGroup::row(vec![
+					CheckboxInput::new(align_to_artboard)
+						.for_label(align_to_artboard_checkbox_id)
+						.tooltip_label("To Artboard")
+						.tooltip_description("Align selected layers to their shared artboard instead of the selection bounds.")
+						.on_update(|input: &CheckboxInput| SelectToolMessage::SetAlignToArtboard { align_to_artboard: input.checked }.into())
+						.widget_instance(),
+					TextLabel::new("To Artboard")
+						.tooltip_label("To Artboard")
+						.tooltip_description("Align selected layers to their shared artboard instead of the selection bounds.")
+						.for_checkbox(align_to_artboard_checkbox_id)
+						.widget_instance(),
+				])]))
+				.disabled(self.tool_data.selected_layers_count == 0)
+				.widget_instance(),
+		);
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
@@ -310,7 +343,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
-		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
+		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.should_refresh_align_to_artboard() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
@@ -404,6 +437,8 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	drag_start_center: ViewportPosition,
+	align_to_artboard: bool,
+	align_to_artboard_changed: bool,
 }
 
 impl SelectToolData {
@@ -609,6 +644,11 @@ impl Fsm for SelectToolFsmState {
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
+			(_, SelectToolMessage::SetAlignToArtboard { align_to_artboard }) => {
+				tool_data.align_to_artboard = align_to_artboard;
+				tool_data.align_to_artboard_changed = true;
+				self
+			}
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
