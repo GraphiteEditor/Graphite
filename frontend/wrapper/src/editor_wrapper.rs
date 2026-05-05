@@ -702,7 +702,7 @@ impl EditorWrapper {
 		Ok(())
 	}
 
-	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker>` opens)
+	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker>` opens).
 	#[wasm_bindgen(js_name = openColorPicker)]
 	pub fn open_color_picker(&self, initial_value: JsValue, allow_none: bool, disabled: bool) -> Result<(), JsValue> {
 		let initial_value = serde_wasm_bindgen::from_value(initial_value).map_err(|e| Error::new(&format!("Invalid initial picker value: {e}")))?;
@@ -710,7 +710,7 @@ impl EditorWrapper {
 		Ok(())
 	}
 
-	/// Tell the Rust color picker handler that the popover is closing
+	/// Tell the Rust color picker handler that the popover is closing.
 	#[wasm_bindgen(js_name = closeColorPicker)]
 	pub fn close_color_picker(&self) {
 		self.dispatch(ColorPickerMessage::Close);

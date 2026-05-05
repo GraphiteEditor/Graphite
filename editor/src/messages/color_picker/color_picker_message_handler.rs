@@ -291,7 +291,7 @@ impl ColorPickerMessageHandler {
 		});
 	}
 
-	/// Apply an incoming `SpectrumInput` intent to the gradient state and broadcast the result
+	/// Apply an incoming `SpectrumInput` intent to the gradient state and broadcast the result.
 	fn apply_gradient_update(&mut self, update: SpectrumInputUpdate, responses: &mut VecDeque<Message>) {
 		// Active marker selection is the one update that doesn't mutate the gradient
 		if let SpectrumInputUpdate::ActiveMarker {
