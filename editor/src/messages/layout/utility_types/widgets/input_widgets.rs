@@ -537,12 +537,32 @@ pub enum ColorPresetsInputUpdate {
 #[derivative(Debug, PartialEq, Default)]
 pub struct SpectrumInput {
 	// Content
+	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
-	pub gradient: GradientStops,
+	pub track: GradientStops,
+	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
+	#[serde(rename = "trackCSS")]
+	#[widget_builder(skip)]
+	pub track_css: String,
+	/// The handles the user can drag along the track. Their handle colors are caller-owned (e.g., for a gradient editor they follow the stop colors, for a "Shadows/Midpoints/Highlights" widget they're hardcoded).
+	pub markers: Vec<SpectrumMarker>,
 	#[serde(rename = "activeMarkerIndex")]
 	pub active_marker_index: Option<u32>,
 	#[serde(rename = "activeMarkerIsMidpoint")]
 	pub active_marker_is_midpoint: bool,
+	/// Whether to render midpoint diamonds between adjacent markers (only meaningful for gradient-like uses).
+	#[serde(rename = "showMidpoints")]
+	pub show_midpoints: bool,
+	/// Whether clicking the track inserts a new marker at the click position.
+	#[serde(rename = "allowInsert")]
+	pub allow_insert: bool,
+	/// Whether right-click or pressing Delete removes a marker. The handler still has the final say on whether the deletion goes through (e.g., enforcing a minimum count).
+	#[serde(rename = "allowDelete")]
+	pub allow_delete: bool,
+	/// Whether dragging a marker past another reorders them. If false, the dragged marker is clamped between its neighbors.
+	#[serde(rename = "allowSwap")]
+	pub allow_swap: bool,
+	/// Whether the input is disabled (dimmed and read-only).
 	pub disabled: bool,
 
 	// Callbacks
@@ -555,9 +575,37 @@ pub struct SpectrumInput {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SpectrumMarker {
+	/// Position (0..1) of the marker along the spectrum track.
+	pub position: f64,
+	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
+	pub midpoint: f64,
+	/// Fill color of the marker handle.
+	#[serde(rename = "handleColor")]
+	pub handle_color: Color,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SpectrumInputUpdate {
-	Gradient(GradientStops),
+	MoveMarker {
+		index: u32,
+		position: f64,
+	},
+	MoveMidpoint {
+		index: u32,
+		position: f64,
+	},
+	InsertMarker {
+		position: f64,
+	},
+	DeleteMarker {
+		index: u32,
+	},
+	ResetMidpoint {
+		index: u32,
+	},
 	ActiveMarker {
 		#[serde(rename = "activeMarkerIndex")]
 		active_marker_index: Option<u32>,

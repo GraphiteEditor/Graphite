@@ -45,10 +45,8 @@ pub enum ColorPickerMessage {
 	/// Swap the current "new" color with the captured "old" color.
 	SwapNewWithOld,
 
-	/// `SpectrumInput` change, either gradient stops modified or active marker selection changed.
+	/// `SpectrumInput` change: marker move/insert/delete, midpoint move/reset, or active marker selection changed.
 	GradientUpdate { update: SpectrumInputUpdate },
-	/// Position or midpoint nudged for an existing gradient stop via the position `NumberInput`.
-	SetGradientStopPosition { index: u32, position: f64, is_midpoint: bool },
 
 	/// Tell the frontend to start an undo transaction (forwarded as a `FrontendMessage` it bridges out to the picker's parent).
 	StartTransaction,

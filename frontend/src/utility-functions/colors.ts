@@ -1,4 +1,3 @@
-import { sampleInterpolatedGradient } from "/wrapper/pkg/graphite_wasm_wrapper";
 import type { Color, FillChoice, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
@@ -197,15 +196,6 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 
 export function isGradientStops(value: unknown): value is GradientStops {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
-}
-
-export function gradientToLinearGradientCSS(gradient: GradientStops): string {
-	if (gradient.position.length === 1) {
-		return `linear-gradient(to right, ${colorToHexOptionalAlpha(gradient.color[0])} 0%, ${colorToHexOptionalAlpha(gradient.color[0])} 100%)`;
-	}
-
-	const pieces = sampleInterpolatedGradient(new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color, false);
-	return `linear-gradient(to right, ${pieces})`;
 }
 
 export function gradientFirstColor(gradient: GradientStops): Color | undefined {

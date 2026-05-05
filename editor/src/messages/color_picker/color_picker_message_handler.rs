@@ -1,10 +1,14 @@
 use crate::messages::color_picker::color_picker_message::{HsvChannel, RgbChannel};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorPresetsInputUpdate, SpectrumInputUpdate, VisualColorPickersInputUpdate};
+use crate::messages::layout::utility_types::widgets::input_widgets::{ColorPresetsInputUpdate, SpectrumInputUpdate, SpectrumMarker, VisualColorPickersInputUpdate};
 use crate::messages::prelude::*;
 use color::{AlphaColor, Srgb};
 use graphene_std::Color;
 use graphene_std::vector::style::{FillChoice, GradientStops};
+
+/// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
+const MIN_MIDPOINT: f64 = 0.01;
+const MAX_MIDPOINT: f64 = 0.99;
 
 #[derive(Debug, Clone, PartialEq, ExtractField)]
 pub struct ColorPickerMessageHandler {
@@ -187,47 +191,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				}
 				self.send_layouts(responses);
 			}
-			ColorPickerMessage::GradientUpdate { update } => match update {
-				SpectrumInputUpdate::Gradient(stops) => {
-					self.gradient = Some(stops.clone());
-					responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::Gradient(stops) });
-					self.send_layouts(responses);
-				}
-				SpectrumInputUpdate::ActiveMarker {
-					active_marker_index,
-					active_marker_is_midpoint,
-				} => {
-					self.active_marker_index = active_marker_index;
-					self.active_marker_is_midpoint = active_marker_is_midpoint;
-
-					if let Some(index) = active_marker_index
-						&& let Some(gradient) = &self.gradient
-						&& let Some(color) = gradient.color.get(index as usize).copied()
-					{
-						self.adopt_color(color);
-						self.snapshot_old();
-					}
-					self.send_layouts(responses);
-				}
-			},
-			ColorPickerMessage::SetGradientStopPosition { index, position, is_midpoint } => {
-				let Some(gradient) = self.gradient.clone() else { return };
-				let Some(updated) = update_gradient_stop_position(gradient, index as usize, position, is_midpoint) else {
-					return;
-				};
-
-				if let Some(active) = self.active_marker_index
-					&& (active as usize) == updated.previous_active_index
-				{
-					self.active_marker_index = Some(updated.new_active_index as u32);
-				}
-
-				self.gradient = Some(updated.stops.clone());
-				responses.add(FrontendMessage::ColorPickerColorChanged {
-					value: FillChoice::Gradient(updated.stops),
-				});
-				self.send_layouts(responses);
-			}
+			ColorPickerMessage::GradientUpdate { update } => self.apply_gradient_update(update, responses),
 			ColorPickerMessage::StartTransaction => {
 				responses.add(FrontendMessage::ColorPickerStartHistoryTransaction);
 			}
@@ -327,6 +291,79 @@ impl ColorPickerMessageHandler {
 		});
 	}
 
+	/// Apply an incoming `SpectrumInput` intent to the gradient state and broadcast the result
+	fn apply_gradient_update(&mut self, update: SpectrumInputUpdate, responses: &mut VecDeque<Message>) {
+		// Active marker selection is the one update that doesn't mutate the gradient
+		if let SpectrumInputUpdate::ActiveMarker {
+			active_marker_index,
+			active_marker_is_midpoint,
+		} = update
+		{
+			self.active_marker_index = active_marker_index;
+			self.active_marker_is_midpoint = active_marker_is_midpoint;
+			if let Some(index) = active_marker_index
+				&& let Some(gradient) = &self.gradient
+				&& let Some(color) = gradient.color.get(index as usize).copied()
+			{
+				self.adopt_color(color);
+				self.snapshot_old();
+			}
+			self.send_layouts(responses);
+			return;
+		}
+
+		let Some(mut gradient) = self.gradient.clone() else { return };
+
+		match update {
+			SpectrumInputUpdate::MoveMarker { index, position } => {
+				let new_index = gradient.move_stop(index as usize, position);
+				if Some(index) == self.active_marker_index {
+					self.active_marker_index = Some(new_index as u32);
+				}
+			}
+			SpectrumInputUpdate::MoveMidpoint { index, position } => {
+				if let Some(midpoint) = gradient.midpoint.get_mut(index as usize) {
+					*midpoint = position.clamp(MIN_MIDPOINT, MAX_MIDPOINT);
+				} else {
+					return;
+				}
+			}
+			SpectrumInputUpdate::InsertMarker { position } => {
+				let new_index = gradient.insert_stop(position);
+				self.active_marker_index = Some(new_index as u32);
+				self.active_marker_is_midpoint = false;
+				if let Some(color) = gradient.color.get(new_index).copied() {
+					self.adopt_color(color);
+					self.snapshot_old();
+				}
+			}
+			SpectrumInputUpdate::DeleteMarker { index } => {
+				// Enforce minimum stop count. The gradient editor needs at least 2 stops to remain meaningful.
+				if gradient.position.len() <= 2 {
+					return;
+				}
+				gradient.remove(index as usize);
+				let new_active = (index as usize).min(gradient.position.len() - 1);
+				self.active_marker_index = Some(new_active as u32);
+				self.active_marker_is_midpoint = false;
+				if let Some(color) = gradient.color.get(new_active).copied() {
+					self.adopt_color(color);
+					self.snapshot_old();
+				}
+			}
+			SpectrumInputUpdate::ResetMidpoint { index } => {
+				gradient.reset_midpoint(index as usize);
+			}
+			SpectrumInputUpdate::ActiveMarker { .. } => unreachable!("handled above"),
+		}
+
+		self.gradient = Some(gradient.clone());
+		responses.add(FrontendMessage::ColorPickerColorChanged {
+			value: FillChoice::Gradient(gradient),
+		});
+		self.send_layouts(responses);
+	}
+
 	fn pickers_and_gradient_layout(&self) -> Layout {
 		let mut groups = Vec::new();
 
@@ -344,12 +381,26 @@ impl ColorPickerMessageHandler {
 				.widget_instance(),
 		]));
 
-		// Gradient editor (only present when the picker is in gradient mode).
+		// Gradient editor (only present when the picker is in gradient mode)
 		if let Some(gradient) = &self.gradient {
+			// For gradient editing, the markers' handle colors mirror their gradient stop colors
+			let markers = gradient
+				.iter()
+				.map(|stop| SpectrumMarker {
+					position: stop.position,
+					midpoint: stop.midpoint,
+					handle_color: stop.color,
+				})
+				.collect();
 			let mut row_widgets = vec![
 				SpectrumInput::new(gradient.clone())
+					.markers(markers)
 					.active_marker_index(self.active_marker_index)
 					.active_marker_is_midpoint(self.active_marker_is_midpoint)
+					.show_midpoints(true)
+					.allow_insert(!self.disabled)
+					.allow_delete(!self.disabled)
+					.allow_swap(true)
 					.disabled(self.disabled)
 					.on_update(|update: &SpectrumInputUpdate| ColorPickerMessage::GradientUpdate { update: update.clone() }.into())
 					.widget_instance(),
@@ -375,12 +426,18 @@ impl ColorPickerMessageHandler {
 							let Some(new_value) = widget.value else {
 								return Message::NoOp;
 							};
-							ColorPickerMessage::SetGradientStopPosition {
-								index: captured_index,
-								position: new_value / 100.,
-								is_midpoint,
-							}
-							.into()
+							let update = if is_midpoint {
+								SpectrumInputUpdate::MoveMidpoint {
+									index: captured_index,
+									position: new_value / 100.,
+								}
+							} else {
+								SpectrumInputUpdate::MoveMarker {
+									index: captured_index,
+									position: new_value / 100.,
+								}
+							};
+							ColorPickerMessage::GradientUpdate { update }.into()
 						})
 						.widget_instance(),
 				);
@@ -639,42 +696,4 @@ fn parse_css_color(input: &str) -> Option<Color> {
 	let srgb: AlphaColor<Srgb> = parsed.to_alpha_color();
 	let [red, green, blue, alpha] = srgb.components;
 	Color::from_rgbaf32(red, green, blue, alpha)
-}
-
-struct GradientStopMove {
-	stops: GradientStops,
-	previous_active_index: usize,
-	new_active_index: usize,
-}
-
-/// Apply a position/midpoint change to a gradient stop and re-sort by position. Returns the new stops along with the post-sort index of the moved stop.
-fn update_gradient_stop_position(stops: GradientStops, index: usize, position: f64, is_midpoint: bool) -> Option<GradientStopMove> {
-	if index >= stops.position.len() {
-		return None;
-	}
-	let mut markers: Vec<(f64, f64, Color)> = stops.position.iter().zip(stops.midpoint.iter()).zip(stops.color.iter()).map(|((p, m), c)| (*p, *m, *c)).collect();
-
-	if is_midpoint {
-		markers[index].1 = position;
-	} else {
-		markers[index].0 = position;
-	}
-
-	let active_marker = markers[index];
-	markers.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-	let new_active_index = markers.iter().position(|m| m.0 == active_marker.0 && m.1 == active_marker.1 && m.2 == active_marker.2).unwrap_or(index);
-
-	let positions = markers.iter().map(|(p, _, _)| *p).collect();
-	let midpoints = markers.iter().map(|(_, m, _)| *m).collect();
-	let colors = markers.iter().map(|(_, _, c)| *c).collect();
-
-	Some(GradientStopMove {
-		stops: GradientStops {
-			position: positions,
-			midpoint: midpoints,
-			color: colors,
-		},
-		previous_active_index: index,
-		new_active_index,
-	})
 }

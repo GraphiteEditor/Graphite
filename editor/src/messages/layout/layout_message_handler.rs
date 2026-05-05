@@ -453,14 +453,17 @@ impl LayoutMessageHandler {
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
-		// Step 1: Collect CheckboxId mappings from new layout
+		// Collect CheckboxId mappings from new layout
 		let mut checkbox_map = HashMap::new();
 		new_layout.collect_checkbox_ids(layout_target, &mut Vec::new(), &mut checkbox_map);
 
-		// Step 2: Replace all IDs in new layout with deterministic ones
+		// Replace all IDs in new layout with deterministic ones
 		new_layout.replace_widget_ids(layout_target, &mut Vec::new(), &checkbox_map);
 
-		// Step 3: Diff with deterministic IDs
+		// Populate computed display fields on widgets that need derived values
+		populate_computed_display_fields(&mut new_layout);
+
+		// Diff with deterministic IDs
 		let mut widget_diffs = Vec::new();
 
 		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
@@ -497,4 +500,19 @@ impl LayoutMessageHandler {
 enum WidgetValueAction {
 	Commit,
 	Update,
+}
+
+/// Walk all widgets in the layout and populate computed display fields (e.g., precomputed CSS gradient strings) so the frontend can render them without making Wasm round-trip calls. Mutates fields in place.
+fn populate_computed_display_fields(layout: &mut Layout) {
+	for instance in layout.iter_mut() {
+		match &mut *instance.widget {
+			Widget::ColorInput(color_input) => {
+				color_input.chosen_gradient = color_input.value.to_css_background_image();
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient();
+			}
+			_ => {}
+		}
+	}
 }

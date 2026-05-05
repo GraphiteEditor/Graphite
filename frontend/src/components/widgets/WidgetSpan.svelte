@@ -241,9 +241,7 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					gradient: (e: CustomEvent) => widgetValueUpdate(index, { Gradient: e.detail }, false),
-					activeMarkerIndexChange: (e: CustomEvent) =>
-						widgetValueUpdate(index, { ActiveMarker: { activeMarkerIndex: e.detail.activeMarkerIndex, activeMarkerIsMidpoint: e.detail.activeMarkerIsMidpoint } }, false),
+					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
 				},
 			}),
