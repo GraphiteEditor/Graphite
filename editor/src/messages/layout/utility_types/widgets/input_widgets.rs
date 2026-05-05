@@ -496,6 +496,22 @@ pub struct ColorComparisonInput {
 	pub differs: bool,
 	#[serde(rename = "outlineAmount")]
 	pub outline_amount: f64,
+	/// Hex CSS string for the new color (with alpha if not fully opaque), or empty when `is_none`. Auto-populated from `new_color` at layout-send time.
+	#[serde(rename = "newColorCSS")]
+	#[widget_builder(skip)]
+	pub new_color_css: String,
+	/// Black or white, whichever contrasts the new color for legible label text. Auto-populated.
+	#[serde(rename = "newColorContrasting")]
+	#[widget_builder(skip)]
+	pub new_color_contrasting: String,
+	/// Hex CSS string for the old color (with alpha if not fully opaque), or empty when `old_is_none`. Auto-populated.
+	#[serde(rename = "oldColorCSS")]
+	#[widget_builder(skip)]
+	pub old_color_css: String,
+	/// Black or white, whichever contrasts the old color for legible label text. Auto-populated.
+	#[serde(rename = "oldColorContrasting")]
+	#[widget_builder(skip)]
+	pub old_color_contrasting: String,
 
 	// Callbacks
 	// The `swap` event has no payload — it just signals the user requested a swap.
@@ -544,6 +560,14 @@ pub struct SpectrumInput {
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]
 	pub track_css: String,
+	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated from `track`'s first stop.
+	#[serde(rename = "trackStartCSS")]
+	#[widget_builder(skip)]
+	pub track_start_css: String,
+	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated from `track`'s last stop.
+	#[serde(rename = "trackEndCSS")]
+	#[widget_builder(skip)]
+	pub track_end_css: String,
 	/// The handles the user can drag along the track. Their handle colors are caller-owned (e.g., for a gradient editor they follow the stop colors, for a "Shadows/Midpoints/Highlights" widget they're hardcoded).
 	pub markers: Vec<SpectrumMarker>,
 	#[serde(rename = "activeMarkerIndex")]
@@ -578,12 +602,19 @@ pub struct SpectrumInput {
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectrumMarker {
 	/// Position (0..1) of the marker along the spectrum track.
-	pub position: f64,
+	position: f64,
 	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
-	pub midpoint: f64,
-	/// Fill color of the marker handle.
-	#[serde(rename = "handleColor")]
-	pub handle_color: Color,
+	midpoint: f64,
+	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a [`Color`] (gamma space).
+	#[serde(rename = "handleColorCSS")]
+	handle_color_css: String,
+}
+
+impl SpectrumMarker {
+	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
+		let handle_color_css = format!("#{}", handle_color.to_rgba_hex_srgb_from_gamma());
+		Self { position, midpoint, handle_color_css }
+	}
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

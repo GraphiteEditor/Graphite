@@ -3,16 +3,16 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import { colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor } from "/src/utility-functions/colors";
-	import type { GradientStops, SpectrumInputUpdate, SpectrumMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { SpectrumInputUpdate, SpectrumMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
 	const dispatch = createEventDispatcher<{ update: SpectrumInputUpdate; dragging: boolean }>();
 
-	export let track: GradientStops;
 	export let trackCSS: string;
+	export let trackStartCSS: string;
+	export let trackEndCSS: string;
 	export let markers: SpectrumMarker[];
 	export let activeMarkerIndex: number | undefined = 0;
 	export let activeMarkerIsMidpoint = false;
@@ -241,8 +241,8 @@
 	class="spectrum-input"
 	classes={{ disabled }}
 	styles={{
-		"--gradient-start": ((color) => (color ? colorToHexOptionalAlpha(color) : "black"))(gradientFirstColor(track)),
-		"--gradient-end": ((color) => (color ? colorToHexOptionalAlpha(color) : "black"))(gradientLastColor(track)),
+		"--gradient-start": trackStartCSS,
+		"--gradient-end": trackEndCSS,
 		"--gradient-stops": trackCSS,
 	}}
 >
@@ -269,7 +269,7 @@
 				class="marker"
 				class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
 				style:--marker-position={marker.position}
-				style:--marker-color={colorToRgbCSS(marker.handleColor)}
+				style:--marker-color={marker.handleColorCSS}
 				on:pointerdown={(e) => markerPointerDown(e, index)}
 				data-gradient-marker
 				xmlns="http://www.w3.org/2000/svg"

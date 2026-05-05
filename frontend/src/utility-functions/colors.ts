@@ -76,15 +76,6 @@ export function colorToHexNoAlpha(color: Color): string {
 	return `#${r}${g}${b}`;
 }
 
-export function colorToHexOptionalAlpha(color: Color): string {
-	const hex = colorToHexNoAlpha(color);
-	const a = Math.round(color.alpha * 255)
-		.toString(16)
-		.padStart(2, "0");
-
-	return a === "ff" ? hex : `${hex}${a}`;
-}
-
 export function colorToRgb255(color: Color): RGB {
 	return {
 		r: Math.round(color.red * 255),
@@ -196,14 +187,6 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 
 export function isGradientStops(value: unknown): value is GradientStops {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
-}
-
-export function gradientFirstColor(gradient: GradientStops): Color | undefined {
-	return gradient.color[0];
-}
-
-export function gradientLastColor(gradient: GradientStops): Color | undefined {
-	return gradient.color[gradient.color.length - 1];
 }
 
 // FILL CHOICE UTILITY FUNCTIONS

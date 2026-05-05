@@ -870,6 +870,15 @@ impl Color {
 		)
 	}
 
+	/// [`Color::BLACK`] or [`Color::WHITE`], whichever gives more legible text against this color (alpha composited over white, WCAG-style luminance threshold). Use this if this [`Color`] is in gamma space.
+	pub fn contrasting_text_color_from_gamma(&self) -> Color {
+		let composited = Self::WHITE.alpha_blend(Self::from_unassociated_alpha(self.r(), self.g(), self.b(), self.a()));
+		let luminance = composited.to_linear_srgb().luminance_srgb();
+		// WCAG-derived perceptual midpoint between black and white (~0.179)
+		let threshold = (1.05_f32 * 0.05).sqrt() - 0.05;
+		if luminance > threshold { Self::BLACK } else { Self::WHITE }
+	}
+
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in gamma space.
 	#[inline(always)]
 	pub fn to_rgba8(&self) -> [u8; 4] {

@@ -384,14 +384,7 @@ impl ColorPickerMessageHandler {
 		// Gradient editor (only present when the picker is in gradient mode)
 		if let Some(gradient) = &self.gradient {
 			// For gradient editing, the markers' handle colors mirror their gradient stop colors
-			let markers = gradient
-				.iter()
-				.map(|stop| SpectrumMarker {
-					position: stop.position,
-					midpoint: stop.midpoint,
-					handle_color: stop.color,
-				})
-				.collect();
+			let markers = gradient.iter().map(|stop| SpectrumMarker::new(stop.position, stop.midpoint, stop.color)).collect();
 			let mut row_widgets = vec![
 				SpectrumInput::new(gradient.clone())
 					.markers(markers)

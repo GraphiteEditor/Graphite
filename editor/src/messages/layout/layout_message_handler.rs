@@ -511,6 +511,26 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 			}
 			Widget::SpectrumInput(spectrum_input) => {
 				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient();
+				spectrum_input.track_start_css = spectrum_input
+					.track
+					.color
+					.first()
+					.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma()))
+					.unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_end_css = spectrum_input
+					.track
+					.color
+					.last()
+					.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma()))
+					.unwrap_or_else(|| "black".to_string());
+			}
+			Widget::ColorComparisonInput(comparison) => {
+				use graphene_std::Color;
+				let contrasting = |color: Option<Color>| format!("#{}", color.map_or(Color::BLACK, |color| color.contrasting_text_color_from_gamma()).to_rgba_hex_srgb_from_gamma());
+				comparison.new_color_css = comparison.new_color.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma())).unwrap_or_default();
+				comparison.new_color_contrasting = contrasting(comparison.new_color);
+				comparison.old_color_css = comparison.old_color.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma())).unwrap_or_default();
+				comparison.old_color_contrasting = contrasting(comparison.old_color);
 			}
 			_ => {}
 		}
