@@ -75,27 +75,17 @@
 	.color-picker {
 		--widget-height: 24px;
 
-		.pickers-and-gradient {
-			.visual-color-pickers-input {
-				margin: 0;
-			}
+		.pickers-and-gradient .widget-span {
+			--row-height: 24px;
 
-			.widget-span {
-				--row-height: 24px;
+			&:has(.spectrum-input) {
+				margin-top: 16px;
 
-				&:has(.spectrum-input) {
-					margin-top: 16px;
-
-					.spectrum-input {
-						flex: 1 1 100%;
-					}
-
-					.number-input {
-						margin-left: 8px;
-						min-width: 0;
-						width: calc(24px + 8px + 24px);
-						flex: 0 0 auto;
-					}
+				.number-input {
+					flex: 0 0 auto;
+					margin-left: 8px;
+					min-width: 0;
+					width: calc(24px + 8px + 24px);
 				}
 			}
 		}
@@ -107,7 +97,6 @@
 
 			> .widget-span {
 				--row-height: 24px;
-				flex: 0 0 auto;
 
 				&:last-child {
 					margin-top: auto;
@@ -116,7 +105,6 @@
 				> .text-label {
 					// TODO: Use a table or grid layout for this width to match the widest label. Hard-coding it won't work when we add translation/localization.
 					flex: 0 0 34px;
-					line-height: 24px;
 				}
 			}
 		}
