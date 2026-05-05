@@ -19,7 +19,8 @@
 	export let showMidpoints = true;
 	export let allowInsert = true;
 	export let allowDelete = true;
-	export let allowSwap = true;
+	export let allowReorder = true;
+	export let narrow = false;
 	export let disabled = false;
 
 	// Reference to the marker track DOM element so we can convert pointer coordinates to a 0..1 position along the track.
@@ -94,6 +95,11 @@
 		emit({ ResetMidpoint: { index } });
 	}
 
+	function markerDoubleClick(index: number) {
+		if (disabled) return;
+		emit({ ResetMarker: { index } });
+	}
+
 	function trackPointerDown(e: PointerEvent) {
 		if (disabled) return;
 		if (e.button !== BUTTON_LEFT) return;
@@ -137,7 +143,7 @@
 
 		let position = pointerPosition(e);
 		if (position === undefined) return;
-		if (!allowSwap) position = clampToNeighbors(activeMarkerIndex, position);
+		if (!allowReorder) position = clampToNeighbors(activeMarkerIndex, position);
 
 		if (!dragInsertedMarker) dispatch("dragging", true);
 		emit({ MoveMarker: { index: activeMarkerIndex, position } });
@@ -239,7 +245,7 @@
 
 <LayoutCol
 	class="spectrum-input"
-	classes={{ disabled }}
+	classes={{ narrow, disabled }}
 	styles={{
 		"--gradient-start": trackStartCSS,
 		"--gradient-end": trackEndCSS,
@@ -271,6 +277,7 @@
 				style:--marker-position={marker.position}
 				style:--marker-color={marker.handleColorCSS}
 				on:pointerdown={(e) => markerPointerDown(e, index)}
+				on:dblclick={() => markerDoubleClick(index)}
 				data-gradient-marker
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 12 12"
@@ -315,6 +322,11 @@
 				var(--color-transparent-checkered-background-position);
 			background-repeat: no-repeat, no-repeat, no-repeat, var(--color-transparent-checkered-background-repeat);
 			border-radius: 2px;
+		}
+
+		&.narrow .gradient-strip {
+			margin-top: 8px;
+			height: 8px;
 		}
 
 		&.disabled .gradient-strip {

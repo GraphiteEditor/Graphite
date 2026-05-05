@@ -1276,52 +1276,429 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	})
 }
 
+/// 2-stop black-to-white gradient track for spectrum sliders that map a value to a grayscale axis.
+fn bw_track() -> GradientStops {
+	GradientStops {
+		position: vec![0., 1.],
+		midpoint: vec![0.5, 0.5],
+		color: vec![Color::BLACK, Color::WHITE],
+	}
+}
+
+/// 3-stop black-to-color-to-white gradient track for spectrum sliders that map a value to a hue's full luminance range.
+fn color_track(color: Color) -> GradientStops {
+	GradientStops {
+		position: vec![0., 0.5, 1.],
+		midpoint: vec![0.5; 3],
+		color: vec![Color::BLACK, color, Color::WHITE],
+	}
+}
+
 pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::brightness_contrast::*;
 
-	// Use Classic
-	let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput::INDEX, true, context), CheckboxInput::default());
-
-	let document_node = match get_document_node(node_id, context) {
-		Ok(document_node) => document_node,
-		Err(err) => {
-			log::error!("Could not get document node in brightness_contrast_properties: {err}");
-			return Vec::new();
-		}
-	};
-	let use_classic_value = document_node.inputs.get(UseClassicInput::INDEX);
+	// Use Classic toggle changes the brightness range
+	let use_classic_value = get_document_node(node_id, context)
+		.ok()
+		.and_then(|document_node| document_node.inputs.get(UseClassicInput::INDEX).and_then(|input| input.as_value()))
+		.and_then(|tagged| if let TaggedValue::Bool(value) = tagged { Some(*value) } else { None });
 	let includes_use_classic = use_classic_value.is_some();
-	let use_classic_value = match use_classic_value.and_then(|input| input.as_value()) {
-		Some(TaggedValue::Bool(use_classic_choice)) => *use_classic_choice,
-		_ => false,
+	let use_classic_value = use_classic_value.unwrap_or(false);
+
+	let brightness_min = if use_classic_value { -100. } else { -150. };
+	let brightness_max = if use_classic_value { 100. } else { 150. };
+
+	let brightness = spectrum_slider_row(
+		node_id,
+		context,
+		BrightnessInput::INDEX,
+		bw_track(),
+		Color::WHITE,
+		brightness_min,
+		brightness_max,
+		0.,
+		NumberInput::default().mode_increment().unit("%").min(brightness_min).max(brightness_max),
+	);
+
+	let contrast_min = if use_classic_value { -100. } else { -50. };
+	let zero_position = -contrast_min / (100. - contrast_min);
+	let contrast_track = GradientStops {
+		position: vec![0., zero_position, 1.],
+		midpoint: vec![0.5; 3],
+		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::BLACK, Color::from_rgbf32_unchecked(0.5, 0.5, 0.5)],
 	};
-
-	// Brightness
-	let brightness = number_widget(
-		ParameterWidgetsInfo::new(node_id, BrightnessInput::INDEX, true, context),
-		NumberInput::default()
-			.unit("%")
-			.mode_range()
-			.display_decimal_places(2)
-			.range_min(Some(if use_classic_value { -100. } else { -150. }))
-			.range_max(Some(if use_classic_value { 100. } else { 150. })),
+	let contrast = spectrum_slider_row(
+		node_id,
+		context,
+		ContrastInput::INDEX,
+		contrast_track,
+		Color::WHITE,
+		contrast_min,
+		100.,
+		0.,
+		NumberInput::default().mode_increment().unit("%").min(contrast_min).max(100.),
 	);
 
-	// Contrast
-	let contrast = number_widget(
-		ParameterWidgetsInfo::new(node_id, ContrastInput::INDEX, true, context),
-		NumberInput::default()
-			.unit("%")
-			.mode_range()
-			.display_decimal_places(2)
-			.range_min(Some(if use_classic_value { -100. } else { -50. }))
-			.range_max(Some(100.)),
-	);
-
-	let mut layout = vec![LayoutGroup::row(brightness), LayoutGroup::row(contrast)];
+	let mut layout = vec![brightness, contrast];
 	if includes_use_classic {
 		// TODO: When we no longer use this function in the temporary "Brightness/Contrast Classic" node, remove this conditional pushing and just always include this
+		let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput::INDEX, true, context), CheckboxInput::default());
 		layout.push(LayoutGroup::row(use_classic));
+	}
+
+	layout
+}
+
+pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::levels::*;
+
+	// (input index, marker handle color, default percentage for double-click reset)
+	let input_range_params = [
+		(ShadowsInput::INDEX, Color::BLACK, 0.),
+		(MidtonesInput::INDEX, Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), 50.),
+		(HighlightsInput::INDEX, Color::WHITE, 100.),
+	];
+	let output_range_params = [(OutputMinimumsInput::INDEX, Color::BLACK, 0.), (OutputMaximumsInput::INDEX, Color::WHITE, 100.)];
+
+	let mut layout = Vec::with_capacity(5);
+	build_shared_spectrum_section(node_id, context, &input_range_params, &mut layout);
+	build_shared_spectrum_section(node_id, context, &output_range_params, &mut layout);
+	layout
+}
+
+/// Append a section of related percentage parameters as rows: a shared black-to-white spectrum (with one marker per non-exposed parameter) sits on the first non-exposed row
+/// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
+/// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
+fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, params: &[(usize, Color, f64)], layout: &mut Vec<LayoutGroup>) {
+	// Snapshot exposure and values before the mutable-borrow loop
+	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
+		Ok(document_node) => params
+			.iter()
+			.map(|&(input_index, _, _)| {
+				let input = document_node.inputs.get(input_index);
+				let exposed = input.is_some_and(|input| input.is_exposed());
+				let percent = input
+					.and_then(|input| input.as_value())
+					.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None })
+					.unwrap_or(0.);
+				(exposed, percent)
+			})
+			.collect(),
+		Err(err) => {
+			log::error!("Could not get document node in build_shared_spectrum_section: {err}");
+			return;
+		}
+	};
+
+	// Build markers for all non-exposed params
+	let mut marker_input_indices = Vec::new();
+	let mut marker_default_percents = Vec::new();
+	let mut marker_positions = Vec::new();
+	let mut handle_colors = Vec::new();
+	for (i, &(input_index, handle_color, default_percent)) in params.iter().enumerate() {
+		let (exposed, percent) = exposure_and_value[i];
+		if exposed {
+			continue;
+		}
+		marker_positions.push((percent / 100.).clamp(0., 1.));
+		marker_input_indices.push(input_index);
+		marker_default_percents.push(default_percent);
+		handle_colors.push(handle_color);
+	}
+
+	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence
+	for i in 1..marker_positions.len() {
+		marker_positions[i] = marker_positions[i].max(marker_positions[i - 1]);
+	}
+
+	let spectrum_markers: Vec<SpectrumMarker> = marker_positions
+		.iter()
+		.zip(&handle_colors)
+		.map(|(&position, &handle_color)| SpectrumMarker::new(position, 0.5, handle_color))
+		.collect();
+
+	// Build the shared spectrum widget (placed on the first non-exposed row)
+	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
+		SpectrumInput::new(bw_track())
+			.markers(spectrum_markers)
+			.show_midpoints(false)
+			.allow_insert(false)
+			.allow_delete(false)
+			.allow_reorder(false)
+			.narrow(true)
+			.on_update({
+				let marker_input_indices = marker_input_indices.clone();
+				let marker_default_percents = marker_default_percents.clone();
+				let marker_positions = marker_positions.clone();
+				move |update: &SpectrumInputUpdate| {
+					let (input_index, percent) = match update {
+						SpectrumInputUpdate::MoveMarker { index, position } => match marker_input_indices.get(*index as usize) {
+							Some(&input_index) => (input_index, *position * 100.),
+							None => return Message::NoOp,
+						},
+						SpectrumInputUpdate::ResetMarker { index } => {
+							let i = *index as usize;
+							let Some(&input_index) = marker_input_indices.get(i) else { return Message::NoOp };
+							let Some(&default_percent) = marker_default_percents.get(i) else { return Message::NoOp };
+							// Falls back to midpoint between neighbors if the default would cross one
+							let left = if i == 0 { 0. } else { marker_positions[i - 1] };
+							let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
+							let default_position = default_percent / 100.;
+							let new_position = if (left..=right).contains(&default_position) { default_position } else { (left + right) / 2. };
+							(input_index, new_position * 100.)
+						}
+						_ => return Message::NoOp,
+					};
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index,
+						value: TaggedValue::F32(percent.clamp(0., 100.) as f32),
+					}
+					.into()
+				}
+			})
+			.on_commit(commit_value)
+			.widget_instance()
+	});
+	let spectrum_owner = marker_input_indices.first().copied();
+
+	let number_input = NumberInput::default().mode_increment().unit("%").min(0.).max(100.);
+
+	// One row per parameter: first non-exposed carries the shared spectrum, others get just a number input
+	for (i, &(input_index, _, _)) in params.iter().enumerate() {
+		let (exposed, current) = exposure_and_value[i];
+
+		if exposed {
+			let row = number_widget(ParameterWidgetsInfo::new(node_id, input_index, true, context), number_input.clone());
+			layout.push(LayoutGroup::row(row));
+		} else {
+			let mut row = start_widgets(ParameterWidgetsInfo::new(node_id, input_index, true, context));
+			row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+
+			if Some(input_index) == spectrum_owner
+				&& let Some(spectrum) = &spectrum_widget
+			{
+				row.push(spectrum.clone());
+				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			}
+
+			row.push(
+				number_input
+					.clone()
+					.value(Some(current))
+					.min_width(60)
+					.max_width(60)
+					.display_decimal_places(0)
+					.on_update(update_value(move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32), node_id, input_index))
+					.on_commit(commit_value)
+					.widget_instance(),
+			);
+			layout.push(LayoutGroup::row(row));
+		}
+	}
+}
+
+pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::hue_saturation::*;
+
+	// Current hue position on the rainbow track, used for the saturation track's right-end color
+	let current_hue_shift = get_document_node(node_id, context)
+		.ok()
+		.and_then(|document_node| document_node.inputs.get(HueShiftInput::INDEX).and_then(|input| input.as_value()))
+		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value) } else { None })
+		.unwrap_or(0.);
+	// The rainbow has cyan at position 0.5 (hue_shift=0), so offset by +180 to align
+	let marker_hue = ((current_hue_shift + 180.) / 360.).rem_euclid(1.);
+	let saturated_current_hue = Color::from_hsva(marker_hue, 1., 1., 1.);
+
+	// Hue: cyclic rainbow
+	let hue_track = GradientStops {
+		position: vec![0., 1. / 6., 2. / 6., 3. / 6., 4. / 6., 5. / 6., 1.],
+		midpoint: vec![0.5; 7],
+		color: vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED],
+	};
+	// Saturation: gray to the fully saturated current hue
+	let saturation_track = GradientStops {
+		position: vec![0., 1.],
+		midpoint: vec![0.5, 0.5],
+		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), saturated_current_hue],
+	};
+	// Lightness: black to white
+	let lightness_track = bw_track();
+
+	vec![
+		spectrum_slider_row(
+			node_id,
+			context,
+			HueShiftInput::INDEX,
+			hue_track,
+			Color::WHITE,
+			-180.,
+			180.,
+			0.,
+			NumberInput::default().mode_increment().unit("°").min(-180.).max(180.),
+		),
+		spectrum_slider_row(
+			node_id,
+			context,
+			SaturationShiftInput::INDEX,
+			saturation_track,
+			Color::WHITE,
+			-100.,
+			100.,
+			0.,
+			NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
+		),
+		spectrum_slider_row(
+			node_id,
+			context,
+			LightnessShiftInput::INDEX,
+			lightness_track,
+			Color::WHITE,
+			-100.,
+			100.,
+			0.,
+			NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
+		),
+	]
+}
+
+/// Build a row with a single-marker `SpectrumInput` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
+fn spectrum_slider_row(
+	node_id: NodeId,
+	context: &mut NodePropertiesContext,
+	input_index: usize,
+	track: GradientStops,
+	handle_color: Color,
+	value_min: f64,
+	value_max: f64,
+	default_value: f64,
+	number_input: NumberInput,
+) -> LayoutGroup {
+	let mut row = start_widgets(ParameterWidgetsInfo::new(node_id, input_index, true, context));
+
+	let current = get_document_node(node_id, context)
+		.ok()
+		.and_then(|document_node| document_node.inputs.get(input_index))
+		.and_then(|input| input.as_non_exposed_value())
+		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None });
+
+	// Only add the spectrum and number widgets when the input is not exposed
+	if let Some(current) = current {
+		let value_range = value_max - value_min;
+		let position = ((current - value_min) / value_range).clamp(0., 1.);
+		let default_position = ((default_value - value_min) / value_range).clamp(0., 1.);
+
+		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+
+		let position_to_value = move |position: f64| value_min + position * value_range;
+		row.push(
+			SpectrumInput::new(track)
+				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
+				.show_midpoints(false)
+				.allow_insert(false)
+				.allow_delete(false)
+				.allow_reorder(false)
+				.narrow(true)
+				.on_update(move |update: &SpectrumInputUpdate| {
+					let new_position = match update {
+						SpectrumInputUpdate::MoveMarker { index: 0, position } => *position,
+						SpectrumInputUpdate::ResetMarker { index: 0 } => default_position,
+						_ => return Message::NoOp,
+					};
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index,
+						value: TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32),
+					}
+					.into()
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		row.push(
+			number_input
+				.value(Some(current))
+				.min_width(60)
+				.max_width(60)
+				.display_decimal_places(0)
+				.on_update(update_value(move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32), node_id, input_index))
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
+
+	LayoutGroup::row(row)
+}
+
+pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::threshold::*;
+
+	let params: &[(usize, Color, f64)] = &[(MinLuminanceInput::INDEX, Color::BLACK, 50.), (MaxLuminanceInput::INDEX, Color::WHITE, 100.)];
+
+	let mut layout = Vec::with_capacity(3);
+	build_shared_spectrum_section(node_id, context, params, &mut layout);
+
+	let luminance_calc = {
+		let mut info = ParameterWidgetsInfo::new(node_id, LuminanceCalcInput::INDEX, true, context);
+		info.exposable = false;
+		enum_choice::<LuminanceCalculation>().for_socket(info).property_row()
+	};
+	layout.push(luminance_calc);
+
+	layout
+}
+
+pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::vibrance::*;
+
+	let track = GradientStops {
+		position: vec![0., 1.],
+		midpoint: vec![0.5, 0.5],
+		color: vec![Color::from_rgbf32_unchecked(0.5, 0.5, 0.5), Color::RED],
+	};
+	vec![spectrum_slider_row(
+		node_id,
+		context,
+		VibranceInput::INDEX,
+		track,
+		Color::WHITE,
+		-100.,
+		100.,
+		0.,
+		NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
+	)]
+}
+
+pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::black_and_white::*;
+
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-200.).max(300.);
+
+	let tint = color_widget(ParameterWidgetsInfo::new(node_id, TintInput::INDEX, true, context), ColorInput::default());
+
+	let mut layout = vec![tint];
+	let params: &[(usize, Color, f64)] = &[
+		(RedsInput::INDEX, Color::RED, 40.),
+		(YellowsInput::INDEX, Color::YELLOW, 60.),
+		(GreensInput::INDEX, Color::GREEN, 40.),
+		(CyansInput::INDEX, Color::CYAN, 60.),
+		(BluesInput::INDEX, Color::BLUE, 20.),
+		(MagentasInput::INDEX, Color::MAGENTA, 80.),
+	];
+	for &(input_index, color, default) in params {
+		layout.push(spectrum_slider_row(
+			node_id,
+			context,
+			input_index,
+			color_track(color),
+			Color::WHITE,
+			-200.,
+			300.,
+			default,
+			number_input.clone(),
+		));
 	}
 
 	layout
@@ -1356,27 +1733,38 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		}
 	};
 
-	// Output Channel modes
-	let (red_output_index, green_output_index, blue_output_index, constant_output_index) = match (is_monochrome_value, output_channel_value) {
-		(true, _) => (MonochromeRInput::INDEX, MonochromeGInput::INDEX, MonochromeBInput::INDEX, MonochromeCInput::INDEX),
-		(false, RedGreenBlue::Red) => (RedRInput::INDEX, RedGInput::INDEX, RedBInput::INDEX, RedCInput::INDEX),
-		(false, RedGreenBlue::Green) => (GreenRInput::INDEX, GreenGInput::INDEX, GreenBInput::INDEX, GreenCInput::INDEX),
-		(false, RedGreenBlue::Blue) => (BlueRInput::INDEX, BlueGInput::INDEX, BlueBInput::INDEX, BlueCInput::INDEX),
+	// Input indices and defaults depend on monochrome toggle and output channel selection
+	let (indices, defaults) = match (is_monochrome_value, output_channel_value) {
+		(true, _) => (
+			[MonochromeRInput::INDEX, MonochromeGInput::INDEX, MonochromeBInput::INDEX, MonochromeCInput::INDEX],
+			[40., 40., 20., 0.],
+		),
+		(false, RedGreenBlue::Red) => ([RedRInput::INDEX, RedGInput::INDEX, RedBInput::INDEX, RedCInput::INDEX], [100., 0., 0., 0.]),
+		(false, RedGreenBlue::Green) => ([GreenRInput::INDEX, GreenGInput::INDEX, GreenBInput::INDEX, GreenCInput::INDEX], [0., 100., 0., 0.]),
+		(false, RedGreenBlue::Blue) => ([BlueRInput::INDEX, BlueGInput::INDEX, BlueBInput::INDEX, BlueCInput::INDEX], [0., 0., 100., 0.]),
 	};
-	let number_input = NumberInput::default().mode_range().min(-200.).max(200.).unit("%");
-	let red = number_widget(ParameterWidgetsInfo::new(node_id, red_output_index, true, context), number_input.clone());
-	let green = number_widget(ParameterWidgetsInfo::new(node_id, green_output_index, true, context), number_input.clone());
-	let blue = number_widget(ParameterWidgetsInfo::new(node_id, blue_output_index, true, context), number_input.clone());
-	let constant = number_widget(ParameterWidgetsInfo::new(node_id, constant_output_index, true, context), number_input);
 
-	// Monochrome
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-200.).max(200.);
+	let tracks = [color_track(Color::RED), color_track(Color::GREEN), color_track(Color::BLUE), bw_track()];
+
 	let mut layout = vec![LayoutGroup::row(is_monochrome)];
-	// Output channel choice
 	if !is_monochrome_value {
 		layout.push(output_channel);
 	}
-	// Channel values
-	layout.extend([LayoutGroup::row(red), LayoutGroup::row(green), LayoutGroup::row(blue), LayoutGroup::row(constant)]);
+	for (i, (&input_index, &default)) in indices.iter().zip(defaults.iter()).enumerate() {
+		layout.push(spectrum_slider_row(
+			node_id,
+			context,
+			input_index,
+			tracks[i].clone(),
+			Color::WHITE,
+			-200.,
+			200.,
+			default,
+			number_input.clone(),
+		));
+	}
+
 	layout
 }
 
@@ -1403,39 +1791,43 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 		}
 	};
 	// CMYK
-	let (c_index, m_index, y_index, k_index) = match colors_choice {
-		SelectiveColorChoice::Reds => (RCInput::INDEX, RMInput::INDEX, RYInput::INDEX, RKInput::INDEX),
-		SelectiveColorChoice::Yellows => (YCInput::INDEX, YMInput::INDEX, YYInput::INDEX, YKInput::INDEX),
-		SelectiveColorChoice::Greens => (GCInput::INDEX, GMInput::INDEX, GYInput::INDEX, GKInput::INDEX),
-		SelectiveColorChoice::Cyans => (CCInput::INDEX, CMInput::INDEX, CYInput::INDEX, CKInput::INDEX),
-		SelectiveColorChoice::Blues => (BCInput::INDEX, BMInput::INDEX, BYInput::INDEX, BKInput::INDEX),
-		SelectiveColorChoice::Magentas => (MCInput::INDEX, MMInput::INDEX, MYInput::INDEX, MKInput::INDEX),
-		SelectiveColorChoice::Whites => (WCInput::INDEX, WMInput::INDEX, WYInput::INDEX, WKInput::INDEX),
-		SelectiveColorChoice::Neutrals => (NCInput::INDEX, NMInput::INDEX, NYInput::INDEX, NKInput::INDEX),
-		SelectiveColorChoice::Blacks => (KCInput::INDEX, KMInput::INDEX, KYInput::INDEX, KKInput::INDEX),
+	let indices = match colors_choice {
+		SelectiveColorChoice::Reds => [RCInput::INDEX, RMInput::INDEX, RYInput::INDEX, RKInput::INDEX],
+		SelectiveColorChoice::Yellows => [YCInput::INDEX, YMInput::INDEX, YYInput::INDEX, YKInput::INDEX],
+		SelectiveColorChoice::Greens => [GCInput::INDEX, GMInput::INDEX, GYInput::INDEX, GKInput::INDEX],
+		SelectiveColorChoice::Cyans => [CCInput::INDEX, CMInput::INDEX, CYInput::INDEX, CKInput::INDEX],
+		SelectiveColorChoice::Blues => [BCInput::INDEX, BMInput::INDEX, BYInput::INDEX, BKInput::INDEX],
+		SelectiveColorChoice::Magentas => [MCInput::INDEX, MMInput::INDEX, MYInput::INDEX, MKInput::INDEX],
+		SelectiveColorChoice::Whites => [WCInput::INDEX, WMInput::INDEX, WYInput::INDEX, WKInput::INDEX],
+		SelectiveColorChoice::Neutrals => [NCInput::INDEX, NMInput::INDEX, NYInput::INDEX, NKInput::INDEX],
+		SelectiveColorChoice::Blacks => [KCInput::INDEX, KMInput::INDEX, KYInput::INDEX, KKInput::INDEX],
 	};
-	let number_input = NumberInput::default().mode_range().min(-100.).max(100.).unit("%");
-	let cyan = number_widget(ParameterWidgetsInfo::new(node_id, c_index, true, context), number_input.clone());
-	let magenta = number_widget(ParameterWidgetsInfo::new(node_id, m_index, true, context), number_input.clone());
-	let yellow = number_widget(ParameterWidgetsInfo::new(node_id, y_index, true, context), number_input.clone());
-	let black = number_widget(ParameterWidgetsInfo::new(node_id, k_index, true, context), number_input);
+
+	let tracks = [color_track(Color::CYAN), color_track(Color::MAGENTA), color_track(Color::YELLOW), bw_track()];
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
 
 	// Mode
 	let mode = enum_choice::<RelativeAbsolute>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, ModeInput::INDEX, true, context))
 		.property_row();
 
-	vec![
-		// Colors choice
-		colors,
-		// CMYK
-		LayoutGroup::row(cyan),
-		LayoutGroup::row(magenta),
-		LayoutGroup::row(yellow),
-		LayoutGroup::row(black),
-		// Mode
-		mode,
-	]
+	let mut layout = vec![colors];
+	for (i, &input_index) in indices.iter().enumerate() {
+		layout.push(spectrum_slider_row(
+			node_id,
+			context,
+			input_index,
+			tracks[i].clone(),
+			Color::WHITE,
+			-100.,
+			100.,
+			0.,
+			number_input.clone(),
+		));
+	}
+	layout.push(mode);
+
+	layout
 }
 
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
