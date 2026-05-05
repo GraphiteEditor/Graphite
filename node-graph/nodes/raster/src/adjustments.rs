@@ -140,12 +140,8 @@ fn make_opaque<T: Adjust<Color>>(
 }
 
 // TODO: Remove this once GPU shader nodes are able to support the non-classic algorithm
-#[node_macro::node(
-	name("Brightness/Contrast Classic"),
-	category("Raster: Adjustment"),
-	properties("brightness_contrast_properties"),
-	shader_node(PerPixelAdjust)
-)]
+// TODO: Maybe re-add the "Raster: Adjustment" category to make this user-facing if we care to make this not just for testing
+#[node_macro::node(name("Brightness/Contrast Classic"), category(""), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
 fn brightness_contrast_classic<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -257,7 +253,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("levels_properties"), shader_node(PerPixelAdjust))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -325,7 +321,8 @@ fn levels<T: Adjust<Color>>(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-#[node_macro::node(name("Black & White"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+// TODO: Currently the un-Table-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
+#[node_macro::node(name("Black & White"), category(""), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -398,7 +395,7 @@ fn black_and_white<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
-#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), properties("hue_saturation_properties"), shader_node(PerPixelAdjust))]
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -456,7 +453,7 @@ fn invert<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -502,7 +499,7 @@ fn threshold<T: Adjust<Color>>(
 // It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
 // When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
 // (Except for some noise probably due to rounding error.)
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(

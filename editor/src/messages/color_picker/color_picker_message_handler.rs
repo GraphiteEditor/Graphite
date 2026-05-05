@@ -354,6 +354,22 @@ impl ColorPickerMessageHandler {
 			SpectrumInputUpdate::ResetMidpoint { index } => {
 				gradient.reset_midpoint(index as usize);
 			}
+			SpectrumInputUpdate::ResetMarker { index } => {
+				let i = index as usize;
+				let count = gradient.position.len();
+				if i >= count {
+					return;
+				}
+				// Each stop's "natural" position is its evenly-spaced fraction along 0..1, e.g., for 5 stops: 0, 0.25, 0.5, 0.75, 1. Falls back to the midpoint between neighbors when the natural position would push the stop past another.
+				let left = if i == 0 { 0. } else { gradient.position[i - 1] };
+				let right = gradient.position.get(i + 1).copied().unwrap_or(1.);
+				let natural = if count <= 1 { 0. } else { i as f64 / (count - 1) as f64 };
+				let new_position = if (left..=right).contains(&natural) { natural } else { (left + right) / 2. };
+				let new_index = gradient.move_stop(i, new_position);
+				if Some(index) == self.active_marker_index {
+					self.active_marker_index = Some(new_index as u32);
+				}
+			}
 			SpectrumInputUpdate::ActiveMarker { .. } => unreachable!("handled above"),
 		}
 
@@ -393,7 +409,7 @@ impl ColorPickerMessageHandler {
 					.show_midpoints(true)
 					.allow_insert(!self.disabled)
 					.allow_delete(!self.disabled)
-					.allow_swap(true)
+					.allow_reorder(true)
 					.disabled(self.disabled)
 					.on_update(|update: &SpectrumInputUpdate| ColorPickerMessage::GradientUpdate { update: update.clone() }.into())
 					.widget_instance(),

@@ -1535,6 +1535,11 @@ fn static_node_properties() -> NodeProperties {
 	let mut map: NodeProperties = HashMap::new();
 	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
+	map.insert("levels_properties".to_string(), Box::new(node_properties::levels_properties));
+	map.insert("hue_saturation_properties".to_string(), Box::new(node_properties::hue_saturation_properties));
+	map.insert("black_and_white_properties".to_string(), Box::new(node_properties::black_and_white_properties));
+	map.insert("threshold_properties".to_string(), Box::new(node_properties::threshold_properties));
+	map.insert("vibrance_properties".to_string(), Box::new(node_properties::vibrance_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
 	map.insert("offset_path_properties".to_string(), Box::new(node_properties::offset_path_properties));

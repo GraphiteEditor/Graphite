@@ -584,8 +584,10 @@ pub struct SpectrumInput {
 	#[serde(rename = "allowDelete")]
 	pub allow_delete: bool,
 	/// Whether dragging a marker past another reorders them. If false, the dragged marker is clamped between its neighbors.
-	#[serde(rename = "allowSwap")]
-	pub allow_swap: bool,
+	#[serde(rename = "allowReorder")]
+	pub allow_reorder: bool,
+	/// Compact mode: 8px track height with 8px top padding, for use in rows alongside other widgets.
+	pub narrow: bool,
 	/// Whether the input is disabled (dimmed and read-only).
 	pub disabled: bool,
 
@@ -632,6 +634,10 @@ pub enum SpectrumInputUpdate {
 		position: f64,
 	},
 	DeleteMarker {
+		index: u32,
+	},
+	/// Emitted when the user double-clicks a marker. The consumer decides what (if anything) to reset the marker to.
+	ResetMarker {
 		index: u32,
 	},
 	ResetMidpoint {
