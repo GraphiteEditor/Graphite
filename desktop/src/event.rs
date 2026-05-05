@@ -10,6 +10,8 @@ pub(crate) enum AppEvent {
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	Exit,
 	#[cfg(target_os = "macos")]
+	AddLaunchDocuments(Vec<std::path::PathBuf>),
+	#[cfg(target_os = "macos")]
 	MenuEvent {
 		id: String,
 	},
