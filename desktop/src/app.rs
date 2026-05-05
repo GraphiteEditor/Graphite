@@ -2,6 +2,7 @@ use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -14,7 +15,6 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
 use crate::cef;
-use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist;
@@ -47,7 +47,8 @@ pub(crate) struct App {
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
-	cli: Cli,
+	launch_documents: Option<Vec<PathBuf>>,
+	disable_ui_acceleration: bool,
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
@@ -58,6 +59,7 @@ impl App {
 		Window::init();
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
 		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
@@ -65,7 +67,8 @@ impl App {
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
 		preferences: Preferences,
-		cli: Cli,
+		launch_documents: Vec<PathBuf>,
+		disable_ui_acceleration: bool,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
 		ctrlc::set_handler(move || {
@@ -115,7 +118,8 @@ impl App {
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			preferences,
-			cli,
+			launch_documents: Some(launch_documents),
+			disable_ui_acceleration,
 			startup_time: None,
 			exiting,
 			exit_reason: ExitReason::Shutdown,
@@ -307,22 +311,11 @@ impl App {
 				responses.push(message);
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
-				if self.cli.files.is_empty() {
+				let Some(launch_documents) = std::mem::take(&mut self.launch_documents) else {
+					tracing::error!("OpenLaunchDocuments should only be send once");
 					return;
-				}
-				let app_event_scheduler = self.app_event_scheduler.clone();
-				let launch_documents = std::mem::take(&mut self.cli.files);
-				let _ = thread::spawn(move || {
-					for path in launch_documents {
-						tracing::info!("Opening file from command line: {}", path.display());
-						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
-							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
-						}
-					}
-				});
+				};
+				self.open_files(launch_documents);
 			}
 			DesktopFrontendMessage::UpdateMenu { entries } => {
 				if let Some(window) = &self.window {
@@ -476,10 +469,36 @@ impl App {
 				event_loop.exit();
 			}
 			#[cfg(target_os = "macos")]
+			AppEvent::AddLaunchDocuments(paths) => {
+				if let Some(launch_documents) = &mut self.launch_documents {
+					launch_documents.extend(paths);
+				} else {
+					self.open_files(paths);
+				}
+			}
+			#[cfg(target_os = "macos")]
 			AppEvent::MenuEvent { id } => {
 				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
 			}
 		}
+	}
+
+	fn open_files(&mut self, paths: Vec<PathBuf>) {
+		if paths.is_empty() {
+			return;
+		}
+		let app_event_scheduler = self.app_event_scheduler.clone();
+		let _ = thread::spawn(move || {
+			for path in paths {
+				tracing::info!("Opening file: {}", path.display());
+				if let Ok(content) = fs::read(&path) {
+					let message = DesktopWrapperMessage::OpenFile { path, content };
+					app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+				} else {
+					tracing::error!("Failed to read file: {}", path.display());
+				}
+			}
+		});
 	}
 }
 impl ApplicationHandler for App {
@@ -570,7 +589,7 @@ impl ApplicationHandler for App {
 				}
 
 				if !self.cef_init_successful
-					&& !self.cli.disable_ui_acceleration
+					&& !self.disable_ui_acceleration
 					&& self.web_communication_initialized
 					&& let Some(startup_time) = self.startup_time
 					&& startup_time.elapsed() > Duration::from_secs(3)
