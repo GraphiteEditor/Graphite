@@ -2,13 +2,14 @@
 	import { createEventDispatcher } from "svelte";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
-	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradientStops, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "/src/utility-functions/colors";
+	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradientStops } from "/src/utility-functions/colors";
 	import type { FillChoice, MenuDirection, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 
 	// Content
 	export let value: FillChoice;
+	export let chosenGradient: string | undefined = undefined;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let menuDirection: MenuDirection = "Bottom";
@@ -26,11 +27,6 @@
 	$: outlined = outlineFactor > 0.0001;
 	$: gradientStops = fillChoiceGradientStops(value);
 	$: solidColor = fillChoiceColor(value);
-	$: chosenGradient = gradientStops
-		? gradientToLinearGradientCSS(gradientStops)
-		: solidColor
-			? `linear-gradient(${colorToHexOptionalAlpha(solidColor)}, ${colorToHexOptionalAlpha(solidColor)})`
-			: undefined;
 	$: none = value === "None";
 	$: transparency = gradientStops ? gradientStops.color.some((color) => color.alpha < 1) : solidColor ? solidColor.alpha < 1 : false;
 </script>

@@ -167,6 +167,14 @@ impl LayoutMessageHandler {
 				};
 				responses.add(callback_message);
 			}
+			Widget::ColorComparisonInput(color_comparison_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_comparison_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => (color_comparison_input.on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ColorInput(color_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
@@ -177,6 +185,20 @@ impl LayoutMessageHandler {
 						};
 						color_button.value = fill_choice;
 						(color_button.on_update.callback)(color_button)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::ColorPresetsInput(color_presets_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_presets_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<ColorPresetsInputUpdate>(value) else {
+							warn!("ColorPresetsInput update was not able to be parsed as ColorPresetsInputUpdate");
+							return;
+						};
+						(color_presets_input.on_update.callback)(&update)
 					}
 				};
 
@@ -221,6 +243,25 @@ impl LayoutMessageHandler {
 							return;
 						};
 						(entry.on_update.callback)(&())
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (spectrum_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<SpectrumInputUpdate>(value) else {
+							warn!("SpectrumInput update was not able to be parsed as SpectrumInputUpdate");
+							return;
+						};
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state. Otherwise the frontend's stored layout
+						// keeps stale values for `activeMarkerIndex`, etc., and any other widget's diff (e.g. the position
+						// NumberInput) will trigger Svelte to re-spread those stale props onto SpectrumInput, clobbering
+						// its local `activeMarkerIndex` and making subsequent drags target the wrong stop.
+						(spectrum_input.on_update.callback)(&update)
 					}
 				};
 
@@ -383,6 +424,23 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::TextLabel(_) => {}
+			Widget::VisualColorPickersInput(visual_color_pickers_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (visual_color_pickers_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<VisualColorPickersInputUpdate>(value) else {
+							warn!("VisualColorPickersInput update was not able to be parsed as VisualColorPickersInputUpdate");
+							return;
+						};
+						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
+						// when the new layout is rebuilt with the updated state, so the visual indicators (selection circle,
+						// hue/alpha needles, saturation-val ue gradient background) actually re-render after a drag.
+						(visual_color_pickers_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::WorkingColorsInput(_) => {}
 		};
 	}
@@ -395,14 +453,17 @@ impl LayoutMessageHandler {
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
-		// Step 1: Collect CheckboxId mappings from new layout
+		// Collect CheckboxId mappings from new layout
 		let mut checkbox_map = HashMap::new();
 		new_layout.collect_checkbox_ids(layout_target, &mut Vec::new(), &mut checkbox_map);
 
-		// Step 2: Replace all IDs in new layout with deterministic ones
+		// Replace all IDs in new layout with deterministic ones
 		new_layout.replace_widget_ids(layout_target, &mut Vec::new(), &checkbox_map);
 
-		// Step 3: Diff with deterministic IDs
+		// Populate computed display fields on widgets that need derived values
+		populate_computed_display_fields(&mut new_layout);
+
+		// Diff with deterministic IDs
 		let mut widget_diffs = Vec::new();
 
 		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
@@ -439,4 +500,39 @@ impl LayoutMessageHandler {
 enum WidgetValueAction {
 	Commit,
 	Update,
+}
+
+/// Walk all widgets in the layout and populate computed display fields (e.g., precomputed CSS gradient strings) so the frontend can render them without making Wasm round-trip calls. Mutates fields in place.
+fn populate_computed_display_fields(layout: &mut Layout) {
+	for instance in layout.iter_mut() {
+		match &mut *instance.widget {
+			Widget::ColorInput(color_input) => {
+				color_input.chosen_gradient = color_input.value.to_css_background_image();
+			}
+			Widget::SpectrumInput(spectrum_input) => {
+				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient();
+				spectrum_input.track_start_css = spectrum_input
+					.track
+					.color
+					.first()
+					.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma()))
+					.unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_end_css = spectrum_input
+					.track
+					.color
+					.last()
+					.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma()))
+					.unwrap_or_else(|| "black".to_string());
+			}
+			Widget::ColorComparisonInput(comparison) => {
+				use graphene_std::Color;
+				let contrasting = |color: Option<Color>| format!("#{}", color.map_or(Color::BLACK, |color| color.contrasting_text_color_from_gamma()).to_rgba_hex_srgb_from_gamma());
+				comparison.new_color_css = comparison.new_color.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma())).unwrap_or_default();
+				comparison.new_color_contrasting = contrasting(comparison.new_color);
+				comparison.old_color_css = comparison.old_color.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma())).unwrap_or_default();
+				comparison.old_color_contrasting = contrasting(comparison.old_color);
+			}
+			_ => {}
+		}
+	}
 }

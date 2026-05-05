@@ -141,7 +141,7 @@
 			display: none;
 		}
 
-		.body {
+		> .body {
 			padding: 0 7px;
 			padding-top: 1px;
 			margin-top: -1px;
@@ -150,7 +150,7 @@
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 
-			.widget-span.row {
+			> .widget-span.row {
 				&:first-child {
 					margin-top: calc(4px - 1px);
 				}

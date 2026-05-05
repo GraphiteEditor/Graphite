@@ -185,6 +185,18 @@ impl FillChoice {
 		Some(gradient)
 	}
 
+	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`]. Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
+	pub fn to_css_background_image(&self) -> Option<String> {
+		match self {
+			Self::None => None,
+			Self::Solid(color) => {
+				let hex = color.to_rgba_hex_srgb_from_gamma();
+				Some(format!("linear-gradient(#{hex}, #{hex})"))
+			}
+			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
+		}
+	}
+
 	/// Convert this [`FillChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.
 	/// If a gradient isn't provided, default gradient positional information is used in cases where the [`FillChoice`] is a [`Gradient`].
 	pub fn to_fill(&self, existing_gradient: Option<&Gradient>) -> Fill {

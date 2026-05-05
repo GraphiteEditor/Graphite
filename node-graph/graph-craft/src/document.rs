@@ -188,7 +188,7 @@ pub enum NodeInput {
 	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
 	Scope(Cow<'static, str>),
 
-	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
+	/// Input that is replaced at graph compilation with introspective metadata about this node's location.
 	Reflection(DocumentNodeMetadata),
 
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
