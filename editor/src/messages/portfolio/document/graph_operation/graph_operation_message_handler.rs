@@ -42,7 +42,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.blending_fill_set(fill);
+					modify_inputs.opacity_fill_set(fill);
 				}
 			}
 			GraphOperationMessage::GradientStopsSet { layer, stops } => {
@@ -692,7 +692,7 @@ fn import_usvg_path(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 	modify_inputs.insert_vector(subpaths, layer, has_transform, path.fill().is_some(), path.stroke().is_some());
 
-	if has_transform && let Some(transform_node_id) = modify_inputs.existing_network_node_id("Transform", false) {
+	if has_transform && let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
 		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, node_transform);
 	}
 

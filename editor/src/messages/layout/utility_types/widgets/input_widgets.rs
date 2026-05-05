@@ -6,6 +6,7 @@ use derivative::*;
 use graphene_std::Color;
 use graphene_std::raster::curve::Curve;
 use graphene_std::transform::ReferencePoint;
+use graphene_std::vector::style::{FillChoice, GradientStops};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -442,6 +443,212 @@ pub struct CurveInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct VisualColorPickersInput {
+	// Content
+	pub hue: f64,
+	pub saturation: f64,
+	pub value: f64,
+	pub alpha: f64,
+	#[serde(rename = "isNone")]
+	pub is_none: bool,
+	pub disabled: bool,
+
+	// Callbacks
+	// `on_update` receives the raw `VisualColorPickersInputUpdate` (not the mutated widget) so the layout diffing can still detect a change between the stored layout and the rebuilt one, otherwise the selection circle and slider needles never re-render after a drag.
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<VisualColorPickersInputUpdate>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VisualColorPickersInputUpdate {
+	pub hue: f64,
+	pub saturation: f64,
+	pub value: f64,
+	pub alpha: f64,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct ColorComparisonInput {
+	// Content
+	#[widget_builder(constructor)]
+	#[serde(rename = "newColor")]
+	pub new_color: Option<Color>,
+	#[widget_builder(constructor)]
+	#[serde(rename = "oldColor")]
+	pub old_color: Option<Color>,
+	#[serde(rename = "isNone")]
+	pub is_none: bool,
+	#[serde(rename = "oldIsNone")]
+	pub old_is_none: bool,
+	pub disabled: bool,
+	pub differs: bool,
+	#[serde(rename = "outlineAmount")]
+	pub outline_amount: f64,
+	/// Hex CSS string for the new color (with alpha if not fully opaque), or empty when `is_none`. Auto-populated from `new_color` at layout-send time.
+	#[serde(rename = "newColorCSS")]
+	#[widget_builder(skip)]
+	pub new_color_css: String,
+	/// Black or white, whichever contrasts the new color for legible label text. Auto-populated.
+	#[serde(rename = "newColorContrasting")]
+	#[widget_builder(skip)]
+	pub new_color_contrasting: String,
+	/// Hex CSS string for the old color (with alpha if not fully opaque), or empty when `old_is_none`. Auto-populated.
+	#[serde(rename = "oldColorCSS")]
+	#[widget_builder(skip)]
+	pub old_color_css: String,
+	/// Black or white, whichever contrasts the old color for legible label text. Auto-populated.
+	#[serde(rename = "oldColorContrasting")]
+	#[widget_builder(skip)]
+	pub old_color_contrasting: String,
+
+	// Callbacks
+	// The `swap` event has no payload — it just signals the user requested a swap.
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<()>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct ColorPresetsInput {
+	// Content
+	pub disabled: bool,
+	#[serde(rename = "showNoneOption")]
+	pub show_none_option: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ColorPresetsInputUpdate>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ColorPresetsInputUpdate {
+	Preset(FillChoice),
+	EyedropperColorCode(String),
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct SpectrumInput {
+	// Content
+	/// The colored gradient drawn behind the markers (display-only, caller-owned).
+	#[widget_builder(constructor)]
+	pub track: GradientStops,
+	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
+	#[serde(rename = "trackCSS")]
+	#[widget_builder(skip)]
+	pub track_css: String,
+	/// Hex string for the track strip's leftmost solid-color end-cap. Auto-populated from `track`'s first stop.
+	#[serde(rename = "trackStartCSS")]
+	#[widget_builder(skip)]
+	pub track_start_css: String,
+	/// Hex string for the track strip's rightmost solid-color end-cap. Auto-populated from `track`'s last stop.
+	#[serde(rename = "trackEndCSS")]
+	#[widget_builder(skip)]
+	pub track_end_css: String,
+	/// The handles the user can drag along the track. Their handle colors are caller-owned (e.g., for a gradient editor they follow the stop colors, for a "Shadows/Midpoints/Highlights" widget they're hardcoded).
+	pub markers: Vec<SpectrumMarker>,
+	#[serde(rename = "activeMarkerIndex")]
+	pub active_marker_index: Option<u32>,
+	#[serde(rename = "activeMarkerIsMidpoint")]
+	pub active_marker_is_midpoint: bool,
+	/// Whether to render midpoint diamonds between adjacent markers (only meaningful for gradient-like uses).
+	#[serde(rename = "showMidpoints")]
+	pub show_midpoints: bool,
+	/// Whether clicking the track inserts a new marker at the click position.
+	#[serde(rename = "allowInsert")]
+	pub allow_insert: bool,
+	/// Whether right-click or pressing Delete removes a marker. The handler still has the final say on whether the deletion goes through (e.g., enforcing a minimum count).
+	#[serde(rename = "allowDelete")]
+	pub allow_delete: bool,
+	/// Whether dragging a marker past another reorders them. If false, the dragged marker is clamped between its neighbors.
+	#[serde(rename = "allowReorder")]
+	pub allow_reorder: bool,
+	/// Compact mode: 8px track height with 8px top padding, for use in rows alongside other widgets.
+	pub narrow: bool,
+	/// Whether the input is disabled (dimmed and read-only).
+	pub disabled: bool,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<SpectrumInputUpdate>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SpectrumMarker {
+	/// Position (0..1) of the marker along the spectrum track.
+	position: f64,
+	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
+	midpoint: f64,
+	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a [`Color`] (gamma space).
+	#[serde(rename = "handleColorCSS")]
+	handle_color_css: String,
+}
+
+impl SpectrumMarker {
+	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
+		let handle_color_css = format!("#{}", handle_color.to_rgba_hex_srgb_from_gamma());
+		Self { position, midpoint, handle_color_css }
+	}
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum SpectrumInputUpdate {
+	MoveMarker {
+		index: u32,
+		position: f64,
+	},
+	MoveMidpoint {
+		index: u32,
+		position: f64,
+	},
+	InsertMarker {
+		position: f64,
+	},
+	DeleteMarker {
+		index: u32,
+	},
+	/// Emitted when the user double-clicks a marker. The consumer decides what (if anything) to reset the marker to.
+	ResetMarker {
+		index: u32,
+	},
+	ResetMidpoint {
+		index: u32,
+	},
+	ActiveMarker {
+		#[serde(rename = "activeMarkerIndex")]
+		active_marker_index: Option<u32>,
+		#[serde(rename = "activeMarkerIsMidpoint")]
+		active_marker_is_midpoint: bool,
+	},
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

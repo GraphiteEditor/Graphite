@@ -1,30 +1,15 @@
 <script lang="ts">
-	import { getContext, onMount, onDestroy } from "svelte";
+	import { getContext } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { welcomeScreenButtonsLayout } from "/src/stores/portfolio";
 	import { pasteFile } from "/src/utility-functions/files";
-	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorWrapper>("editor");
-
-	let welcomePanelButtonsLayout: Layout = [];
-
-	onMount(() => {
-		subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
-			patchLayout(welcomePanelButtonsLayout, data);
-			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
-		});
-	});
-
-	onDestroy(() => {
-		subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
-	});
 
 	function dropFile(e: DragEvent) {
 		if (!e.dataTransfer) return;
@@ -43,14 +28,14 @@
 				<IconLabel icon="GraphiteLogotypeSolid" />
 			</LayoutRow>
 			<LayoutRow class="actions">
-				<WidgetLayout layout={welcomePanelButtonsLayout} layoutTarget="WelcomeScreenButtons" />
+				<WidgetLayout layout={$welcomeScreenButtonsLayout} layoutTarget="WelcomeScreenButtons" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutCol>
 	<LayoutCol class="bottom-message">
 		<TextLabel italic={true} disabled={true}>
 			{#if import.meta.env.MODE === "native"}
-				You are testing Release Candidate 4 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
+				You are testing Release Candidate 5 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
 			{/if}
 		</TextLabel>
 	</LayoutCol>

@@ -52,7 +52,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
-	/// Whether the preprocessor should add a Memo node after this node in the generated subnetwork
+	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork
 	pub(crate) memoize: bool,
 }
 
@@ -379,7 +379,7 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
 					serialize = Some(parsed_path);
 				}
-				// Instructs the preprocessor to insert a Memo node after this node in the generated subnetwork,
+				// Instructs the preprocessor to insert a Memoize node after this node in the generated subnetwork,
 				// caching its output across evaluations with identical inputs.
 				//
 				// Example usage:

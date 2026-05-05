@@ -309,6 +309,7 @@ impl NodeGraphExecutor {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -355,6 +356,7 @@ impl NodeGraphExecutor {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 
 							log::trace!("{e}");
@@ -415,8 +417,11 @@ impl NodeGraphExecutor {
 			local_transforms,
 			first_element_source_id,
 			click_targets,
+			outlines,
+			text_frames,
 			clip_targets,
 			vector_data,
+			backgrounds: _,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately
@@ -426,6 +431,8 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateOutlines { outlines });
+		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);

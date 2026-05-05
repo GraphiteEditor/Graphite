@@ -1,5 +1,5 @@
-use core_types::ATTR_TRANSFORM;
 use core_types::table::{Table, TableRow};
+use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
@@ -15,16 +15,32 @@ pub struct PathBuilder {
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
 	pub vector_table: Table<Vector>,
+	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
+	merged_click_target_bboxes: Vec<[DVec2; 2]>,
+	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
+	merged_click_target_baselines: Vec<f64>,
+	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
+	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
+	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
+	text_frame_size: DVec2,
+	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
+	/// `local_transforms` stays stable when all glyphs are clipped during a resize drag.
+	first_glyph_offset: DVec2,
 	scale: f64,
 	id: PointId,
 }
 
 impl PathBuilder {
-	pub fn new(per_glyph_items: bool, scale: f64) -> Self {
+	pub fn new(per_glyph_items: bool, scale: f64, text_frame_size: DVec2, first_glyph_offset: DVec2) -> Self {
 		Self {
 			current_subpath: Subpath::new(Vec::new(), false),
 			glyph_subpaths: Vec::new(),
 			vector_table: if per_glyph_items { Table::new() } else { Table::new_from_element(Vector::default()) },
+			merged_click_target_bboxes: Vec::new(),
+			merged_click_target_baselines: Vec::new(),
+			per_glyph_bboxes: Vec::new(),
+			text_frame_size,
+			first_glyph_offset,
 			scale,
 			id: PointId::ZERO,
 			origin: DVec2::default(),
@@ -51,13 +67,28 @@ impl PathBuilder {
 			glyph_subpath.apply_transform(skew);
 		}
 
+		let glyph_bbox = subpaths_bounding_box(&self.glyph_subpaths);
+
 		if per_glyph_items {
-			self.vector_table
-				.push(TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset)));
+			// Frame in item-local space: top-left at `-glyph_offset` so the item transform cancels it
+			// back to the layer-local frame origin, regardless of which glyph survived
+			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
+
+			let item = TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
+				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+			self.vector_table.push(item);
+
+			// Defer click target creation to `finalize()` where adjacent AABBs get widened
+			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
 				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item
 				self.vector_table.element_mut(0).unwrap().append_subpath(subpath, false);
+			}
+			if let Some(bbox) = glyph_bbox {
+				self.merged_click_target_bboxes.push(bbox);
+				self.merged_click_target_baselines.push(glyph_offset.y);
 			}
 		}
 	}
@@ -117,11 +148,99 @@ impl PathBuilder {
 	}
 
 	pub fn finalize(mut self) -> Table<Vector> {
+		// Empty table = all glyphs clipped by height. Create a placeholder with the same item-0
+		// transform a populated table would have so `local_transforms` stays stable mid-drag.
+		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
 		if self.vector_table.is_empty() {
-			self.vector_table = Table::new_from_element(Vector::default());
+			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
+			let item = TableRow::new_from_element(Vector::default())
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
+				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
+			self.vector_table.push(item);
 		}
+
+		// Widen per-glyph AABBs to close horizontal gaps, then publish as click targets
+		if !self.per_glyph_bboxes.is_empty() {
+			// Project glyph-local AABBs into layer-local for the widening pass
+			let entries: Vec<(usize, DVec2, [DVec2; 2])> = self
+				.per_glyph_bboxes
+				.iter()
+				.enumerate()
+				.filter_map(|(index, bbox)| {
+					let bbox = (*bbox)?;
+					let offset = self.vector_table.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation;
+					Some((index, offset, [bbox[0] + offset, bbox[1] + offset]))
+				})
+				.collect();
+
+			let mut layer_bboxes: Vec<[DVec2; 2]> = entries.iter().map(|entry| entry.2).collect();
+			let baselines: Vec<f64> = entries.iter().map(|entry| entry.1.y).collect();
+			widen_horizontal_gaps(&mut layer_bboxes, &baselines);
+
+			// Project back to glyph-local and stamp as click targets
+			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
+				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
+				let rect = Subpath::new_rectangle(glyph_local[0], glyph_local[1]);
+				self.vector_table.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_subpaths([rect], false));
+			}
+		}
+
+		// "Separate Glyphs" off: widen the accumulated AABBs and bundle as one override `Vector`
+		if !self.merged_click_target_bboxes.is_empty() {
+			let mut bboxes = self.merged_click_target_bboxes;
+			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
+
+			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
+			self.vector_table.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(widened_subpaths, false));
+		}
+
+		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
+		let frame = DAffine2::from_scale(self.text_frame_size);
+		for index in 0..self.vector_table.len() {
+			if self.vector_table.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
+				self.vector_table.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+			}
+		}
+
 		self.vector_table
 	}
+}
+
+/// Widen AABBs horizontally so same-line neighbors fill inter-glyph gaps.
+/// The shorter glyph (higher min.y) widens toward its taller neighbor; equal heights split the gap.
+/// Assumes input is in reading order. Linear runtime.
+fn widen_horizontal_gaps(bboxes: &mut [[DVec2; 2]], baselines: &[f64]) {
+	for i in 0..bboxes.len().saturating_sub(1) {
+		// Skip cross-line pairs (loose epsilon since baselines come from layout floats)
+		if (baselines[i] - baselines[i + 1]).abs() > 1e-4 {
+			continue;
+		}
+
+		let gap = bboxes[i + 1][0].x - bboxes[i][1].x;
+		if gap <= 0. {
+			continue;
+		}
+
+		let left_top = bboxes[i][0].y;
+		let right_top = bboxes[i + 1][0].y;
+
+		if left_top > right_top {
+			bboxes[i][1].x += gap;
+		} else if right_top > left_top {
+			bboxes[i + 1][0].x -= gap;
+		} else {
+			let half = gap / 2.;
+			bboxes[i][1].x += half;
+			bboxes[i + 1][0].x -= half;
+		}
+	}
+}
+
+fn subpaths_bounding_box(subpaths: &[Subpath<PointId>]) -> Option<[DVec2; 2]> {
+	subpaths
+		.iter()
+		.filter_map(|subpath| subpath.bounding_box())
+		.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)])
 }
 
 impl OutlinePen for PathBuilder {

@@ -1,12 +1,11 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use core_types::blending::AlphaBlending;
+use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::math::bbox::Bbox;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_TRANSFORM};
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -284,7 +283,6 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 
 	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
 	result_table.set_attribute(ATTR_TRANSFORM, 0, transform);
-	result_table.set_attribute(ATTR_ALPHA_BLENDING, 0, AlphaBlending::default());
 
 	// Callers of empty_image can safely unwrap on returned `Table`
 	result_table
@@ -295,25 +293,40 @@ pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> Table<Raster<CPU
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
+/// Generates customizable procedural noise patterns.
 #[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
-	clip: bool,
+	#[default(true)] clip: bool,
 	seed: u32,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
+	#[default(10.)]
 	scale: f64,
-	noise_type: NoiseType,
-	domain_warp_type: DomainWarpType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: NoiseType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: DomainWarpType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
+	#[default(100.)]
 	domain_warp_amplitude: f64,
-	fractal_type: FractalType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: FractalType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
+	#[default(3)]
 	fractal_octaves: u32,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
+	#[default(2.)]
 	fractal_lacunarity: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
+	#[default(0.5)]
 	fractal_gain: f64,
-	fractal_weighted_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: f64,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
+	#[default(2.)]
 	fractal_ping_pong_strength: f64,
-	cellular_distance_function: CellularDistanceFunction,
-	cellular_return_type: CellularReturnType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: CellularDistanceFunction,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: CellularReturnType,
+	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
+	#[default(1.)]
 	cellular_jitter: f64,
 ) -> Table<Raster<CPU>> {
 	let footprint = ctx.footprint();

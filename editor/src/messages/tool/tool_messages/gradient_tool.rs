@@ -344,7 +344,7 @@ struct GradientChainState {
 /// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
 /// 'Transform' nodes. Type and spread method come from the closest-to-layer node of each kind, or the type default.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientChainState {
-	let transform_reference = DefinitionIdentifier::Network("Transform".into());
+	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 	let gradient_type_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_type::IDENTIFIER);
 	let spread_method_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
 

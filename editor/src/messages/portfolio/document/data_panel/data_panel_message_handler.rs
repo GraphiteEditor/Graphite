@@ -6,15 +6,14 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
-use graphene_std::Context;
-use graphene_std::Graphic;
+use graphene_std::blending::BlendMode;
 use graphene_std::gradient::GradientStops;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice};
-use graphene_std::{AlphaBlending, Color};
+use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientType};
+use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -182,7 +181,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
-		Table<Table<Graphic>>,
+		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
 		Table<Raster<CPU>>,
@@ -192,6 +191,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<String>,
 		Table<f64>,
 		Table<u8>,
+		Table<bool>,
+		Table<DAffine2>,
+		Table<BlendMode>,
+		Table<GradientType>,
+		Table<GradientSpreadMethod>,
 		GradientStops,
 		f64,
 		u32,
@@ -201,6 +205,9 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Option<f64>,
 		DVec2,
 		DAffine2,
+		BlendMode,
+		GradientType,
+		GradientSpreadMethod,
 	])
 }
 
@@ -283,7 +290,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 				for key in &attribute_keys {
 					let target = PathStep::Attribute { row: index, key: key.clone() };
 					let widget = self.attribute_any(key, index).and_then(|any| dispatch_value_widget(any, target, data)).unwrap_or_else(|| {
-						let text = self.attribute_display_value(key, index, |_| None).unwrap_or_else(|| "-".to_string());
+						let text = self.attribute_display_value(key, index, display_value_override).unwrap_or_else(|| "-".to_string());
 						TextLabel::new(text).narrow(true).widget_instance()
 					});
 					values.push(widget);
@@ -297,6 +304,22 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 		rows.insert(0, column_headings(&column_names));
 
 		vec![LayoutGroup::table(rows, false)]
+	}
+}
+
+impl TableRowLayout for Artboard {
+	fn type_name() -> &'static str {
+		"Artboard"
+	}
+	fn identifier(&self) -> String {
+		self.as_graphic_table().identifier()
+	}
+	// Don't put a breadcrumb for Artboard
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.as_graphic_table().layout_with_breadcrumb(data)
 	}
 }
 
@@ -742,15 +765,45 @@ impl TableRowLayout for Affine2 {
 	}
 }
 
-impl TableRowLayout for AlphaBlending {
+impl TableRowLayout for BlendMode {
 	fn type_name() -> &'static str {
-		"AlphaBlending"
+		"BlendMode"
 	}
 	fn identifier(&self) -> String {
-		format_alpha_blending(*self)
+		self.to_string()
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		TextLabel::new(format_alpha_blending(*self)).narrow(true).widget_instance()
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for GradientType {
+	fn type_name() -> &'static str {
+		"GradientType"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
+	}
+}
+
+impl TableRowLayout for GradientSpreadMethod {
+	fn type_name() -> &'static str {
+		"GradientSpreadMethod"
+	}
+	fn identifier(&self) -> String {
+		self.to_string()
+	}
+	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
+		TextLabel::new(self.to_string()).narrow(true).widget_instance()
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(vec![self.value_widget(PathStep::Element(0), _data)])]
@@ -885,7 +938,7 @@ impl TableRowLayout for NodeId {
 macro_rules! known_table_row_types {
 	($apply:ident) => {
 		$apply!(
-			Table<Table<Graphic>>,
+			Table<Artboard>,
 			Table<Graphic>,
 			Table<Vector>,
 			Table<Raster<CPU>>,
@@ -899,7 +952,6 @@ macro_rules! known_table_row_types {
 			GradientStops,
 			Color,
 			NodeId,
-			AlphaBlending,
 			DAffine2,
 			DVec2,
 			Affine2,
@@ -915,8 +967,20 @@ macro_rules! known_table_row_types {
 			Raster<CPU>,
 			Raster<GPU>,
 			Graphic,
+			Artboard,
 		);
 	};
+}
+
+/// Uses `Display` instead of `Debug` for attribute types that have a nicer human-readable format.
+fn display_value_override(any: &dyn Any) -> Option<String> {
+	if let Some(value) = any.downcast_ref::<DVec2>() {
+		return Some(format_dvec2(*value));
+	}
+	if let Some(value) = any.downcast_ref::<BlendMode>() {
+		return Some(value.to_string());
+	}
+	None
 }
 
 /// Type-dispatched widget for displaying an attribute value in a `Table<T>` item.
@@ -1031,15 +1095,4 @@ fn format_transform_matrix(transform: DAffine2) -> String {
 fn format_dvec2(value: DVec2) -> String {
 	let round = |x: f64| (x * 1e3).round() / 1e3;
 	format!("({} px, {} px)", round(value.x), round(value.y))
-}
-
-fn format_alpha_blending(value: AlphaBlending) -> String {
-	let round = |x: f32| (x * 1e3).round() / 1e3;
-	format!(
-		"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
-		value.blend_mode,
-		round(value.opacity * 100.),
-		round(value.fill * 100.),
-		if value.clip { "Yes" } else { "No" }
-	)
 }

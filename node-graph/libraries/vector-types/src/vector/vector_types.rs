@@ -158,6 +158,11 @@ impl Vector {
 			match target_type.borrow() {
 				ClickTargetType::Subpath(subpath) => vector.append_subpath(subpath, preserve_id),
 				ClickTargetType::FreePoint(point) => vector.append_free_point(point, preserve_id),
+				ClickTargetType::CompoundPath(subpaths) => {
+					for subpath in subpaths {
+						vector.append_subpath(subpath, preserve_id);
+					}
+				}
 			}
 		}
 

@@ -49,7 +49,7 @@ const TX: f32 = 0.1;
 // Paper: <https://www.researchgate.net/publication/220182411_Single_Image_Haze_Removal_Using_Dark_Channel_Prior>
 // TODO: Make this algorithm work with negative strength values
 fn dehaze_image(image: DynamicImage, strength: f64) -> DynamicImage {
-	// TODO: Break out this pair of steps into its own node, with a memoize node which caches the pair of outputs, so the strength can be adjusted without recomputing these two steps.
+	// TODO: Break out this pair of steps into its own node, with a Memoize node which caches the pair of outputs, so the strength can be adjusted without recomputing these two steps.
 	let dark_channel = compute_dark_channel(&image);
 	let atmospheric_light = estimate_atmospheric_light(&image, &dark_channel);
 

@@ -1,19 +1,13 @@
-use core_types::{
-	ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl,
-	table::{Table, TableRow},
-	transform::TransformMut,
-};
+use core_types::table::{Table, TableRow};
+use core_types::transform::TransformMut;
+use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::{
-	Vector,
-	graphic::{Graphic, IntoGraphicTable},
-};
+use graphic_types::graphic::{Graphic, IntoGraphicTable};
+use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
-/// Constructs a new single-item `Table<Table<Graphic>>` (an artboard table) where the row's element is
-/// the artboard's content and the metadata (label, location, dimensions, background, clip) is stored as
-/// per-row attributes.
+/// Constructs a single-row `Table<Artboard>` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
 pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
@@ -37,7 +31,7 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: bool,
-) -> Table<Table<Graphic>> {
+) -> Table<Artboard> {
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
@@ -54,11 +48,9 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 
 	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
-	// The artboard's user-visible name is its parent layer's display name; not stored as an attribute here so
-	// it can't go stale. The data panel resolves it live from the row's `editor:layer_path` NodeId via the network
-	// interface, so renaming the layer reflects everywhere on the next refresh.
+	// Name is not stored here, it's resolved live from the parent layer's display name
 	Table::new_from_row(
-		TableRow::new_from_element(content)
+		TableRow::new_from_element(Artboard::new(content))
 			.with_attribute(ATTR_LOCATION, normalized_location)
 			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
 			.with_attribute(ATTR_BACKGROUND, background)

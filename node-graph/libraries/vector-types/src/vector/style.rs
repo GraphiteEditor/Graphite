@@ -1,8 +1,7 @@
 //! Contains stylistic options for SVG elements.
 
 pub use crate::gradient::*;
-use core_types::ATTR_ALPHA_BLENDING;
-use core_types::AlphaBlending;
+use core_types::ATTR_OPACITY;
 use core_types::Color;
 use core_types::color::Alpha;
 use core_types::table::Table;
@@ -136,9 +135,9 @@ impl From<Option<Color>> for Fill {
 
 impl From<Table<Color>> for Fill {
 	fn from(color: Table<Color>) -> Fill {
-		let alpha = color.attribute_cloned_or_default::<AlphaBlending>(ATTR_ALPHA_BLENDING, 0).opacity;
+		let alpha: f64 = color.attribute_cloned_or(ATTR_OPACITY, 0, 1.);
 		let color = color.element(0).copied();
-		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha)))
+		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha as f32)))
 	}
 }
 
@@ -184,6 +183,18 @@ impl FillChoice {
 	pub fn as_gradient(&self) -> Option<&GradientStops> {
 		let Self::Gradient(gradient) = self else { return None };
 		Some(gradient)
+	}
+
+	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`]. Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
+	pub fn to_css_background_image(&self) -> Option<String> {
+		match self {
+			Self::None => None,
+			Self::Solid(color) => {
+				let hex = color.to_rgba_hex_srgb_from_gamma();
+				Some(format!("linear-gradient(#{hex}, #{hex})"))
+			}
+			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
+		}
 	}
 
 	/// Convert this [`FillChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.

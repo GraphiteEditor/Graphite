@@ -7,13 +7,12 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
+pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicTable, TryFromGraphic, Vector};
 
 pub mod migrations {
-	use core_types::{
-		AlphaBlending,
-		table::{Table, TableRow},
-	};
+	use core_types::blending::BlendMode;
+	use core_types::table::{Table, TableRow};
 	use dyn_any::DynAny;
 	use glam::DAffine2;
 	use vector_types::vector::{PathStyle, PointDomain, RegionDomain, SegmentDomain, misc::HandleId};
@@ -24,11 +23,22 @@ pub mod migrations {
 	pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Vector>, D::Error> {
 		use serde::Deserialize;
 
+		/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
+		#[derive(Clone, Debug, Default, PartialEq)]
+		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+		#[cfg_attr(feature = "serde", serde(default))]
+		pub struct LegacyAlphaBlending {
+			pub blend_mode: BlendMode,
+			pub opacity: f32,
+			pub fill: f32,
+			pub clip: bool,
+		}
+
 		#[derive(Clone, Debug, PartialEq, DynAny)]
 		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 		pub struct OldVectorData {
 			pub transform: DAffine2,
-			pub alpha_blending: AlphaBlending,
+			pub alpha_blending: LegacyAlphaBlending,
 
 			pub style: PathStyle,
 
@@ -47,7 +57,7 @@ pub mod migrations {
 			#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
 			element: Vec<T>,
 			transform: Vec<DAffine2>,
-			alpha_blending: Vec<AlphaBlending>,
+			alpha_blending: Vec<LegacyAlphaBlending>,
 		}
 
 		#[derive(Clone, Debug)]

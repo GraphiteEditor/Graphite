@@ -9,6 +9,7 @@
 	import { createPanicManager, destroyPanicManager } from "/src/managers/panic";
 	import { createPersistenceManager, destroyPersistenceManager } from "/src/managers/persistence";
 	import { createAppWindowStore, destroyAppWindowStore } from "/src/stores/app-window";
+	import { createColorPickerStore, destroyColorPickerStore } from "/src/stores/color-picker";
 	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
 	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
 	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
@@ -32,6 +33,7 @@
 		nodeGraph: createNodeGraphStore(subscriptions),
 		portfolio: createPortfolioStore(subscriptions, editor),
 		appWindow: createAppWindowStore(subscriptions),
+		colorPicker: createColorPickerStore(subscriptions),
 	};
 	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
 
@@ -61,6 +63,7 @@
 		destroyNodeGraphStore();
 		destroyPortfolioStore();
 		destroyAppWindowStore();
+		destroyColorPickerStore();
 
 		// Managers
 		destroyClipboardManager();
@@ -143,6 +146,8 @@
 		--color-data-typography-dim: #955252;
 		--color-data-invalid: #d6536e; // Same as --color-error-red
 		--color-data-invalid-dim: #a7324a;
+
+		--color-overlay-blue: #00a8ff;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

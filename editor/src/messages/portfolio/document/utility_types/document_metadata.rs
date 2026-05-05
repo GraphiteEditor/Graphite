@@ -28,6 +28,12 @@ pub struct DocumentMetadata {
 	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
+	/// nodes with an `editor:click_target` override still outline the precise geometry.
+	pub outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Per-layer text frame from item 0's `editor:text_frame` attribute (`DAffine2` mapping the (0, 0)-(1, 1) unit square onto the frame).
+	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
+	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
@@ -120,7 +126,7 @@ impl DocumentMetadata {
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied();
 
 		let transform = local_transform.unwrap_or_else(|| {
-			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface);
+			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface);
 			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
 			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
 		});
@@ -154,9 +160,21 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
+	/// Outline targets if present, otherwise click targets. Used for bounding boxes and outline
+	/// drawing so layers with an `editor:click_target` override report precise geometry bounds.
+	fn visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+		self.outlines.get(&layer).or_else(|| self.click_targets.get(&layer)).map(|v| v.as_slice())
+	}
+
+	/// Whether to treat this layer as a text layer for tool UI. Checks the surfaced `editor:text_frame`
+	/// metadata rather than upstream topology, so layers that strip the attribute downstream correctly drop out.
+	pub fn is_text_layer(&self, layer: LayerNodeIdentifier) -> bool {
+		self.text_frames.contains_key(&layer)
+	}
+
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets(layer)?
+		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
@@ -164,10 +182,14 @@ impl DocumentMetadata {
 
 	/// Get the loose bounding box of the click target of the specified layer in the specified transform space
 	pub fn loose_bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets(layer)?
+		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
 				ClickTargetType::Subpath(subpath) => subpath.loose_bounding_box_with_transform(transform),
+				ClickTargetType::CompoundPath(subpaths) => subpaths
+					.iter()
+					.filter_map(|subpath| subpath.loose_bounding_box_with_transform(transform))
+					.reduce(|[a_min, a_max], [b_min, b_max]| [a_min.min(b_min), a_max.max(b_max)]),
 				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)
@@ -210,18 +232,15 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
-		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().filter_map(|target| match target.target_type() {
-			ClickTargetType::Subpath(subpath) => Some(subpath),
-			_ => None,
+		self.visual_targets(layer).unwrap_or(&[]).iter().flat_map(|target| match target.target_type() {
+			ClickTargetType::Subpath(subpath) => std::slice::from_ref(subpath),
+			ClickTargetType::CompoundPath(subpaths) => subpaths.as_slice(),
+			ClickTargetType::FreePoint(_) => &[],
 		})
 	}
 
 	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
-		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
-		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().map(|target| target.target_type())
+		self.visual_targets(layer).unwrap_or(&[]).iter().map(|target| target.target_type())
 	}
 
 	pub fn is_clip(&self, node: NodeId) -> bool {

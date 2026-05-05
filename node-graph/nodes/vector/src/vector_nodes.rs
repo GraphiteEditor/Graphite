@@ -1,13 +1,16 @@
 use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
-use core_types::AlphaBlending;
+use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
-use core_types::table::{Table, TableRow};
+use core_types::table::{Table, TableDyn, TableRow};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_ALPHA_BLENDING, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll,
+	OwnedContextImpl,
+};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -226,10 +229,12 @@ async fn stroke<V, L: IntoF64Vec>(
 where
 	Table<V>: VectorTableIterMut + 'n + Send,
 {
+	let dash_lengths = dash_lengths.into_vec().into_iter().map(|length| length.max(0.)).collect();
+
 	let stroke = Stroke {
 		color: color.element(0).copied(),
 		weight,
-		dash_lengths: dash_lengths.into_vec(),
+		dash_lengths,
 		dash_offset,
 		cap,
 		join,
@@ -1155,10 +1160,13 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+async fn solidify_stroke<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
-	content
+	let graphic_table = content.into_graphic_table();
+	let flattened: Table<Vector> = graphic_table.clone().into_flattened_table();
+
+	let mut output: Table<Vector> = flattened
 		.into_iter()
 		.flat_map(|row| {
 			let (mut vector, attributes) = row.into_parts();
@@ -1225,7 +1233,27 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				PaintOrder::StrokeBelow => std::iter::once(stroke_row).chain(fill_row).collect::<Vec<_>>(),
 			}
 		})
-		.collect()
+		.collect();
+
+	// Snapshot the upstream content so the renderer can recurse into it for editor click-target preservation
+	// and surface the original pre-solidified `Vector` to the Path tool for editing.
+	if !output.is_empty() {
+		// Row 0 carries a composed transform inherited from the flattened input, but the merged_layers
+		// already holds the original transforms; pre-compensate by row 0's inverse so the renderer's
+		// `upstream_footprint *= row_0_transform` recursion cancels out and leaves the originals intact.
+		let mut graphic_table = graphic_table;
+		let row_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		if row_0_transform.matrix2.determinant().abs() > f64::EPSILON {
+			let inverse = row_0_transform.inverse();
+			for transform in graphic_table.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*transform = inverse * *transform;
+			}
+		}
+
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_table);
+	}
+
+	output
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
@@ -2310,10 +2338,20 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		return content;
 	};
 
-	// Lerp styles
-	let source_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, source_index);
-	let target_alpha_blending: AlphaBlending = content.attribute_cloned_or_default(ATTR_ALPHA_BLENDING, target_index);
-	let vector_alpha_blending = source_alpha_blending.lerp(&target_alpha_blending, time as f32);
+	// Lerp blending attributes: opacity/fill interpolate, blend_mode/clip step at the midpoint
+	let source_blend_mode: BlendMode = content.attribute_cloned_or_default(ATTR_BLEND_MODE, source_index);
+	let target_blend_mode: BlendMode = content.attribute_cloned_or_default(ATTR_BLEND_MODE, target_index);
+	let source_opacity: f64 = content.attribute_cloned_or(ATTR_OPACITY, source_index, 1.);
+	let target_opacity: f64 = content.attribute_cloned_or(ATTR_OPACITY, target_index, 1.);
+	let source_fill: f64 = content.attribute_cloned_or(ATTR_OPACITY_FILL, source_index, 1.);
+	let target_fill: f64 = content.attribute_cloned_or(ATTR_OPACITY_FILL, target_index, 1.);
+	let source_clip: bool = content.attribute_cloned_or_default(ATTR_CLIPPING_MASK, source_index);
+	let target_clip: bool = content.attribute_cloned_or_default(ATTR_CLIPPING_MASK, target_index);
+
+	let lerped_blend_mode = if time < 0.5 { source_blend_mode } else { target_blend_mode };
+	let lerped_opacity = source_opacity + (target_opacity - source_opacity) * time;
+	let lerped_fill = source_fill + (target_fill - source_fill) * time;
+	let lerped_clip = if time < 0.5 { source_clip } else { target_clip };
 
 	// Evaluate the spatial position on the control path for the translation component.
 	// When the segment has zero arc length (e.g., two objects at the same position), inv_arclen
@@ -2534,7 +2572,10 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	Table::new_from_row(
 		TableRow::new_from_element(vector)
 			.with_attribute(ATTR_TRANSFORM, lerped_transform)
-			.with_attribute(ATTR_ALPHA_BLENDING, vector_alpha_blending)
+			.with_attribute(ATTR_BLEND_MODE, lerped_blend_mode)
+			.with_attribute(ATTR_OPACITY, lerped_opacity)
+			.with_attribute(ATTR_OPACITY_FILL, lerped_fill)
+			.with_attribute(ATTR_CLIPPING_MASK, lerped_clip)
 			.with_attribute(ATTR_EDITOR_LAYER_PATH, layer_path)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, graphic_table_content),
 	)
@@ -2842,35 +2883,11 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 	})
 }
 
-trait Count {
-	fn count(&self) -> usize;
-}
-impl<T> Count for Table<T> {
-	fn count(&self) -> usize {
-		self.len()
-	}
-}
-
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I: Count>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<String>,
-		Table<f64>,
-		Table<u8>,
-		Table<NodeId>,
-	)]
-	content: I,
-) -> f64 {
-	content.count() as f64
+async fn count_elements(_: impl Ctx, content: TableDyn) -> f64 {
+	content.len() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]

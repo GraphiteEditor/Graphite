@@ -1,30 +1,12 @@
 <script lang="ts">
-	import { getContext, onMount, onDestroy } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import type { SubscriptionsRouter } from "/src/subscriptions-router";
-	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
-
-	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
-
-	let dataPanelLayout: Layout = [];
-
-	onMount(() => {
-		subscriptions.subscribeLayoutUpdate("DataPanel", (data) => {
-			patchLayout(dataPanelLayout, data);
-			dataPanelLayout = dataPanelLayout;
-		});
-	});
-
-	onDestroy(() => {
-		subscriptions.unsubscribeLayoutUpdate("DataPanel");
-	});
+	import { dataPanelLayout } from "/src/stores/portfolio";
 </script>
 
 <LayoutCol class="data-panel">
 	<LayoutCol class="body" scrollableY={true}>
-		<WidgetLayout layout={dataPanelLayout} layoutTarget="DataPanel" />
+		<WidgetLayout layout={$dataPanelLayout} layoutTarget="DataPanel" />
 	</LayoutCol>
 </LayoutCol>
 
