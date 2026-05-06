@@ -250,10 +250,22 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
-fn max_scale(transform: DAffine2) -> f64 {
-	let sx = transform.x_axis.length_squared();
-	let sy = transform.y_axis.length_squared();
-	(sx + sy).sqrt()
+/// `(max, min)` factors by which a unit vector is stretched under `transform`'s linear part — the
+/// principal and minor singular values, equal to the semi-axes of the ellipse a unit circle maps to.
+/// Equivalent to `(max(sx, sy), min(sx, sy))` for axis-aligned scales, but accounts for shear.
+fn singular_values(transform: DAffine2) -> (f64, f64) {
+	let m = transform.matrix2;
+	let a = m.x_axis.x;
+	let b = m.x_axis.y;
+	let c = m.y_axis.x;
+	let d = m.y_axis.y;
+	// Eigenvalues of MᵀM via the closed form for a 2×2, both are non-negative
+	let trace = a * a + b * b + c * c + d * d;
+	let det = a * d - b * c;
+	let discriminant = (trace * trace - 4. * det * det).max(0.).sqrt();
+	let largest_eigenvalue = (trace + discriminant) * 0.5;
+	let smallest_eigenvalue = ((trace - discriminant) * 0.5).max(0.);
+	(largest_eigenvalue.sqrt(), smallest_eigenvalue.sqrt())
 }
 
 pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
@@ -1025,7 +1037,9 @@ impl Render for Table<Vector> {
 					let mut svg = SvgRender::new();
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
-					let inflation = stroke.max_aabb_inflation() * max_scale(applied_stroke_transform);
+					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
+					let (largest_scale, _) = singular_values(applied_stroke_transform);
+					let inflation = stroke.max_aabb_inflation(true) * largest_scale;
 					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1144,16 +1158,20 @@ impl Render for Table<Vector> {
 			};
 			let mut layer = false;
 
+			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
+			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
+			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
+			let stroke = element.style.stroke();
+			let can_draw_aligned_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				layer = true;
-				// `max_aabb_inflation` is in `applied_stroke_transform`-space (where the stroke is drawn).
-				// `layer_bounds` is in path-local coords and `push_layer` re-applies `multiplied_transform`.
-				// Divide by `max_scale(applied_stroke_transform)` so the rect, after Vello's transform, ends at the right scene extent.
-				// Skip on a degenerate transform since nothing renders in that case.
-				let scale = max_scale(applied_stroke_transform);
-				let stroke_inflation = element.style.stroke().as_ref().map_or(0., Stroke::max_aabb_inflation);
-				let inflate_amount = if scale > 0. { stroke_inflation / scale } else { 0. };
+				// `max_aabb_inflation` is in `applied_stroke_transform`-space; `layer_bounds` is path-local and `push_layer` re-applies `multiplied_transform`.
+				// Divide by the smaller axial scale to cover the stroke in both axes after Vello's transform. Skip on a degenerate transform.
+				let (_, smallest_scale) = singular_values(applied_stroke_transform);
+				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
+				let inflate_amount = if smallest_scale > 0. { stroke_inflation / smallest_scale } else { 0. };
 				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
@@ -1165,11 +1183,8 @@ impl Render for Table<Vector> {
 				);
 			}
 
-			let can_draw_aligned_stroke =
-				element.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && element.stroke_bezier_paths().all(|path| path.closed());
-
 			let use_layer = can_draw_aligned_stroke;
-			let wants_stroke_below = element.style.stroke().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
+			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			// Closures to avoid duplicated fill/stroke drawing logic
 			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match element.style.fill() {
@@ -1312,8 +1327,10 @@ impl Render for Table<Vector> {
 						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let inflation = element.style.stroke().as_ref().map_or(0., Stroke::max_aabb_inflation);
-						let quad = Quad::from_box(bounds).inflate(inflation * max_scale(applied_stroke_transform));
+						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
+						let inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(true));
+						let (largest_scale, _) = singular_values(applied_stroke_transform);
+						let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
