@@ -1,7 +1,7 @@
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50};
-use crate::messages::portfolio::document::guide_message_handler::GuideMessageHandler;
+use crate::messages::portfolio::document::guide_message_handler::GuideLinesMessageHandler;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::guide::GuideDirection;
+use crate::messages::portfolio::document::utility_types::guide::GuideLineDirection;
 use glam::{DAffine2, DVec2};
 
 fn extend_line_to_viewport(point: DVec2, direction: DVec2, viewport_size: DVec2) -> Option<(DVec2, DVec2)> {
@@ -32,19 +32,19 @@ fn extend_line_to_viewport(point: DVec2, direction: DVec2, viewport_size: DVec2)
 	Some((start, end))
 }
 
-pub fn guide_overlay(guide_handler: &GuideMessageHandler, overlay_context: &mut OverlayContext, document_to_viewport: DAffine2) {
+pub fn guide_lines_overlay(guide_lines_handler: &GuideLinesMessageHandler, overlay_context: &mut OverlayContext, document_to_viewport: DAffine2) {
 	let viewport_size: DVec2 = overlay_context.viewport.size().into();
 
-	for guide in &guide_handler.guides {
-		let (doc_point, doc_direction) = match guide.direction {
-			GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X),
-			GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y),
+	for guide_line in &guide_lines_handler.guide_lines {
+		let (doc_point, doc_direction) = match guide_line.direction {
+			GuideLineDirection::Horizontal => (DVec2::new(0.0, guide_line.position), DVec2::X),
+			GuideLineDirection::Vertical => (DVec2::new(guide_line.position, 0.0), DVec2::Y),
 		};
 
 		let viewport_point = document_to_viewport.transform_point2(doc_point);
 		let viewport_direction = document_to_viewport.transform_vector2(doc_direction);
 
-		let color = if guide_handler.hovered_guide_id == Some(guide.id) {
+		let color = if guide_lines_handler.hovered_guide_line_id == Some(guide_line.id) {
 			COLOR_OVERLAY_BLUE_50
 		} else {
 			COLOR_OVERLAY_BLUE

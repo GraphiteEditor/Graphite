@@ -4,10 +4,11 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::guide_message::GuideMessage;
+use crate::messages::portfolio::document::guide_message::GuideLineMessage;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
+use crate::messages::portfolio::document::utility_types::guide::{GuideLineDirection, GuideLineId};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -479,9 +480,9 @@ enum SelectToolFsmState {
 	},
 	RotatingBounds,
 	DraggingPivot,
-	DraggingGuide {
-		guide_id: GuideId,
-		direction: GuideDirection,
+	DraggingGuideLine {
+		guide_line_id: GuideLineId,
+		direction: GuideLineDirection,
 	},
 }
 
@@ -518,9 +519,9 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	dragging_guide_id: Option<GuideId>,
-	dragging_guide_direction: Option<GuideDirection>,
-	guide_drag_start_position: Option<f64>,
+	dragging_guide_line_id: Option<GuideLineId>,
+	dragging_guide_line_direction: Option<GuideLineDirection>,
+	guide_line_drag_start_position: Option<f64>,
 	drag_start_center: ViewportPosition,
 }
 
@@ -733,36 +734,6 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.unwrap_or_default()
 }
 
-fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2, viewport: &ViewportMessageHandler) -> Option<(GuideId, GuideDirection)> {
-	if !document.guide_handler.guides_visible {
-		return None;
-	}
-
-	let transform = document
-		.navigation_handler
-		.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
-
-	for guide in document.guide_handler.guides.iter().rev() {
-		let (doc_point, doc_direction) = match guide.direction {
-			GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X),
-			GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y),
-		};
-
-		let viewport_point = transform.transform_point2(doc_point);
-		let viewport_direction = transform.transform_vector2(doc_direction);
-
-		if let Some(dir_normalized) = viewport_direction.try_normalize() {
-			let to_mouse = viewport_position - viewport_point;
-			let perpendicular_dist = to_mouse.perp_dot(dir_normalized).abs();
-
-			if perpendicular_dist <= GUIDE_HIT_TOLERANCE {
-				return Some((guide.id, guide.direction));
-			}
-		}
-	}
-
-	None
-}
 
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
@@ -1216,13 +1187,13 @@ impl Fsm for SelectToolFsmState {
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					state
-				} else if let Some((guide_id, direction)) = hit_test_guide(document, input.mouse.position, viewport) {
-					tool_data.dragging_guide_id = Some(guide_id);
-					tool_data.dragging_guide_direction = Some(direction);
+				} else if let Some((guide_line_id, direction)) = document.guide_lines_message_handler.hit_test(input.mouse.position, document.metadata().document_to_viewport) {
+					tool_data.dragging_guide_line_id = Some(guide_line_id);
+					tool_data.dragging_guide_line_direction = Some(direction);
 
-					let original_position = document.guide_handler.guides.iter().find(|g| g.id == guide_id).map(|g| g.position);
-					tool_data.guide_drag_start_position = original_position;
-					SelectToolFsmState::DraggingGuide { guide_id, direction }
+					let original_position = document.guide_lines_message_handler.guide_lines.iter().find(|g| g.id == guide_line_id).map(|g| g.position);
+					tool_data.guide_line_drag_start_position = original_position;
+					SelectToolFsmState::DraggingGuideLine { guide_line_id, direction }
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if resize {
@@ -1314,53 +1285,53 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::DraggingGuide { .. }, SelectToolMessage::Abort) => {
-				tool_data.dragging_guide_id = None;
-				tool_data.dragging_guide_direction = None;
-				tool_data.guide_drag_start_position = None;
+			(SelectToolFsmState::DraggingGuideLine { .. }, SelectToolMessage::Abort) => {
+				tool_data.dragging_guide_line_id = None;
+				tool_data.dragging_guide_line_direction = None;
+				tool_data.guide_line_drag_start_position = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::PointerMove { .. }) => {
+			(SelectToolFsmState::DraggingGuideLine { guide_line_id, direction }, SelectToolMessage::PointerMove { .. }) => {
 				tool_data.drag_current = input.mouse.position;
 
-				responses.add(GuideMessage::MoveGuide {
-					id: guide_id,
+				responses.add(GuideLineMessage::MoveGuideLine {
+					id: guide_line_id,
 					mouse_x: input.mouse.position.x,
 					mouse_y: input.mouse.position.y,
 				});
 
 				let cursor = match direction {
-					GuideDirection::Horizontal => MouseCursorIcon::NSResize,
-					GuideDirection::Vertical => MouseCursorIcon::EWResize,
+					GuideLineDirection::Horizontal => MouseCursorIcon::NSResize,
+					GuideLineDirection::Vertical => MouseCursorIcon::EWResize,
 				};
 				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				SelectToolFsmState::DraggingGuide { guide_id, direction }
+				SelectToolFsmState::DraggingGuideLine { guide_line_id, direction }
 			}
-			(SelectToolFsmState::DraggingGuide { guide_id, direction: _ }, SelectToolMessage::DragStop { .. }) => {
+			(SelectToolFsmState::DraggingGuideLine { guide_line_id, direction: _ }, SelectToolMessage::DragStop { .. }) => {
 				tool_data.drag_current = input.mouse.position;
 
-				// Checks if dragged outside viewport - deletes the guide
+				// Checks if dragged outside viewport - deletes the guide line
 				let viewport_size = viewport.size().into_dvec2();
 				let outside_viewport = input.mouse.position.x < 0.0 || input.mouse.position.y < 0.0 || input.mouse.position.x > viewport_size.x || input.mouse.position.y > viewport_size.y;
 
 				if outside_viewport {
-					responses.add(GuideMessage::DeleteGuide { id: guide_id });
+					responses.add(GuideLineMessage::DeleteGuideLine { id: guide_line_id });
 				} else {
-					responses.add(GuideMessage::MoveGuide {
-						id: guide_id,
+					responses.add(GuideLineMessage::MoveGuideLine {
+						id: guide_line_id,
 						mouse_x: input.mouse.position.x,
 						mouse_y: input.mouse.position.y,
 					});
 				}
 
-				tool_data.dragging_guide_id = None;
-				tool_data.dragging_guide_direction = None;
-				tool_data.guide_drag_start_position = None;
+				tool_data.dragging_guide_line_id = None;
+				tool_data.dragging_guide_line_direction = None;
+				tool_data.guide_line_drag_start_position = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
@@ -1548,16 +1519,16 @@ impl Fsm for SelectToolFsmState {
 					cursor = MouseCursorIcon::Move;
 				}
 
-				// Check if hovering over a guide and update hover state
-				let hovered_guide = hit_test_guide(document, input.mouse.position, viewport);
-				if let Some((guide_id, direction)) = hovered_guide {
+				// Check if hovering over a guide line and update hover state
+				let hovered_guide_line = document.guide_lines_message_handler.hit_test(input.mouse.position, document.metadata().document_to_viewport);
+				if let Some((guide_line_id, direction)) = hovered_guide_line {
 					cursor = match direction {
-						GuideDirection::Horizontal => MouseCursorIcon::NSResize,
-						GuideDirection::Vertical => MouseCursorIcon::EWResize,
+						GuideLineDirection::Horizontal => MouseCursorIcon::NSResize,
+						GuideLineDirection::Vertical => MouseCursorIcon::EWResize,
 					};
-					responses.add(GuideMessage::SetHoveredGuide { id: Some(guide_id) });
+					responses.add(GuideLineMessage::SetHoveredGuideLine { id: Some(guide_line_id) });
 				} else {
-					responses.add(GuideMessage::SetHoveredGuide { id: None });
+					responses.add(GuideLineMessage::SetHoveredGuideLine { id: None });
 				}
 
 				// Generate the hover outline
@@ -2013,10 +1984,10 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
 				hint_data.send_layout(responses);
 			}
-			SelectToolFsmState::DraggingGuide { .. } => {
+			SelectToolFsmState::DraggingGuideLine { .. } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Guide")]),
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Guide Line")]),
 				]);
 				hint_data.send_layout(responses);
 			}

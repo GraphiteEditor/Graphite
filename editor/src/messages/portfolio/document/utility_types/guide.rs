@@ -2,9 +2,9 @@ use crate::application::generate_uuid;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
-pub struct GuideId(u64);
+pub struct GuideLineId(u64);
 
-impl GuideId {
+impl GuideLineId {
 	pub fn new() -> Self {
 		Self(generate_uuid())
 	}
@@ -18,44 +18,44 @@ impl GuideId {
 	}
 }
 
-impl Default for GuideId {
+impl Default for GuideLineId {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum GuideDirection {
+pub enum GuideLineDirection {
 	Horizontal,
 	Vertical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Guide {
-	pub id: GuideId,
-	pub direction: GuideDirection,
+pub struct GuideLine {
+	pub id: GuideLineId,
+	pub direction: GuideLineDirection,
 	/// Position in document space (Y coordinate for horizontal guides, X coordinate for vertical guides)
 	pub position: f64,
 }
 
-impl Guide {
-	pub fn new(direction: GuideDirection, position: f64) -> Self {
+impl GuideLine {
+	pub fn new(direction: GuideLineDirection, position: f64) -> Self {
 		Self {
-			id: GuideId::new(),
+			id: GuideLineId::new(),
 			direction,
 			position,
 		}
 	}
 
-	pub fn with_id(id: GuideId, direction: GuideDirection, position: f64) -> Self {
+	pub fn with_id(id: GuideLineId, direction: GuideLineDirection, position: f64) -> Self {
 		Self { id, direction, position }
 	}
 
 	pub fn horizontal(y: f64) -> Self {
-		Self::new(GuideDirection::Horizontal, y)
+		Self::new(GuideLineDirection::Horizontal, y)
 	}
 
 	pub fn vertical(x: f64) -> Self {
-		Self::new(GuideDirection::Vertical, x)
+		Self::new(GuideLineDirection::Vertical, x)
 	}
 }

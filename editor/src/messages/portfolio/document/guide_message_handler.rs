@@ -1,108 +1,115 @@
-use super::utility_types::guide::{Guide, GuideDirection, GuideId};
-use crate::messages::portfolio::document::guide_message::{GuideMessage, GuideMessageDiscriminant};
-use crate::messages::portfolio::document::overlays::guide_overlays::guide_overlay;
-use crate::messages::portfolio::document::utility_types::misc::PTZ;
+use super::utility_types::guide::{GuideLine, GuideLineDirection, GuideLineId};
+use crate::messages::portfolio::document::guide_message::{GuideLineMessage, GuideLineMessageDiscriminant};
+use crate::messages::portfolio::document::overlays::guide_overlays::guide_lines_overlay;
 use crate::messages::prelude::*;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
-pub struct GuideMessageHandler {
+pub struct GuideLinesMessageHandler {
 	#[serde(default)]
-	pub guides: Vec<Guide>,
-	#[serde(default = "default_guides_visible")]
-	pub guides_visible: bool,
+	pub guide_lines: Vec<GuideLine>,
+	#[serde(default = "default_guide_lines_visible")]
+	pub guide_lines_visible: bool,
 	#[serde(skip)]
-	pub hovered_guide_id: Option<GuideId>,
+	pub hovered_guide_line_id: Option<GuideLineId>,
 }
 
-fn default_guides_visible() -> bool {
-	true
+fn default_guide_lines_visible() -> bool {
+	GuideLinesMessageHandler::default().guide_lines_visible
 }
 
-impl Default for GuideMessageHandler {
+impl GuideLinesMessageHandler {
+	pub fn hit_test(&self, viewport_position: DVec2, document_to_viewport: DAffine2) -> Option<(GuideLineId, GuideLineDirection)> {
+		let viewport_to_document = document_to_viewport.inverse();
+		let document_position = viewport_to_document.transform_point2(viewport_position);
+		let document_scale = viewport_to_document.matrix2.determinant().abs().sqrt();
+		let tolerance = crate::consts::GUIDE_HIT_TOLERANCE * document_scale;
+
+		self.guide_lines
+			.iter()
+			.find(|guide_line| match guide_line.direction {
+				GuideLineDirection::Horizontal => (guide_line.position - document_position.y).abs() < tolerance,
+				GuideLineDirection::Vertical => (guide_line.position - document_position.x).abs() < tolerance,
+			})
+			.map(|guide_line| (guide_line.id, guide_line.direction))
+	}
+}
+
+impl Default for GuideLinesMessageHandler {
 	fn default() -> Self {
 		Self {
-			guides: Vec::new(),
-			guides_visible: true,
-			hovered_guide_id: None,
+			guide_lines: Vec::new(),
+			guide_lines_visible: true,
+			hovered_guide_line_id: None,
 		}
 	}
 }
 
 #[derive(ExtractField)]
-pub struct GuideMessageContext<'a> {
-	pub navigation_handler: &'a NavigationMessageHandler,
-	pub document_ptz: &'a PTZ,
-	pub viewport: &'a ViewportMessageHandler,
+pub struct GuideLinesMessageContext {
+	pub document_to_viewport: DAffine2,
 }
 
 #[message_handler_data]
-impl MessageHandler<GuideMessage, GuideMessageContext<'_>> for GuideMessageHandler {
+impl MessageHandler<GuideLineMessage, GuideLinesMessageContext> for GuideLinesMessageHandler {
 	fn actions(&self) -> ActionList {
-		actions!(GuideMessageDiscriminant; ToggleGuidesVisibility)
+		actions!(GuideLineMessageDiscriminant; ToggleGuideLinesVisibility)
 	}
 
-	fn process_message(&mut self, message: GuideMessage, responses: &mut VecDeque<Message>, context: GuideMessageContext) {
-		let GuideMessageContext {
-			navigation_handler,
-			document_ptz,
-			viewport,
-		} = context;
+	fn process_message(&mut self, message: GuideLineMessage, responses: &mut VecDeque<Message>, context: GuideLinesMessageContext) {
+		let GuideLinesMessageContext { document_to_viewport } = context;
+		let viewport_to_document = document_to_viewport.inverse();
+
+		let document_point = |mouse_x, mouse_y| {
+			let viewport_point = DVec2::new(mouse_x, mouse_y);
+			viewport_to_document.transform_point2(viewport_point)
+		};
 
 		match message {
-			GuideMessage::CreateGuide { id, direction, mouse_x, mouse_y } => {
-				let document_to_viewport = navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), document_ptz);
-				let viewport_to_document = document_to_viewport.inverse();
-
-				let viewport_point = DVec2::new(mouse_x, mouse_y);
-				let document_point = viewport_to_document.transform_point2(viewport_point);
+			GuideLineMessage::CreateGuideLine { id, direction, mouse_x, mouse_y } => {
+				let document_point = document_point(mouse_x, mouse_y);
 
 				let document_position = match direction {
-					GuideDirection::Horizontal => document_point.y,
-					GuideDirection::Vertical => document_point.x,
+					GuideLineDirection::Horizontal => document_point.y,
+					GuideLineDirection::Vertical => document_point.x,
 				};
 
-				let guide = Guide::with_id(id, direction, document_position);
-				self.guides.push(guide);
+				let guide_line = GuideLine::with_id(id, direction, document_position);
+				self.guide_lines.push(guide_line);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			GuideMessage::MoveGuide { id, mouse_x, mouse_y } => {
-				let document_to_viewport = navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), document_ptz);
-				let viewport_to_document = document_to_viewport.inverse();
+			GuideLineMessage::MoveGuideLine { id, mouse_x, mouse_y } => {
+				let document_point = document_point(mouse_x, mouse_y);
 
-				let viewport_point = DVec2::new(mouse_x, mouse_y);
-				let document_point = viewport_to_document.transform_point2(viewport_point);
-
-				if let Some(guide) = self.guides.iter_mut().find(|guide| guide.id == id) {
-					guide.position = match guide.direction {
-						GuideDirection::Horizontal => document_point.y,
-						GuideDirection::Vertical => document_point.x,
+				if let Some(guide_line) = self.guide_lines.iter_mut().find(|guide_line| guide_line.id == id) {
+					guide_line.position = match guide_line.direction {
+						GuideLineDirection::Horizontal => document_point.y,
+						GuideLineDirection::Vertical => document_point.x,
 					};
 				}
 				responses.add(OverlaysMessage::Draw);
 			}
-			GuideMessage::DeleteGuide { id } => {
-				self.guides.retain(|g| g.id != id);
+			GuideLineMessage::DeleteGuideLine { id } => {
+				self.guide_lines.retain(|g| g.id != id);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			GuideMessage::GuideOverlays { context: mut overlay_context } => {
-				if self.guides_visible {
-					let document_to_viewport = navigation_handler.calculate_offset_transform(overlay_context.viewport.center_in_viewport_space().into(), document_ptz);
-					guide_overlay(self, &mut overlay_context, document_to_viewport);
+			GuideLineMessage::GuideLinesOverlays { context: mut overlay_context } => {
+				if self.guide_lines_visible {
+					guide_lines_overlay(self, &mut overlay_context, document_to_viewport);
 				}
 			}
-			GuideMessage::ToggleGuidesVisibility => {
-				self.guides_visible = !self.guides_visible;
+			GuideLineMessage::ToggleGuideLinesVisibility => {
+				self.guide_lines_visible = !self.guide_lines_visible;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			GuideMessage::SetHoveredGuide { id } => {
-				if self.hovered_guide_id != id {
-					self.hovered_guide_id = id;
+			GuideLineMessage::SetHoveredGuideLine { id } => {
+				if self.hovered_guide_line_id != id {
+					self.hovered_guide_line_id = id;
 					responses.add(OverlaysMessage::Draw);
 				}
 			}

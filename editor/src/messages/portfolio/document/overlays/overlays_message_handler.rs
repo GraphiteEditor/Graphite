@@ -1,5 +1,5 @@
 use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
-use crate::messages::portfolio::document::guide_message::GuideMessage;
+use crate::messages::portfolio::document::guide_message::GuideLineMessage;
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
@@ -64,7 +64,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							viewport: *viewport,
 						},
 					});
-					responses.add(GuideMessage::GuideOverlays {
+					responses.add(GuideLineMessage::GuideLinesOverlays {
 						context: OverlayContext {
 							render_context: canvas_context.clone(),
 							visibility_settings: visibility_settings.clone(),
@@ -88,7 +88,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
-					responses.add(GuideMessage::GuideOverlays { context: overlay_context.clone() });
+					responses.add(GuideLineMessage::GuideLinesOverlays { context: overlay_context.clone() });
 
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));
