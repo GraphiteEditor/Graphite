@@ -1153,9 +1153,13 @@ impl Render for Table<Vector> {
 				// Divide by `max_scale(applied_stroke_transform)` so the rect, after Vello's transform, ends at the right scene extent.
 				// Pass `path_is_closed` so an Inside-aligned stroke on an open path doesn't inflate to 0 and crop the centered fallback.
 				// Skip on a degenerate transform since nothing renders in that case.
-				let path_is_closed = element.stroke_bezier_paths().all(|p| p.closed());
+				let stroke = element.style.stroke();
+				// `path_is_closed` only changes `max_aabb_inflation`'s result when alignment renders, so skip
+				// the per-subpath traversal otherwise (Center align or no renderable stroke)
+				let needs_alignment_check = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered());
+				let path_is_closed = needs_alignment_check && element.stroke_bezier_paths().all(|p| p.closed());
 				let scale = max_scale(applied_stroke_transform);
-				let stroke_inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(path_is_closed));
+				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(path_is_closed));
 				let inflate_amount = if scale > 0. { stroke_inflation / scale } else { 0. };
 				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
