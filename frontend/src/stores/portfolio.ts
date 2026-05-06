@@ -66,6 +66,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
 			state.documents = data.openDocuments;
+			if (state.documents.length === 0) state.activeDocumentIndex = 0;
 			return state;
 		});
 	});
