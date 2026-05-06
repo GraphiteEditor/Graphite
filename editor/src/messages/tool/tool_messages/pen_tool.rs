@@ -624,6 +624,8 @@ impl PenToolData {
 			if let Some(point) = self.latest_point_mut() {
 				point.in_segment = None;
 			}
+
+			return;
 		}
 
 		// Closing path
