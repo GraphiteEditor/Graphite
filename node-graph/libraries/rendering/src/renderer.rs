@@ -250,10 +250,12 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	}) + ")"
 }
 
-fn max_scale(transform: DAffine2) -> f64 {
-	let sx = transform.x_axis.length_squared();
-	let sy = transform.y_axis.length_squared();
-	(sx + sy).sqrt()
+fn axial_max_scale(transform: DAffine2) -> f64 {
+	transform.x_axis.length().max(transform.y_axis.length())
+}
+
+fn axial_min_scale(transform: DAffine2) -> f64 {
+	transform.x_axis.length().min(transform.y_axis.length())
 }
 
 pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
@@ -1026,7 +1028,7 @@ impl Render for Table<Vector> {
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
 					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
-					let inflation = stroke.max_aabb_inflation(true) * max_scale(applied_stroke_transform);
+					let inflation = stroke.max_aabb_inflation(true) * axial_max_scale(applied_stroke_transform);
 					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1154,14 +1156,11 @@ impl Render for Table<Vector> {
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				layer = true;
-				// `max_aabb_inflation` is in `applied_stroke_transform`-space (where the stroke is drawn).
-				// `layer_bounds` is in path-local coords and `push_layer` re-applies `multiplied_transform`.
-				// Divide by `max_scale(applied_stroke_transform)` so the rect, after Vello's transform, ends at the right scene extent.
-				// Pass `can_draw_aligned_stroke` so an Inside-aligned stroke on an open path doesn't inflate to 0 and crop the centered fallback.
-				// Skip on a degenerate transform since nothing renders in that case.
-				let scale = max_scale(applied_stroke_transform);
+				// `max_aabb_inflation` is in `applied_stroke_transform`-space; `layer_bounds` is path-local and `push_layer` re-applies `multiplied_transform`.
+				// Divide by the smaller axial scale to cover the stroke in both axes after Vello's transform. Skip on a degenerate transform.
+				let axial_scale = axial_min_scale(applied_stroke_transform);
 				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
-				let inflate_amount = if scale > 0. { stroke_inflation / scale } else { 0. };
+				let inflate_amount = if axial_scale > 0. { stroke_inflation / axial_scale } else { 0. };
 				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
@@ -1319,7 +1318,7 @@ impl Render for Table<Vector> {
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
 						let inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(true));
-						let quad = Quad::from_box(bounds).inflate(inflation * max_scale(applied_stroke_transform));
+						let quad = Quad::from_box(bounds).inflate(inflation * axial_max_scale(applied_stroke_transform));
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
