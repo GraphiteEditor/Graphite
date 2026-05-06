@@ -1145,21 +1145,22 @@ impl Render for Table<Vector> {
 			};
 			let mut layer = false;
 
+			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
+			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
+			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
+			let stroke = element.style.stroke();
+			let can_draw_aligned_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				layer = true;
 				// `max_aabb_inflation` is in `applied_stroke_transform`-space (where the stroke is drawn).
 				// `layer_bounds` is in path-local coords and `push_layer` re-applies `multiplied_transform`.
 				// Divide by `max_scale(applied_stroke_transform)` so the rect, after Vello's transform, ends at the right scene extent.
-				// Pass `path_is_closed` so an Inside-aligned stroke on an open path doesn't inflate to 0 and crop the centered fallback.
+				// Pass `can_draw_aligned_stroke` so an Inside-aligned stroke on an open path doesn't inflate to 0 and crop the centered fallback.
 				// Skip on a degenerate transform since nothing renders in that case.
-				let stroke = element.style.stroke();
-				// `path_is_closed` only changes `max_aabb_inflation`'s result when alignment renders, so skip
-				// the per-subpath traversal otherwise (Center align or no renderable stroke)
-				let needs_alignment_check = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered());
-				let path_is_closed = needs_alignment_check && element.stroke_bezier_paths().all(|p| p.closed());
 				let scale = max_scale(applied_stroke_transform);
-				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(path_is_closed));
+				let stroke_inflation = stroke.as_ref().map_or(0., |s| s.max_aabb_inflation(can_draw_aligned_stroke));
 				let inflate_amount = if scale > 0. { stroke_inflation / scale } else { 0. };
 				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
@@ -1172,11 +1173,8 @@ impl Render for Table<Vector> {
 				);
 			}
 
-			let can_draw_aligned_stroke =
-				element.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && element.stroke_bezier_paths().all(|path| path.closed());
-
 			let use_layer = can_draw_aligned_stroke;
-			let wants_stroke_below = element.style.stroke().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
+			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			// Closures to avoid duplicated fill/stroke drawing logic
 			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match element.style.fill() {
