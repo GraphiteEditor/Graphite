@@ -2,7 +2,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, TableRow};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
@@ -613,7 +613,34 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 /// Converts a `Table<Graphic>` into a `Table<Vector>` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
 pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
-	content.into_flattened_table()
+	let graphic_table = content.into_graphic_table();
+	let mut output: Table<Vector> = graphic_table.clone().into_flattened_table();
+
+	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
+	// TODO: Flattening here erases the upstream `Table<Graphic>` hierarchy that editor metadata collection walks
+	// TODO: to populate `upstream_footprints` / `local_transforms` / `click_targets` per child layer. As a workaround
+	// TODO: we stash the pre-flattened table on the output so `Table<Vector>::collect_metadata` can recurse into it,
+	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
+	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, Table<Graphic>)`,
+	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Flatten Path,
+	// TODO: Morph, Rasterize) become unnecessary.
+	if !output.is_empty() {
+		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
+		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
+		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
+		let mut graphic_table = graphic_table;
+		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
+			let inverse = item_0_transform.inverse();
+			for transform in graphic_table.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*transform = inverse * *transform;
+			}
+		}
+
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_table);
+	}
+
+	output
 }
 
 /// Converts a `Table<Graphic>` into a `Table<Raster>` by deeply flattening any raster content it contains, and discarding any non-raster content.
