@@ -74,7 +74,7 @@ impl LayerSnapper {
 			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) || document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath)) {
-				for subpath in document.metadata().layer_outline(layer) {
+				let mut push_candidates = |subpath: &Subpath<PointId>, transform: DAffine2| {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = Affine::new(transform.to_cols_array()) * curve;
 						let start = subpath.manipulator_groups()[start_index].id;
@@ -88,6 +88,28 @@ impl LayerSnapper {
 							target: SnapTarget::Path(PathSnapTarget::AlongPath),
 							bounds: None,
 						});
+					}
+				};
+
+				// Post-solidified outline (the layer's recorded geometry)
+				for subpath in document.metadata().layer_outline(layer) {
+					push_candidates(subpath, transform);
+				}
+
+				// Pre-solidified centerline (the Path tool's view) when an upstream Path node exists,
+				// so a drag can snap to either the visible solidified shape or the editable centerline
+				if let Some(vector) = document
+					.network_interface
+					.path_aware_outline_targets(layer)
+					.is_some()
+					.then(|| document.network_interface.compute_modified_vector(layer))
+					.flatten()
+				{
+					let path_aware_transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
+					if path_aware_transform.is_finite() {
+						for subpath in vector.stroke_bezier_paths() {
+							push_candidates(&subpath, path_aware_transform);
+						}
 					}
 				}
 			}
@@ -616,10 +638,28 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 		for child in layer.descendants(document.metadata()) {
 			get_layer_snap_points(child, snap_data, points);
 		}
-	} else if document.metadata().layer_outline(layer).next().is_some() {
-		let to_document = document.metadata().transform_to_document(layer);
-		for subpath in document.metadata().layer_outline(layer) {
-			subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);
+	} else {
+		// Post-solidified outline (the layer's recorded geometry)
+		if document.metadata().layer_outline(layer).next().is_some() {
+			let to_document = document.metadata().transform_to_document(layer);
+			for subpath in document.metadata().layer_outline(layer) {
+				subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);
+			}
+		}
+
+		// Pre-solidified centerline (the Path tool's view) when an upstream Path node exists,
+		// so anchor snaps can also target the editable anchor positions
+		if let Some(vector) = document
+			.network_interface
+			.path_aware_outline_targets(layer)
+			.is_some()
+			.then(|| document.network_interface.compute_modified_vector(layer))
+			.flatten()
+		{
+			let to_document = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
+			for subpath in vector.stroke_bezier_paths() {
+				subpath_anchor_snap_points(layer, &subpath, snap_data, points, to_document);
+			}
 		}
 	}
 }
