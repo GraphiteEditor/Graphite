@@ -1,25 +1,25 @@
 use super::*;
-use crate::messages::portfolio::document::utility_types::guide::GuideDirection;
-use crate::messages::portfolio::document::utility_types::misc::{GuideSnapTarget, SnapTarget};
+use crate::messages::portfolio::document::utility_types::guide::GuideLineDirection;
+use crate::messages::portfolio::document::utility_types::misc::{GuideLineSnapTarget, SnapTarget};
 use glam::DVec2;
 use graphene_std::renderer::Quad;
 
 #[derive(Clone, Debug, Default)]
-pub struct GuideSnapper;
+pub struct GuideLineSnapper;
 
-impl GuideSnapper {
-	fn get_snap_lines(&self, snap_data: &mut SnapData) -> Vec<(DVec2, DVec2, GuideSnapTarget)> {
+impl GuideLineSnapper {
+	fn get_snap_lines(&self, snap_data: &mut SnapData) -> Vec<(DVec2, DVec2, GuideLineSnapTarget)> {
 		let document = snap_data.document;
 		let mut lines = Vec::new();
 
-		if !document.guide_handler.guides_visible || !document.snapping_state.guides {
+		if !document.guide_lines_message_handler.guide_lines_visible || !document.snapping_state.guide_lines {
 			return lines;
 		}
 
-		for guide in &document.guide_handler.guides {
-			let (point, direction, snap_target) = match guide.direction {
-				GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X, GuideSnapTarget::Horizontal),
-				GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y, GuideSnapTarget::Vertical),
+		for guide_line in &document.guide_lines_message_handler.guide_lines {
+			let (point, direction, snap_target) = match guide_line.direction {
+				GuideLineDirection::Horizontal => (DVec2::new(0.0, guide_line.position), DVec2::X, GuideLineSnapTarget::Horizontal),
+				GuideLineDirection::Vertical => (DVec2::new(guide_line.position, 0.0), DVec2::Y, GuideLineSnapTarget::Vertical),
 			};
 			lines.push((point, direction, snap_target));
 		}
@@ -39,7 +39,7 @@ impl GuideSnapper {
 				continue;
 			}
 
-			let target = SnapTarget::Guide(snap_target);
+			let target = SnapTarget::GuideLine(snap_target);
 			if snap_data.document.snapping_state.target_enabled(target) {
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: projected,
@@ -54,14 +54,14 @@ impl GuideSnapper {
 		}
 
 		let document = snap_data.document;
-		if document.snapping_state.target_enabled(SnapTarget::Guide(GuideSnapTarget::Intersection)) {
+		if document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Intersection)) {
 			let tolerance = snap_tolerance(document);
 			let mut guide_lines: Vec<SnappedLine> = Vec::new();
 
-			for guide in &document.guide_handler.guides {
-				let (snapped_point_document, direction) = match guide.direction {
-					GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X),
-					GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y),
+			for guide_line in &document.guide_lines_message_handler.guide_lines {
+				let (snapped_point_document, direction) = match guide_line.direction {
+					GuideLineDirection::Horizontal => (DVec2::new(0.0, guide_line.position), DVec2::X),
+					GuideLineDirection::Vertical => (DVec2::new(guide_line.position, 0.0), DVec2::Y),
 				};
 				guide_lines.push(SnappedLine {
 					point: SnappedPoint {
@@ -74,7 +74,7 @@ impl GuideSnapper {
 				});
 			}
 
-			if let Some(intersection) = super::get_line_intersection(point.document_point, &guide_lines, SnapTarget::Guide(GuideSnapTarget::Intersection)) {
+			if let Some(intersection) = super::get_line_intersection(point.document_point, &guide_lines, SnapTarget::GuideLine(GuideLineSnapTarget::Intersection)) {
 				if intersection.distance <= tolerance {
 					snap_results.points.push(intersection);
 				}
@@ -102,7 +102,7 @@ impl GuideSnapper {
 			};
 
 			let distance = intersection.distance(point.document_point);
-			let target = SnapTarget::Guide(snap_target);
+			let target = SnapTarget::GuideLine(snap_target);
 
 			if distance < tolerance && snap_data.document.snapping_state.target_enabled(target) {
 				snap_results.points.push(SnappedPoint {
