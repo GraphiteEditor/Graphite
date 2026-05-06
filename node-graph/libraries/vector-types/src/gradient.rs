@@ -523,6 +523,11 @@ impl Gradient {
 
 		Some(index)
 	}
+
+	pub fn to_transform(&self) -> DAffine2 {
+		let direction = self.end - self.start;
+		DAffine2::from_cols(direction, direction.perp(), self.start)
+	}
 }
 
 // TODO: Eventually remove this migration document upgrade code
@@ -554,5 +559,29 @@ impl core_types::bounds::BoundingBox for GradientStops {
 		let start = transform.transform_point2(DVec2::ZERO);
 		let end = transform.transform_point2(DVec2::X);
 		core_types::bounds::RenderBoundingBox::Rectangle([start.min(end), start.max(end)])
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use glam::DVec2;
+
+	fn linear_gradient(start: DVec2, end: DVec2) -> Gradient {
+		Gradient { start, end, ..Default::default() }
+	}
+
+	#[test]
+	fn to_transform_roundtrip() {
+		let cases = [(DVec2::ZERO, DVec2::X), (DVec2::new(10., 20.), DVec2::new(50., 30.)), (DVec2::new(-5., -5.), DVec2::new(5., 3.))];
+
+		for (start, end) in cases {
+			let transform = linear_gradient(start, end).to_transform();
+			let recovered_start = transform.transform_point2(DVec2::ZERO);
+			let recovered_end = transform.transform_point2(DVec2::X);
+
+			assert!((recovered_start - start).length() < 1e-10);
+			assert!((recovered_end - end).length() < 1e-10);
+		}
 	}
 }
