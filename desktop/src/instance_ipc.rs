@@ -8,7 +8,7 @@
 //! Mac handles the same scenario natively via `NSApplicationDelegate::application:openURLs:`
 //! and so this module is unused there.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 #[cfg(windows)]
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read, Write};
@@ -137,11 +137,7 @@ fn read_paths(stream: &mut Stream) -> io::Result<Vec<PathBuf>> {
 
 		let mut buffer = vec![0_u8; length as usize];
 		stream.read_exact(&mut buffer)?;
-
-		// Safety: bytes were produced by `OsStr::as_encoded_bytes` on the same OS,
-		// which is the documented round-trip contract for `from_encoded_bytes_unchecked`.
-		let os_string = unsafe { OsString::from_encoded_bytes_unchecked(buffer) };
-		paths.push(PathBuf::from(os_string));
+		paths.push(PathBuf::from(decode_os_string(buffer)?));
 	}
 	Ok(paths)
 }
@@ -151,13 +147,53 @@ fn write_paths(stream: &mut Stream, paths: &[PathBuf]) -> io::Result<()> {
 	stream.write_all(&count.to_le_bytes())?;
 
 	for path in paths {
-		let bytes = path.as_os_str().as_encoded_bytes();
+		let bytes = encode_os_str(path.as_os_str());
 		let length = u32::try_from(bytes.len()).map_err(|_| io::Error::other("Path too long"))?;
 		stream.write_all(&length.to_le_bytes())?;
-		stream.write_all(bytes)?;
+		stream.write_all(&bytes)?;
 	}
 
 	stream.flush()
+}
+
+/// Encode an `OsStr` into a byte sequence whose round-trip is provided by *safe* OS-specific APIs
+/// on the receiving side. The wire format is platform-specific (raw bytes on Unix, little-endian
+/// UTF-16 code units on Windows), which is acceptable because both endpoints are the same
+/// executable on the same machine.
+#[cfg(unix)]
+fn encode_os_str(value: &OsStr) -> Vec<u8> {
+	use std::os::unix::ffi::OsStrExt;
+	value.as_bytes().to_vec()
+}
+
+#[cfg(windows)]
+fn encode_os_str(value: &OsStr) -> Vec<u8> {
+	use std::os::windows::ffi::OsStrExt;
+	let mut buffer = Vec::with_capacity(value.len() * 2);
+	for code_unit in value.encode_wide() {
+		buffer.extend_from_slice(&code_unit.to_le_bytes());
+	}
+	buffer
+}
+
+/// Inverse of [`encode_os_str`]. Both branches are total over their input domain (any byte
+/// sequence is a valid Unix `OsString`; any sequence of `u16` is a valid Windows `OsString`), so
+/// untrusted local IPC input cannot trigger UB, only the even-length precondition for Windows
+/// needs validation.
+#[cfg(unix)]
+fn decode_os_string(bytes: Vec<u8>) -> io::Result<OsString> {
+	use std::os::unix::ffi::OsStringExt;
+	Ok(OsString::from_vec(bytes))
+}
+
+#[cfg(windows)]
+fn decode_os_string(bytes: Vec<u8>) -> io::Result<OsString> {
+	use std::os::windows::ffi::OsStringExt;
+	if !bytes.len().is_multiple_of(2) {
+		return Err(io::Error::new(io::ErrorKind::InvalidData, "Path payload must be UTF-16 code units (even byte length)"));
+	}
+	let wide: Vec<u16> = bytes.chunks_exact(2).map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]])).collect();
+	Ok(OsString::from_wide(&wide))
 }
 
 fn read_u32(stream: &mut Stream) -> io::Result<u32> {
