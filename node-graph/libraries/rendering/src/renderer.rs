@@ -1025,7 +1025,7 @@ impl Render for Table<Vector> {
 					let mut svg = SvgRender::new();
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
-					let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
+					let weight = stroke.max_aabb_inflation() * max_scale(applied_stroke_transform);
 					let quad = Quad::from_box(transformed_bounds).inflate(weight);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1147,8 +1147,8 @@ impl Render for Table<Vector> {
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				layer = true;
-				let weight = element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
+				let inflation = element.style.stroke().as_ref().map_or(0., Stroke::max_aabb_inflation);
+				let quad = Quad::from_box(layer_bounds).inflate(inflation * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
 					peniko::Fill::NonZero,
@@ -1306,8 +1306,8 @@ impl Render for Table<Vector> {
 						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let weight = element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-						let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
+						let inflation = element.style.stroke().as_ref().map_or(0., Stroke::max_aabb_inflation);
+						let quad = Quad::from_box(bounds).inflate(inflation * max_scale(applied_stroke_transform));
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 

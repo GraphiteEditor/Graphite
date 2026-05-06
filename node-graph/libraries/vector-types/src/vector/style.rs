@@ -417,6 +417,21 @@ impl Stroke {
 			}
 	}
 
+	/// Worst-case upper bound on the perpendicular extent (per side) of the visible stroke from the path
+	/// centerline, accounting for stroke alignment, miter join overshoot, and square cap diagonal extent.
+	/// Used as a cheap, safe inflation amount for renderer clip rects so alignment compositing layers
+	/// don't crop the actual stroke geometry. Constant-time — no path traversal.
+	///
+	/// Tight for round/bevel joins with butt/round caps. Otherwise overestimates: miter joins are assumed
+	/// to reach the miter limit at every join (most don't), and square caps are assumed to sit at 45° to
+	/// the axes (rarely the case). For an exact bound, use `Vector::stroke_inclusive_bounding_box_with_transform`
+	/// at the cost of running kurbo to compute the stroke's outline path.
+	pub fn max_aabb_inflation(&self) -> f64 {
+		let join_factor = if self.join == StrokeJoin::Miter { self.join_miter_limit.max(1.) } else { 1. };
+		let cap_factor = if self.cap == StrokeCap::Square { core::f64::consts::SQRT_2 } else { 1. };
+		self.effective_width() * 0.5 * join_factor.max(cap_factor)
+	}
+
 	pub fn dash_lengths(&self) -> String {
 		if self.dash_lengths.is_empty() {
 			"none".to_string()
