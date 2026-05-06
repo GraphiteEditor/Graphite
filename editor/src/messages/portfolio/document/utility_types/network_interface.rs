@@ -26,7 +26,7 @@ use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use kurbo::BezPath;
 use memo_network::MemoNetwork;
@@ -3232,6 +3232,32 @@ impl NodeNetworkInterface {
 		}
 
 		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+	}
+
+	/// Outline targets for the Select tool's hover/selection overlay, mirroring the Path tool's view.
+	/// Returns `Some` when an upstream Path node exists so the outline matches what the Path tool edits
+	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); returns `None` otherwise so the
+	/// caller can fall back to the layer's recorded `outlines`/`click_targets`.
+	pub fn path_aware_outline_targets(&self, layer: LayerNodeIdentifier) -> Option<Vec<ClickTargetType>> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
+
+		let vector = self.compute_modified_vector(layer)?;
+
+		let mut targets = Vec::new();
+		let subpaths: Vec<Subpath<PointId>> = vector.stroke_bezier_paths().collect();
+		if !subpaths.is_empty() {
+			targets.push(ClickTargetType::CompoundPath(subpaths));
+		}
+
+		for &point_id in vector.point_domain.ids() {
+			if !vector.any_connected(point_id) {
+				let position = vector.point_domain.position_from_id(point_id).unwrap_or_default();
+				targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
+			}
+		}
+
+		Some(targets)
 	}
 
 	/// Loads the structure of layer nodes from a node graph.

@@ -581,6 +581,18 @@ impl SelectToolData {
 	}
 }
 
+/// Draws the hover/selection outline for a layer. When a Path node is upstream, mirrors the Path tool's view
+/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); otherwise uses the layer's recorded outlines.
+fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
+	if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
+		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		overlay_context.outline(targets.iter(), layer_to_viewport, color);
+	} else {
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+	}
+}
+
 /// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
 /// This uses some rather confusing logic to determine what transform that should be.
 pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
@@ -626,10 +638,10 @@ impl Fsm for SelectToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
-						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
+						draw_layer_outline(&mut overlay_context, document, layer, None);
 
 						if document.metadata().is_text_layer(layer) {
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &cached_data.font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
@@ -667,14 +679,13 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() && !document.network_interface.is_artboard(&layer.to_node(), &[]) {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
 										overlay_context.quad(Quad::from_box(bounds), color, None);
 									}
 								} else {
-									overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+									draw_layer_outline(&mut overlay_context, document, layer, color);
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -954,8 +965,7 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
+							draw_layer_outline(&mut overlay_context, document, layer, None);
 						}
 					}
 

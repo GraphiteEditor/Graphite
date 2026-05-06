@@ -653,9 +653,16 @@ impl TransformLayerMessageHandler {
 	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
 		ghost_outline.clear();
 		for &layer in shape_editor.selected_shape_state.keys() {
-			// We probably need to collect here
-			let outline = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
-			let transform = document.metadata().transform_to_viewport(layer);
+			// Mirror the Path tool's view (e.g. pre-solidified centerline) when an upstream Path node exists,
+			// otherwise fall back to the layer's recorded outline geometry
+			let (outline, transform) = if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
+				(targets, document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface))
+			} else {
+				(
+					document.metadata().layer_with_free_points_outline(layer).cloned().collect(),
+					document.metadata().transform_to_viewport(layer),
+				)
+			};
 			ghost_outline.push((outline, transform));
 		}
 	}
