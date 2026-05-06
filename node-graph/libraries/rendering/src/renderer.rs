@@ -1025,7 +1025,8 @@ impl Render for Table<Vector> {
 					let mut svg = SvgRender::new();
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
-					let inflation = stroke.max_aabb_inflation() * max_scale(applied_stroke_transform);
+					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
+					let inflation = stroke.max_aabb_inflation(true) * max_scale(applied_stroke_transform);
 					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1150,9 +1151,11 @@ impl Render for Table<Vector> {
 				// `max_aabb_inflation` is in `applied_stroke_transform`-space (where the stroke is drawn).
 				// `layer_bounds` is in path-local coords and `push_layer` re-applies `multiplied_transform`.
 				// Divide by `max_scale(applied_stroke_transform)` so the rect, after Vello's transform, ends at the right scene extent.
+				// Pass `path_is_closed` so an Inside-aligned stroke on an open path doesn't inflate to 0 and crop the centered fallback.
 				// Skip on a degenerate transform since nothing renders in that case.
+				let path_is_closed = element.stroke_bezier_paths().all(|p| p.closed());
 				let scale = max_scale(applied_stroke_transform);
-				let stroke_inflation = element.style.stroke().as_ref().map_or(0., Stroke::max_aabb_inflation);
+				let stroke_inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(path_is_closed));
 				let inflate_amount = if scale > 0. { stroke_inflation / scale } else { 0. };
 				let quad = Quad::from_box(layer_bounds).inflate(inflate_amount);
 				let layer_bounds = quad.bounding_box();
@@ -1312,7 +1315,8 @@ impl Render for Table<Vector> {
 						);
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let inflation = element.style.stroke().as_ref().map_or(0., Stroke::max_aabb_inflation);
+						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
+						let inflation = element.style.stroke().as_ref().map_or(0., |stroke| stroke.max_aabb_inflation(true));
 						let quad = Quad::from_box(bounds).inflate(inflation * max_scale(applied_stroke_transform));
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
