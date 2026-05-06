@@ -4,7 +4,7 @@ use core_types::list::List;
 use core_types::ops::ListConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
-use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::DAffine2;
 use raster_types::{CPU, GPU, Raster};
@@ -12,6 +12,7 @@ use vector_types::GradientStops;
 // use vector_types::Vector;
 
 pub use vector_types::Vector;
+use vector_types::vector::style::Fill;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
@@ -176,6 +177,24 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 	let mut output = List::new();
 	flatten_recursive(&mut output, content, extract_variant);
 	output
+}
+
+/// Converts a `Fill` enum into the `Table<Graphic>` representation used as paint storage.
+/// TODO: Remove once all paint sources flow through `Table<Graphic>` directly without going through the `Fill` enum.
+pub fn fill_to_paint(fill: &Fill) -> Option<Table<Graphic>> {
+	match fill {
+		Fill::None => None,
+		Fill::Solid(color) => Some(Table::new_from_element((*color).into())),
+		Fill::Gradient(gradient) => {
+			let gradient_row = TableRow::new_from_element(gradient.stops.clone())
+				.with_attribute(ATTR_TRANSFORM, gradient.to_transform())
+				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
+				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method);
+			let gradient_table = Table::new_from_row(gradient_row);
+
+			Some(Table::new_from_element(Graphic::Gradient(gradient_table)))
+		}
+	}
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
