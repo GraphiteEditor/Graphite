@@ -13,6 +13,9 @@ const EXEC_PATH: &str = "Contents/MacOS";
 const FRAMEWORKS_PATH: &str = "Contents/Frameworks";
 const RESOURCES_PATH: &str = "Contents/Resources";
 const CEF_FRAMEWORK: &str = "Chromium Embedded Framework.framework";
+const GRAPHITE_DOCUMENT_TYPE: &str = "art.graphite.document";
+const GRAPHITE_FILE_EXTENSION: &str = "graphite";
+const GRAPHITE_MIME_TYPE: &str = "application/graphite+json";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
 	let app_bin = build_bin("graphite-desktop-platform-mac", None)?;
@@ -73,7 +76,7 @@ fn create_info_plist(dir: &Path, id: &str, exec_name: &str, is_helper: bool) -> 
 		cf_bundle_identifier: id.to_string(),
 		cf_bundle_display_name: exec_name.to_string(),
 		cf_bundle_executable: exec_name.to_string(),
-		cf_bundle_icon_file: ICONS_FILE_NAME.to_string(),
+		cf_bundle_icon_file: if is_helper { None } else { Some(ICONS_FILE_NAME.to_string()) },
 		cf_bundle_info_dictionary_version: "6.0".to_string(),
 		cf_bundle_package_type: "APPL".to_string(),
 		cf_bundle_signature: "????".to_string(),
@@ -85,11 +88,54 @@ fn create_info_plist(dir: &Path, id: &str, exec_name: &str, is_helper: bool) -> 
 		ls_minimum_system_version: "11.0".to_string(),
 		ls_ui_element: if is_helper { Some("1".to_string()) } else { None },
 		ns_supports_automatic_graphics_switching: true,
+		cf_bundle_document_types: (!is_helper).then(document_types),
+		ut_exported_type_declarations: (!is_helper).then(exported_type_declarations),
 	};
 
 	let plist_file = dir.join("Info.plist");
 	plist::to_file_xml(plist_file, &info)?;
 	Ok(())
+}
+
+fn document_types() -> Vec<DocumentType> {
+	vec![
+		DocumentType {
+			cf_bundle_type_name: "Graphite Document".to_string(),
+			cf_bundle_type_role: "Editor".to_string(),
+			cf_bundle_type_extensions: Some(vec![GRAPHITE_FILE_EXTENSION.to_string()]),
+			cf_bundle_type_icon_file: Some(ICONS_FILE_NAME.to_string()),
+			ls_handler_rank: Some("Owner".to_string()),
+			ls_item_content_types: vec![GRAPHITE_DOCUMENT_TYPE.to_string()],
+		},
+		DocumentType {
+			cf_bundle_type_name: "SVG Image".to_string(),
+			cf_bundle_type_role: "Editor".to_string(),
+			cf_bundle_type_extensions: Some(vec!["svg".to_string()]),
+			cf_bundle_type_icon_file: None,
+			ls_handler_rank: Some("Alternate".to_string()),
+			ls_item_content_types: vec!["public.svg-image".to_string()],
+		},
+		DocumentType {
+			cf_bundle_type_name: "Image".to_string(),
+			cf_bundle_type_role: "Editor".to_string(),
+			cf_bundle_type_extensions: None,
+			cf_bundle_type_icon_file: None,
+			ls_handler_rank: Some("Alternate".to_string()),
+			ls_item_content_types: vec!["public.image".to_string()],
+		},
+	]
+}
+
+fn exported_type_declarations() -> Vec<ExportedTypeDeclaration> {
+	vec![ExportedTypeDeclaration {
+		ut_type_identifier: GRAPHITE_DOCUMENT_TYPE.to_string(),
+		ut_type_description: "Graphite Document".to_string(),
+		ut_type_conforms_to: vec!["public.json".to_string()],
+		ut_type_tag_specification: TypeTagSpecification {
+			public_filename_extension: vec![GRAPHITE_FILE_EXTENSION.to_string()],
+			public_mime_type: GRAPHITE_MIME_TYPE.to_string(),
+		},
+	}]
 }
 
 #[derive(serde::Serialize)]
@@ -103,7 +149,8 @@ struct InfoPlist {
 	#[serde(rename = "CFBundleExecutable")]
 	cf_bundle_executable: String,
 	#[serde(rename = "CFBundleIconFile")]
-	cf_bundle_icon_file: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	cf_bundle_icon_file: Option<String>,
 	#[serde(rename = "CFBundleInfoDictionaryVersion")]
 	cf_bundle_info_dictionary_version: String,
 	#[serde(rename = "CFBundlePackageType")]
@@ -123,7 +170,53 @@ struct InfoPlist {
 	#[serde(rename = "LSMinimumSystemVersion")]
 	ls_minimum_system_version: String,
 	#[serde(rename = "LSUIElement")]
+	#[serde(skip_serializing_if = "Option::is_none")]
 	ls_ui_element: Option<String>,
 	#[serde(rename = "NSSupportsAutomaticGraphicsSwitching")]
 	ns_supports_automatic_graphics_switching: bool,
+	#[serde(rename = "CFBundleDocumentTypes")]
+	#[serde(skip_serializing_if = "Option::is_none")]
+	cf_bundle_document_types: Option<Vec<DocumentType>>,
+	#[serde(rename = "UTExportedTypeDeclarations")]
+	#[serde(skip_serializing_if = "Option::is_none")]
+	ut_exported_type_declarations: Option<Vec<ExportedTypeDeclaration>>,
+}
+
+#[derive(serde::Serialize)]
+struct DocumentType {
+	#[serde(rename = "CFBundleTypeName")]
+	cf_bundle_type_name: String,
+	#[serde(rename = "CFBundleTypeRole")]
+	cf_bundle_type_role: String,
+	#[serde(rename = "CFBundleTypeExtensions")]
+	#[serde(skip_serializing_if = "Option::is_none")]
+	cf_bundle_type_extensions: Option<Vec<String>>,
+	#[serde(rename = "CFBundleTypeIconFile")]
+	#[serde(skip_serializing_if = "Option::is_none")]
+	cf_bundle_type_icon_file: Option<String>,
+	#[serde(rename = "LSHandlerRank")]
+	#[serde(skip_serializing_if = "Option::is_none")]
+	ls_handler_rank: Option<String>,
+	#[serde(rename = "LSItemContentTypes")]
+	ls_item_content_types: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ExportedTypeDeclaration {
+	#[serde(rename = "UTTypeIdentifier")]
+	ut_type_identifier: String,
+	#[serde(rename = "UTTypeDescription")]
+	ut_type_description: String,
+	#[serde(rename = "UTTypeConformsTo")]
+	ut_type_conforms_to: Vec<String>,
+	#[serde(rename = "UTTypeTagSpecification")]
+	ut_type_tag_specification: TypeTagSpecification,
+}
+
+#[derive(serde::Serialize)]
+struct TypeTagSpecification {
+	#[serde(rename = "public.filename-extension")]
+	public_filename_extension: Vec<String>,
+	#[serde(rename = "public.mime-type")]
+	public_mime_type: String,
 }
