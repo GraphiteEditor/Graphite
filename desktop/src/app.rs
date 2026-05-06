@@ -45,7 +45,6 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
 	launch_documents: Option<Vec<PathBuf>>,
 	startup_time: Option<Instant>,
@@ -465,7 +464,6 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
-			#[cfg(target_os = "macos")]
 			AppEvent::AddLaunchDocuments(paths) => {
 				if let Some(launch_documents) = &mut self.launch_documents {
 					launch_documents.extend(paths);

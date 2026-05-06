@@ -16,6 +16,8 @@ mod cli;
 mod dirs;
 mod event;
 mod gpu_context;
+#[cfg(not(target_os = "macos"))]
+mod instance_ipc;
 mod persist;
 mod preferences;
 mod render;
@@ -57,7 +59,24 @@ pub fn start() {
 			guard
 		}
 		Err(_) => {
-			tracing::error!("Another instance is already running, Exiting.");
+			// Another instance is already running. On Windows and Linux, hand any requested file paths
+			// off to that instance over local IPC before exiting. Mac routes file opens natively
+			// through `NSApplicationDelegate` and never reaches this branch with a secondary process.
+			#[cfg(not(target_os = "macos"))]
+			{
+				if !cli.files.is_empty() {
+					match instance_ipc::try_send_paths(&cli.files) {
+						Ok(()) => {
+							tracing::info!("Forwarded {} file path(s) to running instance", cli.files.len());
+							std::process::exit(0);
+						}
+						Err(error) => {
+							tracing::error!("Failed to forward file paths to running instance: {error}");
+						}
+					}
+				}
+			}
+			tracing::error!("Another instance is already running, exiting.");
 			std::process::exit(1);
 		}
 	};
@@ -77,6 +96,9 @@ pub fn start() {
 	let event_loop = EventLoop::new().unwrap();
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
 	let app_event_scheduler = event_loop.create_app_event_scheduler(app_event_sender);
+
+	#[cfg(not(target_os = "macos"))]
+	instance_ipc::start_listener(app_event_scheduler.clone());
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
@@ -118,6 +140,9 @@ pub fn start() {
 
 	// Explicitly drop the instance lock
 	drop(lock);
+
+	#[cfg(not(target_os = "macos"))]
+	instance_ipc::cleanup();
 
 	match exit_reason {
 		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
