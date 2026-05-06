@@ -481,6 +481,9 @@ impl App {
 				if let Some(launch_documents) = &mut self.launch_documents {
 					launch_documents.extend(paths);
 				} else {
+					if let Some(window) = &self.window {
+						window.restore_and_focus();
+					}
 					self.open_files(paths);
 				}
 			}
