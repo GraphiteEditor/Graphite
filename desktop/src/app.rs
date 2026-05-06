@@ -48,7 +48,6 @@ pub(crate) struct App {
 	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
 	launch_documents: Option<Vec<PathBuf>>,
-	disable_ui_acceleration: bool,
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
@@ -68,7 +67,6 @@ impl App {
 		app_event_scheduler: AppEventScheduler,
 		preferences: Preferences,
 		launch_documents: Vec<PathBuf>,
-		disable_ui_acceleration: bool,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
 		ctrlc::set_handler(move || {
@@ -119,7 +117,6 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			preferences,
 			launch_documents: Some(launch_documents),
-			disable_ui_acceleration,
 			startup_time: None,
 			exiting,
 			exit_reason: ExitReason::Shutdown,
@@ -312,7 +309,7 @@ impl App {
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
 				let Some(launch_documents) = std::mem::take(&mut self.launch_documents) else {
-					tracing::error!("OpenLaunchDocuments should only be send once");
+					tracing::error!("OpenLaunchDocuments should only be sent once");
 					return;
 				};
 				self.open_files(launch_documents);
@@ -589,7 +586,7 @@ impl ApplicationHandler for App {
 				}
 
 				if !self.cef_init_successful
-					&& !self.disable_ui_acceleration
+					&& !self.preferences.disable_ui_acceleration
 					&& self.web_communication_initialized
 					&& let Some(startup_time) = self.startup_time
 					&& startup_time.elapsed() > Duration::from_secs(3)

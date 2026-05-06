@@ -131,13 +131,13 @@ fn platform_settings(instance_dir: &Path) -> Settings {
 	{
 		let exe = std::env::current_exe().expect("cannot get current exe path");
 		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
-		return Settings {
+		Settings {
 			main_bundle_path: app_root.to_str().map(CefString::from).unwrap(),
 			multi_threaded_message_loop: 0,
 			external_message_pump: 1,
 			no_sandbox: 1, // GPU helper crashes when running with sandbox
 			..base
-		};
+		}
 	}
 
 	#[cfg(not(target_os = "macos"))]

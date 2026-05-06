@@ -47,10 +47,7 @@ define_class!(
 	unsafe impl NSApplicationDelegate for GraphiteApplicationDelegate {
 		#[unsafe(method(application:openURLs:))]
 		fn application_open_urls(&self, _application: &NSApplication, urls: &NSArray<NSURL>) {
-			let Some(app_event_scheduler) = APP_EVENT_SCHEDULER.lock().ok() else {
-				tracing::error!("Received macOS open URL event before the app event scheduler was initialized");
-				return;
-			};
+			let app_event_scheduler = APP_EVENT_SCHEDULER.lock().unwrap();
 
 			let mut pending_paths_to_open = LAUNCH_DOCUMENTS.lock().unwrap();
 
