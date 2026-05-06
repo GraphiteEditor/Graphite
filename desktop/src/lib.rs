@@ -67,7 +67,7 @@ pub fn start() {
 	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
 	dirs::delete_old_cef_browser_directory();
 
-	let prefs = preferences::read();
+	let mut prefs = preferences::read();
 
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
@@ -80,13 +80,15 @@ pub fn start() {
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	let disable_ui_acceleration = prefs.disable_ui_acceleration || cli.disable_ui_acceleration;
-	if disable_ui_acceleration {
+	if cli.disable_ui_acceleration {
+		prefs.disable_ui_acceleration = true;
+	}
+	if prefs.disable_ui_acceleration {
 		println!("UI acceleration is disabled");
 	}
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.create(cef_handler, disable_ui_acceleration) {
+	let cef_context = match cef_context_builder.create(cef_handler, prefs.disable_ui_acceleration) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context
@@ -102,7 +104,7 @@ pub fn start() {
 		}
 	};
 
-	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli);
+	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli.files);
 
 	let exit_reason = app.run(event_loop);
 
