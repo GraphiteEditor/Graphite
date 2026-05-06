@@ -110,6 +110,11 @@ impl Window {
 		self.winit_window.set_minimized(true);
 	}
 
+	pub(crate) fn restore_and_focus(&self) {
+		self.winit_window.set_minimized(false);
+		self.winit_window.focus_window();
+	}
+
 	pub(crate) fn toggle_maximize(&self) {
 		if self.is_fullscreen() {
 			return;
