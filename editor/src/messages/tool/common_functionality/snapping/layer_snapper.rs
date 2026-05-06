@@ -98,13 +98,7 @@ impl LayerSnapper {
 
 				// Pre-solidified centerline (the Path tool's view) when an upstream Path node exists,
 				// so a drag can snap to either the visible solidified shape or the editable centerline
-				if let Some(vector) = document
-					.network_interface
-					.path_aware_outline_targets(layer)
-					.is_some()
-					.then(|| document.network_interface.compute_modified_vector(layer))
-					.flatten()
-				{
+				if let Some(vector) = document.network_interface.upstream_path_node_vector(layer) {
 					let path_aware_transform = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 					if path_aware_transform.is_finite() {
 						for subpath in vector.stroke_bezier_paths() {
@@ -648,17 +642,29 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 		}
 
 		// Pre-solidified centerline (the Path tool's view) when an upstream Path node exists,
-		// so anchor snaps can also target the editable anchor positions
-		if let Some(vector) = document
-			.network_interface
-			.path_aware_outline_targets(layer)
-			.is_some()
-			.then(|| document.network_interface.compute_modified_vector(layer))
-			.flatten()
-		{
+		// so anchor snaps can also target the editable anchor positions and isolated free points,
+		// matching what the Path tool's overlay shows
+		if let Some(vector) = document.network_interface.upstream_path_node_vector(layer) {
 			let to_document = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 			for subpath in vector.stroke_bezier_paths() {
 				subpath_anchor_snap_points(layer, &subpath, snap_data, points, to_document);
+			}
+
+			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles)) {
+				for &point_id in vector.point_domain.ids() {
+					if points.len() >= crate::consts::MAX_LAYER_SNAP_POINTS {
+						break;
+					}
+					if !vector.any_connected(point_id) {
+						let position = vector.point_domain.position_from_id(point_id).unwrap_or_default();
+						points.push(SnapCandidatePoint::new(
+							to_document.transform_point2(position),
+							SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
+							SnapTarget::Path(PathSnapTarget::AnchorPointWithFreeHandles),
+							Some(layer),
+						));
+					}
+				}
 			}
 		}
 	}

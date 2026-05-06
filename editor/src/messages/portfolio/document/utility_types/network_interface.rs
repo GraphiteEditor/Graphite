@@ -3191,8 +3191,8 @@ impl NodeNetworkInterface {
 		let nodes = network_metadata
 			.persistent_metadata
 			.node_metadata
-			.iter()
-			.filter_map(|(node_id, _)| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
+			.keys()
+			.filter_map(|node_id| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
 			.collect::<Vec<_>>();
 		let layer_widths = nodes
 			.iter()
@@ -3234,15 +3234,22 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
 	}
 
+	/// The vector geometry an upstream Path node would surface for editing.
+	/// This is the result of `compute_modified_vector`, but only if a visible 'Path' node is actually upstream.
+	/// Useful for tool overlays and snap target collection usages that want to match the Path tool's view
+	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer) and otherwise do nothing.
+	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
+		self.compute_modified_vector(layer)
+	}
+
 	/// Outline targets for the Select tool's hover/selection overlay, mirroring the Path tool's view.
 	/// Returns `Some` when an upstream Path node exists so the outline matches what the Path tool edits
 	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); returns `None` otherwise so the
 	/// caller can fall back to the layer's recorded `outlines`/`click_targets`.
 	pub fn path_aware_outline_targets(&self, layer: LayerNodeIdentifier) -> Option<Vec<ClickTargetType>> {
-		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
-		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
-
-		let vector = self.compute_modified_vector(layer)?;
+		let vector = self.upstream_path_node_vector(layer)?;
 
 		let mut targets = Vec::new();
 		let subpaths: Vec<Subpath<PointId>> = vector.stroke_bezier_paths().collect();
