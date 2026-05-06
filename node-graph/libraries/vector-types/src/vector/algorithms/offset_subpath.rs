@@ -45,6 +45,10 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		})
 		.collect::<Vec<BezPath>>();
 
+	if bezpaths.is_empty() {
+		return BezPath::new();
+	}
+
 	// Clip or join consecutive Subpaths
 	for i in 0..bezpaths.len() - 1 {
 		let j = i + 1;
