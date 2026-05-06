@@ -244,7 +244,14 @@ impl IntoGraphicTable for Table<Graphic> {
 
 impl IntoGraphicTable for Table<Vector> {
 	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::Vector(self))
+		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic row so a subsequent
+		// `flatten_graphic_table` doesn't overwrite the inner Vector's stamp with an empty value
+		let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let mut graphic_table = Table::new_from_element(Graphic::Vector(self));
+		if !layer_path.is_empty() {
+			graphic_table.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		}
+		graphic_table
 	}
 }
 
