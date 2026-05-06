@@ -1222,6 +1222,36 @@ impl NodeNetworkInterface {
 		Some(transformed.bounding_box())
 	}
 
+	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
+	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
+	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.document_metadata
+			.all_layers()
+			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| {
+				if !self.is_artboard(&layer.to_node(), &[])
+					&& let Some(artboard_node_identifier) = layer
+						.ancestors(self.document_metadata())
+						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+				{
+					let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
+					let clip_input = artboard.unwrap().inputs.get(5).unwrap();
+					if let NodeInput::Value { tagged_value, .. } = clip_input
+						&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
+					{
+						return Some(Quad::clip(
+							self.document_metadata.bounding_box_document_with_stroke(layer).unwrap_or_default(),
+							self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
+						));
+					}
+				}
+				self.document_metadata.bounding_box_document_with_stroke(layer)
+			})
+			// Skip any layer bounds containing NaN to avoid poisoning the combined result
+			.filter(|[min, max]| min.is_finite() && max.is_finite())
+			.reduce(Quad::combine_bounds)
+	}
+
 	/// Calculates the selected layer bounds in document space
 	pub fn selected_bounds_document_space(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
@@ -1232,6 +1262,20 @@ impl NodeNetworkInterface {
 			.selected_layers(&self.document_metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the selected layer bounds in document space, expanding vector layer bounds to include the
+	/// rendered stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
+	pub fn selected_bounds_document_space_with_stroke(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
+			log::error!("Could not get selected nodes in shallowest_unique_layers");
+			return None;
+		};
+		selected_nodes
+			.selected_layers(&self.document_metadata)
+			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke(layer))
 			.reduce(Quad::combine_bounds)
 	}
 

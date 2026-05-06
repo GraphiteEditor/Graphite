@@ -221,6 +221,18 @@ impl DocumentMetadata {
 		self.bounding_box_with_transform(layer, self.transform_to_document(layer))
 	}
 
+	/// Get the bounding box of the specified layer in document space, expanded to include the actual rendered
+	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
+	/// bounds for non-vector layers (groups, raster, text, color, gradient).
+	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
+		if let Some(vector) = self.layer_vector_data.get(&layer)
+			&& let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer))
+		{
+			return Some(bounds);
+		}
+		self.bounding_box_document(layer)
+	}
+
 	/// Get the bounding box of the click target of the specified layer in viewport space
 	pub fn bounding_box_viewport(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform(layer, self.transform_to_viewport(layer))

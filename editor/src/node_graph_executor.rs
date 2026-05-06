@@ -243,10 +243,12 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
+		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
+		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
