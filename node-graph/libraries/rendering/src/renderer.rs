@@ -923,7 +923,6 @@ impl Render for Table<Vector> {
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let clipping_mask_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
 
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
@@ -986,14 +985,9 @@ impl Render for Table<Vector> {
 				cloned_vector.style.clear_stroke();
 				cloned_vector.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_item = Table::new_from_row(
-					TableRow::new_from_element(cloned_vector)
-						.with_attribute(ATTR_TRANSFORM, multiplied_transform)
-						.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
-						.with_attribute(ATTR_OPACITY, opacity_attr)
-						.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
-						.with_attribute(ATTR_CLIPPING_MASK, clipping_mask_attr),
-				);
+				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
+				// The wrapping SVG group (above) handles the user-set opacity.
+				let vector_item = Table::new_from_row(TableRow::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, multiplied_transform));
 
 				(id, mask_type, vector_item)
 			});
@@ -1125,7 +1119,6 @@ impl Render for Table<Vector> {
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
-			let clip_attr: bool = self.attribute_cloned_or_default(ATTR_CLIPPING_MASK, index);
 			let multiplied_transform = parent_transform * item_transform;
 			let has_real_stroke = element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -1317,14 +1310,9 @@ impl Render for Table<Vector> {
 						cloned_element.style.clear_stroke();
 						cloned_element.style.set_fill(Fill::solid(Color::BLACK));
 
-						let vector_table = Table::new_from_row(
-							TableRow::new_from_element(cloned_element)
-								.with_attribute(ATTR_TRANSFORM, item_transform)
-								.with_attribute(ATTR_BLEND_MODE, blend_mode_attr)
-								.with_attribute(ATTR_OPACITY, opacity_attr)
-								.with_attribute(ATTR_OPACITY_FILL, opacity_fill_attr)
-								.with_attribute(ATTR_CLIPPING_MASK, clip_attr),
-						);
+						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
+						// The outer opacity/blend layer (above) handles the user-set opacity.
+						let vector_table = Table::new_from_row(TableRow::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
