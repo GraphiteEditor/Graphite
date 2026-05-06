@@ -41,7 +41,7 @@ pub struct SnapManager {
 	indicator: Option<SnappedPoint>,
 	layer_snapper: LayerSnapper,
 	grid_snapper: GridSnapper,
-	guide_snapper: GuideSnapper,
+	guide_line_snapper: GuideLineSnapper,
 	alignment_snapper: AlignmentSnapper,
 	distribution_snapper: DistributionSnapper,
 	candidates: Option<Vec<LayerNodeIdentifier>>,
@@ -404,7 +404,7 @@ impl SnapManager {
 
 		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.grid_snapper.free_snap(&mut snap_data, point, &mut snap_results);
-		self.guide_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.guide_line_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 
@@ -431,7 +431,7 @@ impl SnapManager {
 
 		self.layer_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.grid_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
-		self.guide_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.guide_line_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 
