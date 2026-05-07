@@ -16,10 +16,10 @@ mod cli;
 mod dirs;
 mod event;
 mod gpu_context;
-mod ipc;
 mod persist;
 mod preferences;
 mod render;
+mod socket;
 mod window;
 
 pub(crate) mod consts;
@@ -60,9 +60,9 @@ pub fn start() {
 		Err(_) => {
 			tracing::error!("Another instance is already running, Exiting.");
 			if !cli.files.is_empty()
-				&& let Err(error) = ipc::send(ipc::Message::OpenFiles(cli.files))
+				&& let Err(error) = socket::send(socket::Message::OpenFiles(cli.files))
 			{
-				tracing::error!("Failed to send IPC message to running instance: {}", error);
+				tracing::error!("Failed to send socket message to running instance: {}", error);
 				std::process::exit(1);
 			}
 			return;
@@ -85,7 +85,7 @@ pub fn start() {
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
 	let app_event_scheduler = event_loop.create_app_event_scheduler(app_event_sender);
 
-	let _ipc_handle = ipc::start(app_event_scheduler.clone());
+	let _socket_handle = socket::start(app_event_scheduler.clone());
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
