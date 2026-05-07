@@ -63,6 +63,7 @@ ignore = [
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 #
 allow = [
+	"0BSD", # Keep this list in sync with those in `/deny.toml`
 	"Apache-2.0 WITH LLVM-exception", # Keep this list in sync with those in `/about.toml`
 	"Apache-2.0", # Keep this list in sync with those in `/about.toml`
 	"BSD-2-Clause", # Keep this list in sync with those in `/about.toml`

@@ -45,7 +45,6 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
 	launch_documents: Option<Vec<PathBuf>>,
 	startup_time: Option<Instant>,
@@ -320,7 +319,7 @@ impl App {
 					tracing::error!("OpenLaunchDocuments should only be sent once");
 					return;
 				};
-				self.open_files(launch_documents);
+				self.app_event_scheduler.schedule(AppEvent::OpenFiles(launch_documents));
 			}
 			DesktopFrontendMessage::UpdateMenu { entries } => {
 				if let Some(window) = &self.window {
@@ -478,37 +477,34 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
-			#[cfg(target_os = "macos")]
-			AppEvent::AddLaunchDocuments(paths) => {
+			AppEvent::OpenFiles(paths) => {
+				// Accumulate launch documents until OpenLaunchDocuments message is received
 				if let Some(launch_documents) = &mut self.launch_documents {
 					launch_documents.extend(paths);
-				} else {
-					self.open_files(paths);
+					return;
 				}
+
+				if paths.is_empty() {
+					return;
+				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let _ = thread::spawn(move || {
+					for path in paths {
+						tracing::info!("Opening file: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
 			}
 			#[cfg(target_os = "macos")]
 			AppEvent::MenuEvent { id } => {
 				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
 			}
 		}
-	}
-
-	fn open_files(&mut self, paths: Vec<PathBuf>) {
-		if paths.is_empty() {
-			return;
-		}
-		let app_event_scheduler = self.app_event_scheduler.clone();
-		let _ = thread::spawn(move || {
-			for path in paths {
-				tracing::info!("Opening file: {}", path.display());
-				if let Ok(content) = fs::read(&path) {
-					let message = DesktopWrapperMessage::OpenFile { path, content };
-					app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-				} else {
-					tracing::error!("Failed to read file: {}", path.display());
-				}
-			}
-		});
 	}
 }
 impl ApplicationHandler for App {
