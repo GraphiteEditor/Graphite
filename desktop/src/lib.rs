@@ -15,6 +15,7 @@ mod cef;
 mod cli;
 mod dirs;
 mod event;
+mod file_associations;
 mod gpu_context;
 #[cfg(not(target_os = "macos"))]
 mod instance_ipc;
@@ -80,6 +81,8 @@ pub fn start() {
 			std::process::exit(1);
 		}
 	};
+
+	file_associations::register_with_os();
 
 	dirs::app_tmp_dir_cleanup();
 

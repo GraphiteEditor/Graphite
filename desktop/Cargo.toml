@@ -70,6 +70,7 @@ windows = { version = "0.58.0", features = [
 	"Win32_UI_HiDpi",
 	"Win32_UI_Shell",
 ] }
+winreg = "0.56"
 
 # Mac-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
