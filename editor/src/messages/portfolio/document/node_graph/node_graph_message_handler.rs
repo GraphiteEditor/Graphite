@@ -1728,6 +1728,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				let is_fill = matches!(value, TaggedValue::Fill(_));
+				let is_text_align = matches!(value, TaggedValue::TextAlign(_));
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
@@ -1736,6 +1737,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(PropertiesPanelMessage::Refresh);
 				if is_fill {
 					responses.add(OverlaysMessage::Draw);
+				}
+				if is_text_align {
+					responses.add(TextToolMessage::SelectionChanged);
 				}
 				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
