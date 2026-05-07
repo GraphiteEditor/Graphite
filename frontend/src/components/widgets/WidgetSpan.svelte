@@ -11,7 +11,6 @@
 	import ColorComparisonInput from "/src/components/widgets/inputs/ColorComparisonInput.svelte";
 	import ColorInput from "/src/components/widgets/inputs/ColorInput.svelte";
 	import ColorPresetsInput from "/src/components/widgets/inputs/ColorPresetsInput.svelte";
-	import CurveInput from "/src/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "/src/components/widgets/inputs/DropdownInput.svelte";
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
@@ -150,16 +149,6 @@
 					// The widget dispatches `"None"` or a bare `Color`, wrap the color in `{ Solid: ... }` so the payload matches Rust's `FillChoice` shape (which the `Preset` variant expects).
 					preset: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { Preset: e.detail === "None" ? "None" : { Solid: e.detail } }, true),
 					eyedropperColorCode: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { EyedropperColorCode: e.detail }, true),
-				},
-			}),
-		},
-		CurveInput: {
-			// TODO: CurvesInput is currently unused
-			component: CurveInput,
-			getProps: (props, index) => ({
-				...props,
-				$$events: {
-					value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false),
 				},
 			}),
 		},

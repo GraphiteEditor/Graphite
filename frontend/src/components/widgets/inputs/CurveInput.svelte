@@ -1,4 +1,4 @@
-<script lang="ts">
+<!-- <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import type { Curve, CurveManipulatorGroup, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -256,4 +256,4 @@
 			pointer-events: none;
 		}
 	}
-</style>
+</style> -->
