@@ -1744,6 +1744,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let reference = network_interface.reference(&node_id, selection_network_path);
 				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
 				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
+				let is_shape_generator_node = reference.as_ref().is_some_and(|r| {
+					[
+						graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER,
+						graphene_std::vector::generator_nodes::star::IDENTIFIER,
+						graphene_std::vector::generator_nodes::arc::IDENTIFIER,
+						graphene_std::vector::generator_nodes::spiral::IDENTIFIER,
+						graphene_std::vector::generator_nodes::grid::IDENTIFIER,
+						graphene_std::vector::generator_nodes::arrow::IDENTIFIER,
+					]
+					.into_iter()
+					.any(|id| *r == DefinitionIdentifier::ProtoNode(id))
+				});
+
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
@@ -1756,7 +1769,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if is_text_node {
 					responses.add(TextToolMessage::SelectionChanged);
 				}
-				if is_stroke_node {
+				if is_stroke_node || is_shape_generator_node {
 					// The dispatcher delivers each only to its tool when active, so this just covers all four stroke-using tools.
 					responses.add(PenToolMessage::SelectionChanged);
 					responses.add(FreehandToolMessage::SelectionChanged);

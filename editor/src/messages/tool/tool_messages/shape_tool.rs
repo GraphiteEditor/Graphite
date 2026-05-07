@@ -1,6 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -22,9 +23,10 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
+use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
+use graphene_std::{Color, NodeInputDecleration};
 use std::vec;
 
 #[derive(Default, ExtractField)]
@@ -127,6 +129,7 @@ fn create_sides_widget(vertices: u32) -> WidgetInstance {
 			}
 			.into()
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
@@ -141,6 +144,7 @@ fn create_turns_widget(turns: f64) -> WidgetInstance {
 			}
 			.into()
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
@@ -243,6 +247,7 @@ fn create_arrow_shaft_width_widget(shaft_width: f64) -> WidgetInstance {
 			}
 			.into()
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
@@ -258,6 +263,7 @@ fn create_arrow_head_width_widget(head_width: f64) -> WidgetInstance {
 			}
 			.into()
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
@@ -273,6 +279,7 @@ fn create_arrow_head_length_widget(head_length: f64) -> WidgetInstance {
 			}
 			.into()
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
@@ -310,6 +317,119 @@ fn create_grid_type_widget(grid_type: GridType) -> WidgetInstance {
 		}),
 	];
 	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_instance()
+}
+
+/// Mirrors the per-shape parameters (and `shape_type` itself) from the first selected non-artboard layer into the
+/// control bar's option state. Detects the layer's shape by trying each generator's proto node, then reads only the
+/// inputs relevant to that shape. Returns whether anything in `options` (or `tool_data.current_shape`) changed.
+/// The caller decides whether to dispatch a layout refresh.
+fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: &mut ShapeToolData, document: &DocumentMessageHandler) -> bool {
+	use graphene_std::vector::generator_nodes::*;
+
+	let Some(layer) = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).next() else {
+		return false;
+	};
+	let layer_view = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+	let proto = DefinitionIdentifier::ProtoNode;
+
+	// Map each generator's proto node to the corresponding `ShapeType`. First match wins.
+	let Some(shape_type) = [
+		(regular_polygon::IDENTIFIER, ShapeType::Polygon),
+		(star::IDENTIFIER, ShapeType::Star),
+		(arc::IDENTIFIER, ShapeType::Arc),
+		(spiral::IDENTIFIER, ShapeType::Spiral),
+		(grid::IDENTIFIER, ShapeType::Grid),
+		(arrow::IDENTIFIER, ShapeType::Arrow),
+		(ellipse::IDENTIFIER, ShapeType::Ellipse),
+		(rectangle::IDENTIFIER, ShapeType::Rectangle),
+		(line::IDENTIFIER, ShapeType::Line),
+	]
+	.into_iter()
+	.find_map(|(id, shape)| layer_view.upstream_node_id_from_name(&proto(id)).map(|_| shape)) else {
+		return false;
+	};
+
+	let mut changed = false;
+
+	if options.shape_type != shape_type {
+		options.shape_type = shape_type;
+		tool_data.current_shape = shape_type;
+		changed = true;
+	}
+
+	// Only the shapes whose control bar exposes per-shape parameters need a sync below.
+	// The rest (Ellipse, Rectangle, Line) just keep `shape_type` in step and rely on the shared Stroke/Fill controls.
+	match shape_type {
+		ShapeType::Polygon | ShapeType::Star => {
+			let id = if shape_type == ShapeType::Polygon { regular_polygon::IDENTIFIER } else { star::IDENTIFIER };
+			// Both `regular_polygon` and `star` are generic over `T: AsU64`, but the control bar widget always writes `u32`,
+			// and existing call sites (e.g. `polygon_shape.rs`) read it back as `TaggedValue::U32`.
+			let index = if shape_type == ShapeType::Polygon {
+				regular_polygon::SidesInput::<u32>::INDEX
+			} else {
+				star::SidesInput::<u32>::INDEX
+			};
+			if let Some(&TaggedValue::U32(sides)) = layer_view.find_input(&proto(id), index)
+				&& options.vertices != sides
+			{
+				options.vertices = sides;
+				changed = true;
+			}
+		}
+		ShapeType::Arc => {
+			if let Some(&TaggedValue::ArcType(arc_type)) = layer_view.find_input(&proto(arc::IDENTIFIER), arc::ArcTypeInput::INDEX)
+				&& options.arc_type != arc_type
+			{
+				options.arc_type = arc_type;
+				changed = true;
+			}
+		}
+		ShapeType::Spiral => {
+			if let Some(&TaggedValue::SpiralType(spiral_type)) = layer_view.find_input(&proto(spiral::IDENTIFIER), spiral::SpiralTypeInput::INDEX)
+				&& options.spiral_type != spiral_type
+			{
+				options.spiral_type = spiral_type;
+				changed = true;
+			}
+			if let Some(&TaggedValue::F64(turns)) = layer_view.find_input(&proto(spiral::IDENTIFIER), spiral::TurnsInput::INDEX)
+				&& options.turns != turns
+			{
+				options.turns = turns;
+				changed = true;
+			}
+		}
+		ShapeType::Grid => {
+			if let Some(&TaggedValue::GridType(grid_type)) = layer_view.find_input(&proto(grid::IDENTIFIER), grid::GridTypeInput::INDEX)
+				&& options.grid_type != grid_type
+			{
+				options.grid_type = grid_type;
+				changed = true;
+			}
+		}
+		ShapeType::Arrow => {
+			if let Some(&TaggedValue::F64(shaft)) = layer_view.find_input(&proto(arrow::IDENTIFIER), arrow::ShaftWidthInput::INDEX)
+				&& options.arrow_shaft_width != shaft
+			{
+				options.arrow_shaft_width = shaft;
+				changed = true;
+			}
+			if let Some(&TaggedValue::F64(head_w)) = layer_view.find_input(&proto(arrow::IDENTIFIER), arrow::HeadWidthInput::INDEX)
+				&& options.arrow_head_width != head_w
+			{
+				options.arrow_head_width = head_w;
+				changed = true;
+			}
+			if let Some(&TaggedValue::F64(head_l)) = layer_view.find_input(&proto(arrow::IDENTIFIER), arrow::HeadLengthInput::INDEX)
+				&& options.arrow_head_length != head_l
+			{
+				options.arrow_head_length = head_l;
+				changed = true;
+			}
+		}
+		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle => {}
+	}
+
+	changed
 }
 
 impl LayoutHolder for ShapeTool {
@@ -416,11 +536,28 @@ impl LayoutHolder for ShapeTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		use graphene_std::vector::generator_nodes::*;
+
 		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::SelectionChanged)) {
+			if !matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
+				return;
+			}
+
+			let mut needs_refresh = false;
+
+			// Stroke weight is shape-agnostic. Sync it regardless of which (if any) shape proto node the layer has.
 			if let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
 				&& self.options.line_weight != weight
 			{
 				self.options.line_weight = weight;
+				needs_refresh = true;
+			}
+
+			// Detect which shape the first selected layer is by checking for each generator's proto node, then mirror
+			// the control bar's `shape_type` into that and pull the shape's parameters into the matching control bar fields.
+			needs_refresh |= sync_shape_options_from_selection(&mut self.options, &mut self.tool_data, context.document);
+
+			if needs_refresh {
 				self.send_layout(responses, LayoutTarget::ToolOptions);
 			}
 			return;
@@ -461,27 +598,48 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::Vertices(vertices) => {
 				self.options.vertices = vertices;
+				// Push to whichever sides-bearing shape (Polygon or Star) the control bar's `shape_type` currently targets.
+				// `set_proto_node_input_for_selected_layers` skips selected layers without that proto node, making it a no-op.
+				let (id, index) = match self.options.shape_type {
+					ShapeType::Polygon => (regular_polygon::IDENTIFIER, regular_polygon::SidesInput::<u32>::INDEX),
+					ShapeType::Star => (star::IDENTIFIER, star::SidesInput::<u32>::INDEX),
+					_ => return,
+				};
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, id, index, TaggedValue::U32(vertices), responses);
 			}
 			ShapeOptionsUpdate::ArcType(arc_type) => {
 				self.options.arc_type = arc_type;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, arc::IDENTIFIER, arc::ArcTypeInput::INDEX, TaggedValue::ArcType(arc_type), responses);
 			}
 			ShapeOptionsUpdate::SpiralType(spiral_type) => {
 				self.options.spiral_type = spiral_type;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(
+					context.document,
+					spiral::IDENTIFIER,
+					spiral::SpiralTypeInput::INDEX,
+					TaggedValue::SpiralType(spiral_type),
+					responses,
+				);
 			}
 			ShapeOptionsUpdate::Turns(turns) => {
 				self.options.turns = turns;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, spiral::IDENTIFIER, spiral::TurnsInput::INDEX, TaggedValue::F64(turns), responses);
 			}
 			ShapeOptionsUpdate::GridType(grid_type) => {
 				self.options.grid_type = grid_type;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, grid::IDENTIFIER, grid::GridTypeInput::INDEX, TaggedValue::GridType(grid_type), responses);
 			}
 			ShapeOptionsUpdate::ArrowShaftWidth(shaft_width) => {
 				self.options.arrow_shaft_width = shaft_width;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, arrow::IDENTIFIER, arrow::ShaftWidthInput::INDEX, TaggedValue::F64(shaft_width), responses);
 			}
 			ShapeOptionsUpdate::ArrowHeadWidth(head_width) => {
 				self.options.arrow_head_width = head_width;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, arrow::IDENTIFIER, arrow::HeadWidthInput::INDEX, TaggedValue::F64(head_width), responses);
 			}
 			ShapeOptionsUpdate::ArrowHeadLength(head_length) => {
 				self.options.arrow_head_length = head_length;
+				graph_modification_utils::set_proto_node_input_for_selected_layers(context.document, arrow::IDENTIFIER, arrow::HeadLengthInput::INDEX, TaggedValue::F64(head_length), responses);
 			}
 		}
 

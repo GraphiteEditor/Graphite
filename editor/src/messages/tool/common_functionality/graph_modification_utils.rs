@@ -526,6 +526,43 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 	}
 }
 
+/// Reads a specific input from the matching proto node on the first selected non-artboard layer that has one.
+/// Used by tool control bars to mirror per-shape parameters (sides, arc type, turns, etc.) from the selection
+/// into the control bar's input widget state without each call site re-implementing the layer iteration.
+pub fn first_selected_proto_node_input(document: &DocumentMessageHandler, identifier: graph_craft::ProtoNodeIdentifier, input_index: usize) -> Option<&TaggedValue> {
+	let identifier = DefinitionIdentifier::ProtoNode(identifier);
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_layers_except_artboards(&document.network_interface)
+		.find_map(|layer| NodeGraphLayer::new(layer, &document.network_interface).find_input(&identifier, input_index))
+}
+
+/// Writes a value to a specific input on the matching proto node of every selected non-artboard layer that has one.
+/// Used by tool control bars to push per-shape parameter changes back onto all selected layers of that shape.
+pub fn set_proto_node_input_for_selected_layers(
+	document: &DocumentMessageHandler,
+	identifier: graph_craft::ProtoNodeIdentifier,
+	input_index: usize,
+	value: TaggedValue,
+	responses: &mut VecDeque<Message>,
+) {
+	let identifier = DefinitionIdentifier::ProtoNode(identifier);
+
+	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+
+	for layer in layers {
+		let Some(node_id) = NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_name(&identifier) else {
+			continue;
+		};
+		responses.add(NodeGraphMessage::SetInputValue {
+			node_id,
+			input_index,
+			value: value.clone(),
+		});
+	}
+}
+
 /// Checks if a specified layer uses an upstream node matching the given name.
 pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, identifier: &DefinitionIdentifier) -> bool {
 	NodeGraphLayer::new(layer, network_interface).find_node_inputs(identifier).is_some()
