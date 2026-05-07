@@ -69,6 +69,7 @@ pub enum TextToolMessage {
 	Interact,
 	PointerMove { center: Key, lock_ratio: Key },
 	PointerOutsideViewport { center: Key, lock_ratio: Key },
+	SelectionChanged,
 	TextChange { new_text: String, is_left_or_right_click: bool },
 	UpdateBounds { new_text: String },
 	UpdateOptions { options: TextOptionsUpdate },
@@ -203,17 +204,25 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 			.into()
 		})
 		.widget_instance();
-	let align_entries: Vec<_> = [TextAlign::Left, TextAlign::Center, TextAlign::Right, TextAlign::JustifyLeft]
-		.into_iter()
-		.map(|align| {
-			RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
-				TextToolMessage::UpdateOptions {
-					options: TextOptionsUpdate::Align(align),
-				}
-				.into()
-			})
+	let align_entries: Vec<_> = [
+		TextAlign::AlignLeft,
+		TextAlign::AlignCenter,
+		TextAlign::AlignRight,
+		TextAlign::JustifyLeft,
+		TextAlign::JustifyCenter,
+		TextAlign::JustifyRight,
+		TextAlign::JustifyAll,
+	]
+	.into_iter()
+	.map(|align| {
+		RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Align(align),
+			}
+			.into()
 		})
-		.collect();
+	})
+	.collect();
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,
@@ -279,9 +288,24 @@ impl TextTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Text(TextToolMessage::UpdateOptions { options }) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
-			return;
+		let options = match message {
+			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
+			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
+				if let Some(layer) = can_edit_selected(context.document)
+					&& let Some((_, _, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface)
+				{
+					self.options.align = typesetting.align;
+					if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
+						editing_text.typesetting.align = typesetting.align;
+					}
+				}
+				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog);
+				return;
+			}
+			_ => {
+				self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
+				return;
+			}
 		};
 		match options {
 			TextOptionsUpdate::Font { font } => {
@@ -289,7 +313,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
-			TextOptionsUpdate::Align(align) => self.options.align = align,
+			TextOptionsUpdate::Align(align) => {
+				self.options.align = align;
+				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
+					editing_text.typesetting.align = align;
+				}
+				if let Some(layer) = can_edit_selected(context.document)
+					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
+				{
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::AlignInput::INDEX),
+						input: NodeInput::value(TaggedValue::TextAlign(align), false),
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+			}
 			TextOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -335,10 +373,10 @@ impl ToolTransition for TextTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			canvas_transformed: None,
+			selection_changed: Some(TextToolMessage::SelectionChanged.into()),
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| TextToolMessage::Overlays { context }.into()),
-			..Default::default()
 		}
 	}
 }
