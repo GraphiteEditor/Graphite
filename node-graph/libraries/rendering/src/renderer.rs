@@ -18,6 +18,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
+use graphic_types::graphic::fill_to_paint;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1181,70 +1182,86 @@ impl Render for List<Vector> {
 			let use_layer = can_draw_aligned_stroke;
 			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
-			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match element.style.fill() {
-				Fill::Solid(color) => {
-					let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
-					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
-				}
-				Fill::Gradient(gradient) => {
-					let mut stops = peniko::ColorStops::new();
-					for (position, color, _) in gradient.stops.interpolated_samples() {
-						stops.push(peniko::ColorStop {
-							offset: position as f32,
-							color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-						});
-					}
+			// TODO: This conversion is only necessary during the transition period from Fill to Table<Graphic>
+			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
+				let Some(paint_table) = fill_to_paint(element.style.fill()) else {
+					return;
+				};
 
-					let bounds = element.nonzero_bounding_box();
-					let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+				for paint_idx in 0..paint_table.len() {
+					let Some(paint) = paint_table.element(paint_idx) else { continue };
+					match paint {
+						Graphic::Color(table) => {
+							let Some(color) = table.element(0) else { continue };
 
-					let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
-						parent_transform.inverse()
-					} else {
-						Default::default()
-					};
-					let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
+							let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
+						}
+						Graphic::Gradient(stops_table) => {
+							let Some(stops) = stops_table.element(0) else { continue };
+							let gradient_type: GradientType = stops_table.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
+							let gradient_transform: DAffine2 = stops_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+							let spread_method: GradientSpreadMethod = stops_table.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
-					let start = mod_points.transform_point2(gradient.start);
-					let end = mod_points.transform_point2(gradient.end);
-
-					let fill = peniko::Brush::Gradient(peniko::Gradient {
-						kind: match gradient.gradient_type {
-							GradientType::Linear => peniko::LinearGradientPosition {
-								start: to_point(start),
-								end: to_point(end),
+							let mut peniko_stops = peniko::ColorStops::new();
+							for (position, color, _) in stops.interpolated_samples() {
+								peniko_stops.push(peniko::ColorStop {
+									offset: position as f32,
+									color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+								});
 							}
-							.into(),
-							GradientType::Radial => {
-								let radius = start.distance(end);
-								peniko::RadialGradientPosition {
-									start_center: to_point(start),
-									start_radius: 0.,
-									end_center: to_point(start),
-									end_radius: radius as f32,
-								}
-								.into()
-							}
-						},
-						extend: match gradient.spread_method {
-							GradientSpreadMethod::Pad => peniko::Extend::Pad,
-							GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-							GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
-						},
-						stops,
-						interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
-						..Default::default()
-					});
-					let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
-						element_transform.inverse()
-					} else {
-						Default::default()
+
+							let bounds = element.nonzero_bounding_box();
+							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+							let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+								parent_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform * gradient_transform;
+
+							let start = mod_points.transform_point2(DVec2::ZERO);
+							let end = mod_points.transform_point2(DVec2::X);
+
+							let fill = peniko::Brush::Gradient(peniko::Gradient {
+								kind: match gradient_type {
+									GradientType::Linear => peniko::LinearGradientPosition {
+										start: to_point(start),
+										end: to_point(end),
+									}
+									.into(),
+									GradientType::Radial => {
+										let radius = start.distance(end);
+										peniko::RadialGradientPosition {
+											start_center: to_point(start),
+											start_radius: 0.,
+											end_center: to_point(start),
+											end_radius: radius as f32,
+										}
+										.into()
+									}
+								},
+								extend: match spread_method {
+									GradientSpreadMethod::Pad => peniko::Extend::Pad,
+									GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+									GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+								},
+								stops: peniko_stops,
+								interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+								..Default::default()
+							});
+							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+								element_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
+						}
+						_ => todo!(),
 					};
-					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
-				Fill::None => {}
 			};
 
 			// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
