@@ -17,3 +17,9 @@ linesweeper = { workspace = true }
 log = { workspace = true }
 smallvec = { workspace = true }
 vector-types = { workspace = true }
+
+[dev-dependencies]
+graphene-core = { workspace = true }
+vector-nodes = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+kurbo = { workspace = true }
