@@ -332,17 +332,16 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 	let layer_view = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 	let proto = DefinitionIdentifier::ProtoNode;
 
-	// Map each generator's proto node to the corresponding `ShapeType`. First match wins.
+	// Map each generator's proto node to the corresponding `ShapeType`.
+	// First match wins. Only includes modes from the Shape tool's mode dropdown.
 	let Some(shape_type) = [
 		(regular_polygon::IDENTIFIER, ShapeType::Polygon),
 		(star::IDENTIFIER, ShapeType::Star),
+		(circle::IDENTIFIER, ShapeType::Circle),
 		(arc::IDENTIFIER, ShapeType::Arc),
 		(spiral::IDENTIFIER, ShapeType::Spiral),
 		(grid::IDENTIFIER, ShapeType::Grid),
 		(arrow::IDENTIFIER, ShapeType::Arrow),
-		(ellipse::IDENTIFIER, ShapeType::Ellipse),
-		(rectangle::IDENTIFIER, ShapeType::Rectangle),
-		(line::IDENTIFIER, ShapeType::Line),
 	]
 	.into_iter()
 	.find_map(|(id, shape)| layer_view.upstream_node_id_from_name(&proto(id)).map(|_| shape)) else {
