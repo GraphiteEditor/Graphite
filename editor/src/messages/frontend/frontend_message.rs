@@ -362,6 +362,8 @@ pub enum FrontendMessage {
 	#[cfg(not(target_family = "wasm"))]
 	WindowHide,
 	#[cfg(not(target_family = "wasm"))]
+	WindowFocus,
+	#[cfg(not(target_family = "wasm"))]
 	WindowHideOthers,
 	#[cfg(not(target_family = "wasm"))]
 	WindowShowAll,

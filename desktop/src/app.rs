@@ -360,6 +360,11 @@ impl App {
 					window.start_drag();
 				}
 			}
+			DesktopFrontendMessage::WindowFocus => {
+				if let Some(window) = &self.window {
+					window.focus();
+				}
+			}
 			DesktopFrontendMessage::WindowHide => {
 				if let Some(window) = &self.window {
 					window.hide();

@@ -140,6 +140,11 @@ impl Window {
 		let _ = self.winit_window.drag_window();
 	}
 
+	pub(crate) fn focus(&self) {
+		self.winit_window.set_minimized(false);
+		self.winit_window.focus_window();
+	}
+
 	pub(crate) fn hide(&self) {
 		self.native_handle.hide();
 	}

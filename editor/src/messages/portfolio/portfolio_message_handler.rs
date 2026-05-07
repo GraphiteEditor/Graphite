@@ -819,6 +819,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, responses);
+
+				responses.add(AppWindowMessage::Focus);
 			}
 			PortfolioMessage::OpenImage { name, image } => {
 				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
