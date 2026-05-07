@@ -222,17 +222,6 @@ impl From<Fill> for FillChoice {
 	}
 }
 
-#[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, DynAny, Hash, graphene_hash::CacheHash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[widget(Radio)]
-pub enum FillType {
-	#[default]
-	Solid,
-	Gradient,
-}
-
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

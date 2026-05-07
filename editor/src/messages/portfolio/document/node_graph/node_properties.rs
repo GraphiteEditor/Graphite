@@ -30,7 +30,7 @@ use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -233,7 +233,6 @@ pub(crate) fn property_from_type(
 						// =========================
 						// AUTO-GENERATED ENUM TYPES
 						// =========================
-						Some(x) if x == TypeId::of::<FillType>() => enum_choice::<FillType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<GradientType>() => enum_choice::<GradientType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<GradientSpreadMethod>() => enum_choice::<GradientSpreadMethod>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
@@ -1074,15 +1073,6 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		]),
-		Some(&TaggedValue::FVec2(vec2)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
-				.value(Some(vec2.y as f64))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),

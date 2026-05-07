@@ -8,10 +8,9 @@ use core_types::uuid::NodeId;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
-use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphic_types::raster_types::{CPU, Image, Raster};
-use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
+use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -216,12 +215,9 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	FVec2(Vec2),
-	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Stroke(Stroke),
 	Gradient(Gradient),
 	Font(Font),
 	DocumentNode(DocumentNode),
@@ -262,7 +258,6 @@ tagged_value! {
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
-	FillType(vector::style::FillType),
 	GradientType(vector::style::GradientType),
 	GradientSpreadMethod(vector::style::GradientSpreadMethod),
 	ReferencePoint(vector::ReferencePoint),
