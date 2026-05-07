@@ -2128,6 +2128,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
+	// Rewrite empty `Vector`/`Raster`/`Graphic`/`Artboard` placeholder values that were written before the `TypeDefault` mechanism existed.
+	// Each was an empty `Table<...>` baked into the document despite carrying no real content, so converting them to `TypeDefault` lets the
+	// runtime materialize the empty default at execution time without serializing the placeholder.
+	for (input_index, input) in node.inputs.iter().enumerate() {
+		let NodeInput::Value { tagged_value, exposed } = input else { continue };
+		let exposed = *exposed;
+		let descriptor = match &**tagged_value {
+			TaggedValue::Vector(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>),
+			TaggedValue::Raster(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>),
+			TaggedValue::Graphic(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::Graphic>),
+			TaggedValue::Artboard(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::Artboard>),
+			_ => continue,
+		};
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, input_index), NodeInput::type_default(descriptor, exposed), network_path);
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
