@@ -493,6 +493,39 @@ pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetw
 	}
 }
 
+/// Returns the node ID of a layer's upstream Stroke proto node, if one exists.
+pub fn get_stroke_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))
+}
+
+/// Stroke weight of the first selected non-artboard layer, used by tool control bars to mirror the selection's weight.
+/// Returns `Some(0.)` if the layer has no Stroke node so the widget reads "0 px", and `None` only when no layer is selected.
+pub fn first_selected_stroke_weight(document: &DocumentMessageHandler) -> Option<f64> {
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_layers_except_artboards(&document.network_interface)
+		.next()
+		.map(|layer| get_stroke_width(layer, &document.network_interface).unwrap_or(0.))
+}
+
+/// Writes the weight back to every selected non-artboard layer's stroke. Layers with an existing stroke just have their
+/// `WeightInput` updated; layers without one get a fresh stroke node added (defaulting to a black stroke with the new
+/// weight) only when the new weight is nonzero, so changing back to 0 doesn't keep adding empty strokes.
+pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+	for layer in layers {
+		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
+			let input_index = graphene_std::vector::stroke::WeightInput::INDEX;
+			let value = TaggedValue::F64(weight);
+			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
+		} else if weight > 0. {
+			let stroke = graphene_std::vector::style::Stroke::default().with_weight(weight);
+			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+		}
+	}
+}
+
 /// Checks if a specified layer uses an upstream node matching the given name.
 pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, identifier: &DefinitionIdentifier) -> bool {
 	NodeGraphLayer::new(layer, network_interface).find_node_inputs(identifier).is_some()

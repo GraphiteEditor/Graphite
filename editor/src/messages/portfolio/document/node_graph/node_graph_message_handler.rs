@@ -355,7 +355,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
+				// Detect stroke proto nodes among the doomed nodes before they're gone, so the stroke-using tools'
+				// Weight widgets can re-read the layer (they'll now read 0 px since the stroke node is missing).
+				let any_stroke_deleted = node_ids.iter().any(|node_id| {
+					network_interface
+						.reference(node_id, selection_network_path)
+						.is_some_and(|reference| reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER))
+				});
 				network_interface.delete_nodes(node_ids, delete_children, selection_network_path);
+				if any_stroke_deleted {
+					responses.add(PenToolMessage::SelectionChanged);
+					responses.add(FreehandToolMessage::SelectionChanged);
+					responses.add(SplineToolMessage::SelectionChanged);
+					responses.add(ShapeToolMessage::SelectionChanged);
+				}
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
@@ -1728,9 +1741,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				let is_fill = matches!(value, TaggedValue::Fill(_));
-				let is_text_node = network_interface
-					.reference(&node_id, selection_network_path)
-					.is_some_and(|reference| reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
+				let reference = network_interface.reference(&node_id, selection_network_path);
+				let is_text_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER));
+				let is_stroke_node = reference.as_ref().is_some_and(|r| *r == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER));
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
@@ -1742,6 +1755,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				if is_text_node {
 					responses.add(TextToolMessage::SelectionChanged);
+				}
+				if is_stroke_node {
+					// The dispatcher delivers each only to its tool when active, so this just covers all four stroke-using tools.
+					responses.add(PenToolMessage::SelectionChanged);
+					responses.add(FreehandToolMessage::SelectionChanged);
+					responses.add(SplineToolMessage::SelectionChanged);
+					responses.add(ShapeToolMessage::SelectionChanged);
 				}
 				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
