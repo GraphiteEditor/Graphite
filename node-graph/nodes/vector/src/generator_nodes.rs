@@ -175,6 +175,110 @@ fn regular_polygon<T: AsU64>(
 	Item::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
+/// Generates a heart shape with parametric control over the cleavage, lobes, shoulders, and bottom point.
+#[node_macro::node(category("Vector: Shape"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50)]
+	radius: f64,
+	/// How far the top V dips below the upper bound of the heart.
+	#[default(0.2)]
+	#[range((0., 0.6))]
+	#[hard_min(0.)]
+	#[hard_max(0.6)]
+	cleavage_depth: f64,
+	/// Half-angle of the top V. Zero collapses the V into a smooth join.
+	#[default(45.)]
+	#[range((0., 89.))]
+	#[hard_min(0.)]
+	#[hard_max(89.)]
+	cleavage_angle: Angle,
+	/// Tangent length leaving the top cusp, controlling the upper roundness of each lobe.
+	#[default(0.55)]
+	#[range((0., 1.2))]
+	#[hard_min(0.)]
+	#[hard_max(1.2)]
+	lobe_fullness: f64,
+	/// Vertical position of the side anchor (positive raises the shoulder).
+	#[default(0.5)]
+	#[range((-0.5, 0.9))]
+	#[hard_min(-0.5)]
+	#[hard_max(0.9)]
+	shoulder_height: f64,
+	/// Horizontal position of the side anchor.
+	#[default(1.)]
+	#[range((0., 1.4))]
+	#[hard_min(0.)]
+	#[hard_max(1.4)]
+	shoulder_width: f64,
+	/// Rotation of the shoulder tangent from vertical. Positive leans the shoulder outward at top.
+	#[default(0.)]
+	#[range((-60., 60.))]
+	#[hard_min(-60.)]
+	#[hard_max(60.)]
+	shoulder_tilt: Angle,
+	/// Tangent length at the shoulder going up, controlling the curvature of the upper lobe side.
+	#[default(0.55)]
+	#[range((0., 1.2))]
+	#[hard_min(0.)]
+	#[hard_max(1.2)]
+	upper_curvature: f64,
+	/// Tangent length at the shoulder going down, controlling the curvature of the lower side.
+	#[default(1.)]
+	#[range((0., 1.5))]
+	#[hard_min(0.)]
+	#[hard_max(1.5)]
+	lower_curvature: f64,
+	/// Half-angle of the bottom V. Zero produces a needle-sharp point with vertical tangents.
+	#[default(30.)]
+	#[range((0., 89.))]
+	#[hard_min(0.)]
+	#[hard_max(89.)]
+	point_sharpness: Angle,
+	/// Tangent length arriving at the bottom cusp, controlling how the sides taper into the point.
+	#[default(0.7)]
+	#[range((0., 1.2))]
+	#[hard_min(0.)]
+	#[hard_max(1.2)]
+	taper_length: f64,
+) -> Table<Vector> {
+	let cleavage_angle = cleavage_angle.to_radians();
+	let point_sharpness = point_sharpness.to_radians();
+	let shoulder_tilt = shoulder_tilt.to_radians();
+
+	// Anchor points for the right half plus the y-axis cusps, in normalized coordinates (y points downward).
+	let top = DVec2::new(0., -1. + cleavage_depth);
+	let shoulder = DVec2::new(shoulder_width, -shoulder_height);
+	let bottom = DVec2::new(0., 1.);
+
+	// Unit tangent directions, all measured from the upward vertical.
+	let top_dir = DVec2::new(cleavage_angle.sin(), -cleavage_angle.cos());
+	let bottom_dir_out = DVec2::new(point_sharpness.sin(), -point_sharpness.cos());
+	let shoulder_up = DVec2::new(shoulder_tilt.sin(), -shoulder_tilt.cos());
+	let shoulder_down = -shoulder_up;
+
+	// Cubic Bezier control points for the right half.
+	let c1 = top + top_dir * lobe_fullness;
+	let c2 = shoulder + shoulder_up * upper_curvature;
+	let c3 = shoulder + shoulder_down * lower_curvature;
+	let c4 = bottom + bottom_dir_out * taper_length;
+
+	let mirror = |p: DVec2| DVec2::new(-p.x, p.y);
+
+	// Closed clockwise path: T → S → B → S' → T. Joins at T and B are sharp; joins at the shoulders are G1.
+	let manipulator_groups = [
+		subpath::ManipulatorGroup::new(top * radius, Some(mirror(c1) * radius), Some(c1 * radius)),
+		subpath::ManipulatorGroup::new(shoulder * radius, Some(c2 * radius), Some(c3 * radius)),
+		subpath::ManipulatorGroup::new(bottom * radius, Some(c4 * radius), Some(mirror(c4) * radius)),
+		subpath::ManipulatorGroup::new(mirror(shoulder) * radius, Some(mirror(c3) * radius), Some(mirror(c2) * radius)),
+	]
+	.to_vec();
+
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new(manipulator_groups, true)))
+}
+
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
 #[node_macro::node(category("Vector: Shape"))]
 fn star<T: AsU64>(
