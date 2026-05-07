@@ -6,17 +6,10 @@ use core_types::table::TableRow;
 use raster_types::CPU;
 use raster_types::Raster;
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-// TODO: This is a temporary hack, be sure to not reuse this when the brush system is replaced/rewritten.
-static NEXT_BRUSH_CACHE_IMPL_ID: AtomicU64 = AtomicU64::new(0);
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct BrushCacheImpl {
-	unique_id: u64,
 	// The full previous input that was cached.
 	prev_input: Vec<BrushStroke>,
 
@@ -89,35 +82,6 @@ impl BrushCacheImpl {
 	}
 }
 
-impl Default for BrushCacheImpl {
-	fn default() -> Self {
-		Self {
-			unique_id: new_unique_id(),
-			prev_input: Vec::new(),
-			background: Default::default(),
-			blended_image: Default::default(),
-			last_stroke_texture: Default::default(),
-			brush_texture_cache: HashMap::new(),
-		}
-	}
-}
-
-impl PartialEq for BrushCacheImpl {
-	fn eq(&self, other: &Self) -> bool {
-		self.unique_id == other.unique_id
-	}
-}
-
-impl Hash for BrushCacheImpl {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.unique_id.hash(state);
-	}
-}
-
-fn new_unique_id() -> u64 {
-	NEXT_BRUSH_CACHE_IMPL_ID.fetch_add(1, Ordering::SeqCst)
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct BrushPlan {
 	pub strokes: Vec<BrushStroke>,
@@ -126,42 +90,8 @@ pub struct BrushPlan {
 	pub first_stroke_point_skip: usize,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BrushCache(Arc<Mutex<BrushCacheImpl>>);
-
-// A bit of a cursed implementation to work around the current node system.
-// The original object is a 'prototype' that when cloned gives you a independent
-// new object. Any further clones however are all the same underlying cache object.
-impl Clone for BrushCache {
-	fn clone(&self) -> Self {
-		Self(Arc::new(Mutex::new(self.0.lock().unwrap().clone())))
-	}
-}
-
-impl PartialEq for BrushCache {
-	fn eq(&self, other: &Self) -> bool {
-		if Arc::ptr_eq(&self.0, &other.0) {
-			return true;
-		}
-
-		let s = self.0.lock().unwrap();
-		let o = other.0.lock().unwrap();
-
-		*s == *o
-	}
-}
-
-impl Hash for BrushCache {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.0.lock().unwrap().hash(state);
-	}
-}
-
-impl graphene_hash::CacheHash for BrushCache {
-	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		core::hash::Hash::hash(&self.0.lock().unwrap().unique_id, state);
-	}
-}
 
 impl BrushCache {
 	pub fn compute_brush_plan(&self, background: TableRow<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
