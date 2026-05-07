@@ -1760,7 +1760,12 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
+		// Walk the document JSON and rewrite any `TaggedValue` variants that have been removed since being released as `"None"` so the document still deserializes.
+		// `migrate_node` then drops the resulting orphan node inputs so the value never reaches graph execution.
+		let mut json_value: serde_json::Value = serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))?;
+		graph_craft::document::value::TaggedValue::scrub_removed_variants_from_json(&mut json_value);
+
+		let document_message_handler = serde_json::from_value::<DocumentMessageHandler>(json_value.clone())
 			.or_else(|e| {
 				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
@@ -1799,7 +1804,7 @@ impl DocumentMessageHandler {
 					pub snapping_state: SnappingState,
 				}
 
-				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| DocumentMessageHandler {
+				serde_json::from_value::<OldDocumentMessageHandler>(json_value).map(|old_message_handler| DocumentMessageHandler {
 					network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
 					collapsed: old_message_handler.collapsed,
 					commit_hash: old_message_handler.commit_hash,
