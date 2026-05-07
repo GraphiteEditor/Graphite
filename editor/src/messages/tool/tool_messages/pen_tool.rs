@@ -249,6 +249,14 @@ impl LayoutHolder for PenTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::SelectionChanged))
+			&& let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
+			&& self.options.line_weight != weight
+		{
+			self.options.line_weight = weight;
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
+
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
@@ -259,7 +267,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				self.options.pen_overlay_mode = overlay_mode_type;
 				responses.add(OverlaysMessage::Draw);
 			}
-			PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			PenOptionsUpdate::LineWeight(line_weight) => {
+				self.options.line_weight = line_weight;
+				graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, context.document, responses);
+			}
 			PenOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;

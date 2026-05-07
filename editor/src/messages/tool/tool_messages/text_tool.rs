@@ -99,9 +99,9 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Vec<WidgetInstance> {
-	// If a single text layer is selected, the toolbar's font/style menus drive that layer's text node directly, going through the
+	// If a single text layer is selected, the control bar's font/style menus drive that layer's text node directly, going through the
 	// same code path as the Properties panel (LoadFontData + SetInputValue, with closest_style and font_style_to_restore bookkeeping).
-	// Otherwise the menus only update the toolbar option for the next created text.
+	// Otherwise the menus only update the control bar option for the next created text.
 	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface));
 
 	let font_input_index = graphene_std::text::text::FontInput::INDEX;
@@ -324,8 +324,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 		};
 		match options {
 			TextOptionsUpdate::Font { font } => {
-				// The toolbar font/style menus go through `SetInputValue` directly when a text layer is selected, so this
-				// arm only fires when no layer is selected (toolbar font is just the default for the next-created text).
+				// The control bar font/style menus go through `SetInputValue` directly when a text layer is selected, so this
+				// arm only fires when no layer is selected (control bar font is just the default for the next-created text).
 				self.options.font = font.clone();
 				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
 					editing_text.font = font;

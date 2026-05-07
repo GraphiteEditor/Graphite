@@ -95,6 +95,7 @@ pub enum ShapeToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
 	Abort,
+	SelectionChanged,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -415,6 +416,16 @@ impl LayoutHolder for ShapeTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ShapeTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::SelectionChanged)) {
+			if let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
+				&& self.options.line_weight != weight
+			{
+				self.options.line_weight = weight;
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
+			return;
+		}
+
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
@@ -429,6 +440,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::LineWeight(line_weight) => {
 				self.options.line_weight = line_weight;
+				graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, context.document, responses);
 			}
 			ShapeOptionsUpdate::StrokeColor(color) => {
 				self.options.stroke.custom_color = color;
@@ -527,6 +539,7 @@ impl ToolTransition for ShapeTool {
 		EventToMessageMap {
 			overlay_provider: Some(|context| ShapeToolMessage::Overlays { context }.into()),
 			tool_abort: Some(ShapeToolMessage::Abort.into()),
+			selection_changed: Some(ShapeToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(ShapeToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}

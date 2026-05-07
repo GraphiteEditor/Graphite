@@ -46,6 +46,7 @@ pub enum SplineToolMessage {
 	Overlays { context: OverlayContext },
 	CanvasTransformed,
 	Abort,
+	SelectionChanged,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -168,12 +169,25 @@ impl LayoutHolder for SplineTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		if matches!(&message, ToolMessage::Spline(SplineToolMessage::SelectionChanged)) {
+			if let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
+				&& self.options.line_weight != weight
+			{
+				self.options.line_weight = weight;
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
+			return;
+		}
+
 		let ToolMessage::Spline(SplineToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 		match options {
-			SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			SplineOptionsUpdate::LineWeight(line_weight) => {
+				self.options.line_weight = line_weight;
+				graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, context.document, responses);
+			}
 			SplineOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -224,8 +238,8 @@ impl ToolTransition for SplineTool {
 			overlay_provider: Some(|context: OverlayContext| SplineToolMessage::Overlays { context }.into()),
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
+			selection_changed: Some(SplineToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
-			..Default::default()
 		}
 	}
 }
