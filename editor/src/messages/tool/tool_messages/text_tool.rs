@@ -145,6 +145,8 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&new_font.font_style, "");
 				new_font.font_style = family.closest_style(weight, italic).to_named_style();
 
+				// Intentionally drop `font_style_to_restore` on commit so the committed style becomes the new basis for
+				// subsequent family switches. Preserving the original style intent is hover-only behavior (handled by `new_font`).
 				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&current_font.font_style, "");
 				let commit_only_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
 
@@ -337,11 +339,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if let Some(layer) = can_edit_selected(context.document)
 					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::SizeInput::INDEX),
-						input: NodeInput::value(TaggedValue::F64(font_size), false),
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::text::text::SizeInput::INDEX,
+						value: TaggedValue::F64(font_size),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
 			TextOptionsUpdate::Align(align) => {
@@ -352,11 +354,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if let Some(layer) = can_edit_selected(context.document)
 					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::AlignInput::INDEX),
-						input: NodeInput::value(TaggedValue::TextAlign(align), false),
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::text::text::AlignInput::INDEX,
+						value: TaggedValue::TextAlign(align),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
 			TextOptionsUpdate::FillColor(color) => {
