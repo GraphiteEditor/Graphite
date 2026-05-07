@@ -1,7 +1,6 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::brush_cache::BrushCache;
 use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
 use core_types::transform::Footprint;
@@ -39,7 +38,7 @@ macro_rules! tagged_value {
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			#[serde(skip)]
-			EditorApi(Arc<PlatformEditorApi>)
+			EditorApi(Arc<PlatformEditorApi>),
 		}
 
 		impl CacheHash for TaggedValue {
@@ -79,7 +78,7 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi)
+					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -211,7 +210,6 @@ tagged_value! {
 	Stroke(Stroke),
 	Gradient(Gradient),
 	Font(Font),
-	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
 	Curve(Curve),
@@ -412,6 +410,35 @@ impl TaggedValue {
 			_ => panic!("Passed value is not of type u32"),
 		}
 	}
+
+	/// Walks a JSON document tree and replaces any externally-tagged `TaggedValue` whose discriminant is in `REMOVED_VARIANTS` with the unit variant `"None"`.
+	/// Lets documents written before a variant was removed continue to deserialize. The document migration step then removes any orphan node inputs that result.
+	#[cfg(feature = "loading")]
+	pub fn scrub_removed_variants_from_json(value: &mut serde_json::Value) {
+		// Names of `TaggedValue` variants that have been removed since being released. Any object of the form `{"<name>": <payload>}` is rewritten to `"None"` on load.
+		const REMOVED_VARIANTS: &[&str] = &["BrushCache"];
+
+		match value {
+			serde_json::Value::Object(map) => {
+				if map.len() == 1
+					&& let Some(key) = map.keys().next()
+					&& REMOVED_VARIANTS.contains(&key.as_str())
+				{
+					*value = serde_json::Value::String("None".to_string());
+					return;
+				}
+				for child in map.values_mut() {
+					Self::scrub_removed_variants_from_json(child);
+				}
+			}
+			serde_json::Value::Array(array) => {
+				for child in array {
+					Self::scrub_removed_variants_from_json(child);
+				}
+			}
+			_ => {}
+		}
+	}
 }
 
 impl Display for TaggedValue {
@@ -516,5 +543,37 @@ impl CacheHash for RenderOutputType {
 impl CacheHash for RenderOutput {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.data.cache_hash(state);
+	}
+}
+
+#[cfg(all(test, feature = "loading"))]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn scrub_replaces_removed_variant_with_none_unit() {
+		let mut value = serde_json::json!({
+			"Value": {
+				"tagged_value": { "BrushCache": { "unique_id": 1, "prev_input": [] } },
+				"exposed": false
+			}
+		});
+		TaggedValue::scrub_removed_variants_from_json(&mut value);
+		assert_eq!(value, serde_json::json!({ "Value": { "tagged_value": "None", "exposed": false } }));
+	}
+
+	#[test]
+	fn scrub_leaves_live_variants_unchanged() {
+		let mut value = serde_json::json!({ "Value": { "tagged_value": { "F64": 1.5 }, "exposed": false } });
+		let original = value.clone();
+		TaggedValue::scrub_removed_variants_from_json(&mut value);
+		assert_eq!(value, original);
+	}
+
+	#[test]
+	fn scrub_recurses_through_arrays_and_nested_objects() {
+		let mut value = serde_json::json!([{ "BrushCache": { "any": "payload" } }, { "F32": 0.5 }]);
+		TaggedValue::scrub_removed_variants_from_json(&mut value);
+		assert_eq!(value, serde_json::json!(["None", { "F32": 0.5 }]));
 	}
 }

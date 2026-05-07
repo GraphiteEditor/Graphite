@@ -195,6 +195,7 @@ async fn brush(
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
 	trace: Table<BrushStroke>,
 	/// Internal cache data used to accelerate rendering of the brush content.
+	#[data]
 	cache: BrushCache,
 ) -> Table<Raster<CPU>> {
 	if background.is_empty() {
@@ -419,6 +420,7 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
+			&BrushCache::default(),
 			Table::new_from_element(Raster::new_cpu(Image::<Color>::default())),
 			Table::new_from_element(BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
@@ -431,7 +433,6 @@ mod test {
 					blend_mode: BlendMode::Normal,
 				},
 			}),
-			BrushCache::default(),
 		)
 		.await;
 		assert_eq!(image.element(0).unwrap().width, 20);
