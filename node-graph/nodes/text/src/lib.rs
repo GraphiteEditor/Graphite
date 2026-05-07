@@ -31,12 +31,19 @@ pub use vector_types;
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]
+	#[icon("TextAlignLeft")]
 	AlignLeft,
+	#[icon("TextAlignCenter")]
 	AlignCenter,
+	#[icon("TextAlignRight")]
 	AlignRight,
+	#[icon("TextJustifyLeft")]
 	JustifyLeft,
+	#[icon("TextJustifyCenter")]
 	JustifyCenter,
+	#[icon("TextJustifyRight")]
 	JustifyRight,
+	#[icon("TextJustifyAll")]
 	JustifyAll,
 }
 

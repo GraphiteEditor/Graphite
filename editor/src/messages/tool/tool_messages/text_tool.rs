@@ -17,6 +17,7 @@ use crate::messages::tool::common_functionality::utility_functions::text_boundin
 use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
 use graphene_std::vector::style::Fill;
@@ -204,25 +205,23 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 			.into()
 		})
 		.widget_instance();
-	let align_entries: Vec<_> = [
-		TextAlign::AlignLeft,
-		TextAlign::AlignCenter,
-		TextAlign::AlignRight,
-		TextAlign::JustifyLeft,
-		TextAlign::JustifyCenter,
-		TextAlign::JustifyRight,
-		TextAlign::JustifyAll,
-	]
-	.into_iter()
-	.map(|align| {
-		RadioEntryData::new(format!("{align:?}")).label(align.to_string()).on_update(move |_| {
-			TextToolMessage::UpdateOptions {
-				options: TextOptionsUpdate::Align(align),
-			}
-			.into()
+	let align_entries: Vec<_> = TextAlign::list()
+		.iter()
+		.flat_map(|section| section.iter())
+		.map(|(item, var_meta)| {
+			let align = *item;
+			let entry = RadioEntryData::new(var_meta.name)
+				.tooltip_label(var_meta.label)
+				.tooltip_description(var_meta.description.unwrap_or_default())
+				.on_update(move |_| {
+					TextToolMessage::UpdateOptions {
+						options: TextOptionsUpdate::Align(align),
+					}
+					.into()
+				});
+			if let Some(icon) = var_meta.icon { entry.icon(icon) } else { entry.label(var_meta.label) }
 		})
-	})
-	.collect();
+		.collect();
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,
@@ -232,7 +231,7 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		size,
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 		line_height_ratio,
-		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		align,
 	]
 }
