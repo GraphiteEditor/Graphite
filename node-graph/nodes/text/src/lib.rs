@@ -71,6 +71,19 @@ impl TextAlign {
 			_ => None,
 		}
 	}
+
+	/// CSS `(text-align, text-align-last)` values approximating this alignment for the `contenteditable` text overlay.
+	pub fn css(self) -> (&'static str, &'static str) {
+		match self {
+			Self::AlignLeft => ("left", "auto"),
+			Self::AlignCenter => ("center", "auto"),
+			Self::AlignRight => ("right", "auto"),
+			Self::JustifyLeft => ("justify", "auto"),
+			Self::JustifyCenter => ("justify", "center"),
+			Self::JustifyRight => ("justify", "right"),
+			Self::JustifyAll => ("justify", "justify"),
+		}
+	}
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]

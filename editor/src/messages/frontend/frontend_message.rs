@@ -15,7 +15,7 @@ use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
-use graphene_std::text::{Font, TextAlign};
+use graphene_std::text::Font;
 use graphene_std::vector::style::FillChoice;
 use std::path::PathBuf;
 
@@ -51,7 +51,9 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
-		align: TextAlign,
+		align: String,
+		#[serde(rename = "alignLast")]
+		align_last: String,
 	},
 	DisplayEditableTextboxUpdateFontData {
 		#[serde(rename = "fontData")]

@@ -446,6 +446,7 @@ impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
+			let (align, align_last) = editing_text.typesetting.align.css();
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
@@ -455,7 +456,8 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
-				align: editing_text.typesetting.align,
+				align: align.to_string(),
+				align_last: align_last.to_string(),
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue
