@@ -6,22 +6,32 @@ use std::fmt::{Display, Formatter};
 #[macro_export]
 macro_rules! concrete {
 	($type:ty) => {
-		$crate::Type::Concrete($crate::TypeDescriptor {
+		$crate::Type::Concrete($crate::descriptor!($type))
+	};
+	($type:ty, $name:ty) => {
+		$crate::Type::Concrete($crate::descriptor!($type, $name))
+	};
+}
+
+#[macro_export]
+macro_rules! descriptor {
+	($type:ty) => {
+		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
-		})
+		}
 	};
 	($type:ty, $name:ty) => {
-		$crate::Type::Concrete($crate::TypeDescriptor {
+		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
-		})
+		}
 	};
 }
 

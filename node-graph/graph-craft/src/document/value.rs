@@ -5,7 +5,7 @@ use brush_nodes::brush_stroke::BrushStroke;
 use core_types::table::Table;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
-use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type};
+use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
@@ -34,6 +34,9 @@ macro_rules! tagged_value {
 		#[allow(clippy::large_enum_variant)] // TODO(TrueDoctor): Properly solve this disparity between the size of the largest and next largest variants
 		pub enum TaggedValue {
 			None,
+			/// Stores a type, from which its `Default::default()` value can be obtained, rather than storing an actual type's value.
+			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
+			TypeDefault(TypeDescriptor),
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			#[serde(skip)]
@@ -45,6 +48,7 @@ macro_rules! tagged_value {
 				core::mem::discriminant(self).hash(state);
 				match self {
 					Self::None => {}
+					Self::TypeDefault(td) => td.cache_hash(state),
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
@@ -57,29 +61,35 @@ macro_rules! tagged_value {
 			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),
+					Self::TypeDefault(td) => Self::from_type_or_none(&Type::Concrete(td)).to_dynany(),
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::EditorApi(x) => Box::new(x),
 				}
 			}
+
 			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
 			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
 				match self {
 					Self::None => Arc::new(()),
+					Self::TypeDefault(td) => Self::from_type_or_none(&Type::Concrete(td)).to_any(),
 					$( Self::$identifier(x) => Arc::new(x), )*
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
+
 			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
 			pub fn ty(&self) -> Type {
 				match self {
 					Self::None => concrete!(()),
+					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 				}
 			}
+
 			/// Attempts to downcast the dynamic type to a tagged value
 			pub fn try_from_any(input: Box<dyn DynAny<'a> + 'a>) -> Result<Self, String> {
 				use dyn_any::downcast;
@@ -93,6 +103,7 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 				}
 			}
+
 			/// Attempts to downcast the dynamic type to a tagged value
 			pub fn try_from_std_any_ref(input: &dyn std::any::Any) -> Result<Self, String> {
 				use std::any::TypeId;
@@ -104,22 +115,23 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", std::any::type_name_of_val(input))),
 				}
 			}
-			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`
+
+			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`.
+			/// Dispatches by the type's name (the field that round-trips through serde) so it works for both
+			/// freshly constructed types and types deserialized from disk where the runtime `TypeId` is unavailable.
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
-						use std::any::TypeId;
+						let name = concrete_type.name.as_ref();
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						Some(match concrete_type.id? {
-							x if x == TypeId::of::<()>() => TaggedValue::None,
-							// Table-wrapped types need a single-item default with the element's default, not an empty table
-							x if x == TypeId::of::<Table<Color>>() => TaggedValue::Color(Table::new_from_element(Color::default())),
-							x if x == TypeId::of::<Table<GradientStops>>() => TaggedValue::GradientTable(Table::new_from_element(GradientStops::default())),
-							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
-							_ => return None,
-						})
+						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
+						// Table-wrapped types need a single-item default with the element's default, not an empty table
+						if name == std::any::type_name::<Table<Color>>() { return Some(TaggedValue::Color(Table::new_from_element(Color::default()))) }
+						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::GradientTable(Table::new_from_element(GradientStops::default()))) }
+						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
+						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
 					Type::Future(output) => {
@@ -127,12 +139,15 @@ macro_rules! tagged_value {
 					}
 				}
 			}
+
 			pub fn from_type_or_none(input: &Type) -> Self {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
 			}
+
 			pub fn to_debug_string(&self) -> String {
 				match self {
 					Self::None => "()".to_string(),
+					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
 					$( Self::$identifier(x) => format!("{:?}", x), )*
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),

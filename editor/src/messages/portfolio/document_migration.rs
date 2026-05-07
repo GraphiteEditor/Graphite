@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
+use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
@@ -2101,9 +2102,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
 
 			// Reset input 0 to the default exposed state
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Vector(Default::default()), true), network_path);
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, 0),
+				NodeInput::type_default(descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>), true),
+				network_path,
+			);
 
 			// Store the converted VectorModification in input 1
 			document

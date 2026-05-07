@@ -231,6 +231,12 @@ impl NodeInput {
 		Self::Value { tagged_value, exposed }
 	}
 
+	/// Constructs a `NodeInput::Value` whose tagged value is `TaggedValue::TypeDefault(td)`, recording only the
+	/// type so the runtime materializes its default rather than baking a placeholder value into the saved document.
+	pub fn type_default(td: core_types::TypeDescriptor, exposed: bool) -> Self {
+		Self::value(TaggedValue::TypeDefault(td), exposed)
+	}
+
 	pub const fn import(import_type: Type, import_index: usize) -> Self {
 		Self::Import { import_type, import_index }
 	}

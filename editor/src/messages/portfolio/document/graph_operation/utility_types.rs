@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, concrete};
+use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
@@ -15,7 +15,7 @@ use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
-use graphene_std::{Color, Graphic, NodeInputDecleration};
+use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -132,8 +132,8 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network.
 	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: DVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_network_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+			Some(NodeInput::type_default(descriptor!(Table<Artboard>), true)),
+			Some(NodeInput::type_default(descriptor!(Table<Graphic>), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(background)), false)),
@@ -147,7 +147,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let boolean = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)
 			.expect("Boolean node does not exist")
 			.node_template_input_override([
-				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+				Some(NodeInput::type_default(descriptor!(Table<Graphic>), true)),
 				Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 			]);
 
@@ -157,10 +157,9 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
-		let blend = resolve_network_node_type("Blend").expect("Blend node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::F64(count), false)),
-		]);
+		let blend = resolve_network_node_type("Blend")
+			.expect("Blend node does not exist")
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(Table<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
 
 		let blend_id = NodeId::new();
 		self.network_interface.insert_node(blend_id, blend, &[]);
@@ -172,10 +171,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		let morph = resolve_proto_node_type(graphene_std::vector::morph::IDENTIFIER)
 			.expect("Morph node does not exist")
-			.node_template_input_override([
-				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-				Some(NodeInput::value(TaggedValue::F64(0.5), false)),
-			]);
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(Table<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
 
 		let morph_id = NodeId::new();
 		self.network_interface.insert_node(morph_id, morph, &[]);
