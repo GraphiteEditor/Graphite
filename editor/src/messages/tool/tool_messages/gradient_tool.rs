@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, GradientSpreadMethod, GradientStops, GradientType};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -35,6 +35,7 @@ pub enum GradientToolMessage {
 	Abort,
 	Overlays { context: OverlayContext },
 	SelectionChanged,
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	DeleteStop,
@@ -128,6 +129,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 				self.data.color_picker_editing_color_stop = None;
 			}
+			ToolMessage::Gradient(GradientToolMessage::WorkingColorChanged) => {
+				let primary = context.global_tool_data.primary_color;
+				let secondary = context.global_tool_data.secondary_color;
+
+				if self.data.primary_color != primary || self.data.secondary_color != secondary {
+					self.data.primary_color = primary;
+					self.data.secondary_color = secondary;
+
+					if !self.data.has_selected_gradient {
+						responses.add(ToolMessage::RefreshToolOptions);
+					}
+				}
+			}
 			_ => {
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
 
@@ -208,12 +222,20 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
-		let stops_value = self
-			.data
-			.current_gradient_stops
-			.clone()
-			.map(FillChoice::Gradient)
-			.unwrap_or(FillChoice::Gradient(GradientStops::default()));
+		let stops_value = self.data.current_gradient_stops.clone().map(FillChoice::Gradient).unwrap_or_else(|| {
+			FillChoice::Gradient(GradientStops::new([
+				GradientStop {
+					position: 0.,
+					midpoint: 0.5,
+					color: self.data.primary_color,
+				},
+				GradientStop {
+					position: 1.,
+					midpoint: 0.5,
+					color: self.data.secondary_color,
+				},
+			]))
+		});
 		let stops_widget = ColorInput::new(stops_value)
 			.allow_none(false)
 			.disabled(!self.data.has_selected_gradient)
@@ -749,6 +771,7 @@ impl ToolTransition for GradientTool {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),
 			selection_changed: Some(GradientToolMessage::SelectionChanged.into()),
+			working_color_changed: Some(GradientToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| GradientToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
@@ -770,6 +793,9 @@ struct GradientToolData {
 	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
 	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
 	gradient_orientation_rightward: bool,
+	/// Cached working colors, mirrored from `DocumentToolData` via the `WorkingColorChanged` event, used as the default gradient colors.
+	primary_color: Color,
+	secondary_color: Color,
 	color_picker_editing_color_stop: Option<usize>,
 	color_picker_transaction_open: bool,
 }
