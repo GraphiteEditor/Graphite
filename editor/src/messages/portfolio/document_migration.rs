@@ -521,10 +521,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::generate_curves::generate_curves::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::generate_curves::GenerateCurvesNode", "graphene_core::raster::adjustments::GenerateCurvesNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::gradient_map::GradientMapNode",

@@ -14,7 +14,6 @@ use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
-use raster_nodes::curve::Curve;
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -212,7 +211,6 @@ tagged_value! {
 	Font(Font),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
-	Curve(Curve),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),

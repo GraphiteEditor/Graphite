@@ -204,21 +204,6 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::CurveInput(curve_input) => {
-				let callback_message = match action {
-					WidgetValueAction::Commit => (curve_input.on_commit.callback)(&()),
-					WidgetValueAction::Update => {
-						let Some(curve) = serde_json::from_value(value).ok() else {
-							error!("CurveInput event data could not be deserialized");
-							return;
-						};
-						curve_input.value = curve;
-						(curve_input.on_update.callback)(curve_input)
-					}
-				};
-
-				responses.add(callback_message);
-			}
 			Widget::DropdownInput(dropdown_input) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => {
