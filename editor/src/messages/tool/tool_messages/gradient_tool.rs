@@ -1403,16 +1403,17 @@ impl Fsm for GradientToolFsmState {
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 						}
 
-						// Use the already existing gradient if it exists
 						let gradient = if let Some(gradient) = get_gradient(layer, &document.network_interface) {
+							// Use the already existing gradient if it exists
 							gradient.clone()
 						} else {
-							// Generate a new gradient
+							// Generate a new gradient running primary → secondary so the default working colors
+							// (primary = black, secondary = white) produce the expected black-to-white gradient
 							Gradient::new(
 								DVec2::ZERO,
-								global_tool_data.secondary_color,
-								DVec2::ONE,
 								global_tool_data.primary_color,
+								DVec2::ONE,
+								global_tool_data.secondary_color,
 								tool_options.gradient_type,
 								tool_options.spread_method,
 							)
@@ -2002,9 +2003,9 @@ mod test_gradient {
 
 		let (gradient, transform) = get_gradient(&mut editor).await;
 
-		// Gradient goes from secondary color to primary color
+		// Gradient goes from primary color to secondary color
 		let stops = gradient.stops.iter().map(|stop| (stop.position, stop.color.to_rgba8_srgb())).collect::<Vec<_>>();
-		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
+		assert_eq!(stops, vec![(0., Color::GREEN.to_rgba8_srgb()), (1., Color::BLUE.to_rgba8_srgb())]);
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
@@ -2237,9 +2238,9 @@ mod test_gradient {
 		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
-		assert_eq!(updated_stops.color[0].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
+		assert_eq!(updated_stops.color[0].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
 		assert_eq!(updated_stops.color[1].to_rgba8_srgb(), middle_color);
-		assert_eq!(updated_stops.color[2].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+		assert_eq!(updated_stops.color[2].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
 	}
 
 	#[tokio::test]
