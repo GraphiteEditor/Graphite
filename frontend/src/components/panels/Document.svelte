@@ -380,6 +380,7 @@
 		textInput.style.fontSize = `${data.fontSize}px`;
 		textInput.style.color = data.color;
 		textInput.style.textAlign = data.align;
+		textInput.style.textAlignLast = data.alignLast;
 
 		textInput.oninput = () => {
 			if (!textInput) return;

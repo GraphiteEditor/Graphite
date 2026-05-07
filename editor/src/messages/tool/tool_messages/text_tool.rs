@@ -32,7 +32,6 @@ pub struct TextTool {
 
 pub struct TextOptions {
 	font_size: f64,
-	line_height_ratio: f64,
 	character_spacing: f64,
 	font: Font,
 	fill: ToolColorOptions,
@@ -44,7 +43,6 @@ impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
 			font_size: 24.,
-			line_height_ratio: 1.2,
 			character_spacing: 0.,
 			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
 			fill: ToolColorOptions::new_primary(),
@@ -84,7 +82,6 @@ pub enum TextOptionsUpdate {
 	FillColorType(ToolColorType),
 	Font { font: Font },
 	FontSize(f64),
-	LineHeightRatio(f64),
 	Align(TextAlign),
 	WorkingColors(Option<Color>, Option<Color>),
 }
@@ -101,36 +98,63 @@ impl ToolMetadata for TextTool {
 	}
 }
 
-fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<WidgetInstance> {
-	fn update_options(font: Font, commit_style: Option<String>) -> impl Fn(&()) -> Message + Clone {
-		let mut font = font;
-		if let Some(style) = commit_style {
-			font.font_style = style;
-		}
+fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Vec<WidgetInstance> {
+	// If a single text layer is selected, the toolbar's font/style menus drive that layer's text node directly, going through the
+	// same code path as the Properties panel (LoadFontData + SetInputValue, with closest_style and font_style_to_restore bookkeeping).
+	// Otherwise the menus only update the toolbar option for the next created text.
+	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface));
 
-		move |_| {
-			TextToolMessage::UpdateOptions {
-				options: TextOptionsUpdate::Font { font: font.clone() },
+	let font_input_index = graphene_std::text::text::FontInput::INDEX;
+	let apply_font = move |new_font: Font| -> Message {
+		match text_node_id {
+			Some(node_id) => NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index: font_input_index,
+				value: TaggedValue::Font(new_font),
 			}
-			.into()
+			.into(),
+			None => TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Font { font: new_font },
+			}
+			.into(),
 		}
-	}
+	};
+	let preview_font = move |new_font: Font| -> Message {
+		Message::Batched {
+			messages: Box::new([PortfolioMessage::LoadFontData { font: new_font.clone() }.into(), apply_font(new_font)]),
+		}
+	};
+	let commit_font = move |new_font: Font| -> Message {
+		match text_node_id {
+			Some(_) => DeferMessage::AfterGraphRun {
+				messages: vec![apply_font(new_font), DocumentMessage::AddTransaction.into()],
+			}
+			.into(),
+			None => apply_font(new_font),
+		}
+	};
 
 	let font = DropdownInput::new(vec![
 		font_catalog
 			.0
 			.iter()
 			.map(|family| {
-				let font = Font::new(family.name.clone(), tool.options.font.font_style.clone());
-				let commit_style = font_catalog.find_font_style_in_catalog(&tool.options.font).map(|style| style.to_named_style());
-				let update = update_options(font.clone(), None);
-				let commit = update_options(font, commit_style);
+				let current_font = &tool.options.font;
+				let mut new_font = Font::new(family.name.clone(), current_font.font_style_to_restore.clone().unwrap_or_else(|| current_font.font_style.clone()));
+				new_font.font_style_to_restore = current_font.font_style_to_restore.clone().or_else(|| Some(new_font.font_style.clone()));
+				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&new_font.font_style, "");
+				new_font.font_style = family.closest_style(weight, italic).to_named_style();
+
+				// Intentionally drop `font_style_to_restore` on commit so the committed style becomes the new basis for
+				// subsequent family switches. Preserving the original style intent is hover-only behavior (handled by `new_font`).
+				let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&current_font.font_style, "");
+				let commit_only_font = Font::new(family.name.clone(), family.closest_style(weight, italic).to_named_style());
 
 				MenuListEntry::new(family.name.clone())
 					.label(family.name.clone())
 					.font(family.closest_style(400, false).preview_url(&family.name))
-					.on_update(update)
-					.on_commit(commit)
+					.on_update(move |_| preview_font(new_font.clone()))
+					.on_commit(move |_| commit_font(commit_only_font.clone()))
 			})
 			.collect::<Vec<_>>(),
 	])
@@ -146,13 +170,14 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 			.map(|family| {
 				let build_entry = |style: &FontCatalogStyle| {
 					let font_style = style.to_named_style();
+					let new_font = Font::new(tool.options.font.font_family.clone(), font_style.clone());
 
-					let font = Font::new(tool.options.font.font_family.clone(), font_style.clone());
-					let commit_style = font_catalog.find_font_style_in_catalog(&tool.options.font).map(|style| style.to_named_style());
-					let update = update_options(font.clone(), None);
-					let commit = update_options(font, commit_style);
+					let new_font_for_commit = new_font.clone();
 
-					MenuListEntry::new(font_style.clone()).on_update(update).on_commit(commit).label(font_style)
+					MenuListEntry::new(font_style.clone())
+						.label(font_style)
+						.on_update(move |_| preview_font(new_font.clone()))
+						.on_commit(move |_| commit_font(new_font_for_commit.clone()))
 				};
 
 				vec![
@@ -192,19 +217,6 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 			.into()
 		})
 		.widget_instance();
-	let line_height_ratio = NumberInput::new(Some(tool.options.line_height_ratio))
-		.label("Line Height")
-		.int()
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.step(0.1)
-		.on_update(|number_input: &NumberInput| {
-			TextToolMessage::UpdateOptions {
-				options: TextOptionsUpdate::LineHeightRatio(number_input.value.unwrap()),
-			}
-			.into()
-		})
-		.widget_instance();
 	let align_entries: Vec<_> = TextAlign::list()
 		.iter()
 		.flat_map(|section| section.iter())
@@ -229,29 +241,29 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		style,
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 		size,
-		Separator::new(SeparatorStyle::Related).widget_instance(),
-		line_height_ratio,
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		align,
 	]
 }
 
 impl ToolRefreshOptions for TextTool {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, cached_data: &CachedData) {
-		self.send_layout(responses, LayoutTarget::ToolOptions, &cached_data.font_catalog);
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData) {
+		// Defer to the SelectionChanged handler which has document context, required for the font/style
+		// dropdowns to bind to the selected text layer's node graph inputs
+		responses.add(TextToolMessage::SelectionChanged);
 	}
 }
 
 impl TextTool {
-	fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, font_catalog: &FontCatalog) {
+	fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, font_catalog: &FontCatalog, document: &DocumentMessageHandler) {
 		responses.add(LayoutMessage::SendLayout {
-			layout: self.layout(font_catalog),
+			layout: self.layout(font_catalog, document),
 			layout_target,
 		});
 	}
 
-	fn layout(&self, font_catalog: &FontCatalog) -> Layout {
-		let mut widgets = create_text_widgets(self, font_catalog);
+	fn layout(&self, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Layout {
+		let mut widgets = create_text_widgets(self, font_catalog, document);
 
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
@@ -291,14 +303,18 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some((_, _, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface)
+					&& let Some((_, font, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface)
 				{
 					self.options.align = typesetting.align;
+					self.options.font_size = typesetting.font_size;
+					self.options.font = font.clone();
 					if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
 						editing_text.typesetting.align = typesetting.align;
+						editing_text.typesetting.font_size = typesetting.font_size;
+						editing_text.font = font.clone();
 					}
 				}
-				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog);
+				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
 				return;
 			}
 			_ => {
@@ -308,10 +324,28 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 		};
 		match options {
 			TextOptionsUpdate::Font { font } => {
-				self.options.font = font;
+				// The toolbar font/style menus go through `SetInputValue` directly when a text layer is selected, so this
+				// arm only fires when no layer is selected (toolbar font is just the default for the next-created text).
+				self.options.font = font.clone();
+				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
+					editing_text.font = font;
+				}
 			}
-			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
-			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
+			TextOptionsUpdate::FontSize(font_size) => {
+				self.options.font_size = font_size;
+				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
+					editing_text.typesetting.font_size = font_size;
+				}
+				if let Some(layer) = can_edit_selected(context.document)
+					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
+				{
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::text::text::SizeInput::INDEX,
+						value: TaggedValue::F64(font_size),
+					});
+				}
+			}
 			TextOptionsUpdate::Align(align) => {
 				self.options.align = align;
 				if let Some(editing_text) = self.tool_data.editing_text.as_mut() {
@@ -320,11 +354,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if let Some(layer) = can_edit_selected(context.document)
 					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, graphene_std::text::text::AlignInput::INDEX),
-						input: NodeInput::value(TaggedValue::TextAlign(align), false),
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::text::text::AlignInput::INDEX,
+						value: TaggedValue::TextAlign(align),
 					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
 			TextOptionsUpdate::FillColor(color) => {
@@ -338,7 +372,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog);
+		self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -446,6 +480,7 @@ impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
+			let (align, align_last) = editing_text.typesetting.align.css();
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
@@ -455,7 +490,8 @@ impl TextToolData {
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
-				align: editing_text.typesetting.align,
+				align: align.to_string(),
+				align_last: align_last.to_string(),
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue
@@ -930,12 +966,12 @@ impl Fsm for TextToolFsmState {
 					transform: DAffine2::from_translation(start),
 					typesetting: TypesettingConfig {
 						font_size: tool_options.font_size,
-						line_height_ratio: tool_options.line_height_ratio,
 						max_width: constraint_size.map(|size| size.x),
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
 						tilt: tool_options.tilt,
 						align: tool_options.align,
+						..TypesettingConfig::default()
 					},
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),

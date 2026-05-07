@@ -860,6 +860,8 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 								let font_style = family.closest_style(weight, italic).to_named_style();
 
 								move |_| {
+									// Intentionally drop `font_style_to_restore` on commit so the committed style becomes the new basis
+									// for subsequent family switches. Preserving the original style intent is hover-only behavior.
 									let new_font = Font::new(font_family.clone(), font_style.clone());
 
 									DeferMessage::AfterGraphRun {
