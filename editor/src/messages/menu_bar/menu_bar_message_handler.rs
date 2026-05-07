@@ -496,6 +496,22 @@ impl LayoutHolder for MenuBarMessageHandler {
 										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
 									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Trim")
+									.label("Trim")
+									.icon("BooleanSubtractFront")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Trim);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+									})
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Crop")
+									.label("Crop")
+									.icon("BooleanSubtractFront")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Crop);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+									})
+									.disabled(no_active_document || !has_selected_layers),
 							]]),
 						MenuListEntry::new("Blend")
 							.label("Blend")

@@ -18,8 +18,6 @@ use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, 
 pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
-// TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
-// TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
@@ -40,24 +38,30 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 
 	// The first index is the bottom of the stack
 	let flattened = flatten_vector(&content);
-	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
+
+	let mut result_vector_list = match operation {
+		BooleanOperation::Union | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack | BooleanOperation::Intersect | BooleanOperation::Difference => {
+			boolean_operation_on_vector_list(&flattened, operation)
+		}
+		BooleanOperation::Trim | BooleanOperation::Crop => cascading_subtract(&flattened, operation),
+	};
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	if result_vector_list.element_mut(0).is_some() {
-		let transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::IDENTITY);
+	for i in 0..result_vector_list.len() {
+		let transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, i);
+		result_vector_list.set_attribute(ATTR_TRANSFORM, i, DAffine2::IDENTITY);
 
-		let result_vector = result_vector_list.element_mut(0).unwrap();
+		let result_vector = result_vector_list.element_mut(i).unwrap();
 		Vector::transform(result_vector, transform);
 		result_vector.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
-		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
+		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, i, content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
+		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, i);
+		result_vector_list.element_mut(i).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
 	result_vector_list
@@ -124,21 +128,43 @@ impl WindingNumber {
 			BooleanOperation::SubtractBack => self.elems.last().is_some_and(is_in) && self.elems.iter().rev().skip(1).all(is_out),
 			BooleanOperation::Intersect => !self.elems.is_empty() && self.elems.iter().all(is_in),
 			BooleanOperation::Difference => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
+			BooleanOperation::Trim => unreachable!(),
+			BooleanOperation::Crop => unreachable!(),
 		}
+	}
+
+	fn subtract_front_at(&self, i: usize) -> bool {
+		let is_in = |v: &i16| *v != 0;
+
+		self.elems.get(i).is_some_and(is_in) && self.elems.iter().skip(i + 1).all(|v| !is_in(v))
+	}
+
+	fn crop_visible_at(&self, i: usize) -> bool {
+		let is_in = |v: &i16| *v != 0;
+
+		if self.elems.is_empty() {
+			return false;
+		}
+
+		let top_index = self.elems.len() - 1;
+
+		if i >= top_index {
+			return false;
+		}
+
+		self.elems.get(i).is_some_and(is_in) && self.elems.get(top_index).is_some_and(is_in) && self.elems[i + 1..top_index].iter().all(|v| !is_in(v))
 	}
 }
 
 fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
-	const EPSILON: f64 = 1e-5;
 	let mut list = List::new();
-	let mut paths = Vec::new();
 
 	let copy_from_index = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
 		if !vector.is_empty() { Some(0) } else { None }
 	} else {
 		if !vector.is_empty() { Some(vector.len() - 1) } else { None }
 	};
-	let mut row = if let Some(index) = copy_from_index {
+	let mut item = if let Some(index) = copy_from_index {
 		let mut attributes = vector.clone_item_attributes(index);
 		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
@@ -156,26 +182,92 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		Item::<Vector>::default()
 	};
 
+	let top = match try_create_topology(vector) {
+		Some(top) => top,
+		None => return list,
+	};
+
+	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
+
+	if contours.contours().next().is_some() {
+		append_linesweeper_contours(item.element_mut(), &contours);
+		list.push(item);
+	}
+
+	list
+}
+
+fn cascading_subtract(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
+	let mut list = List::new();
+
+	let top = match try_create_topology(vector) {
+		Some(top) => top,
+		None => return list,
+	};
+
+	for i in 0..vector.len() {
+		let contours = match boolean_operation {
+			BooleanOperation::Crop if i == vector.len() - 1 => top.contours(|winding| winding.is_inside(BooleanOperation::SubtractBack)),
+
+			BooleanOperation::Crop => top.contours(|winding| winding.crop_visible_at(i)),
+
+			_ => top.contours(|winding| winding.subtract_front_at(i)),
+		};
+
+		if contours.contours().next().is_none() {
+			continue;
+		}
+
+		let source = match vector.element(i) {
+			Some(source) => source,
+			None => continue,
+		};
+
+		let mut attributes = vector.clone_item_attributes(i);
+		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
+
+		let mut element = Vector {
+			style: source.style.clone(),
+			..Default::default()
+		};
+
+		if boolean_operation == BooleanOperation::Crop && i == vector.len() - 1 {
+			element.style.clear_fill();
+			element.style.clear_stroke();
+		}
+
+		append_linesweeper_contours(&mut element, &contours);
+
+		let item = Item::from_parts(element, attributes);
+		list.push(item);
+	}
+
+	list
+}
+
+fn try_create_topology(vector: &List<Vector>) -> Option<Topology<WindingNumber>> {
+	const EPSILON: f64 = 1e-5;
+
+	let mut paths = Vec::new();
+
 	for index in 0..vector.len() {
 		let element = vector.element(index).unwrap();
 		paths.push(to_bez_path(element, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
 	}
 
-	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
-		Ok(top) => top,
+	match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
+		Ok(top) => Some(top),
 		Err(e) => {
 			log::error!("Boolean operation failed while building topology: {e}");
-			list.push(row);
-			return list;
+			None
 		}
-	};
-	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
-		row.element_mut().append_subpath(subpath, false);
 	}
+}
 
-	list.push(row);
-	list
+fn append_linesweeper_contours(vector: &mut Vector, contours: &linesweeper::topology::Contours) {
+	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
+		vector.append_subpath(subpath, false);
+	}
 }
 
 fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
