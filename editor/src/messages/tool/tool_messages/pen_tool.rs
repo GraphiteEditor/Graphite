@@ -250,6 +250,7 @@ impl LayoutHolder for PenTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		if matches!(&message, ToolMessage::Pen(PenToolMessage::SelectionChanged))
+			&& self.fsm_state == PenToolFsmState::Ready
 			&& let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
 			&& self.options.line_weight != weight
 		{
