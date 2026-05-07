@@ -1,11 +1,16 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::registry::types::IntegerCount;
 use core_types::table::{Table, TableRow};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
-async fn image_color_palette(_: impl Ctx, image: Table<Raster<CPU>>, #[default(4)] count: IntegerCount) -> Table<Color> {
+async fn image_color_palette(
+	_: impl Ctx,
+	image: Table<Raster<CPU>>,
+	#[default(4)]
+	#[hard_min(1)]
+	count: u32,
+) -> Table<Color> {
 	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
@@ -13,8 +18,8 @@ async fn image_color_palette(_: impl Ctx, image: Table<Raster<CPU>>, #[default(4
 	let mut histogram = vec![0; (bins + 1.) as usize];
 	let mut color_bins = vec![Vec::new(); (bins + 1.) as usize];
 
-	for row in image.iter() {
-		for pixel in row.element.data.iter() {
+	for element in image.iter_element_values() {
+		for pixel in element.data.iter() {
 			let r = pixel.r() * GRID;
 			let g = pixel.g() * GRID;
 			let b = pixel.b() * GRID;

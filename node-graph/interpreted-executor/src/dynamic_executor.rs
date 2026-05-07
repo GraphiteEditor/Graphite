@@ -216,7 +216,7 @@ impl BorrowTree {
 	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		let mut new_nodes: Vec<_> = Vec::new();
-		// TODO: Problem: When an identity node is connected directly to an export the first input to identity node is not added to the proto network, while the second input is. This means the primary input does not have a type.
+		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());

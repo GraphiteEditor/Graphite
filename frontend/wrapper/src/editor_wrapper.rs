@@ -22,8 +22,8 @@ use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCata
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::graphene_hash::CacheHashWrapper;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::GradientStops;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -131,7 +131,7 @@ impl EditorWrapper {
 	// Sends a FrontendMessage to JavaScript
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			let new_hash = calculate_hash(image_data);
+			let new_hash = calculate_hash(&CacheHashWrapper(image_data));
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
 
 			if new_hash != prev_hash {
@@ -394,7 +394,7 @@ impl EditorWrapper {
 	pub fn load_document_content(&self, document_id: u64, document: String) {
 		let message = PersistentStateMessage::LoadDocument {
 			document_id: DocumentId(document_id),
-			document: document,
+			document,
 		};
 		self.dispatch(message);
 	}
@@ -403,6 +403,13 @@ impl EditorWrapper {
 	pub fn select_document(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::SelectDocument { document_id };
+		self.dispatch(message);
+	}
+
+	/// Rename the currently active document.
+	#[wasm_bindgen(js_name = renameDocument)]
+	pub fn rename_document(&self, new_name: String) {
+		let message = PortfolioMessage::RenameDocument { new_name };
 		self.dispatch(message);
 	}
 
@@ -487,13 +494,6 @@ impl EditorWrapper {
 			tabs,
 			active_tab_index,
 		};
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = resetPanelGroupSizes)]
-	pub fn reset_panel_group_sizes(&self, split_path: JsValue) {
-		let split_path: Vec<usize> = serde_wasm_bindgen::from_value(split_path).unwrap();
-		let message = PortfolioMessage::ResetPanelGroupSizes { split_path };
 		self.dispatch(message);
 	}
 
@@ -702,6 +702,20 @@ impl EditorWrapper {
 		Ok(())
 	}
 
+	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker>` opens).
+	#[wasm_bindgen(js_name = openColorPicker)]
+	pub fn open_color_picker(&self, initial_value: JsValue, allow_none: bool, disabled: bool) -> Result<(), JsValue> {
+		let initial_value = serde_wasm_bindgen::from_value(initial_value).map_err(|e| Error::new(&format!("Invalid initial picker value: {e}")))?;
+		self.dispatch(ColorPickerMessage::Open { initial_value, allow_none, disabled });
+		Ok(())
+	}
+
+	/// Tell the Rust color picker handler that the popover is closing.
+	#[wasm_bindgen(js_name = closeColorPicker)]
+	pub fn close_color_picker(&self) {
+		self.dispatch(ColorPickerMessage::Close);
+	}
+
 	/// Update the color of the currently-edited gradient stop
 	#[wasm_bindgen(js_name = updateGradientStopColor)]
 	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
@@ -774,6 +788,7 @@ impl EditorWrapper {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
+			network_path: Vec::new(),
 			alias: name,
 			skip_adding_history_step: false,
 		};
@@ -911,7 +926,7 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		let message = NodeGraphMessage::ToggleVisibility { node_id, network_path: Vec::new() };
 		self.dispatch(message);
 	}
 
@@ -930,15 +945,18 @@ impl EditorWrapper {
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, node_id: u64) {
-		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
+		let message = NodeGraphMessage::ToggleLocked {
+			node_id: NodeId(node_id),
+			network_path: Vec::new(),
+		};
 		self.dispatch(message);
 	}
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, instance_path: &[u64], recursive: bool) {
-		let instance_path = instance_path.iter().map(|&id| NodeId(id)).collect();
-		let message = DocumentMessage::ToggleLayerExpansion { instance_path, recursive };
+	pub fn toggle_layer_expansion(&self, tree_path: &[u64], recursive: bool) {
+		let tree_path = tree_path.iter().map(|&id| NodeId(id)).collect();
+		let message = DocumentMessage::ToggleLayerExpansion { tree_path, recursive };
 		self.dispatch(message);
 	}
 
@@ -993,27 +1011,4 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 		return None;
 	};
 	Some(real)
-}
-
-#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
-pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
-	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
-	GradientStops { position, midpoint, color }
-		.interpolated_samples()
-		.into_iter()
-		.map(|(position, color, _)| {
-			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
-			let percent = ((position * 100.) * 1e2).round() / 1e2;
-			format!("#{hex} {percent}%")
-		})
-		.collect::<Vec<_>>()
-		.join(", ")
-}
-
-#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
-pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> JsValue {
-	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
-	let color = GradientStops { position, midpoint, color }.evaluate(t);
-
-	serde_wasm_bindgen::to_value(&color).unwrap()
 }

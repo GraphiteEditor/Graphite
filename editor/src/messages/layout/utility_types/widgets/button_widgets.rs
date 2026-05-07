@@ -190,6 +190,11 @@ pub struct ColorInput {
 	/// WARNING: The colors are gamma, not linear!
 	#[widget_builder(constructor)]
 	pub value: FillChoice,
+	/// CSS `linear-gradient(...)` (or solid-color stand-in) for the swatch's `background-image`. Auto-populated from `value` at layout-send time.
+	/// `None` when `value` is `FillChoice::None`, in which case the frontend uses its "none" fallback styling.
+	#[serde(rename = "chosenGradient")]
+	#[widget_builder(skip)]
+	pub chosen_gradient: Option<String>,
 	#[serde(rename = "allowNone")]
 	#[derivative(Default(value = "true"))]
 	pub allow_none: bool,

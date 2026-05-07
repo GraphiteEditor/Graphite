@@ -21,12 +21,12 @@ async fn gradient_map<T: Adjust<Color>>(
 	gradient: Table<GradientStops>,
 	reverse: bool,
 ) -> T {
-	let Some(row) = gradient.get(0) else { return image };
+	let Some(gradient) = gradient.element(0) else { return image };
 
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		row.element.evaluate(intensity as f64).to_linear_srgb()
+		gradient.evaluate(intensity as f64).to_linear_srgb()
 	});
 
 	image

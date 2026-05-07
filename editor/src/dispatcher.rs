@@ -21,6 +21,7 @@ pub struct DispatcherMessageHandlers {
 	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	clipboard_message_handler: ClipboardMessageHandler,
+	color_picker_message_handler: ColorPickerMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -164,6 +165,7 @@ impl Dispatcher {
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
+				Message::ColorPicker(message) => self.message_handlers.color_picker_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}

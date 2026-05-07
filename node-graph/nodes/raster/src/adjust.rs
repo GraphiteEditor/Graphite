@@ -18,8 +18,8 @@ mod adjust_std {
 
 	impl Adjust<Color> for Table<Raster<CPU>> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for row in self.iter_mut() {
-				for color in row.element.data_mut().data.iter_mut() {
+			for element in self.iter_element_values_mut() {
+				for color in element.data_mut().data.iter_mut() {
 					*color = map_fn(color);
 				}
 			}
@@ -27,15 +27,15 @@ mod adjust_std {
 	}
 	impl Adjust<Color> for Table<Color> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for row in self.iter_mut() {
-				*row.element = map_fn(row.element);
+			for element in self.iter_element_values_mut() {
+				*element = map_fn(element);
 			}
 		}
 	}
 	impl Adjust<Color> for Table<GradientStops> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for row in self.iter_mut() {
-				row.element.adjust(&map_fn);
+			for element in self.iter_element_values_mut() {
+				element.adjust(&map_fn);
 			}
 		}
 	}

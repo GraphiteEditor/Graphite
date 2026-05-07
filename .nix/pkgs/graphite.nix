@@ -50,7 +50,7 @@ let
         pkgs.pkg-config
         pkgs.lld
       ];
-      env = deps.cef.env;
+      env.CEF_PATH = self.packages.${system}.graphite-cef;
       buildPhase =
         let
           profile = if dev then "dev" else "release";
@@ -82,7 +82,6 @@ deps.crane.lib.buildPackage (
       pkgs.pkg-config
       pkgs.lld
       pkgs.nodejs
-      pkgs.nodePackages.npm
       pkgs.binaryen
       pkgs.wasm-bindgen-cli_0_2_100
       pkgs.wasm-pack
@@ -98,10 +97,11 @@ deps.crane.lib.buildPackage (
     npmConfigScript = "setup";
     makeCacheWritable = true;
 
-    env = deps.cef.env // {
+    env = {
       RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
       GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
       GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
+      CEF_PATH = self.packages.${system}.graphite-cef;
     };
 
     postPatch = ''
@@ -150,8 +150,9 @@ deps.crane.lib.buildPackage (
       remove-references-to -t "${common.cargoVendorDir}" $out/bin/graphite
 
       patchelf \
-        --set-rpath "${pkgs.lib.makeLibraryPath libs}:${deps.cef.env.CEF_PATH}" \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs}:${self.packages.${system}.graphite-cef}" \
         --add-needed libGL.so \
+        --add-needed libEGL.so \
         $out/bin/graphite
     '';
 

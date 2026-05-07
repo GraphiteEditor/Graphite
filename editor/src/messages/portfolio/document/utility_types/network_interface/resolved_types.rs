@@ -53,15 +53,9 @@ impl TypeSource {
 		};
 		match self.compiled_nested_type() {
 			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
-				TaggedValue::U32(_)
-				| TaggedValue::U64(_)
-				| TaggedValue::F32(_)
-				| TaggedValue::F64(_)
-				| TaggedValue::DVec2(_)
-				| TaggedValue::F64Array4(_)
-				| TaggedValue::VecF64(_)
-				| TaggedValue::VecDVec2(_)
-				| TaggedValue::DAffine2(_) => FrontendGraphDataType::Number,
+				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => {
+					FrontendGraphDataType::Number
+				}
 				TaggedValue::Artboard(_) => FrontendGraphDataType::Artboard,
 				TaggedValue::Graphic(_) => FrontendGraphDataType::Graphic,
 				TaggedValue::Raster(_) => FrontendGraphDataType::Raster,
@@ -242,8 +236,8 @@ impl NodeNetworkInterface {
 			}
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
-					// The compiler removes the identity node, so it's expected to be absent from the registry
-					if proto_node_identifier != &graphene_std::ops::identity::IDENTIFIER {
+					// The compiler removes the passthrough node, so it's expected to be absent from the registry
+					if proto_node_identifier != &graphene_std::ops::passthrough::IDENTIFIER {
 						log::error!("Proto node `{proto_node_identifier:?}` not found in the node registry, in potential_valid_input_types");
 					}
 					return Vec::new();

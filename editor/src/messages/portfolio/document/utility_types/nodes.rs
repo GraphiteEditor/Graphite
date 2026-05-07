@@ -159,7 +159,7 @@ impl SelectedNodes {
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-/// Tracks which layer instances are collapsed in the Layers panel. Each entry is an "instance path":
+/// Tracks which layer occurrences are collapsed in the Layers panel. Each entry is a "tree path":
 /// the sequence of ancestor node IDs from the root down to the collapsed layer. This allows the same
-/// layer appearing under multiple parents to have independent expand/collapse state per instance.
+/// layer appearing under multiple parents to have independent expand/collapse state per occurrence.
 pub struct CollapsedLayers(pub Vec<Vec<NodeId>>);

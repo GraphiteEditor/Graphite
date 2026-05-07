@@ -44,6 +44,7 @@ pub enum FreehandToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
 	Abort,
+	SelectionChanged,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -161,6 +162,17 @@ impl LayoutHolder for FreehandTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::SelectionChanged)) {
+			if self.fsm_state == FreehandToolFsmState::Ready
+				&& let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
+				&& self.options.line_weight != weight
+			{
+				self.options.line_weight = weight;
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
+			return;
+		}
+
 		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
@@ -171,7 +183,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 				self.options.fill.color_type = ToolColorType::Custom;
 			}
 			FreehandOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-			FreehandOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			FreehandOptionsUpdate::LineWeight(line_weight) => {
+				self.options.line_weight = line_weight;
+				graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, context.document, responses);
+			}
 			FreehandOptionsUpdate::StrokeColor(color) => {
 				self.options.stroke.custom_color = color;
 				self.options.stroke.color_type = ToolColorType::Custom;
@@ -208,6 +223,7 @@ impl ToolTransition for FreehandTool {
 		EventToMessageMap {
 			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
+			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),
 			..Default::default()
 		}
@@ -450,7 +466,7 @@ mod test_freehand {
 	}
 
 	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
-		assert_eq!(vector_and_transform_list.len(), 1, "There should be one row of Vector geometry");
+		assert_eq!(vector_and_transform_list.len(), 1, "There should be one item of Vector geometry");
 
 		let (vector, transform) = vector_and_transform_list
 			.iter()

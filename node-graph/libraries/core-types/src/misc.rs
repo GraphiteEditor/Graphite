@@ -67,8 +67,8 @@ pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 	use no_std_types::color::Color;
 	use serde::Deserialize;
 
-	#[derive(serde::Serialize, serde::Deserialize)]
-	#[serde(untagged)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum ColorFormat {
 		Color(Color),
 		OptionalColor(Option<Color>),
@@ -85,5 +85,23 @@ pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 			}
 		}
 		ColorFormat::ColorTable(color_table) => color_table,
+	})
+}
+
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_vec_f64_to_table<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<crate::table::Table<f64>, D::Error> {
+	use crate::table::{Table, TableRow};
+	use serde::Deserialize;
+
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
+	enum F64TableFormat {
+		VecF64(Vec<f64>),
+		F64Table(Table<f64>),
+	}
+
+	Ok(match F64TableFormat::deserialize(deserializer)? {
+		F64TableFormat::VecF64(values) => values.into_iter().map(TableRow::new_from_element).collect(),
+		F64TableFormat::F64Table(table) => table,
 	})
 }

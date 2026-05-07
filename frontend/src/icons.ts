@@ -199,6 +199,15 @@ import StackLower from "/../branding/assets/icon-16px-solid/stack-lower.svg";
 import StackRaise from "/../branding/assets/icon-16px-solid/stack-raise.svg";
 import StackReverse from "/../branding/assets/icon-16px-solid/stack-reverse.svg";
 import Stack from "/../branding/assets/icon-16px-solid/stack.svg";
+import TextAlignCenter from "/../branding/assets/icon-16px-solid/text-align-center.svg";
+import TextAlignLeft from "/../branding/assets/icon-16px-solid/text-align-left.svg";
+import TextAlignRight from "/../branding/assets/icon-16px-solid/text-align-right.svg";
+import TextAlignSpineAway from "/../branding/assets/icon-16px-solid/text-align-spine-away.svg";
+import TextAlignSpineTowards from "/../branding/assets/icon-16px-solid/text-align-spine-towards.svg";
+import TextJustifyAll from "/../branding/assets/icon-16px-solid/text-justify-all.svg";
+import TextJustifyCenter from "/../branding/assets/icon-16px-solid/text-justify-center.svg";
+import TextJustifyLeft from "/../branding/assets/icon-16px-solid/text-justify-left.svg";
+import TextJustifyRight from "/../branding/assets/icon-16px-solid/text-justify-right.svg";
 import TiltReset from "/../branding/assets/icon-16px-solid/tilt-reset.svg";
 import Tilt from "/../branding/assets/icon-16px-solid/tilt.svg";
 import TransformationGrab from "/../branding/assets/icon-16px-solid/transformation-grab.svg";
@@ -318,6 +327,15 @@ const SOLID_16PX = {
 	StackLower: { svg: StackLower, size: 16 },
 	StackRaise: { svg: StackRaise, size: 16 },
 	StackReverse: { svg: StackReverse, size: 16 },
+	TextAlignCenter: { svg: TextAlignCenter, size: 16 },
+	TextAlignLeft: { svg: TextAlignLeft, size: 16 },
+	TextAlignRight: { svg: TextAlignRight, size: 16 },
+	TextAlignSpineAway: { svg: TextAlignSpineAway, size: 16 },
+	TextAlignSpineTowards: { svg: TextAlignSpineTowards, size: 16 },
+	TextJustifyAll: { svg: TextJustifyAll, size: 16 },
+	TextJustifyCenter: { svg: TextJustifyCenter, size: 16 },
+	TextJustifyLeft: { svg: TextJustifyLeft, size: 16 },
+	TextJustifyRight: { svg: TextJustifyRight, size: 16 },
 	Tilt: { svg: Tilt, size: 16 },
 	TiltReset: { svg: TiltReset, size: 16 },
 	TransformationGrab: { svg: TransformationGrab, size: 16 },

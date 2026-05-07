@@ -70,8 +70,7 @@ impl PerPixelAdjustGraphicsPipeline {
 
 		let fragment_name = &name;
 		let fragment_name = &fragment_name[(fragment_name.find("::").unwrap() + 2)..];
-		// TODO workaround to naga removing `:`
-		let fragment_name = fragment_name.replace(":", "");
+		let fragment_name = fragment_name.replace("::", "_");
 		let shader_module = device.create_shader_module(ShaderModuleDescriptor {
 			label: Some(&format!("PerPixelAdjust {name} wgsl shader")),
 			source: ShaderSource::Wgsl(Cow::Borrowed(info.wgsl_shader)),
@@ -118,7 +117,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				label: Some(&format!("PerPixelAdjust {name} BindGroupLayout 0")),
 				entries,
 			})],
-			push_constant_ranges: &[],
+			..Default::default()
 		});
 
 		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -141,6 +140,7 @@ impl PerPixelAdjustGraphicsPipeline {
 			},
 			depth_stencil: None,
 			multisample: Default::default(),
+			multiview_mask: None,
 			fragment: Some(FragmentState {
 				module: &shader_module,
 				entry_point: Some(&fragment_name),
@@ -151,7 +151,6 @@ impl PerPixelAdjustGraphicsPipeline {
 					write_mask: Default::default(),
 				})],
 			}),
-			multiview: None,
 			cache: None,
 		});
 		Self {
@@ -169,10 +168,10 @@ impl PerPixelAdjustGraphicsPipeline {
 		let mut cmd = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some(&format!("{name} cmd encoder")),
 		});
-		let out = textures
-			.iter()
-			.map(|instance| {
-				let tex_in = &instance.element.texture;
+		let out = (0..textures.len())
+			.map(|index| {
+				let element = textures.element(index).unwrap();
+				let tex_in = &element.texture;
 				let view_in = tex_in.create_view(&TextureViewDescriptor::default());
 				let format = tex_in.format();
 
@@ -228,20 +227,14 @@ impl PerPixelAdjustGraphicsPipeline {
 						},
 						depth_slice: None,
 					})],
-					depth_stencil_attachment: None,
-					timestamp_writes: None,
-					occlusion_query_set: None,
+					..Default::default()
 				});
 				rp.set_pipeline(&self.pipeline);
 				rp.set_bind_group(0, Some(&bind_group), &[]);
 				rp.draw(0..3, 0..1);
 
-				TableRow {
-					element: Raster::new(GPU { texture: tex_out }),
-					transform: *instance.transform,
-					alpha_blending: *instance.alpha_blending,
-					source_node_id: *instance.source_node_id,
-				}
+				let attributes = textures.clone_row_attributes(index);
+				TableRow::from_parts(Raster::new(GPU { texture: tex_out }), attributes)
 			})
 			.collect::<Table<_>>();
 		context.queue.submit([cmd.finish()]);

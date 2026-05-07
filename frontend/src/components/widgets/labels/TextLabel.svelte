@@ -83,6 +83,7 @@
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
+	on:dblclick
 	bind:this={self}
 >
 	<slot />

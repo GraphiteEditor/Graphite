@@ -1,76 +1,11 @@
 use core::fmt::Display;
-use core::hash::{Hash, Hasher};
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
-#[cfg(not(feature = "std"))]
-use num_traits::float::Float;
-
-#[derive(Debug, Clone, Copy, PartialEq, BufferStruct)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", serde(default))]
-pub struct AlphaBlending {
-	pub blend_mode: BlendMode,
-	pub opacity: f32,
-	pub fill: f32,
-	pub clip: bool,
-}
-impl Default for AlphaBlending {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-impl Hash for AlphaBlending {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.opacity.to_bits().hash(state);
-		self.fill.to_bits().hash(state);
-		self.blend_mode.hash(state);
-		self.clip.hash(state);
-	}
-}
-impl Display for AlphaBlending {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		let round = |x: f32| (x * 1e3).round() / 1e3;
-		write!(
-			f,
-			"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
-			self.blend_mode,
-			round(self.opacity * 100.),
-			round(self.fill * 100.),
-			if self.clip { "Yes" } else { "No" }
-		)
-	}
-}
-
-impl AlphaBlending {
-	pub const fn new() -> Self {
-		Self {
-			opacity: 1.,
-			fill: 1.,
-			blend_mode: BlendMode::Normal,
-			clip: false,
-		}
-	}
-
-	pub fn lerp(&self, other: &Self, t: f32) -> Self {
-		let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
-
-		AlphaBlending {
-			opacity: lerp(self.opacity, other.opacity, t),
-			fill: lerp(self.fill, other.fill, t),
-			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
-			clip: if t < 0.5 { self.clip } else { other.clip },
-		}
-	}
-
-	pub fn opacity(&self, mask: bool) -> f32 {
-		self.opacity * if mask { 1. } else { self.fill }
-	}
-}
 
 #[repr(i32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, BufferStruct, FromPrimitive, IntoPrimitive)]
 pub enum BlendMode {
 	// Basic group

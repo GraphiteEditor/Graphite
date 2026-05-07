@@ -12,9 +12,9 @@
 	<tbody>
 		{#each widgetData.tableWidgets as row}
 			<tr>
-				{#each row as cell}
+				{#each row as widget}
 					<td colspan={row.length < columns ? columns - row.length + 1 : undefined}>
-						<WidgetSpan direction="row" widgets={[cell]} {layoutTarget} narrow={true} />
+						<WidgetSpan direction="row" widgets={[widget]} {layoutTarget} narrow={true} />
 					</td>
 				{/each}
 			</tr>

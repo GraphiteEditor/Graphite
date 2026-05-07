@@ -24,7 +24,7 @@ async fn blur(
 	image_frame
 		.into_iter()
 		.map(|mut row| {
-			let image = row.element.clone();
+			let image = row.element().clone();
 
 			// Run blur algorithm
 			let blurred_image = if radius < 0.1 {
@@ -36,7 +36,7 @@ async fn blur(
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
-			row.element = blurred_image;
+			*row.element_mut() = blurred_image;
 			row
 		})
 		.collect()
@@ -56,7 +56,7 @@ async fn median_filter(
 	image_frame
 		.into_iter()
 		.map(|mut row| {
-			let image = row.element.clone();
+			let image = row.element().clone();
 
 			// Apply median filter
 			let filtered_image = if radius < 0.5 {
@@ -66,7 +66,7 @@ async fn median_filter(
 				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32))
 			};
 
-			row.element = filtered_image;
+			*row.element_mut() = filtered_image;
 			row
 		})
 		.collect()

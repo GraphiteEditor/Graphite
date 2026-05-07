@@ -4,7 +4,6 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -14,7 +13,6 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
@@ -583,6 +581,18 @@ impl SelectToolData {
 	}
 }
 
+/// Draws the hover/selection outline for a layer. When a Path node is upstream, mirrors the Path tool's view
+/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); otherwise uses the layer's recorded outlines.
+fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
+	if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
+		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		overlay_context.outline(targets.iter(), layer_to_viewport, color);
+	} else {
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+	}
+}
+
 /// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
 /// This uses some rather confusing logic to determine what transform that should be.
 pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
@@ -628,10 +638,10 @@ impl Fsm for SelectToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
-						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
+						draw_layer_outline(&mut overlay_context, document, layer, None);
 
-						if is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+						if document.metadata().is_text_layer(layer) {
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &cached_data.font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
@@ -669,14 +679,13 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() && !document.network_interface.is_artboard(&layer.to_node(), &[]) {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
 										overlay_context.quad(Quad::from_box(bounds), color, None);
 									}
 								} else {
-									overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+									draw_layer_outline(&mut overlay_context, document, layer, color);
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -956,8 +965,7 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
+							draw_layer_outline(&mut overlay_context, document, layer, None);
 						}
 					}
 
@@ -1430,9 +1438,15 @@ impl Fsm for SelectToolFsmState {
 								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
 								NestedSelectionBehavior::Shallowest if !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, false, true),
 								_ => {
-									responses.add(DocumentMessage::DeselectAllLayers);
-									tool_data.layers_dragging.clear();
-									drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									// Narrow multi-selection to just the clicked layer (no-op if it's already the sole selection)
+									let currently_selected = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+									let already_only_selection = currently_selected.as_slice() == [intersection];
+
+									if !already_only_selection {
+										responses.add(DocumentMessage::DeselectAllLayers);
+										tool_data.layers_dragging.clear();
+										drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									}
 								}
 							}
 
@@ -1568,7 +1582,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+					if selected_layers.next().is_none() && document.metadata().is_text_layer(layer) {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -1817,7 +1831,10 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	}
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
-	tool_data.layers_dragging.extend(vec![new_selected]);
+	// Duplicates cause `SelectedNodesSet` to carry the layer twice, breaking the Data panel's single-selection check in `node_to_inspect`
+	if !tool_data.layers_dragging.contains(&new_selected) {
+		tool_data.layers_dragging.push(new_selected);
+	}
 	tool_data.layers_dragging.retain(|&selected_layer| !selected_layer.is_child_of(metadata, &new_selected));
 	if remove {
 		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
@@ -1879,7 +1896,10 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 	);
 
 	if !remove {
-		tool_data.layers_dragging.extend(vec![layer]);
+		// Duplicates cause `SelectedNodesSet` to carry the layer twice, breaking the Data panel's single-selection check in `node_to_inspect`
+		if !tool_data.layers_dragging.contains(&layer) {
+			tool_data.layers_dragging.push(layer);
+		}
 	} else {
 		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
 	}
@@ -1922,7 +1942,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 /// Called when a double click on a layer in deep select mode.
 /// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
-	if is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+	if network_interface.document_metadata().is_text_layer(layer) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
 	}

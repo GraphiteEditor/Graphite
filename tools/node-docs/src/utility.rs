@@ -34,6 +34,8 @@ pub fn category_description(category: &str) -> &str {
 		"Raster: Pattern" => "Nodes in this category generate procedural raster patterns, fractals, textures, and noise.",
 		"Raster" => "Nodes in this category deal with fundamental raster image operations.",
 		"Text" => "Nodes in this category support the manipulation, formatting, and rendering of text strings.",
+		"Text: Regex" => "Nodes in this category perform string operations involving regular expressions, such as pattern matching and replacement.",
+		"Text: JSON" => "Nodes in this category perform string operations involving JSON data, such as parsing and stringifying.",
 		"Value" => "Nodes in this category supply data values of common types such as numbers, colors, booleans, and strings.",
 		"Vector: Measure" => "Nodes in this category perform measurements and analysis on vector graphics, such as length/area calculations, path traversal, and hit testing.",
 		"Vector: Modifier" => "Nodes in this category modify the geometry of vector graphics, such as boolean operations, smoothing, and morphing.",

@@ -26,8 +26,8 @@ impl super::NativeWindow for NativeWindowImpl {
 	}
 
 	fn new(_window: &dyn Window, app_event_scheduler: AppEventScheduler) -> Self {
+		app::setup(app_event_scheduler.clone());
 		let menu = menu::Menu::new(app_event_scheduler);
-
 		NativeWindowImpl { menu }
 	}
 
