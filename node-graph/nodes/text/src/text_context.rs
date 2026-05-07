@@ -115,7 +115,9 @@ impl TextContext {
 
 		for line in layout.lines() {
 			let range = line.text_range();
-			let is_last_para_line = range.end == text.len() || text.get(range.clone()).map(|s| s.ends_with('\n')).unwrap_or(false) || text.as_bytes().get(range.end) == Some(&b'\n');
+			// Parley always includes a hard-break `\n` as the last byte of the preceding line's range, so the line
+			// is at the end of a paragraph if it's the very last line of the buffer or its text ends with `\n`.
+			let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
 
 			let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
 				let metrics = line.metrics();
@@ -123,9 +125,11 @@ impl TextContext {
 				let free_space = alignment_width - content_advance;
 
 				match correction {
-					parley::Alignment::Center => (free_space as f64 * 0.5, 0_f32),
-					parley::Alignment::Right => (free_space as f64, 0_f32),
+					parley::Alignment::Center => (free_space * 0.5, 0.),
+					parley::Alignment::Right => (free_space, 0.),
 					parley::Alignment::Justify => {
+						// Exclude trailing-whitespace clusters from the divisor so the redistribution stretches only the internal spaces.
+						// Parley's `trailing_whitespace` is in advance units, not bytes, so we re-derive the byte boundary here to filter cluster ranges.
 						let line_text = text.get(range.clone()).unwrap_or("");
 						let trailing_len = line_text.len() - line_text.trim_end().len();
 						let visible_end_index = range.end - trailing_len;
@@ -135,12 +139,12 @@ impl TextContext {
 							.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
 							.sum();
 						let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
-						(0_f64, extra)
+						(0., extra)
 					}
-					_ => (0_f64, 0_f32),
+					_ => (0., 0.),
 				}
 			} else {
-				(0_f64, 0_f32)
+				(0., 0.)
 			};
 
 			for item in line.items() {

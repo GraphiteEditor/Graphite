@@ -31,31 +31,31 @@ pub use vector_types;
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]
-	Left,
-	Center,
-	Right,
-	#[label("Justify Left")]
+	AlignLeft,
+	AlignCenter,
+	AlignRight,
 	JustifyLeft,
-	#[label("Justify Center")]
 	JustifyCenter,
-	#[label("Justify Right")]
 	JustifyRight,
-	#[label("Justify All")]
 	JustifyAll,
 }
 
 impl From<TextAlign> for parley::Alignment {
 	fn from(val: TextAlign) -> Self {
 		match val {
-			TextAlign::Left => parley::Alignment::Left,
-			TextAlign::Center => parley::Alignment::Center,
-			TextAlign::Right => parley::Alignment::Right,
-			TextAlign::JustifyLeft | TextAlign::JustifyCenter | TextAlign::JustifyRight | TextAlign::JustifyAll => parley::Alignment::Justify,
+			TextAlign::AlignLeft => parley::Alignment::Left,
+			TextAlign::AlignCenter => parley::Alignment::Center,
+			TextAlign::AlignRight => parley::Alignment::Right,
+			_ => parley::Alignment::Justify,
 		}
 	}
 }
 
 impl TextAlign {
+	/// What `parley::Alignment` to apply as a post-correction to the last line of a paragraph, or `None` if parley's default already handles it.
+	///
+	/// `JustifyLeft` returns `None` because parley already left-aligns the last line of a `Justify` layout. The other justify modes need
+	/// the last line shifted (`Center`/`Right`) or its inter-word spaces redistributed (`Justify` / `JustifyAll`).
 	pub fn last_line_correction(self) -> Option<parley::Alignment> {
 		match self {
 			Self::JustifyCenter => Some(parley::Alignment::Center),
@@ -63,10 +63,6 @@ impl TextAlign {
 			Self::JustifyAll => Some(parley::Alignment::Justify),
 			_ => None,
 		}
-	}
-
-	pub fn is_justify(self) -> bool {
-		matches!(self, Self::JustifyLeft | Self::JustifyCenter | Self::JustifyRight | Self::JustifyAll)
 	}
 }
 

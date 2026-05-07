@@ -19,14 +19,9 @@ pub enum TextAlign {
 	Left,
 	Center,
 	Right,
-	#[label("Justify Left")]
+	#[label("Justify")]
 	JustifyLeft,
-	#[label("Justify Center")]
-	JustifyCenter,
-	#[label("Justify Right")]
-	JustifyRight,
-	#[label("Justify All")]
-	JustifyAll,
+	// TODO: JustifyCenter, JustifyRight, JustifyAll
 }
 
 impl From<TextAlign> for parley::Alignment {
@@ -35,23 +30,8 @@ impl From<TextAlign> for parley::Alignment {
 			TextAlign::Left => parley::Alignment::Left,
 			TextAlign::Center => parley::Alignment::Center,
 			TextAlign::Right => parley::Alignment::Right,
-			TextAlign::JustifyLeft | TextAlign::JustifyCenter | TextAlign::JustifyRight | TextAlign::JustifyAll => parley::Alignment::Justify,
+			TextAlign::JustifyLeft => parley::Alignment::Justify,
 		}
-	}
-}
-
-impl TextAlign {
-	pub fn last_line_correction(self) -> Option<parley::Alignment> {
-		match self {
-			Self::JustifyCenter => Some(parley::Alignment::Center),
-			Self::JustifyRight => Some(parley::Alignment::Right),
-			Self::JustifyAll => Some(parley::Alignment::Justify),
-			_ => None,
-		}
-	}
-
-	pub fn is_justify(self) -> bool {
-		matches!(self, Self::JustifyLeft | Self::JustifyCenter | Self::JustifyRight | Self::JustifyAll)
 	}
 }
 

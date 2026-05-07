@@ -204,9 +204,9 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		})
 		.widget_instance();
 	let align_entries: Vec<_> = [
-		TextAlign::Left,
-		TextAlign::Center,
-		TextAlign::Right,
+		TextAlign::AlignLeft,
+		TextAlign::AlignCenter,
+		TextAlign::AlignRight,
 		TextAlign::JustifyLeft,
 		TextAlign::JustifyCenter,
 		TextAlign::JustifyRight,
