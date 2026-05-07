@@ -23,6 +23,10 @@ pub enum BooleanOperation {
 	Intersect,
 	#[icon("BooleanDifference")]
 	Difference,
+	#[icon("BooleanSubtractFront")]
+	Trim,
+	#[icon("BooleanSubtractFront")]
+	Crop,
 }
 
 /// Represents different geometric interpretations of calculating the centroid (center of mass).
