@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+	<mime-type type="application/graphite+json">
+		<comment>Graphite Document</comment>
+		<sub-class-of type="application/json"/>
+		<glob pattern="*.graphite"/>
+		<icon name="art.graphite.Graphite"/>
+	</mime-type>
+</mime-info>
