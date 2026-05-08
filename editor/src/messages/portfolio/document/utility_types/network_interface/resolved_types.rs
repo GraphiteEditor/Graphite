@@ -57,7 +57,7 @@ impl TypeSource {
 		};
 		match self.compiled_nested_type() {
 			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
-				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => {
+				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => {
 					FrontendGraphDataType::Number
 				}
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,

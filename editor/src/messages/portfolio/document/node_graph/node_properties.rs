@@ -773,7 +773,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			.map(str::parse::<f64>)
 			.collect::<Result<Vec<_>, _>>()
 			.ok()
-			.map(|values| TaggedValue::F64Table(values.into_iter().map(graphene_std::table::TableRow::new_from_element).collect()))
+			.map(TaggedValue::F64Array)
 	};
 
 	let Some(document_node) = document_node else { return Vec::new() };
@@ -781,11 +781,11 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(TaggedValue::F64Table(table)) = &input.as_non_exposed_value() {
+	if let Some(TaggedValue::F64Array(values)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
-				.value(table.iter_element_values().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.value(values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
 				.widget_instance(),
 		])
@@ -2202,12 +2202,12 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		};
 		let uniform_val = match input.as_non_exposed_value() {
 			Some(TaggedValue::F64(x)) => *x,
-			Some(TaggedValue::F64Table(table)) => table.iter_element_values().copied().next().unwrap_or(0.),
+			Some(TaggedValue::F64Array(values)) => values.first().copied().unwrap_or(0.),
 			_ => 0.,
 		};
 		let individual_val = match input.as_non_exposed_value() {
 			Some(&TaggedValue::F64(x)) => vec![x; 4],
-			Some(TaggedValue::F64Table(table)) => table.iter_element_values().copied().collect(),
+			Some(TaggedValue::F64Array(values)) => values.clone(),
 			_ => vec![0.; 4],
 		};
 
@@ -2245,7 +2245,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: CornerRadiusInput::<f64>::INDEX,
-						value: TaggedValue::F64Table(individual_val_for_switch.iter().copied().map(graphene_std::table::TableRow::new_from_element).collect()),
+						value: TaggedValue::F64Array(individual_val_for_switch.clone()),
 					}
 					.into(),
 				]),
@@ -2263,7 +2263,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 					.map(str::parse::<f64>)
 					.collect::<Result<Vec<f64>, _>>()
 					.ok()
-					.map(|values| TaggedValue::F64Table(values.into_iter().take(4).map(graphene_std::table::TableRow::new_from_element).collect()))
+					.map(|values| TaggedValue::F64Array(values.into_iter().take(4).collect()))
 			};
 			TextInput::default()
 				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
@@ -2674,7 +2674,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	};
 
 	let has_dash_lengths = match &document_node.inputs[DashLengthsInput::<Table<f64>>::INDEX].as_value() {
-		Some(TaggedValue::F64Table(table)) => table.is_empty(),
+		Some(TaggedValue::F64Array(values)) => values.is_empty(),
 		_ => true,
 	};
 	let miter_limit_disabled = join_value != &StrokeJoin::Miter;

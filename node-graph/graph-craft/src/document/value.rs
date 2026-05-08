@@ -32,11 +32,24 @@ macro_rules! tagged_value {
 		#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 		#[allow(clippy::large_enum_variant)] // TODO(TrueDoctor): Properly solve this disparity between the size of the largest and next largest variants
 		pub enum TaggedValue {
+			// ===============
+			// MANUAL VARIANTS
+			// ===============
 			None,
 			/// Stores a type, from which its `Default::default()` value can be obtained, rather than storing an actual type's value.
 			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
 			TypeDefault(TypeDescriptor),
+			/// Stored compactly as a `Vec<f64>`; materializes as `Table<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
+			F64Array(Vec<f64>),
+			// =======================
+			// AUTO-GENERATED VARIANTS
+			// =======================
 			$( $(#[$meta] ) *$identifier( $ty ), )*
+			// =======================
+			// NON-SERIALIZED VARIANTS
+			// =======================
 			#[serde(skip)]
 			RenderOutput(RenderOutput),
 			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes a `Table<NodeId>` at runtime via `to_dynany`/`to_any` during graph flattening.
@@ -55,6 +68,7 @@ macro_rules! tagged_value {
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::NodeIdPath(path) => path.hash(state),
+					Self::F64Array(values) => values.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
@@ -64,6 +78,9 @@ macro_rules! tagged_value {
 			/// Converts to a Box<dyn DynAny>
 			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					Self::None => Box::new(()),
 					Self::TypeDefault(td) => {
 						// Construct the actual default for types without a `TaggedValue` variant directly, instead of going through
@@ -76,7 +93,17 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<String>>() { return Box::new(Table::<String>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
+					Self::F64Array(values) => {
+						let table: Table<f64> = values.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Box::new(table)
+					}
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( Self::$identifier(x) => Box::new(x), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
 					Self::RenderOutput(x) => Box::new(x),
 					Self::NodeIdPath(path) => {
 						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
@@ -89,6 +116,9 @@ macro_rules! tagged_value {
 			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
 			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
 				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					Self::None => Arc::new(()),
 					Self::TypeDefault(td) => {
 						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
@@ -100,7 +130,17 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<String>>() { return Arc::new(Table::<String>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
+					Self::F64Array(values) => {
+						let table: Table<f64> = values.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Arc::new(table)
+					}
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( Self::$identifier(x) => Arc::new(x), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::NodeIdPath(path) => {
 						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
@@ -113,9 +153,19 @@ macro_rules! tagged_value {
 			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
 			pub fn ty(&self) -> Type {
 				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
+					Self::F64Array(_) => concrete!(Table<f64>),
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( Self::$identifier(_) => concrete!($ty), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::NodeIdPath(_) => concrete!(Table<NodeId>),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
@@ -128,8 +178,17 @@ macro_rules! tagged_value {
 				use std::any::TypeId;
 
 				match DynAny::type_id(input.as_ref()) {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
@@ -141,8 +200,17 @@ macro_rules! tagged_value {
 				use std::any::TypeId;
 
 				match input.type_id() {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", std::any::type_name_of_val(input))),
 				}
@@ -163,6 +231,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Color>>() { return Some(TaggedValue::Color(Table::new_from_element(Color::default()))) }
 						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::GradientTable(Table::new_from_element(GradientStops::default()))) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
+						if name == std::any::type_name::<Table<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						if name == std::any::type_name::<Table<Graphic>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
@@ -172,9 +241,7 @@ macro_rules! tagged_value {
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
-					Type::Future(output) => {
-						TaggedValue::from_type(output)
-					}
+					Type::Future(output) => TaggedValue::from_type(output),
 				}
 			}
 
@@ -184,9 +251,19 @@ macro_rules! tagged_value {
 
 			pub fn to_debug_string(&self) -> String {
 				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					Self::None => "()".to_string(),
 					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
+					Self::F64Array(values) => format!("F64Array({values:?})"),
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( Self::$identifier(x) => format!("{:?}", x), )*
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
@@ -220,9 +297,6 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
-	F64Table(Table<f64>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
