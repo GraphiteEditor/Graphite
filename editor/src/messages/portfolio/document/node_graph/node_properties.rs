@@ -17,6 +17,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graph_craft::{Type, concrete};
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
+use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -217,6 +218,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<Table<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<Table<BrushStroke>>() => brush_strokes_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES
 						// ============
@@ -409,6 +411,33 @@ pub fn vector_modification_widget(parameter_widgets_info: ParameterWidgetsInfo) 
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextLabel::new(label).tooltip_label("Summary of Differential Edits").tooltip_description(tooltip).widget_instance(),
 		]);
+	}
+
+	widgets
+}
+
+pub fn brush_strokes_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo { document_node, node_id: _, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return widgets };
+	let Some(input) = document_node.inputs.get(index) else { return widgets };
+
+	if let Some(TaggedValue::BrushStrokes(strokes)) = input.as_non_exposed_value() {
+		let stroke_count = strokes.len();
+		let sample_count: usize = strokes.iter().map(|s| s.trace.len()).sum();
+		let label = if stroke_count == 0 {
+			"Empty".to_string()
+		} else {
+			format!(
+				"{stroke_count} {} / {sample_count} {}",
+				if stroke_count == 1 { "Stroke" } else { "Strokes" },
+				if sample_count == 1 { "Sample" } else { "Samples" }
+			)
+		};
+
+		widgets.extend_from_slice(&[Separator::new(SeparatorStyle::Unrelated).widget_instance(), TextLabel::new(label).widget_instance()]);
 	}
 
 	widgets
