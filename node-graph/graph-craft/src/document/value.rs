@@ -52,6 +52,10 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "GradientTable", alias = "GradientPositions")]
 			Gradient(GradientStops),
+			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `Table<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(alias = "BrushStrokeTable")]
+			BrushStrokes(Vec<BrushStroke>),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -72,14 +76,24 @@ macro_rules! tagged_value {
 			fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 				core::mem::discriminant(self).hash(state);
 				match self {
+					// ===============
+					// MANUAL VARIANTS
+					// ===============
 					Self::None => {}
 					Self::TypeDefault(td) => td.cache_hash(state),
+					// =======================
+					// AUTO-GENERATED VARIANTS
+					// =======================
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
-					Self::RenderOutput(x) => x.cache_hash(state),
-					Self::NodeIdPath(path) => path.hash(state),
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
 					Self::Gradient(stops) => stops.cache_hash(state),
+					Self::BrushStrokes(strokes) => strokes.cache_hash(state),
+					// =======================
+					// NON-SERIALIZED VARIANTS
+					// =======================
+					Self::NodeIdPath(path) => path.hash(state),
+					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
@@ -113,6 +127,10 @@ macro_rules! tagged_value {
 						Box::new(table)
 					}
 					Self::Gradient(stops) => Box::new(Table::<GradientStops>::new_from_element(stops)),
+					Self::BrushStrokes(strokes) => {
+						let table: Table<BrushStroke> = strokes.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Box::new(table)
+					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -155,6 +173,10 @@ macro_rules! tagged_value {
 						Arc::new(table)
 					}
 					Self::Gradient(stops) => Arc::new(Table::<GradientStops>::new_from_element(stops)),
+					Self::BrushStrokes(strokes) => {
+						let table: Table<BrushStroke> = strokes.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Arc::new(table)
+					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -182,6 +204,7 @@ macro_rules! tagged_value {
 					Self::F64Array(_) => concrete!(Table<f64>),
 					Self::Color(_) => concrete!(Table<Color>),
 					Self::Gradient(_) => concrete!(Table<GradientStops>),
+					Self::BrushStrokes(_) => concrete!(Table<BrushStroke>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -255,6 +278,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<Table<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
+						if name == std::any::type_name::<Table<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						if name == std::any::type_name::<Table<Graphic>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
@@ -282,6 +306,7 @@ macro_rules! tagged_value {
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
 					Self::Gradient(stops) => format!("Gradient({stops:?})"),
+					Self::BrushStrokes(strokes) => format!("BrushStrokes({strokes:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -319,23 +344,18 @@ macro_rules! tagged_value {
 }
 
 tagged_value! {
-	// ===========
-	// TABLE TYPES
-	// ===========
-	#[serde(deserialize_with = "brush_nodes::migrations::migrate_brush_strokes_to_table")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "BrushStrokes")]
-	BrushStrokeTable(Table<BrushStroke>),
-	// ============
-	// SCALAR TYPES
-	// ============
+	// ===============
+	// PRIMITIVE TYPES
+	// ===============
 	F32(f32),
 	F64(f64),
 	U32(u32),
 	U64(u64),
 	Bool(bool),
 	String(String),
-	#[serde(alias = "IVec2", alias = "UVec2")]
+	#[serde(alias = "IVec2", alias = "UVec2", alias = "Vec2")]
 	DVec2(DVec2),
+	#[serde(alias = "Affine2")]
 	DAffine2(DAffine2),
 	FillGradient(Gradient),
 	Font(Font),

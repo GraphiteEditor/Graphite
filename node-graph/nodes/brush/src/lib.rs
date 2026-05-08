@@ -4,22 +4,22 @@ pub mod brush_stroke;
 
 pub mod migrations {
 	use crate::brush_stroke::BrushStroke;
-	use core_types::table::{Table, TableRow};
+	use core_types::table::Table;
 
 	// TODO: Eventually remove this migration document upgrade code
-	pub fn migrate_brush_strokes_to_table<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<BrushStroke>, D::Error> {
+	pub fn migrate_to_brush_strokes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<BrushStroke>, D::Error> {
 		use serde::Deserialize;
 
 		#[derive(serde::Serialize, serde::Deserialize)]
 		#[serde(untagged)]
-		enum BrushStrokeTableFormat {
-			BrushStrokes(Vec<BrushStroke>),
-			BrushStrokeTable(Table<BrushStroke>),
+		enum BrushStrokesFormat {
+			Strokes(Vec<BrushStroke>),
+			Table(Table<BrushStroke>),
 		}
 
-		Ok(match BrushStrokeTableFormat::deserialize(deserializer)? {
-			BrushStrokeTableFormat::BrushStrokes(strokes) => strokes.into_iter().map(TableRow::new_from_element).collect(),
-			BrushStrokeTableFormat::BrushStrokeTable(table) => table,
+		Ok(match BrushStrokesFormat::deserialize(deserializer)? {
+			BrushStrokesFormat::Strokes(strokes) => strokes,
+			BrushStrokesFormat::Table(table) => table.iter_element_values().cloned().collect(),
 		})
 	}
 }

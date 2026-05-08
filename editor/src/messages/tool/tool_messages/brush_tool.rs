@@ -321,8 +321,8 @@ impl BrushToolData {
 
 			if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && node_id != layer.to_node() {
 				let points_input = node.inputs.get(1)?;
-				let Some(TaggedValue::BrushStrokeTable(strokes)) = points_input.as_value() else { continue };
-				self.strokes = strokes.iter_element_values().cloned().collect();
+				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
+				self.strokes = strokes.clone();
 
 				return Some(layer);
 			}
