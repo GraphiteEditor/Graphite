@@ -60,7 +60,14 @@ macro_rules! tagged_value {
 			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),
-					Self::TypeDefault(td) => Self::from_type_or_none(&Type::Concrete(td)).to_dynany(),
+					Self::TypeDefault(td) => {
+						// Construct the actual default for types without a `TaggedValue` variant directly, instead of going through
+						// `from_type_or_none` (which would just return `TypeDefault` again and recurse forever).
+						let name = td.name.as_ref();
+						if name == std::any::type_name::<Table<Graphic>>() { return Box::new(Table::<Graphic>::default()); }
+						if name == std::any::type_name::<Table<Artboard>>() { return Box::new(Table::<Artboard>::default()); }
+						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
+					}
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::EditorApi(x) => Box::new(x),
@@ -71,7 +78,13 @@ macro_rules! tagged_value {
 			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
 				match self {
 					Self::None => Arc::new(()),
-					Self::TypeDefault(td) => Self::from_type_or_none(&Type::Concrete(td)).to_any(),
+					Self::TypeDefault(td) => {
+						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
+						let name = td.name.as_ref();
+						if name == std::any::type_name::<Table<Graphic>>() { return Arc::new(Table::<Graphic>::default()); }
+						if name == std::any::type_name::<Table<Artboard>>() { return Arc::new(Table::<Artboard>::default()); }
+						Self::from_type_or_none(&Type::Concrete(td)).to_any()
+					}
 					$( Self::$identifier(x) => Arc::new(x), )*
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::EditorApi(x) => Arc::new(x),
@@ -130,6 +143,9 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Color>>() { return Some(TaggedValue::Color(Table::new_from_element(Color::default()))) }
 						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::GradientTable(Table::new_from_element(GradientStops::default()))) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
+						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
+						if name == std::any::type_name::<Table<Graphic>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
+						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -191,12 +207,6 @@ tagged_value! {
 	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[serde(deserialize_with = "graphic_types::graphic::migrate_graphic")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "GraphicGroup", alias = "Group")]
-	Graphic(Table<Graphic>),
-	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ArtboardGroup")]
-	Artboard(Table<Artboard>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
@@ -419,21 +429,41 @@ impl TaggedValue {
 		}
 	}
 
-	/// Walks a JSON document tree and replaces any externally-tagged `TaggedValue` whose discriminant is in `REMOVED_VARIANTS` with the unit variant `"None"`.
-	/// Lets documents written before a variant was removed continue to deserialize. The document migration step then removes any orphan node inputs that result.
+	/// Walks a JSON document tree and rewrites any externally-tagged `TaggedValue` whose discriminant has been removed to allow documents to continue deserialization.
+	///
+	/// `REMOVED_VARIANTS` discriminants get rewritten to the unit variant `"None"`; the document migration step then removes any orphan node inputs that result.
+	/// `REMOVED_PLACEHOLDER_CONTAINERS` discriminants are rewritten to a `TypeDefault` carrying the corresponding
+	/// type name, since they were only ever used as empty `Table<...>` placeholders that should now route through the `TypeDefault` mechanism.
 	#[cfg(feature = "loading")]
 	pub fn scrub_removed_variants_from_json(value: &mut serde_json::Value) {
-		// Names of `TaggedValue` variants that have been removed since being released. Any object of the form `{"<name>": <payload>}` is rewritten to `"None"` on load.
+		// Names of `TaggedValue` variants that have been removed since being released and carried no useful payload.
+		// Any object of the form `{"<name>": <payload>}` is rewritten to `"None"` on load.
 		const REMOVED_VARIANTS: &[&str] = &["BrushCache"];
+
+		// Names of `TaggedValue` variants that have been removed since being released and were only used as empty `Table<...>` placeholders.
+		// Any object of the form `{"<name>": <payload>}` is rewritten to a `TypeDefault` carrying the corresponding type name.
+		// Includes the historical `#[serde(alias = "...")]` spellings the deleted variants accepted, so old-shape inner payloads are also caught.
+		const REMOVED_PLACEHOLDER_CONTAINERS: &[(&str, &str)] = &[
+			("Graphic", "core_types::table::Table<graphic_types::graphic::Graphic>"),
+			("GraphicGroup", "core_types::table::Table<graphic_types::graphic::Graphic>"),
+			("Group", "core_types::table::Table<graphic_types::graphic::Graphic>"),
+			("Artboard", "core_types::table::Table<graphic_types::artboard::Artboard>"),
+			("ArtboardGroup", "core_types::table::Table<graphic_types::artboard::Artboard>"),
+		];
 
 		match value {
 			serde_json::Value::Object(map) => {
 				if map.len() == 1
 					&& let Some(key) = map.keys().next()
-					&& REMOVED_VARIANTS.contains(&key.as_str())
 				{
-					*value = serde_json::Value::String("None".to_string());
-					return;
+					if REMOVED_VARIANTS.contains(&key.as_str()) {
+						*value = serde_json::Value::String("None".to_string());
+						return;
+					}
+					if let Some((_, type_name)) = REMOVED_PLACEHOLDER_CONTAINERS.iter().find(|(name, _)| *name == key.as_str()) {
+						*value = serde_json::json!({ "TypeDefault": { "name": *type_name } });
+						return;
+					}
 				}
 				for child in map.values_mut() {
 					Self::scrub_removed_variants_from_json(child);
@@ -583,5 +613,35 @@ mod tests {
 		let mut value = serde_json::json!([{ "BrushCache": { "any": "payload" } }, { "F32": 0.5 }]);
 		TaggedValue::scrub_removed_variants_from_json(&mut value);
 		assert_eq!(value, serde_json::json!(["None", { "F32": 0.5 }]));
+	}
+
+	#[test]
+	fn scrub_rewrites_removed_placeholder_container_to_type_default() {
+		let mut value = serde_json::json!({
+			"Value": {
+				"tagged_value": { "Graphic": { "element": [] } },
+				"exposed": true
+			}
+		});
+		TaggedValue::scrub_removed_variants_from_json(&mut value);
+		assert_eq!(
+			value,
+			serde_json::json!({
+				"Value": {
+					"tagged_value": { "TypeDefault": { "name": "core_types::table::Table<graphic_types::graphic::Graphic>" } },
+					"exposed": true
+				}
+			})
+		);
+	}
+
+	#[test]
+	fn scrub_rewrites_legacy_alias_with_old_shape_payload() {
+		// Old documents stored `Artboard` under the alias `ArtboardGroup` with a shape preceding the `Table<Artboard>` rewrite (`{id, instance, transform, alpha_blending, source_node_id}` parallel arrays). The scrub must catch the alias and discard the legacy payload.
+		let mut value = serde_json::json!({
+			"ArtboardGroup": { "id": [], "instance": [], "transform": [], "alpha_blending": [], "source_node_id": [] }
+		});
+		TaggedValue::scrub_removed_variants_from_json(&mut value);
+		assert_eq!(value, serde_json::json!({ "TypeDefault": { "name": "core_types::table::Table<graphic_types::artboard::Artboard>" } }));
 	}
 }
