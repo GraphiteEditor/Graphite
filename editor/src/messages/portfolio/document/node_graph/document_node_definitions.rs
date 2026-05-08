@@ -1325,7 +1325,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Extract,
-					inputs: vec![NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true)],
+					inputs: vec![NodeInput::type_default(descriptor!(DocumentNode), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {

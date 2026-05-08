@@ -68,6 +68,9 @@ macro_rules! tagged_value {
 			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes a `Table<NodeId>` at runtime via `to_dynany`/`to_any` during graph flattening.
 			#[serde(skip)]
 			NodeIdPath(Vec<NodeId>),
+			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(descriptor!(DocumentNode))`.
+			#[serde(skip)]
+			DocumentNode(DocumentNode),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 		}
@@ -93,6 +96,7 @@ macro_rules! tagged_value {
 					// NON-SERIALIZED VARIANTS
 					// =======================
 					Self::NodeIdPath(path) => path.hash(state),
+					Self::DocumentNode(node) => node.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
@@ -116,6 +120,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Box::new(Table::<Raster<CPU>>::default()); }
 						if name == std::any::type_name::<Table<Vector>>() { return Box::new(Table::<Vector>::default()); }
 						if name == std::any::type_name::<Table<String>>() { return Box::new(Table::<String>::default()); }
+						if name == std::any::type_name::<DocumentNode>() { return Box::new(DocumentNode::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					Self::F64Array(values) => {
@@ -143,6 +148,7 @@ macro_rules! tagged_value {
 						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
 						Box::new(table)
 					}
+					Self::DocumentNode(node) => Box::new(node),
 					Self::EditorApi(x) => Box::new(x),
 				}
 			}
@@ -162,6 +168,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Arc::new(Table::<Raster<CPU>>::default()); }
 						if name == std::any::type_name::<Table<Vector>>() { return Arc::new(Table::<Vector>::default()); }
 						if name == std::any::type_name::<Table<String>>() { return Arc::new(Table::<String>::default()); }
+						if name == std::any::type_name::<DocumentNode>() { return Arc::new(DocumentNode::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					Self::F64Array(values) => {
@@ -189,6 +196,7 @@ macro_rules! tagged_value {
 						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
 						Arc::new(table)
 					}
+					Self::DocumentNode(node) => Arc::new(node),
 					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
@@ -214,6 +222,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::NodeIdPath(_) => concrete!(Table<NodeId>),
+					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 				}
 			}
@@ -285,6 +294,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Vector>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<String>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
+						if name == std::any::type_name::<DocumentNode>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -316,6 +326,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
+					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 				}
 			}
@@ -359,7 +370,6 @@ tagged_value! {
 	DAffine2(DAffine2),
 	FillGradient(Gradient),
 	Font(Font),
-	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
