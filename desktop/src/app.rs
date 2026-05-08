@@ -198,7 +198,7 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
+			DesktopFrontendMessage::OpenFileDialog { title, filters, multiple, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
@@ -206,13 +206,21 @@ impl App {
 						dialog = dialog.add_filter(filter.name, &filter.extensions);
 					}
 
-					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
+					let handles = if multiple {
+						futures::executor::block_on(dialog.pick_files()).unwrap_or_default()
+					} else {
+						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
+					};
 
-					if let Some(path) = futures::executor::block_on(show_dialog)
-						&& let Ok(content) = fs::read(&path)
-					{
-						let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
-						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+					for handle in handles {
+						let path = handle.path().to_path_buf();
+						match fs::read(&path) {
+							Ok(content) => {
+								let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
+								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+							}
+							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
+						}
 					}
 				});
 			}
