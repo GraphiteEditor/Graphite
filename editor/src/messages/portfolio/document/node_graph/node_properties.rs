@@ -1134,17 +1134,13 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 
 	// Add the color input
 	match &**tagged_value {
-		TaggedValue::Color(color_table) => widgets.push(
+		TaggedValue::Color(color) => widgets.push(
 			color_button
-				.value(match color_table.element(0) {
+				.value(match color {
 					Some(color) => FillChoice::Solid(*color),
 					None => FillChoice::None,
 				})
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Color(input.value.as_solid().iter().map(|&color| TableRow::new_from_element(color)).collect()),
-					node_id,
-					index,
-				))
+				.on_update(update_value(|input: &ColorInput| TaggedValue::Color(input.value.as_solid()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
@@ -2444,7 +2440,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		return vec![LayoutGroup::row(widgets_first_row)];
 	};
 	let fill2 = fill.clone();
-	let backup_color_fill: Fill = backup_color.clone().into();
+	let backup_color_fill: Fill = (*backup_color).into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
 	match fill {
@@ -2481,13 +2477,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						Fill::None => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(Table::new()),
+							value: TaggedValue::Color(None),
 						}
 						.into(),
 						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(Table::new_from_element(*color)),
+							value: TaggedValue::Color(Some(*color)),
 						}
 						.into(),
 						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {

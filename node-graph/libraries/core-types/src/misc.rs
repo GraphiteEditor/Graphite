@@ -62,7 +62,7 @@ impl Clampable for DVec2 {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<crate::table::Table<no_std_types::color::Color>, D::Error> {
+pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<no_std_types::color::Color>, D::Error> {
 	use crate::table::Table;
 	use no_std_types::color::Color;
 	use serde::Deserialize;
@@ -70,21 +70,13 @@ pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resul
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum ColorFormat {
-		Color(Color),
 		OptionalColor(Option<Color>),
-		ColorTable(Table<Color>),
+		Table(Table<Color>),
 	}
 
 	Ok(match ColorFormat::deserialize(deserializer)? {
-		ColorFormat::Color(color) => Table::new_from_element(color),
-		ColorFormat::OptionalColor(color) => {
-			if let Some(color) = color {
-				Table::new_from_element(color)
-			} else {
-				Table::new()
-			}
-		}
-		ColorFormat::ColorTable(color_table) => color_table,
+		ColorFormat::OptionalColor(color) => color,
+		ColorFormat::Table(table) => table.iter_element_values().copied().next(),
 	})
 }
 

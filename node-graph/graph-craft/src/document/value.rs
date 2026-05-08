@@ -43,6 +43,10 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
+			/// Stored compactly as an `Option<Color>`, materializes as `Table<Color>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			#[serde(deserialize_with = "core_types::misc::migrate_to_optional_color")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
+			Color(Option<Color>),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -69,6 +73,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::NodeIdPath(path) => path.hash(state),
 					Self::F64Array(values) => values.cache_hash(state),
+					Self::Color(color) => color.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
@@ -95,6 +100,10 @@ macro_rules! tagged_value {
 					}
 					Self::F64Array(values) => {
 						let table: Table<f64> = values.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Box::new(table)
+					}
+					Self::Color(color) => {
+						let table: Table<Color> = color.into_iter().map(core_types::table::TableRow::new_from_element).collect();
 						Box::new(table)
 					}
 					// =======================
@@ -134,6 +143,10 @@ macro_rules! tagged_value {
 						let table: Table<f64> = values.into_iter().map(core_types::table::TableRow::new_from_element).collect();
 						Arc::new(table)
 					}
+					Self::Color(color) => {
+						let table: Table<Color> = color.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Arc::new(table)
+					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -159,6 +172,7 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					Self::F64Array(_) => concrete!(Table<f64>),
+					Self::Color(_) => concrete!(Table<Color>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -228,7 +242,7 @@ macro_rules! tagged_value {
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						// Table-wrapped types need a single-item default with the element's default, not an empty table
-						if name == std::any::type_name::<Table<Color>>() { return Some(TaggedValue::Color(Table::new_from_element(Color::default()))) }
+						if name == std::any::type_name::<Table<Color>>() { return Some(TaggedValue::Color(Some(Color::default()))) }
 						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::GradientTable(Table::new_from_element(GradientStops::default()))) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<Table<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
@@ -257,6 +271,7 @@ macro_rules! tagged_value {
 					Self::None => "()".to_string(),
 					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
 					Self::F64Array(values) => format!("F64Array({values:?})"),
+					Self::Color(color) => format!("Color({color:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -297,9 +312,6 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
-	Color(Table<Color>),
 	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
@@ -498,8 +510,8 @@ impl TaggedValue {
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					// `Color` (not in a table) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
-					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
+					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
 					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
 					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
