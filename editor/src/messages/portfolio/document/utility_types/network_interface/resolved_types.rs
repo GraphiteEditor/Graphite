@@ -4,6 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
+use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::uuid::NodeId;
 use graphene_std::{Artboard, Graphic};
@@ -58,7 +59,6 @@ impl TypeSource {
 				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => {
 					FrontendGraphDataType::Number
 				}
-				TaggedValue::Raster(_) => FrontendGraphDataType::Raster,
 				TaggedValue::Vector(_) => FrontendGraphDataType::Vector,
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
 				TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
@@ -67,6 +67,7 @@ impl TypeSource {
 				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
 					n if n == std::any::type_name::<Table<Graphic>>() => FrontendGraphDataType::Graphic,
 					n if n == std::any::type_name::<Table<Artboard>>() => FrontendGraphDataType::Artboard,
+					n if n == std::any::type_name::<Table<Raster<CPU>>>() => FrontendGraphDataType::Raster,
 					_ => FrontendGraphDataType::General,
 				},
 				_ => FrontendGraphDataType::General,

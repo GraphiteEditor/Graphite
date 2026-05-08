@@ -2115,20 +2115,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Migrate Image nodes that stored a Table<Raster<CPU>> in input 1 to instead use bare Image<Color> via TaggedValue::ImageData
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
-		&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(1)
-		&& let TaggedValue::Raster(raster_table) = &**tagged_value
-		&& let Some(element) = raster_table.element(0)
-	{
-		let image = element.data().clone();
-
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
-	}
-
-	// Rewrite empty `Vector`/`Raster` placeholder values that were written before the `TypeDefault` mechanism existed.
+	// Rewrite empty `Vector` placeholder values that were written before the `TypeDefault` mechanism existed.
+	// (Graphic/Artboard/Raster placeholder containers were also part of this migration, but their `TaggedValue` variants have since been
+	// removed and the JSON-level `scrub_removed_variants_from_json` handles that case before serde gets to them.)
 	// Each was an empty `Table<...>` baked into the document despite carrying no real content, so converting them to `TypeDefault` lets the
 	// runtime materialize the empty default at execution time without serializing the placeholder.
 	for (input_index, input) in node.inputs.iter().enumerate() {
@@ -2136,7 +2125,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let exposed = *exposed;
 		let descriptor = match &**tagged_value {
 			TaggedValue::Vector(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>),
-			TaggedValue::Raster(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::raster_types::Raster<graphene_std::raster_types::CPU>>),
 			_ => continue,
 		};
 		document

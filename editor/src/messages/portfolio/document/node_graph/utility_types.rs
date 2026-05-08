@@ -1,6 +1,7 @@
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
+use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
 use graphene_std::{Artboard, Graphic};
 
@@ -24,7 +25,6 @@ impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
@@ -33,6 +33,7 @@ impl FrontendGraphDataType {
 			TaggedValue::TypeDefault(td) => match td.name.as_ref() {
 				n if n == std::any::type_name::<Table<Graphic>>() => Self::Graphic,
 				n if n == std::any::type_name::<Table<Artboard>>() => Self::Artboard,
+				n if n == std::any::type_name::<Table<Raster<CPU>>>() => Self::Raster,
 				_ => Self::General,
 			},
 			_ => Self::General,

@@ -66,6 +66,7 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						if name == std::any::type_name::<Table<Graphic>>() { return Box::new(Table::<Graphic>::default()); }
 						if name == std::any::type_name::<Table<Artboard>>() { return Box::new(Table::<Artboard>::default()); }
+						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Box::new(Table::<Raster<CPU>>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					$( Self::$identifier(x) => Box::new(x), )*
@@ -83,6 +84,7 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						if name == std::any::type_name::<Table<Graphic>>() { return Arc::new(Table::<Graphic>::default()); }
 						if name == std::any::type_name::<Table<Artboard>>() { return Arc::new(Table::<Artboard>::default()); }
+						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Arc::new(Table::<Raster<CPU>>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					$( Self::$identifier(x) => Arc::new(x), )*
@@ -146,6 +148,7 @@ macro_rules! tagged_value {
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
 						if name == std::any::type_name::<Table<Graphic>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
+						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -204,9 +207,6 @@ tagged_value! {
 	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
-	Raster(Table<Raster<CPU>>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
@@ -449,6 +449,10 @@ impl TaggedValue {
 			("Group", "core_types::table::Table<graphic_types::graphic::Graphic>"),
 			("Artboard", "core_types::table::Table<graphic_types::artboard::Artboard>"),
 			("ArtboardGroup", "core_types::table::Table<graphic_types::artboard::Artboard>"),
+			("Raster", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
+			("ImageFrame", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
+			("RasterData", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
+			("Image", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
 		];
 
 		match value {
@@ -472,6 +476,73 @@ impl TaggedValue {
 			serde_json::Value::Array(array) => {
 				for child in array {
 					Self::scrub_removed_variants_from_json(child);
+				}
+			}
+			_ => {}
+		}
+	}
+
+	// TODO: Eventually remove this migration document upgrade code
+	/// Walks a JSON document tree, finds nodes whose `implementation.ProtoNode.name` is the legacy `image` proto nodde (current name or any of its renamed predecessors), and rescues an embedded image stored at input 1 as a `Table<Raster<CPU>>` into the modern `TaggedValue::ImageData` shape.
+	///
+	/// Without this, the subsequent `scrub_removed_variants_from_json` would discard the table payload along with the variant tag, losing the user's image data. Must run before the scrub.
+	#[cfg(feature = "loading")]
+	pub fn rescue_legacy_image_proto_inputs_in_json(value: &mut serde_json::Value) {
+		// Identifiers for the `image` proto node — current and historical aliases (mirroring the entry under `NODE_REPLACEMENTS` in `document_migration.rs`).
+		// This walk runs before `NODE_REPLACEMENTS` rewrites old proto names to the current one, so we have to recognize all spellings.
+		const IMAGE_PROTO_NAMES: &[&str] = &[
+			"raster_nodes::std_nodes::ImageNode",
+			"raster_nodes::std_nodes::ImageValueNode",
+			"graphene_raster_nodes::std_nodes::ImageValueNode",
+			"graphene_std::raster::ImageValueNode",
+			"graphene_std::raster::ImageNode",
+		];
+
+		// Variant tags meaning "this is a `Table<Raster<CPU>>`" — the canonical name plus the historical `#[serde(alias = "...")]` spellings the deleted variant accepted.
+		const RASTER_VARIANT_TAGS: &[&str] = &["Raster", "ImageFrame", "RasterData", "Image"];
+
+		match value {
+			serde_json::Value::Object(map) => {
+				let is_image_proto = map
+					.get("implementation")
+					.and_then(|i| i.as_object())
+					.and_then(|m| m.get("ProtoNode"))
+					.and_then(|p| p.as_object())
+					.and_then(|m| m.get("name"))
+					.and_then(|n| n.as_str())
+					.is_some_and(|name| IMAGE_PROTO_NAMES.contains(&name));
+
+				if is_image_proto
+					&& let Some(input_1) = map.get_mut("inputs").and_then(|i| i.as_array_mut()).and_then(|a| a.get_mut(1))
+					&& let Some(input_obj) = input_1.as_object_mut()
+					&& let Some(value_obj) = input_obj.get_mut("Value").and_then(|v| v.as_object_mut())
+					&& let Some(tagged_value) = value_obj.get_mut("tagged_value")
+				{
+					// `tagged_value` should be `{"Raster": {"element": [<image>, ...]}}` (or one of the historical aliases). Each element of `Table<Raster<CPU>>` serializes as the inner `Image<Color>` directly because `Raster<CPU>::serialize` delegates to `Image<Color>`.
+					let rescued = tagged_value
+						.as_object()
+						.filter(|tv| tv.len() == 1)
+						.and_then(|tv| tv.iter().next())
+						.filter(|(tag, _)| RASTER_VARIANT_TAGS.contains(&tag.as_str()))
+						.and_then(|(_, content)| content.as_object())
+						.and_then(|c| c.get("element"))
+						.and_then(|e| e.as_array())
+						.and_then(|arr| arr.first())
+						.cloned();
+
+					if let Some(image) = rescued {
+						*tagged_value = serde_json::json!({ "ImageData": image });
+						value_obj.insert("exposed".to_string(), serde_json::Value::Bool(false));
+					}
+				}
+
+				for child in map.values_mut() {
+					Self::rescue_legacy_image_proto_inputs_in_json(child);
+				}
+			}
+			serde_json::Value::Array(array) => {
+				for child in array {
+					Self::rescue_legacy_image_proto_inputs_in_json(child);
 				}
 			}
 			_ => {}
