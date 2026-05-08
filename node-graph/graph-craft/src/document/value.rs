@@ -67,6 +67,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Graphic>>() { return Box::new(Table::<Graphic>::default()); }
 						if name == std::any::type_name::<Table<Artboard>>() { return Box::new(Table::<Artboard>::default()); }
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Box::new(Table::<Raster<CPU>>::default()); }
+						if name == std::any::type_name::<Table<Vector>>() { return Box::new(Table::<Vector>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					$( Self::$identifier(x) => Box::new(x), )*
@@ -85,6 +86,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Graphic>>() { return Arc::new(Table::<Graphic>::default()); }
 						if name == std::any::type_name::<Table<Artboard>>() { return Arc::new(Table::<Artboard>::default()); }
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Arc::new(Table::<Raster<CPU>>::default()); }
+						if name == std::any::type_name::<Table<Vector>>() { return Arc::new(Table::<Vector>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					$( Self::$identifier(x) => Arc::new(x), )*
@@ -149,6 +151,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Graphic>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
+						if name == std::any::type_name::<Table<Vector>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -204,9 +207,6 @@ tagged_value! {
 	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 	F64Table(Table<f64>),
 	NodeIdTable(Table<NodeId>),
-	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "VectorData")]
-	Vector(Table<Vector>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
@@ -440,6 +440,9 @@ impl TaggedValue {
 /// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
 ///     - non-empty (the legacy `image` proto's input 1, where the inner `Raster<CPU>` serializes as the embedded `Image<Color>`) → `TaggedValue::ImageData(<inner Image<Color>>)`
 ///     - empty → `TaggedValue::TypeDefault(descriptor!(Table<Raster<CPU>>))`
+/// - `Vector` (or alias `VectorData`):
+///     - non-empty → `TaggedValue::VectorModification(<built from first element>)` (the document_migration's Path pass disambiguates this between SVG-import legacy and a discardable modern baked value via the input's `exposed` flag)
+///     - empty → `TaggedValue::TypeDefault(descriptor!(Table<Vector>))`
 ///
 /// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
 // TODO: Eventually remove this migration document upgrade code
@@ -463,6 +466,14 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Raster<CPU>>))));
+			}
+			"Vector" | "VectorData" => {
+				let table = graphic_types::migrations::migrate_vector(content.clone()).map_err(serde::de::Error::custom)?;
+				if let Some(vector) = table.element(0) {
+					let modification = Box::new(VectorModification::create_from_vector(vector));
+					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
+				}
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Vector>))));
 			}
 			_ => {}
 		}

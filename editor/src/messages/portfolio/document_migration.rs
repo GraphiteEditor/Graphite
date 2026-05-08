@@ -2090,46 +2090,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
-	// Migrate Path nodes that stored geometry directly in input 0 (as a Table<Vector>) to instead use a VectorModification in input 1
+	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
+	// For exposed input 0, any baked value is unused at runtime, so just reset it.
 	if reference == DefinitionIdentifier::Network("Path".into()) {
 		let input_0 = node.inputs.first()?;
 		if let NodeInput::Value { tagged_value, exposed } = input_0
-			&& !exposed
-			&& let TaggedValue::Vector(vector_table) = &**tagged_value
-			&& !vector_table.is_empty()
+			&& let TaggedValue::VectorModification(modification) = &**tagged_value
 		{
-			let vector = vector_table.element(0)?;
-			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
+			let modification = modification.clone();
+			let was_exposed = *exposed;
 
-			// Reset input 0 to the default exposed state
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 0),
 				NodeInput::type_default(descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>), true),
 				network_path,
 			);
 
-			// Store the converted VectorModification in input 1
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+			if !was_exposed {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+			}
 		}
-	}
-
-	// Rewrite empty `Vector` placeholder values that were written before the `TypeDefault` mechanism existed.
-	// (Graphic/Artboard/Raster placeholder containers were also part of this migration, but their `TaggedValue` variants have since been removed.
-	// `deserialize_tagged_value_with_legacy_migration` rewrites those tags to `TypeDefault` before serde gets to them.)
-	// Each was an empty `Table<...>` baked into the document despite carrying no real content, so converting them to `TypeDefault` lets the
-	// runtime materialize the empty default at execution time without serializing the placeholder.
-	for (input_index, input) in node.inputs.iter().enumerate() {
-		let NodeInput::Value { tagged_value, exposed } = input else { continue };
-		let exposed = *exposed;
-		let descriptor = match &**tagged_value {
-			TaggedValue::Vector(table) if table.is_empty() => descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>),
-			_ => continue,
-		};
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, input_index), NodeInput::type_default(descriptor, exposed), network_path);
 	}
 
 	// ==================================
