@@ -15,5 +15,8 @@ path = "src/main.rs"
 [dependencies]
 graphite-desktop = { path = "../.." }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-registry = "0.6"
+
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1"
