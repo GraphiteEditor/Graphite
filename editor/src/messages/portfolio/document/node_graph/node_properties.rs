@@ -15,7 +15,6 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
-use graphene_std::ATTR_TRANSFORM;
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
@@ -24,7 +23,7 @@ use graphene_std::raster::{
 	SelectiveColorChoice,
 };
 use graphene_std::raster_types::Image;
-use graphene_std::table::{Table, TableRow};
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
@@ -1144,33 +1143,17 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
-		TaggedValue::GradientTable(gradient_table) => {
-			let existing_transform: DAffine2 = gradient_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-
-			widgets.push(
-				color_button
-					.value(match gradient_table.element(0) {
-						Some(gradient) => FillChoice::Gradient(gradient.clone()),
-						None => FillChoice::Gradient(GradientStops::default()),
-					})
-					.on_update(update_value(
-						move |input: &ColorInput| {
-							TaggedValue::GradientTable(
-								input
-									.value
-									.as_gradient()
-									.iter()
-									.map(|&gradient| TableRow::new_from_element(gradient.clone()).with_attribute(ATTR_TRANSFORM, existing_transform))
-									.collect(),
-							)
-						},
-						node_id,
-						index,
-					))
-					.on_commit(commit_value)
-					.widget_instance(),
-			)
-		}
+		TaggedValue::Gradient(stops) => widgets.push(
+			color_button
+				.value(FillChoice::Gradient(stops.clone()))
+				.on_update(update_value(
+					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().cloned().unwrap_or_default()),
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_instance(),
+		),
 		x => warn!("Color {x:?}"),
 	}
 
@@ -2430,7 +2413,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	};
 
-	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
+	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::FillGradient(backup_gradient))) = (
 		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
 		&document_node.inputs[BackupColorInput::INDEX].as_value(),
 		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
@@ -2489,7 +2472,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: BackupGradientInput::INDEX,
-							value: TaggedValue::Gradient(gradient.clone()),
+							value: TaggedValue::FillGradient(gradient.clone()),
 						}
 						.into(),
 					},
@@ -2621,7 +2604,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					move |_: &()| {
 						let mut new_gradient = gradient_for_backup.clone();
 						new_gradient.spread_method = spread_method;
-						TaggedValue::Gradient(new_gradient)
+						TaggedValue::FillGradient(new_gradient)
 					},
 					node_id,
 					BackupGradientInput::INDEX,

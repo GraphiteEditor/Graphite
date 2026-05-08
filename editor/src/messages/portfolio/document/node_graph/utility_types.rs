@@ -27,7 +27,7 @@ impl FrontendGraphDataType {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::FillGradient(_) | TaggedValue::Gradient(_) => Self::Gradient,
 			TaggedValue::String(_) => Self::Typography,
 			// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
 			TaggedValue::TypeDefault(td) => match td.name.as_ref() {

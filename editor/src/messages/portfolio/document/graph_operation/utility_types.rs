@@ -428,7 +428,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 			Fill::Gradient(gradient) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_gradient_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(gradient.clone()), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::FillGradient(gradient.clone()), false), true);
 			}
 		}
 		let input_connector = InputConnector::node(fill_node_id, fill_index);
@@ -495,8 +495,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		let input_connector = InputConnector::node(gradient_node_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
-		let stops_table = Table::new_from_element(stops);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientTable(stops_table), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
 	}
 
 	/// Update the gradient line so its endpoints are at `new_start` and `new_end`.

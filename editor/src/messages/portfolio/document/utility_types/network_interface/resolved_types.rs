@@ -61,7 +61,7 @@ impl TypeSource {
 					FrontendGraphDataType::Number
 				}
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
-				TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
+				TaggedValue::FillGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
 				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
 				TaggedValue::TypeDefault(td) => match td.name.as_ref() {

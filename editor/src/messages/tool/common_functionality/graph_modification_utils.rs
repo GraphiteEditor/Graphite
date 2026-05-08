@@ -282,13 +282,13 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	Some(gradient.clone())
 }
 
-/// Get the gradient table of a layer.
-pub fn get_gradient_table(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Table<GradientStops>> {
+/// Get the gradient stops of a layer, if any.
+pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))?;
-	let TaggedValue::GradientTable(gradient_table) = inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
+	let TaggedValue::Gradient(stops) = inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
 		return None;
 	};
-	Some(gradient_table.clone())
+	Some(stops.clone())
 }
 
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `Table<GradientStops>`

@@ -39,7 +39,7 @@ macro_rules! tagged_value {
 			/// Stores a type, from which its `Default::default()` value can be obtained, rather than storing an actual type's value.
 			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
 			TypeDefault(TypeDescriptor),
-			/// Stored compactly as a `Vec<f64>`; materializes as `Table<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// Stored compactly as a `Vec<f64>`, materializes as `Table<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 			F64Array(Vec<f64>),
@@ -47,6 +47,11 @@ macro_rules! tagged_value {
 			#[serde(deserialize_with = "core_types::misc::migrate_to_optional_color")] // TODO: Eventually remove this migration document upgrade code
 			#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 			Color(Option<Color>),
+			/// Stored compactly as a `GradientStops`, materializes as a single-row `Table<GradientStops>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
+			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `FillGradient` by `deserialize_tagged_value_with_legacy_migration`.)
+			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
+			#[serde(alias = "GradientTable", alias = "GradientPositions")]
+			Gradient(GradientStops),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -74,6 +79,7 @@ macro_rules! tagged_value {
 					Self::NodeIdPath(path) => path.hash(state),
 					Self::F64Array(values) => values.cache_hash(state),
 					Self::Color(color) => color.cache_hash(state),
+					Self::Gradient(stops) => stops.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
@@ -106,6 +112,7 @@ macro_rules! tagged_value {
 						let table: Table<Color> = color.into_iter().map(core_types::table::TableRow::new_from_element).collect();
 						Box::new(table)
 					}
+					Self::Gradient(stops) => Box::new(Table::<GradientStops>::new_from_element(stops)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -147,6 +154,7 @@ macro_rules! tagged_value {
 						let table: Table<Color> = color.into_iter().map(core_types::table::TableRow::new_from_element).collect();
 						Arc::new(table)
 					}
+					Self::Gradient(stops) => Arc::new(Table::<GradientStops>::new_from_element(stops)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -173,6 +181,7 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					Self::F64Array(_) => concrete!(Table<f64>),
 					Self::Color(_) => concrete!(Table<Color>),
+					Self::Gradient(_) => concrete!(Table<GradientStops>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -243,7 +252,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<()>() { return Some(TaggedValue::None) }
 						// Table-wrapped types need a single-item default with the element's default, not an empty table
 						if name == std::any::type_name::<Table<Color>>() { return Some(TaggedValue::Color(Some(Color::default()))) }
-						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::GradientTable(Table::new_from_element(GradientStops::default()))) }
+						if name == std::any::type_name::<Table<GradientStops>>() { return Some(TaggedValue::Gradient(GradientStops::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<Table<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
@@ -272,6 +281,7 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
 					Self::F64Array(values) => format!("F64Array({values:?})"),
 					Self::Color(color) => format!("Color({color:?})"),
+					Self::Gradient(stops) => format!("Gradient({stops:?})"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -312,9 +322,6 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "GradientPositions", alias = "GradientStops")]
-	GradientTable(Table<GradientStops>),
 	#[serde(deserialize_with = "brush_nodes::migrations::migrate_brush_strokes_to_table")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "BrushStrokes")]
 	BrushStrokeTable(Table<BrushStroke>),
@@ -330,7 +337,7 @@ tagged_value! {
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Gradient(Gradient),
+	FillGradient(Gradient),
 	Font(Font),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
@@ -512,7 +519,7 @@ impl TaggedValue {
 					// `Color` (not in a table) is still currently needed by `BlackAndWhiteNode` and `ColorOverlayNode` GPU `shader_node(PerPixelAdjust)` variants
 					() if ty == TypeId::of::<Color>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
 					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Some(color)))?,
-					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(TaggedValue::Gradient)?,
 					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
@@ -576,6 +583,12 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Vector>))));
+			}
+			// The `Gradient` tag was reused: it used to carry a full `Gradient` struct (now `FillGradient`), and now carries an `Option<GradientStops>`.
+			// Disambiguate by payload shape: a Gradient struct has `start`/`end` keys; a `GradientStops` has none of those (it has `position`/`midpoint`/`color`).
+			"Gradient" if content.as_object().is_some_and(|c| c.contains_key("start") && c.contains_key("end")) => {
+				let gradient: Gradient = serde_json::from_value(content.clone()).map_err(serde::de::Error::custom)?;
+				return Ok(MemoHash::new(TaggedValue::FillGradient(gradient)));
 			}
 			_ => {}
 		}
