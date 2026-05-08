@@ -139,6 +139,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowDrag => {
 			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
 		}
+		FrontendMessage::WindowFocus => {
+			dispatcher.respond(DesktopFrontendMessage::WindowFocus);
+		}
 		FrontendMessage::WindowHide => {
 			dispatcher.respond(DesktopFrontendMessage::WindowHide);
 		}
