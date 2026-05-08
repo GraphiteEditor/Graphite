@@ -15,7 +15,6 @@ pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),

@@ -12,7 +12,6 @@ use glam::DAffine2;
 /// enclosing `Table<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
 /// that prevents arbitrary `Table<Table<...<Graphic>>>` nesting.
 #[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard(Table<Graphic>);
 
 impl Artboard {

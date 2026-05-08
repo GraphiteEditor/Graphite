@@ -614,9 +614,9 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Raster<CPU>>))));
 			}
 			"Vector" | "VectorData" => {
-				let table = graphic_types::migrations::migrate_vector(content.clone()).map_err(serde::de::Error::custom)?;
-				if let Some(vector) = table.element(0) {
-					let modification = Box::new(VectorModification::create_from_vector(vector));
+				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
+				if let Some(vector) = vector {
+					let modification = Box::new(VectorModification::create_from_vector(&vector));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Vector>))));

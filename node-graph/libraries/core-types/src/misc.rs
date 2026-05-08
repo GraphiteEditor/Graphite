@@ -61,39 +61,44 @@ impl Clampable for DVec2 {
 	}
 }
 
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+struct LegacyTable<T> {
+	#[serde(alias = "instances", alias = "instance")]
+	element: Vec<T>,
+}
+
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<no_std_types::color::Color>, D::Error> {
-	use crate::table::Table;
 	use no_std_types::color::Color;
 	use serde::Deserialize;
 
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum ColorFormat {
 		OptionalColor(Option<Color>),
-		Table(Table<Color>),
+		Table(LegacyTable<Color>),
 	}
 
 	Ok(match ColorFormat::deserialize(deserializer)? {
 		ColorFormat::OptionalColor(color) => color,
-		ColorFormat::Table(table) => table.iter_element_values().copied().next(),
+		ColorFormat::Table(table) => table.element.into_iter().next(),
 	})
 }
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
-	use crate::table::Table;
 	use serde::Deserialize;
 
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum F64ArrayFormat {
 		Array(Vec<f64>),
-		Table(Table<f64>),
+		Table(LegacyTable<f64>),
 	}
 
 	Ok(match F64ArrayFormat::deserialize(deserializer)? {
 		F64ArrayFormat::Array(values) => values,
-		F64ArrayFormat::Table(table) => table.iter_element_values().copied().collect(),
+		F64ArrayFormat::Table(table) => table.element,
 	})
 }
