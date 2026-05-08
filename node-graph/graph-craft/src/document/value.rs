@@ -73,6 +73,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Artboard>>() { return Box::new(Table::<Artboard>::default()); }
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Box::new(Table::<Raster<CPU>>::default()); }
 						if name == std::any::type_name::<Table<Vector>>() { return Box::new(Table::<Vector>::default()); }
+						if name == std::any::type_name::<Table<String>>() { return Box::new(Table::<String>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					$( Self::$identifier(x) => Box::new(x), )*
@@ -96,6 +97,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Artboard>>() { return Arc::new(Table::<Artboard>::default()); }
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Arc::new(Table::<Raster<CPU>>::default()); }
 						if name == std::any::type_name::<Table<Vector>>() { return Arc::new(Table::<Vector>::default()); }
+						if name == std::any::type_name::<Table<String>>() { return Arc::new(Table::<String>::default()); }
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					$( Self::$identifier(x) => Arc::new(x), )*
@@ -166,6 +168,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						if name == std::any::type_name::<Table<Vector>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
+						if name == std::any::type_name::<Table<String>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -217,7 +220,6 @@ tagged_value! {
 	// ===========
 	// TABLE TYPES
 	// ===========
-	StringTable(Table<String>),
 	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 	F64Table(Table<f64>),

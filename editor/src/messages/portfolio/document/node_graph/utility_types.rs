@@ -28,13 +28,14 @@ impl FrontendGraphDataType {
 			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
-			TaggedValue::String(_) | TaggedValue::StringTable(_) => Self::Typography,
+			TaggedValue::String(_) => Self::Typography,
 			// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
 			TaggedValue::TypeDefault(td) => match td.name.as_ref() {
 				n if n == std::any::type_name::<Table<Graphic>>() => Self::Graphic,
 				n if n == std::any::type_name::<Table<Artboard>>() => Self::Artboard,
 				n if n == std::any::type_name::<Table<Raster<CPU>>>() => Self::Raster,
 				n if n == std::any::type_name::<Table<Vector>>() => Self::Vector,
+				n if n == std::any::type_name::<Table<String>>() => Self::Typography,
 				_ => Self::General,
 			},
 			_ => Self::General,

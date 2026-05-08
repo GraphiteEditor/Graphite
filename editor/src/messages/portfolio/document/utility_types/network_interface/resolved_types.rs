@@ -69,6 +69,7 @@ impl TypeSource {
 					n if n == std::any::type_name::<Table<Artboard>>() => FrontendGraphDataType::Artboard,
 					n if n == std::any::type_name::<Table<Raster<CPU>>>() => FrontendGraphDataType::Raster,
 					n if n == std::any::type_name::<Table<Vector>>() => FrontendGraphDataType::Vector,
+					n if n == std::any::type_name::<Table<String>>() => FrontendGraphDataType::Typography,
 					_ => FrontendGraphDataType::General,
 				},
 				_ => FrontendGraphDataType::General,
