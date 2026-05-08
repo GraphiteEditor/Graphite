@@ -14,6 +14,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
 				filters: vec![],
+				multiple: true,
 				context: OpenFileDialogContext::Open,
 			});
 		}
@@ -21,6 +22,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Import File".to_string(),
 				filters: vec![],
+				multiple: false,
 				context: OpenFileDialogContext::Import,
 			});
 		}

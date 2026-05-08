@@ -16,6 +16,7 @@ pub enum DesktopFrontendMessage {
 	OpenFileDialog {
 		title: String,
 		filters: Vec<FileFilter>,
+		multiple: bool,
 		context: OpenFileDialogContext,
 	},
 	SaveFileDialog {
@@ -102,6 +103,7 @@ pub struct FileFilter {
 	pub extensions: Vec<String>,
 }
 
+#[derive(Clone, Copy)]
 pub enum OpenFileDialogContext {
 	Open,
 	Import,
