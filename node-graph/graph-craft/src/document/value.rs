@@ -25,6 +25,19 @@ use vector::VectorModification;
 
 pub struct TaggedValueTypeError;
 
+/// List of types routed through [`TaggedValue::TypeDefault`] instead of another dedicated variant.
+/// Consumed by [`TaggedValue::from_type`] (which creates `TypeDefault` values) and [`TaggedValue::to_dynany`]/[`TaggedValue::to_any`] (which unwrap them into real default values).
+macro_rules! for_each_type_default {
+	($action:ident) => {
+		$action!(Table<Graphic>);
+		$action!(Table<Artboard>);
+		$action!(Table<Raster<CPU>>);
+		$action!(Table<Vector>);
+		$action!(Table<String>);
+		$action!(DocumentNode);
+	};
+}
+
 /// Macro to generate the tagged value enum.
 macro_rules! tagged_value {
 	($ ($( #[$meta:meta] )* $identifier:ident ($ty:ty) ),* $(,)?) => {
@@ -116,15 +129,16 @@ macro_rules! tagged_value {
 					// ===============
 					Self::None => Box::new(()),
 					Self::TypeDefault(td) => {
-						// Construct the actual default for types without a `TaggedValue` variant directly, instead of going through
-						// `from_type_or_none` (which would just return `TypeDefault` again and recurse forever).
+						// Construct the actual default for types without a `TaggedValue` variant directly.
+						// Recursion through `from_type_or_none` below is safe only because `for_each_type_default!`
+						// exhaustively handles every type that `from_type` would route back to `TypeDefault`.
 						let name = td.name.as_ref();
-						if name == std::any::type_name::<Table<Graphic>>() { return Box::new(Table::<Graphic>::default()); }
-						if name == std::any::type_name::<Table<Artboard>>() { return Box::new(Table::<Artboard>::default()); }
-						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Box::new(Table::<Raster<CPU>>::default()); }
-						if name == std::any::type_name::<Table<Vector>>() { return Box::new(Table::<Vector>::default()); }
-						if name == std::any::type_name::<Table<String>>() { return Box::new(Table::<String>::default()); }
-						if name == std::any::type_name::<DocumentNode>() { return Box::new(DocumentNode::default()); }
+						macro_rules! check {
+							($type_default:ty) => {
+								if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
+							};
+						}
+						for_each_type_default!(check);
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					Self::F64Array(values) => {
@@ -168,12 +182,12 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => {
 						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
 						let name = td.name.as_ref();
-						if name == std::any::type_name::<Table<Graphic>>() { return Arc::new(Table::<Graphic>::default()); }
-						if name == std::any::type_name::<Table<Artboard>>() { return Arc::new(Table::<Artboard>::default()); }
-						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Arc::new(Table::<Raster<CPU>>::default()); }
-						if name == std::any::type_name::<Table<Vector>>() { return Arc::new(Table::<Vector>::default()); }
-						if name == std::any::type_name::<Table<String>>() { return Arc::new(Table::<String>::default()); }
-						if name == std::any::type_name::<DocumentNode>() { return Arc::new(DocumentNode::default()); }
+						macro_rules! check {
+							($type_default:ty) => {
+								if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
+							};
+						}
+						for_each_type_default!(check);
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					Self::F64Array(values) => {
@@ -296,12 +310,12 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<Table<f64>>() { return Some(TaggedValue::F64Array(Vec::new())) }
 						if name == std::any::type_name::<Table<BrushStroke>>() { return Some(TaggedValue::BrushStrokes(Vec::new())) }
 						// Types whose `TaggedValue` variant has been removed. They route through `TypeDefault` instead, with `to_dynany`/`to_any` constructing the actual default at execution time.
-						if name == std::any::type_name::<Table<Graphic>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
-						if name == std::any::type_name::<Table<Artboard>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
-						if name == std::any::type_name::<Table<Raster<CPU>>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
-						if name == std::any::type_name::<Table<Vector>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
-						if name == std::any::type_name::<Table<String>>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
-						if name == std::any::type_name::<DocumentNode>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())) }
+						macro_rules! check {
+							($type_default:ty) => {
+								if name == std::any::type_name::<$type_default>() { return Some(TaggedValue::TypeDefault(concrete_type.clone())); }
+							};
+						}
+						for_each_type_default!(check);
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
@@ -737,5 +751,40 @@ impl CacheHash for RenderOutputType {
 impl CacheHash for RenderOutput {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.data.cache_hash(state);
+	}
+}
+
+#[cfg(test)]
+mod typedefault_dispatch {
+	use super::*;
+	use core_types::descriptor;
+
+	/// Round-trips every type listed in [`for_each_type_default`] through `TaggedValue::TypeDefault → to_dynany / to_any` and asserts the resulting concrete type matches the descriptor.
+	///
+	/// This guards against the only way to break the recursion invariant in the unwrap functions: someone hand-rolling a `TypeDefault`-yielding case in `from_type` (or the macro's expansion in one of the unwrap sites silently failing to match a name). If it fails, the message points at the specific type and the structural reason.
+	#[test]
+	fn typedefault_dispatch_terminates() {
+		macro_rules! check {
+			($type_default:ty) => {{
+				let descriptor = descriptor!($type_default);
+				let expected_type_id = std::any::TypeId::of::<$type_default>();
+				let dyn_value = TaggedValue::TypeDefault(descriptor.clone()).to_dynany();
+				assert_eq!(
+					DynAny::type_id(&*dyn_value),
+					expected_type_id,
+					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — `for_each_type_default!` lists this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
+					std::any::type_name::<$type_default>(),
+				);
+
+				let arc_value = TaggedValue::TypeDefault(descriptor).to_any();
+				assert_eq!(
+					(*arc_value).type_id(),
+					expected_type_id,
+					"`to_any(TypeDefault({0}))` did not produce a `{0}` — same recursion hazard as above for the `to_any` path.",
+					std::any::type_name::<$type_default>(),
+				);
+			}};
+		}
+		for_each_type_default!(check);
 	}
 }
