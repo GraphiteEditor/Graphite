@@ -2116,8 +2116,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Rewrite empty `Vector` placeholder values that were written before the `TypeDefault` mechanism existed.
-	// (Graphic/Artboard/Raster placeholder containers were also part of this migration, but their `TaggedValue` variants have since been
-	// removed and the JSON-level `scrub_removed_variants_from_json` handles that case before serde gets to them.)
+	// (Graphic/Artboard/Raster placeholder containers were also part of this migration, but their `TaggedValue` variants have since been removed.
+	// `deserialize_tagged_value_with_legacy_migration` rewrites those tags to `TypeDefault` before serde gets to them.)
 	// Each was an empty `Table<...>` baked into the document despite carrying no real content, so converting them to `TypeDefault` lets the
 	// runtime materialize the empty default at execution time without serializing the placeholder.
 	for (input_index, input) in node.inputs.iter().enumerate() {

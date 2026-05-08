@@ -178,7 +178,11 @@ pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize },
 
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
+	Value {
+		#[cfg_attr(feature = "loading", serde(deserialize_with = "crate::document::value::deserialize_tagged_value_with_legacy_migration"))]
+		tagged_value: MemoHash<TaggedValue>,
+		exposed: bool,
+	},
 
 	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the import from the parent network to this document node network.

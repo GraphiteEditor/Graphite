@@ -428,126 +428,48 @@ impl TaggedValue {
 			_ => panic!("Passed value is not of type u32"),
 		}
 	}
+}
 
-	/// Walks a JSON document tree and rewrites any externally-tagged `TaggedValue` whose discriminant has been removed to allow documents to continue deserialization.
-	///
-	/// `REMOVED_VARIANTS` discriminants get rewritten to the unit variant `"None"`; the document migration step then removes any orphan node inputs that result.
-	/// `REMOVED_PLACEHOLDER_CONTAINERS` discriminants are rewritten to a `TypeDefault` carrying the corresponding
-	/// type name, since they were only ever used as empty `Table<...>` placeholders that should now route through the `TypeDefault` mechanism.
-	#[cfg(feature = "loading")]
-	pub fn scrub_removed_variants_from_json(value: &mut serde_json::Value) {
-		// Names of `TaggedValue` variants that have been removed since being released and carried no useful payload.
-		// Any object of the form `{"<name>": <payload>}` is rewritten to `"None"` on load.
-		const REMOVED_VARIANTS: &[&str] = &["BrushCache"];
+/// Custom deserializer hooked onto `NodeInput::Value::tagged_value` that intercepts removed-variant tags before delegating to `TaggedValue`'s standard derive.
+///
+/// Routes legacy variant names into modern variants, in typed Rust. Each legacy name is also matched against the historical `#[serde(alias = "...")]` spellings the deleted variant accepted, so old-shape inner payloads are caught:
+///
+/// - `BrushCache` → `TaggedValue::None` (purely runtime cache; no payload to preserve)
+/// - `Graphic` (or alias `GraphicGroup`/`Group`) → `TaggedValue::TypeDefault(descriptor!(Table<Graphic>))`
+/// - `Artboard` (or alias `ArtboardGroup`) → `TaggedValue::TypeDefault(descriptor!(Table<Artboard>))`
+/// - `Raster` (or alias `ImageFrame`/`RasterData`/`Image`):
+///     - non-empty (the legacy `image` proto's input 1, where the inner `Raster<CPU>` serializes as the embedded `Image<Color>`) → `TaggedValue::ImageData(<inner Image<Color>>)`
+///     - empty → `TaggedValue::TypeDefault(descriptor!(Table<Raster<CPU>>))`
+///
+/// All other tags (including ones with the modern shape) fall through to the standard derived `Deserialize` for `TaggedValue`.
+// TODO: Eventually remove this migration document upgrade code
+#[cfg(feature = "loading")]
+pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<MemoHash<TaggedValue>, D::Error> {
+	use serde::Deserialize;
+	let value = serde_json::Value::deserialize(deserializer)?;
 
-		// Names of `TaggedValue` variants that have been removed since being released and were only used as empty `Table<...>` placeholders.
-		// Any object of the form `{"<name>": <payload>}` is rewritten to a `TypeDefault` carrying the corresponding type name.
-		// Includes the historical `#[serde(alias = "...")]` spellings the deleted variants accepted, so old-shape inner payloads are also caught.
-		const REMOVED_PLACEHOLDER_CONTAINERS: &[(&str, &str)] = &[
-			("Graphic", "core_types::table::Table<graphic_types::graphic::Graphic>"),
-			("GraphicGroup", "core_types::table::Table<graphic_types::graphic::Graphic>"),
-			("Group", "core_types::table::Table<graphic_types::graphic::Graphic>"),
-			("Artboard", "core_types::table::Table<graphic_types::artboard::Artboard>"),
-			("ArtboardGroup", "core_types::table::Table<graphic_types::artboard::Artboard>"),
-			("Raster", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
-			("ImageFrame", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
-			("RasterData", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
-			("Image", "core_types::table::Table<graphic_types::raster_types::Raster<graphic_types::raster_types::CPU>>"),
-		];
-
-		match value {
-			serde_json::Value::Object(map) => {
-				if map.len() == 1
-					&& let Some(key) = map.keys().next()
-				{
-					if REMOVED_VARIANTS.contains(&key.as_str()) {
-						*value = serde_json::Value::String("None".to_string());
-						return;
-					}
-					if let Some((_, type_name)) = REMOVED_PLACEHOLDER_CONTAINERS.iter().find(|(name, _)| *name == key.as_str()) {
-						*value = serde_json::json!({ "TypeDefault": { "name": *type_name } });
-						return;
-					}
+	if let Some(map) = value.as_object()
+		&& map.len() == 1
+		&& let Some((tag, content)) = map.iter().next()
+	{
+		match tag.as_str() {
+			"BrushCache" => return Ok(MemoHash::new(TaggedValue::None)),
+			"Graphic" | "GraphicGroup" | "Group" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Graphic>)))),
+			"Artboard" | "ArtboardGroup" => return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Artboard>)))),
+			"Raster" | "ImageFrame" | "RasterData" | "Image" => {
+				let first_element = content.as_object().and_then(|c| c.get("element")).and_then(|e| e.as_array()).and_then(|arr| arr.first());
+				if let Some(image_value) = first_element {
+					let image: Image<Color> = serde_json::from_value(image_value.clone()).map_err(serde::de::Error::custom)?;
+					return Ok(MemoHash::new(TaggedValue::ImageData(image)));
 				}
-				for child in map.values_mut() {
-					Self::scrub_removed_variants_from_json(child);
-				}
-			}
-			serde_json::Value::Array(array) => {
-				for child in array {
-					Self::scrub_removed_variants_from_json(child);
-				}
+				return Ok(MemoHash::new(TaggedValue::TypeDefault(descriptor!(Table<Raster<CPU>>))));
 			}
 			_ => {}
 		}
 	}
 
-	// TODO: Eventually remove this migration document upgrade code
-	/// Walks a JSON document tree, finds nodes whose `implementation.ProtoNode.name` is the legacy `image` proto nodde (current name or any of its renamed predecessors), and rescues an embedded image stored at input 1 as a `Table<Raster<CPU>>` into the modern `TaggedValue::ImageData` shape.
-	///
-	/// Without this, the subsequent `scrub_removed_variants_from_json` would discard the table payload along with the variant tag, losing the user's image data. Must run before the scrub.
-	#[cfg(feature = "loading")]
-	pub fn rescue_legacy_image_proto_inputs_in_json(value: &mut serde_json::Value) {
-		// Identifiers for the `image` proto node — current and historical aliases (mirroring the entry under `NODE_REPLACEMENTS` in `document_migration.rs`).
-		// This walk runs before `NODE_REPLACEMENTS` rewrites old proto names to the current one, so we have to recognize all spellings.
-		const IMAGE_PROTO_NAMES: &[&str] = &[
-			"raster_nodes::std_nodes::ImageNode",
-			"raster_nodes::std_nodes::ImageValueNode",
-			"graphene_raster_nodes::std_nodes::ImageValueNode",
-			"graphene_std::raster::ImageValueNode",
-			"graphene_std::raster::ImageNode",
-		];
-
-		// Variant tags meaning "this is a `Table<Raster<CPU>>`" — the canonical name plus the historical `#[serde(alias = "...")]` spellings the deleted variant accepted.
-		const RASTER_VARIANT_TAGS: &[&str] = &["Raster", "ImageFrame", "RasterData", "Image"];
-
-		match value {
-			serde_json::Value::Object(map) => {
-				let is_image_proto = map
-					.get("implementation")
-					.and_then(|i| i.as_object())
-					.and_then(|m| m.get("ProtoNode"))
-					.and_then(|p| p.as_object())
-					.and_then(|m| m.get("name"))
-					.and_then(|n| n.as_str())
-					.is_some_and(|name| IMAGE_PROTO_NAMES.contains(&name));
-
-				if is_image_proto
-					&& let Some(input_1) = map.get_mut("inputs").and_then(|i| i.as_array_mut()).and_then(|a| a.get_mut(1))
-					&& let Some(input_obj) = input_1.as_object_mut()
-					&& let Some(value_obj) = input_obj.get_mut("Value").and_then(|v| v.as_object_mut())
-					&& let Some(tagged_value) = value_obj.get_mut("tagged_value")
-				{
-					// `tagged_value` should be `{"Raster": {"element": [<image>, ...]}}` (or one of the historical aliases). Each element of `Table<Raster<CPU>>` serializes as the inner `Image<Color>` directly because `Raster<CPU>::serialize` delegates to `Image<Color>`.
-					let rescued = tagged_value
-						.as_object()
-						.filter(|tv| tv.len() == 1)
-						.and_then(|tv| tv.iter().next())
-						.filter(|(tag, _)| RASTER_VARIANT_TAGS.contains(&tag.as_str()))
-						.and_then(|(_, content)| content.as_object())
-						.and_then(|c| c.get("element"))
-						.and_then(|e| e.as_array())
-						.and_then(|arr| arr.first())
-						.cloned();
-
-					if let Some(image) = rescued {
-						*tagged_value = serde_json::json!({ "ImageData": image });
-						value_obj.insert("exposed".to_string(), serde_json::Value::Bool(false));
-					}
-				}
-
-				for child in map.values_mut() {
-					Self::rescue_legacy_image_proto_inputs_in_json(child);
-				}
-			}
-			serde_json::Value::Array(array) => {
-				for child in array {
-					Self::rescue_legacy_image_proto_inputs_in_json(child);
-				}
-			}
-			_ => {}
-		}
-	}
+	let tagged_value: TaggedValue = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+	Ok(MemoHash::new(tagged_value))
 }
 
 impl Display for TaggedValue {
@@ -652,67 +574,5 @@ impl CacheHash for RenderOutputType {
 impl CacheHash for RenderOutput {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.data.cache_hash(state);
-	}
-}
-
-#[cfg(all(test, feature = "loading"))]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn scrub_replaces_removed_variant_with_none_unit() {
-		let mut value = serde_json::json!({
-			"Value": {
-				"tagged_value": { "BrushCache": { "unique_id": 1, "prev_input": [] } },
-				"exposed": false
-			}
-		});
-		TaggedValue::scrub_removed_variants_from_json(&mut value);
-		assert_eq!(value, serde_json::json!({ "Value": { "tagged_value": "None", "exposed": false } }));
-	}
-
-	#[test]
-	fn scrub_leaves_live_variants_unchanged() {
-		let mut value = serde_json::json!({ "Value": { "tagged_value": { "F64": 1.5 }, "exposed": false } });
-		let original = value.clone();
-		TaggedValue::scrub_removed_variants_from_json(&mut value);
-		assert_eq!(value, original);
-	}
-
-	#[test]
-	fn scrub_recurses_through_arrays_and_nested_objects() {
-		let mut value = serde_json::json!([{ "BrushCache": { "any": "payload" } }, { "F32": 0.5 }]);
-		TaggedValue::scrub_removed_variants_from_json(&mut value);
-		assert_eq!(value, serde_json::json!(["None", { "F32": 0.5 }]));
-	}
-
-	#[test]
-	fn scrub_rewrites_removed_placeholder_container_to_type_default() {
-		let mut value = serde_json::json!({
-			"Value": {
-				"tagged_value": { "Graphic": { "element": [] } },
-				"exposed": true
-			}
-		});
-		TaggedValue::scrub_removed_variants_from_json(&mut value);
-		assert_eq!(
-			value,
-			serde_json::json!({
-				"Value": {
-					"tagged_value": { "TypeDefault": { "name": "core_types::table::Table<graphic_types::graphic::Graphic>" } },
-					"exposed": true
-				}
-			})
-		);
-	}
-
-	#[test]
-	fn scrub_rewrites_legacy_alias_with_old_shape_payload() {
-		// Old documents stored `Artboard` under the alias `ArtboardGroup` with a shape preceding the `Table<Artboard>` rewrite (`{id, instance, transform, alpha_blending, source_node_id}` parallel arrays). The scrub must catch the alias and discard the legacy payload.
-		let mut value = serde_json::json!({
-			"ArtboardGroup": { "id": [], "instance": [], "transform": [], "alpha_blending": [], "source_node_id": [] }
-		});
-		TaggedValue::scrub_removed_variants_from_json(&mut value);
-		assert_eq!(value, serde_json::json!({ "TypeDefault": { "name": "core_types::table::Table<graphic_types::artboard::Artboard>" } }));
 	}
 }
