@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
+use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
@@ -2089,40 +2090,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
-	// Migrate Path nodes that stored geometry directly in input 0 (as a Table<Vector>) to instead use a VectorModification in input 1
+	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
+	// For exposed input 0, any baked value is unused at runtime, so just reset it.
 	if reference == DefinitionIdentifier::Network("Path".into()) {
 		let input_0 = node.inputs.first()?;
 		if let NodeInput::Value { tagged_value, exposed } = input_0
-			&& !exposed
-			&& let TaggedValue::Vector(vector_table) = &**tagged_value
-			&& !vector_table.is_empty()
+			&& let TaggedValue::VectorModification(modification) = &**tagged_value
 		{
-			let vector = vector_table.element(0)?;
-			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
+			let modification = modification.clone();
+			let was_exposed = *exposed;
 
-			// Reset input 0 to the default exposed state
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Vector(Default::default()), true), network_path);
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, 0),
+				NodeInput::type_default(descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>), true),
+				network_path,
+			);
 
-			// Store the converted VectorModification in input 1
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+			if !was_exposed {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+			}
 		}
-	}
-
-	// Migrate Image nodes that stored a Table<Raster<CPU>> in input 1 to instead use bare Image<Color> via TaggedValue::ImageData
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
-		&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(1)
-		&& let TaggedValue::Raster(raster_table) = &**tagged_value
-		&& let Some(element) = raster_table.element(0)
-	{
-		let image = element.data().clone();
-
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
 	// ==================================

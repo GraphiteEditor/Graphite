@@ -1063,39 +1063,6 @@ impl<T> Table<T> {
 	}
 }
 
-#[cfg(feature = "serde")]
-impl<T: serde::Serialize> serde::Serialize for Table<T> {
-	/// Serializes only the element vec, omitting type-erased attributes which are not serializable.
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		#[derive(serde::Serialize)]
-		struct TableHelper<'a, T: serde::Serialize> {
-			element: &'a Vec<T>,
-		}
-
-		TableHelper { element: &self.element }.serialize(serializer)
-	}
-}
-
-#[cfg(feature = "serde")]
-impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for Table<T> {
-	/// Deserializes the element vec and initializes an empty attribute column store with the matching row count.
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		#[derive(serde::Deserialize)]
-		struct TableHelper<T> {
-			#[serde(alias = "instances", alias = "instance")]
-			element: Vec<T>,
-		}
-
-		let helper = TableHelper::deserialize(deserializer)?;
-		let len = helper.element.len();
-
-		Ok(Table {
-			element: helper.element,
-			attributes: AttributeColumns::with_len(len),
-		})
-	}
-}
-
 impl<T: BoundingBox> BoundingBox for Table<T> {
 	/// Computes the combined bounding box of all items, composing each item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
@@ -1251,34 +1218,6 @@ impl<T: Default> Default for TableRow<T> {
 impl<T: PartialEq> PartialEq for TableRow<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.element == other.element
-	}
-}
-
-#[cfg(feature = "serde")]
-impl<T: serde::Serialize> serde::Serialize for TableRow<T> {
-	/// Serializes only the element, omitting type-erased attributes which are not serializable.
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		#[derive(serde::Serialize)]
-		struct TableRowHelper<'a, T: serde::Serialize> {
-			element: &'a T,
-		}
-
-		TableRowHelper { element: &self.element }.serialize(serializer)
-	}
-}
-
-#[cfg(feature = "serde")]
-impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for TableRow<T> {
-	/// Deserializes the element and initializes an empty set of attributes.
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		#[derive(serde::Deserialize)]
-		struct TableRowHelper<T> {
-			#[serde(alias = "instance")]
-			element: T,
-		}
-
-		let helper = TableRowHelper::deserialize(deserializer)?;
-		Ok(TableRow::new_from_element(helper.element))
 	}
 }
 

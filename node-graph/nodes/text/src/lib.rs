@@ -6,14 +6,12 @@ mod text_context;
 mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
-use core_types::Color;
 use core_types::graphene_hash::CacheHash;
 use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::table::{Table, TableRow};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use raster_types::{CPU, Raster};
 use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
@@ -797,24 +795,6 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
 
 /// Converts a value to a JSON string representation.
 #[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(
-	_: impl Ctx,
-	#[implementations(
-		String,
-		bool,
-		f64,
-		u32,
-		u64,
-		DVec2,
-		DAffine2,
-		// Table<Artboard>,
-		// Table<Graphic>,
-		// Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		// Table<GradientStops>,
-	)]
-	value: T,
-) -> String {
+fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: T) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }

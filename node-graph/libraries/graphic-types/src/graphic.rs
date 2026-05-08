@@ -1,9 +1,8 @@
-use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::ops::TableConvert;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, TableRow};
+use core_types::table::Table;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
@@ -16,7 +15,6 @@ pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),
@@ -485,98 +483,4 @@ impl<T: Clone> OmitIndex for Table<T> {
 		}
 		self.omit_index(self.len() - index)
 	}
-}
-
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
-	use serde::Deserialize;
-
-	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
-	#[derive(Clone, Debug, Default, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(default))]
-	pub struct LegacyAlphaBlending {
-		pub blend_mode: BlendMode,
-		pub opacity: f32,
-		pub fill: f32,
-		pub clip: bool,
-	}
-
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldGraphicGroup {
-		elements: Vec<(Graphic, Option<NodeId>)>,
-		transform: DAffine2,
-		alpha_blending: LegacyAlphaBlending,
-	}
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct GraphicGroup {
-		elements: Vec<(Graphic, Option<NodeId>)>,
-	}
-
-	#[derive(Clone, Debug)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OlderTable<T> {
-		id: Vec<u64>,
-		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
-		element: Vec<T>,
-	}
-
-	#[derive(Clone, Debug)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldTable<T> {
-		id: Vec<u64>,
-		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
-		element: Vec<T>,
-		transform: Vec<DAffine2>,
-		alpha_blending: Vec<LegacyAlphaBlending>,
-	}
-
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum GraphicFormat {
-		OldGraphicGroup(OldGraphicGroup),
-		OlderTableOldGraphicGroup(OlderTable<OldGraphicGroup>),
-		OldTableOldGraphicGroup(OldTable<OldGraphicGroup>),
-		OldTableGraphicGroup(OldTable<GraphicGroup>),
-		Table(serde_json::Value),
-	}
-
-	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
-	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
-	Ok(match GraphicFormat::deserialize(deserializer)? {
-		GraphicFormat::OldGraphicGroup(old) => old.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)).collect(),
-		GraphicFormat::OlderTableOldGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
-			.collect(),
-		GraphicFormat::OldTableOldGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
-			.collect(),
-		GraphicFormat::OldTableGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
-			.collect(),
-		GraphicFormat::Table(value) => {
-			// Try to deserialize as either `Table` format
-			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
-				let mut graphic_table = Table::new();
-				for index in 0..old_table.len() {
-					for (graphic, _) in &old_table.element(index).unwrap().elements {
-						graphic_table.push(TableRow::new_from_element(graphic.clone()));
-					}
-				}
-				graphic_table
-			} else if let Ok(new_table) = serde_json::from_value::<Table<Graphic>>(value) {
-				new_table
-			} else {
-				return Err(serde::de::Error::custom("Failed to deserialize Table<Graphic>"));
-			}
-		}
-	})
 }

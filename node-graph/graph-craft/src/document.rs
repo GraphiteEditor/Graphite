@@ -178,7 +178,11 @@ pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize },
 
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
+	Value {
+		#[cfg_attr(feature = "loading", serde(deserialize_with = "crate::document::value::deserialize_tagged_value_with_legacy_migration"))]
+		tagged_value: MemoHash<TaggedValue>,
+		exposed: bool,
+	},
 
 	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the import from the parent network to this document node network.
@@ -229,6 +233,12 @@ impl NodeInput {
 	pub fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
 		let tagged_value = tagged_value.into();
 		Self::Value { tagged_value, exposed }
+	}
+
+	/// Constructs a `NodeInput::Value` whose tagged value is `TaggedValue::TypeDefault(td)`, recording only the
+	/// type so the runtime materializes its default rather than baking a placeholder value into the saved document.
+	pub fn type_default(td: core_types::TypeDescriptor, exposed: bool) -> Self {
+		Self::value(TaggedValue::TypeDefault(td), exposed)
 	}
 
 	pub const fn import(import_type: Type, import_index: usize) -> Self {
@@ -930,10 +940,7 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => {
-						let table: core_types::table::Table<NodeId> = path.iter().copied().map(core_types::table::TableRow::new_from_element).collect();
-						(TaggedValue::NodeIdTable(table).into(), false)
-					}
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;
