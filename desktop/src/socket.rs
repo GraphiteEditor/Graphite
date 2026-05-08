@@ -117,9 +117,9 @@ fn run(app_event_scheduler: AppEventScheduler, shutdown_receiver: mpsc::Receiver
 
 fn socket_name() -> Name<'static> {
 	if cfg!(target_os = "windows") {
-		let dir = crate::dirs::app_data_dir().to_string_lossy().replace('\\', "-");
-		let name = format!("graphite-{dir}-{APP_SOCKET_FILE_NAME}");
-		name.to_ns_name::<GenericNamespaced>().expect("should be avalid named pipe name")
+		let user = std::env::var("USERNAME").unwrap_or_default();
+		let name = format!("{user}-{app}-{APP_SOCKET_FILE_NAME}", app = crate::consts::APP_NAME);
+		name.to_ns_name::<GenericNamespaced>().expect("valid named pipe name")
 	} else {
 		crate::dirs::app_data_dir().join(APP_SOCKET_FILE_NAME).to_fs_name::<GenericFilePath>().expect("valid socket path")
 	}
