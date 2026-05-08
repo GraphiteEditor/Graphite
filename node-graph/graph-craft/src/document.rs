@@ -940,10 +940,7 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => {
-						let table: core_types::table::Table<NodeId> = path.iter().copied().map(core_types::table::TableRow::new_from_element).collect();
-						(TaggedValue::NodeIdTable(table).into(), false)
-					}
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;

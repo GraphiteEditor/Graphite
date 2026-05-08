@@ -37,7 +37,11 @@ macro_rules! tagged_value {
 			/// Example: `TaggedValue::TypeDefault(descriptor!(String))` stores the type `String` but no specific string value.
 			TypeDefault(TypeDescriptor),
 			$( $(#[$meta] ) *$identifier( $ty ), )*
+			#[serde(skip)]
 			RenderOutput(RenderOutput),
+			/// Path to the consumer of a `NodeInput::Reflection(DocumentNodePath)`. Materializes a `Table<NodeId>` at runtime via `to_dynany`/`to_any` during graph flattening.
+			#[serde(skip)]
+			NodeIdPath(Vec<NodeId>),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 		}
@@ -50,6 +54,7 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => td.cache_hash(state),
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
 					Self::RenderOutput(x) => x.cache_hash(state),
+					Self::NodeIdPath(path) => path.hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
 			}
@@ -72,6 +77,10 @@ macro_rules! tagged_value {
 					}
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
+					Self::NodeIdPath(path) => {
+						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Box::new(table)
+					}
 					Self::EditorApi(x) => Box::new(x),
 				}
 			}
@@ -91,6 +100,10 @@ macro_rules! tagged_value {
 					}
 					$( Self::$identifier(x) => Arc::new(x), )*
 					Self::RenderOutput(x) => Arc::new(x),
+					Self::NodeIdPath(path) => {
+						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						Arc::new(table)
+					}
 					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
@@ -102,6 +115,7 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
+					Self::NodeIdPath(_) => concrete!(Table<NodeId>),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 				}
 			}
@@ -171,6 +185,7 @@ macro_rules! tagged_value {
 					Self::TypeDefault(td) => format!("TypeDefault({})", td.name),
 					$( Self::$identifier(x) => format!("{:?}", x), )*
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
+					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 				}
 			}
@@ -206,7 +221,6 @@ tagged_value! {
 	#[serde(deserialize_with = "core_types::misc::migrate_vec_f64_to_table")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
 	F64Table(Table<f64>),
-	NodeIdTable(Table<NodeId>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
