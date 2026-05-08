@@ -71,6 +71,9 @@ macro_rules! tagged_value {
 			/// The `DocumentNode` value carried by an `Extract` proto node, populated at flatten time by `resolve_extract_nodes`. The on-disk placeholder uses `TypeDefault(descriptor!(DocumentNode))`.
 			#[serde(skip)]
 			DocumentNode(DocumentNode),
+			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
+			#[serde(skip)]
+			ContextFeatures(ContextFeatures),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 		}
@@ -97,6 +100,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::NodeIdPath(path) => path.hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
+					Self::ContextFeatures(features) => features.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 				}
@@ -149,6 +153,7 @@ macro_rules! tagged_value {
 						Box::new(table)
 					}
 					Self::DocumentNode(node) => Box::new(node),
+					Self::ContextFeatures(features) => Box::new(features),
 					Self::EditorApi(x) => Box::new(x),
 				}
 			}
@@ -197,6 +202,7 @@ macro_rules! tagged_value {
 						Arc::new(table)
 					}
 					Self::DocumentNode(node) => Arc::new(node),
+					Self::ContextFeatures(features) => Arc::new(features),
 					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
@@ -223,6 +229,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::NodeIdPath(_) => concrete!(Table<NodeId>),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
+					Self::ContextFeatures(_) => concrete!(ContextFeatures),
 					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
 				}
 			}
@@ -327,6 +334,7 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
+					Self::ContextFeatures(features) => format!("ContextFeatures({features:?})"),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 				}
 			}
@@ -370,7 +378,6 @@ tagged_value! {
 	DAffine2(DAffine2),
 	FillGradient(Gradient),
 	Font(Font),
-	ContextFeatures(ContextFeatures),
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
