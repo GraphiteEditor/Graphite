@@ -1,5 +1,5 @@
 use crate::Node;
-use crate::table::{AttributeColumnDyn, AttributeValueDyn, Column, Table, TableDyn, Item};
+use crate::table::{Attribute, AttributeDyn, AttributeValueDyn, Item, Table, TableDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
 use graphene_hash::CacheHash;
@@ -75,10 +75,10 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 /// Wraps each row's element into a type-erased column. Lets nodes that accept a source attribute
 /// from any `Table<U>` express their signature as `AttributeColumnDyn` and avoid monomorphizing
 /// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
-impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeColumnDyn, ()> for Table<T> {
-	async fn convert(self, _: Footprint, _: ()) -> AttributeColumnDyn {
+impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for Table<T> {
+	async fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
 		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
-		AttributeColumnDyn(Box::new(Column(values)))
+		AttributeDyn(Box::new(Attribute(values)))
 	}
 }
 

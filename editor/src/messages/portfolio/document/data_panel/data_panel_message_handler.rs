@@ -985,8 +985,8 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 
 /// Type-dispatched widget for displaying an attribute value in a `Table<T>` item.
 /// Delegates to [`TableItemLayout::value_widget`] so the same widget code is shared between
-/// element-column rendering and attribute-column rendering. Returns `None` for unrecognized types so the
-/// caller can fall back to a debug-formatted [`TextLabel`].
+/// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
+/// types so the caller can fall back to a debug-formatted [`TextLabel`].
 fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {

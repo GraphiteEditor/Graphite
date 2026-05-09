@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn};
+use core_types::table::{AttributeDyn, AttributeValueDyn, Table, TableDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
@@ -37,7 +37,7 @@ async fn context_modification<T>(
 		Context -> Table<Color>,
 		Context -> Table<Artboard>,
 		Context -> Table<GradientStops>,
-		Context -> AttributeColumnDyn,
+		Context -> AttributeDyn,
 		Context -> AttributeValueDyn,
 		Context -> TableDyn,
 	)]

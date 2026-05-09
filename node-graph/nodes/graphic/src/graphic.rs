@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, Item};
+use core_types::table::{AttributeDyn, AttributeValueDyn, Item, Table, TableDyn};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -253,13 +253,13 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		let row = content.clone_row(index).expect("index is within bounds");
 		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_row(row))).with_index(index);
 		let v = value.eval(owned_ctx.into_context()).await;
-		content.set_attribute_dyn(&name, index, v);
+		content.set_attribute_value_dyn(&name, index, v);
 	}
 	content
 }
 
 /// Sets a named attribute on the primary table, with each value taken from the corresponding item's element in the source table (paired by index, wrapping if the source has fewer items).
-/// The source is type-erased into an `AttributeColumnDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
+/// The source is type-erased into an `AttributeDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
 fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
@@ -282,14 +282,14 @@ fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	mut content: Table<T>,
 	/// The source values to attach. Any `Table<U>` wired here is type-erased via an auto-inserted convert.
 	#[expose]
-	source: AttributeColumnDyn,
+	source: AttributeDyn,
 	/// The name to assign to the new destination attribute.
 	name: String,
 ) -> Table<T> {
 	if source.is_empty() {
 		return content;
 	}
-	content.set_column_dyn(name, source);
+	content.set_attribute_dyn(name, source);
 	content
 }
 
