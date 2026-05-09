@@ -1,8 +1,8 @@
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
+use graphene_std::list::List;
 use graphene_std::raster_types::{CPU, Raster};
-use graphene_std::table::Table;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Graphic};
 
@@ -31,11 +31,11 @@ impl FrontendGraphDataType {
 			TaggedValue::String(_) => Self::Typography,
 			// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
 			TaggedValue::TypeDefault(td) => match td.name.as_ref() {
-				n if n == std::any::type_name::<Table<Graphic>>() => Self::Graphic,
-				n if n == std::any::type_name::<Table<Artboard>>() => Self::Artboard,
-				n if n == std::any::type_name::<Table<Raster<CPU>>>() => Self::Raster,
-				n if n == std::any::type_name::<Table<Vector>>() => Self::Vector,
-				n if n == std::any::type_name::<Table<String>>() => Self::Typography,
+				n if n == std::any::type_name::<List<Graphic>>() => Self::Graphic,
+				n if n == std::any::type_name::<List<Artboard>>() => Self::Artboard,
+				n if n == std::any::type_name::<List<Raster<CPU>>>() => Self::Raster,
+				n if n == std::any::type_name::<List<Vector>>() => Self::Vector,
+				n if n == std::any::type_name::<List<String>>() => Self::Typography,
 				_ => Self::General,
 			},
 			_ => Self::General,

@@ -15,7 +15,7 @@ pub trait BoundingBox {
 	/// Returns the bounding box to use when sizing this value's thumbnail in the Layers panel.
 	///
 	/// Diverges from `bounding_box` for types where the rendering bounds wouldn't make a useful thumbnail frame.
-	/// For instance, `GradientStops` is `Infinite` for rendering but returns the line's AABB here, so a `Table<Graphic>`
+	/// For instance, `GradientStops` is `Infinite` for rendering but returns the line's AABB here, so a `List<Graphic>`
 	/// group of a gradient and a vector frames around the vector's geometry rather than infinity.
 	/// Types with no meaningful contribution (e.g., `Color`) return `Infinite` from both; the runtime substitutes a
 	/// small fallback rectangle at the end if no finite bounds remain after combining.

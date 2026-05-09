@@ -556,7 +556,7 @@ impl RenderComplexity for Vector {
 	}
 }
 
-// Note: BoundingBox for Table<Vector> is handled by blanket impl in gcore
+// Note: BoundingBox for List<Vector> is handled by blanket impl in gcore
 
 #[cfg(test)]
 mod tests {

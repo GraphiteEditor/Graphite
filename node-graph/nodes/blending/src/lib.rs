@@ -1,5 +1,5 @@
+use core_types::list::List;
 use core_types::registry::types::Percentage;
-use core_types::table::Table;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -16,41 +16,41 @@ impl MultiplyAlpha for Color {
 	}
 }
 
-fn multiply_table_attribute<T>(table: &mut Table<T>, key: &str, factor: f64) {
-	if let Some(values) = table.iter_attribute_values_mut::<f64>(key) {
+fn multiply_list_attribute<T>(list: &mut List<T>, key: &str, factor: f64) {
+	if let Some(values) = list.iter_attribute_values_mut::<f64>(key) {
 		for v in values {
 			*v *= factor;
 		}
 	} else {
-		for v in table.iter_attribute_values_mut_or_default::<f64>(key) {
+		for v in list.iter_attribute_values_mut_or_default::<f64>(key) {
 			*v = factor;
 		}
 	}
 }
 
-impl MultiplyAlpha for Table<Vector> {
+impl MultiplyAlpha for List<Vector> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY, factor);
+		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
-impl MultiplyAlpha for Table<Graphic> {
+impl MultiplyAlpha for List<Graphic> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY, factor);
+		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
-impl MultiplyAlpha for Table<Raster<CPU>> {
+impl MultiplyAlpha for List<Raster<CPU>> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY, factor);
+		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
-impl MultiplyAlpha for Table<Color> {
+impl MultiplyAlpha for List<Color> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY, factor);
+		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
-impl MultiplyAlpha for Table<GradientStops> {
+impl MultiplyAlpha for List<GradientStops> {
 	fn multiply_alpha(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY, factor);
+		multiply_list_attribute(self, ATTR_OPACITY, factor);
 	}
 }
 
@@ -62,29 +62,29 @@ impl MultiplyFill for Color {
 		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
-impl MultiplyFill for Table<Vector> {
+impl MultiplyFill for List<Vector> {
 	fn multiply_fill(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY_FILL, factor);
+		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
 }
-impl MultiplyFill for Table<Graphic> {
+impl MultiplyFill for List<Graphic> {
 	fn multiply_fill(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY_FILL, factor);
+		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
 }
-impl MultiplyFill for Table<Raster<CPU>> {
+impl MultiplyFill for List<Raster<CPU>> {
 	fn multiply_fill(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY_FILL, factor);
+		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
 }
-impl MultiplyFill for Table<Color> {
+impl MultiplyFill for List<Color> {
 	fn multiply_fill(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY_FILL, factor);
+		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
 }
-impl MultiplyFill for Table<GradientStops> {
+impl MultiplyFill for List<GradientStops> {
 	fn multiply_fill(&mut self, factor: f64) {
-		multiply_table_attribute(self, ATTR_OPACITY_FILL, factor);
+		multiply_list_attribute(self, ATTR_OPACITY_FILL, factor);
 	}
 }
 
@@ -92,35 +92,35 @@ trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-fn set_table_blend_mode<T>(table: &mut Table<T>, blend_mode: BlendMode) {
-	for v in table.iter_attribute_values_mut_or_default::<BlendMode>(ATTR_BLEND_MODE) {
+fn set_list_blend_mode<T>(list: &mut List<T>, blend_mode: BlendMode) {
+	for v in list.iter_attribute_values_mut_or_default::<BlendMode>(ATTR_BLEND_MODE) {
 		*v = blend_mode;
 	}
 }
 
-impl SetBlendMode for Table<Vector> {
+impl SetBlendMode for List<Vector> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_table_blend_mode(self, blend_mode);
+		set_list_blend_mode(self, blend_mode);
 	}
 }
-impl SetBlendMode for Table<Graphic> {
+impl SetBlendMode for List<Graphic> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_table_blend_mode(self, blend_mode);
+		set_list_blend_mode(self, blend_mode);
 	}
 }
-impl SetBlendMode for Table<Raster<CPU>> {
+impl SetBlendMode for List<Raster<CPU>> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_table_blend_mode(self, blend_mode);
+		set_list_blend_mode(self, blend_mode);
 	}
 }
-impl SetBlendMode for Table<Color> {
+impl SetBlendMode for List<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_table_blend_mode(self, blend_mode);
+		set_list_blend_mode(self, blend_mode);
 	}
 }
-impl SetBlendMode for Table<GradientStops> {
+impl SetBlendMode for List<GradientStops> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		set_table_blend_mode(self, blend_mode);
+		set_list_blend_mode(self, blend_mode);
 	}
 }
 
@@ -128,35 +128,35 @@ trait SetClip {
 	fn set_clip(&mut self, clip: bool);
 }
 
-fn set_table_clip<T>(table: &mut Table<T>, clip: bool) {
-	for v in table.iter_attribute_values_mut_or_default::<bool>(ATTR_CLIPPING_MASK) {
+fn set_list_clip<T>(list: &mut List<T>, clip: bool) {
+	for v in list.iter_attribute_values_mut_or_default::<bool>(ATTR_CLIPPING_MASK) {
 		*v = clip;
 	}
 }
 
-impl SetClip for Table<Vector> {
+impl SetClip for List<Vector> {
 	fn set_clip(&mut self, clip: bool) {
-		set_table_clip(self, clip);
+		set_list_clip(self, clip);
 	}
 }
-impl SetClip for Table<Graphic> {
+impl SetClip for List<Graphic> {
 	fn set_clip(&mut self, clip: bool) {
-		set_table_clip(self, clip);
+		set_list_clip(self, clip);
 	}
 }
-impl SetClip for Table<Raster<CPU>> {
+impl SetClip for List<Raster<CPU>> {
 	fn set_clip(&mut self, clip: bool) {
-		set_table_clip(self, clip);
+		set_list_clip(self, clip);
 	}
 }
-impl SetClip for Table<Color> {
+impl SetClip for List<Color> {
 	fn set_clip(&mut self, clip: bool) {
-		set_table_clip(self, clip);
+		set_list_clip(self, clip);
 	}
 }
-impl SetClip for Table<GradientStops> {
+impl SetClip for List<GradientStops> {
 	fn set_clip(&mut self, clip: bool) {
-		set_table_clip(self, clip);
+		set_list_clip(self, clip);
 	}
 }
 
@@ -166,17 +166,17 @@ fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	mut content: T,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: BlendMode,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or Item<T>) rather than applying to each item in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	content.set_blend_mode(blend_mode);
 	content
 }
@@ -189,11 +189,11 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	mut content: T,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
@@ -214,7 +214,7 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 	#[default(100.)]
 	fill: Percentage,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or Item<T>) rather than applying to each item in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	if has_opacity {
 		content.multiply_alpha(opacity / 100.);
 	}
@@ -230,17 +230,17 @@ fn clipping_mask<T: SetClip>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	mut content: T,
 	/// Whether the content inherits the alpha of the content beneath it.
 	clip: bool,
 ) -> T {
-	// TODO: Find a way to make this apply once to the table's parent (i.e. its item in its parent table or Item<T>) rather than applying to each item in its own table, which produces the undesired result
+	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	content.set_clip(clip);
 	content
 }

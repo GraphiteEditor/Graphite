@@ -4,9 +4,9 @@ use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
 use core_types::generic::FnNode;
+use core_types::list::{Item, List};
 use core_types::math::bbox::{AxisAlignedBbox, Bbox};
 use core_types::registry::FutureWrapperNode;
-use core_types::table::{Item, Table};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::value::ClonedNode;
@@ -83,7 +83,7 @@ fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f
 
 /// Used to efficiently paint brush strokes. Applies the same texture repeatedly at different positions with proper blending and boundary handling.
 #[node_macro::node(category(""), skip_impl)]
-fn blit<BlendFn>(mut target: Table<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> Table<Raster<CPU>>
+fn blit<BlendFn>(mut target: List<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> List<Raster<CPU>>
 where
 	BlendFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color>,
 {
@@ -137,7 +137,7 @@ where
 pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = empty_image((), transform, Table::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap_or_default();
+	let blank_texture = empty_image((), transform, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap_or_default();
 	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
 	image.into_element()
@@ -191,20 +191,20 @@ pub fn blend_with_mode(background: Item<Raster<CPU>>, foreground: Item<Raster<CP
 async fn brush(
 	_: impl Ctx,
 	/// Optional raster content that may be drawn onto.
-	mut background: Table<Raster<CPU>>,
+	mut background: List<Raster<CPU>>,
 	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
-	trace: Table<BrushStroke>,
+	trace: List<BrushStroke>,
 	/// Internal cache data used to accelerate rendering of the brush content.
 	#[data]
 	cache: BrushCache,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	if background.is_empty() {
 		background.push(Item::default());
 	}
 	// TODO: Find a way to handle more than one item
-	let table_row = background.clone_item(0).expect("Expected the one item we just pushed");
+	let list_item = background.clone_item(0).expect("Expected the one item we just pushed");
 
-	let bounds = Table::new_from_item(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
+	let bounds = List::new_from_item(list_item.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
 	let background_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = trace.iter_element_values().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
@@ -221,11 +221,11 @@ async fn brush(
 		.cloned()
 		.collect();
 
-	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
+	let mut brush_plan = cache.compute_brush_plan(list_item, &draw_strokes);
 
 	// TODO: Find a way to handle more than one item
-	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_item(brush_plan.background), background_bounds).into_iter().next() else {
-		return Table::new();
+	let Some(mut actual_image) = extend_image_to_bounds((), List::new_from_item(brush_plan.background), background_bounds).into_iter().next() else {
+		return List::new();
 	};
 
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
@@ -263,15 +263,15 @@ async fn brush(
 			);
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				extend_image_to_bounds((), Table::new_from_item(target), stroke_to_layer)
+				extend_image_to_bounds((), List::new_from_item(target), stroke_to_layer)
 			} else {
-				empty_image((), stroke_to_layer, Table::new_from_element(Color::TRANSPARENT))
+				empty_image((), stroke_to_layer, List::new_from_element(Color::TRANSPARENT))
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 
-			let table = blit_node.eval(blit_target).await;
-			assert_eq!(table.len(), 1);
-			table.into_iter().next().unwrap_or_default()
+			let list = blit_node.eval(blit_target).await;
+			assert_eq!(list.len(), 1);
+			list.into_iter().next().unwrap_or_default()
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
@@ -311,7 +311,7 @@ async fn brush(
 				FutureWrapperNode::new(ClonedNode::new(positions)),
 				FutureWrapperNode::new(ClonedNode::new(blend_params)),
 			);
-			erase_restore_mask = blit_node.eval(Table::new_from_item(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
+			erase_restore_mask = blit_node.eval(List::new_from_item(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
 		}
 
 		let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));
@@ -323,7 +323,7 @@ async fn brush(
 	let opacity: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let fill: f64 = actual_image.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	let clip: bool = actual_image.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
-	let layer: Table<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+	let layer: List<NodeId> = actual_image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 
 	*background.element_mut(0).unwrap() = actual_image.into_element();
 	background.set_attribute(ATTR_TRANSFORM, 0, transform);
@@ -421,8 +421,8 @@ mod test {
 		let image = brush(
 			(),
 			&BrushCache::default(),
-			Table::new_from_element(Raster::new_cpu(Image::<Color>::default())),
-			Table::new_from_element(BrushStroke {
+			List::new_from_element(Raster::new_cpu(Image::<Color>::default())),
+			List::new_from_element(BrushStroke {
 				trace: vec![crate::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
 					color: Color::BLACK,

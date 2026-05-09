@@ -27,11 +27,11 @@ pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 /// `bool` for whether an item inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
 
-/// `Table<NodeId>` path from the root network to the layer node owning this item.
+/// `List<NodeId>` path from the root network to the layer node owning this item.
 /// Used by editor tools to route clicks/selection back to the originating layer.
 pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 
-/// `Table<Graphic>` snapshot of the upstream content that fed into a destructive merge
+/// `List<Graphic>` snapshot of the upstream content that fed into a destructive merge
 /// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
@@ -147,7 +147,7 @@ impl Clone for Box<dyn AnyAttributeValue> {
 // TRAIT: AnyAttribute
 // ===================
 
-/// Enables type-erased storage for parallel attribute lists in a [`Table`].
+/// Enables type-erased storage for parallel attribute lists in a [`List`].
 pub trait AnyAttribute: std::any::Any + Send + Sync {
 	/// Clones this attribute into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AnyAttribute>;
@@ -224,7 +224,7 @@ impl Clone for Box<dyn AnyAttribute> {
 // Attribute<T>
 // ============
 
-/// Wraps a Vec<T> for attribute storage in a [`Table`].
+/// Wraps a Vec<T> for attribute storage in a [`List`].
 pub struct Attribute<T>(pub Vec<T>);
 
 impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static> AnyAttribute for Attribute<T> {
@@ -329,7 +329,7 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 // ============
 
 /// Type-erased list of attribute values, used as a node graph parameter type.
-/// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<AttributeDyn, ()>`
+/// Lets a node accept any `List<U>` source via the auto-inserted `Convert<AttributeDyn, ()>`
 /// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
 pub struct AttributeDyn(pub Box<dyn AnyAttribute>);
 
@@ -439,26 +439,26 @@ unsafe impl StaticType for AttributeValueDyn {
 	type Static = Self;
 }
 
-// ========
-// TableDyn
-// ========
+// =======
+// ListDyn
+// =======
 
-/// Type-erased view of a `Table<T>` exposing only its attributes and item count, used as a node graph parameter type.
-/// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<TableDyn, ()>` without monomorphizing over `U`,
-/// for cases where the element type is irrelevant (such as nodes that read out a named attribute regardless of the carrier table).
+/// Type-erased view of a `List<T>` exposing only its attributes and item count, used as a node graph parameter type.
+/// Lets a node accept any `List<U>` source via the auto-inserted `Convert<ListDyn, ()>` without monomorphizing over `U`,
+/// for cases where the element type is irrelevant (such as nodes that read out a named attribute regardless of the carrier `List`).
 #[derive(Default)]
-pub struct TableDyn {
+pub struct ListDyn {
 	attributes: Vec<(String, Box<dyn AnyAttribute>)>,
 	len: usize,
 }
 
-impl TableDyn {
-	/// Number of items in the underlying table.
+impl ListDyn {
+	/// Number of items in the underlying `List`.
 	pub fn len(&self) -> usize {
 		self.len
 	}
 
-	/// Whether the underlying table has zero items.
+	/// Whether the underlying `List` has zero items.
 	pub fn is_empty(&self) -> bool {
 		self.len == 0
 	}
@@ -471,16 +471,16 @@ impl TableDyn {
 	}
 }
 
-impl<T> From<Table<T>> for TableDyn {
-	fn from(table: Table<T>) -> Self {
+impl<T> From<List<T>> for ListDyn {
+	fn from(list: List<T>) -> Self {
 		Self {
-			attributes: table.attributes.attributes,
-			len: table.attributes.len,
+			attributes: list.attributes.attributes,
+			len: list.attributes.len,
 		}
 	}
 }
 
-impl Clone for TableDyn {
+impl Clone for ListDyn {
 	fn clone(&self) -> Self {
 		Self {
 			attributes: self.attributes.iter().map(|(key, attribute)| (key.clone(), attribute.clone_box())).collect(),
@@ -489,14 +489,14 @@ impl Clone for TableDyn {
 	}
 }
 
-impl Debug for TableDyn {
+impl Debug for ListDyn {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let keys: Vec<&str> = self.attributes.iter().map(|(k, _)| k.as_str()).collect();
-		f.debug_struct("TableDyn").field("keys", &keys).field("len", &self.len).finish()
+		f.debug_struct("ListDyn").field("keys", &keys).field("len", &self.len).finish()
 	}
 }
 
-impl PartialEq for TableDyn {
+impl PartialEq for ListDyn {
 	fn eq(&self, other: &Self) -> bool {
 		self.len == other.len
 			&& self.attributes.len() == other.attributes.len()
@@ -508,7 +508,7 @@ impl PartialEq for TableDyn {
 	}
 }
 
-impl CacheHash for TableDyn {
+impl CacheHash for ListDyn {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.len.cache_hash(state);
 		for (key, attribute) in &self.attributes {
@@ -518,7 +518,7 @@ impl CacheHash for TableDyn {
 	}
 }
 
-unsafe impl StaticType for TableDyn {
+unsafe impl StaticType for ListDyn {
 	type Static = Self;
 }
 
@@ -631,7 +631,7 @@ impl ItemAttributeValues {
 /// The storage data structure for attributes.
 ///
 /// A collection of type-erased parallel attributes, keyed by string name.
-/// All access goes through [`Table`] and [`Item`] since internals are private.
+/// All access goes through [`List`] and [`Item`] since internals are private.
 /// Invariant: every attribute in `attributes` has exactly `len` elements.
 #[derive(Clone, Default)]
 struct Attributes {
@@ -842,9 +842,9 @@ impl Attributes {
 	}
 }
 
-// ========
-// Table<T>
-// ========
+// =======
+// List<T>
+// =======
 
 /// A struct-of-arrays collection where each item holds an element of type `T` alongside
 /// a set of type-erased, dynamically-typed attributes stored in parallel attributes.
@@ -853,18 +853,18 @@ impl Attributes {
 /// [`Attributes`] store that keeps one attribute per attribute key. Items are accessed by
 /// index through element/attribute accessor methods, or consumed as owned [`Item`]s via iteration.
 #[derive(Clone, Debug)]
-pub struct Table<T> {
+pub struct List<T> {
 	element: Vec<T>,
 	attributes: Attributes,
 }
 
-impl<T> Table<T> {
-	/// Creates an empty table with no items.
+impl<T> List<T> {
+	/// Creates an empty list with no items.
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Creates an empty table with pre-allocated capacity for the given number of items.
+	/// Creates an empty list with pre-allocated capacity for the given number of items.
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			element: Vec::with_capacity(capacity),
@@ -872,7 +872,7 @@ impl<T> Table<T> {
 		}
 	}
 
-	/// Creates a table containing a single item with the given element and no attributes.
+	/// Creates a list containing a single item with the given element and no attributes.
 	pub fn new_from_element(element: T) -> Self {
 		Self {
 			element: vec![element],
@@ -880,7 +880,7 @@ impl<T> Table<T> {
 		}
 	}
 
-	/// Creates a table containing a single item from the given [`Item`], preserving its attributes.
+	/// Creates a list containing a single item from the given [`Item`], preserving its attributes.
 	pub fn new_from_item(item: Item<T>) -> Self {
 		let mut attributes = Attributes::new();
 		attributes.push_item(item.attributes);
@@ -890,29 +890,29 @@ impl<T> Table<T> {
 		}
 	}
 
-	/// Appends an item to the end of this table.
+	/// Appends an item to the end of this list.
 	pub fn push(&mut self, item: Item<T>) {
 		self.element.push(item.element);
 		self.attributes.push_item(item.attributes);
 	}
 
-	/// Appends all items from another table into this one.
-	pub fn extend(&mut self, table: Table<T>) {
-		self.element.extend(table.element);
-		self.attributes.extend(table.attributes);
+	/// Appends all items from another list into this one.
+	pub fn extend(&mut self, list: List<T>) {
+		self.element.extend(list.element);
+		self.attributes.extend(list.attributes);
 	}
 
-	/// Returns the number of items in this table.
+	/// Returns the number of items in this list.
 	pub fn len(&self) -> usize {
 		self.element.len()
 	}
 
-	/// Returns `true` if this table contains no items.
+	/// Returns `true` if this list contains no items.
 	pub fn is_empty(&self) -> bool {
 		self.element.is_empty()
 	}
 
-	/// Returns an iterator over all attribute keys in this table, in insertion order.
+	/// Returns an iterator over all attribute keys in this list, in insertion order.
 	pub fn attribute_keys(&self) -> impl Iterator<Item = &str> {
 		self.attributes.keys()
 	}
@@ -991,7 +991,7 @@ impl<T> Table<T> {
 		self.attributes.set_value(key, index, value);
 	}
 
-	/// Replaces (or adds) an attribute from a type-erased source. The source is wrapped or truncated to match this table's item count.
+	/// Replaces (or adds) an attribute from a type-erased source. The source is wrapped or truncated to match this list's item count.
 	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, source: AttributeDyn) {
 		let key = key.into();
 		self.attributes.attributes.retain(|(k, _)| k != &key);
@@ -999,7 +999,7 @@ impl<T> Table<T> {
 		self.attributes.attributes.push((key, new_attribute));
 	}
 
-	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the table's length).
+	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).
 	/// Falls back to default if the value's type doesn't match an existing attribute.
 	pub fn set_attribute_value_dyn(&mut self, key: impl Into<String>, index: usize, value: AttributeValueDyn) {
 		let key = key.into();
@@ -1069,7 +1069,7 @@ impl<T> Table<T> {
 	}
 }
 
-impl<T: BoundingBox> BoundingBox for Table<T> {
+impl<T: BoundingBox> BoundingBox for List<T> {
 	/// Computes the combined bounding box of all items, composing each item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
@@ -1115,11 +1115,11 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 	}
 }
 
-impl<T> IntoIterator for Table<T> {
+impl<T> IntoIterator for List<T> {
 	type Item = Item<T>;
 	type IntoIter = ItemIter<T>;
 
-	/// Consumes a [`Table`] and returns an iterator of [`Item`]s, each containing the owned data of the respective item from the original table.
+	/// Consumes a [`List`] and returns an iterator of [`Item`]s, each containing the owned data of the respective item from the original list.
 	fn into_iter(self) -> Self::IntoIter {
 		let attributes = self.attributes.into_item_vec();
 		ItemIter {
@@ -1129,7 +1129,7 @@ impl<T> IntoIterator for Table<T> {
 	}
 }
 
-impl<T> Default for Table<T> {
+impl<T> Default for List<T> {
 	fn default() -> Self {
 		Self {
 			element: Vec::new(),
@@ -1138,7 +1138,7 @@ impl<T> Default for Table<T> {
 	}
 }
 
-impl<T: CacheHash> CacheHash for Table<T> {
+impl<T: CacheHash> CacheHash for List<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.element.cache_hash(state);
 
@@ -1151,7 +1151,7 @@ impl<T: CacheHash> CacheHash for Table<T> {
 	}
 }
 
-impl<T: PartialEq> PartialEq for Table<T> {
+impl<T: PartialEq> PartialEq for List<T> {
 	fn eq(&self, other: &Self) -> bool {
 		// Attributes participate in equality so the `a == b` ⇒ `hash(a) == hash(b)` contract holds with `cache_hash`
 		self.element == other.element
@@ -1165,7 +1165,7 @@ impl<T: PartialEq> PartialEq for Table<T> {
 	}
 }
 
-impl<T> ApplyTransform for Table<T> {
+impl<T> ApplyTransform for List<T> {
 	/// Right-multiplies the modification into each item's transform attribute.
 	fn apply_transform(&mut self, modification: &DAffine2) {
 		for transform in self.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
@@ -1181,22 +1181,22 @@ impl<T> ApplyTransform for Table<T> {
 	}
 }
 
-unsafe impl<T: StaticTypeSized> StaticType for Table<T> {
-	type Static = Table<T::Static>;
+unsafe impl<T: StaticTypeSized> StaticType for List<T> {
+	type Static = List<T::Static>;
 }
 
-impl<T> FromIterator<Item<T>> for Table<T> {
-	/// Collects an iterator of [`Item`]s into a [`Table`], pre-allocating based on the iterator's size hint.
+impl<T> FromIterator<Item<T>> for List<T> {
+	/// Collects an iterator of [`Item`]s into a [`List`], pre-allocating based on the iterator's size hint.
 	fn from_iter<I: IntoIterator<Item = Item<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower_bound, _) = iter.size_hint();
-		let mut table = Self::with_capacity(lower_bound);
+		let mut list = Self::with_capacity(lower_bound);
 
 		for item in iter {
-			table.push(item);
+			list.push(item);
 		}
 
-		table
+		list
 	}
 }
 
@@ -1206,7 +1206,7 @@ impl<T> FromIterator<Item<T>> for Table<T> {
 
 /// An owned item containing an element of type `T` and a set of type-erased scalar attributes.
 ///
-/// Used to build individual items before pushing them into a [`Table`], or when consuming items out of a table via [`IntoIterator`].
+/// Used to build individual items before pushing them into a [`List`], or when consuming items out of a list via [`IntoIterator`].
 #[derive(Clone, Debug)]
 pub struct Item<T> {
 	element: T,
@@ -1317,9 +1317,9 @@ impl<T> Item<T> {
 // ItemIter<T>
 // ===========
 
-/// Owning iterator over the items of a consumed [`Table`], yielding [`Item`]s.
+/// Owning iterator over the items of a consumed [`List`], yielding [`Item`]s.
 ///
-/// Created by [`Table::into_iter`]. The table's attributes are converted into per-item
+/// Created by [`List::into_iter`]. The list's attributes are converted into per-item
 /// scalar [`ItemAttributeValues`] during construction so each yielded item is self-contained.
 pub struct ItemIter<T> {
 	element: std::vec::IntoIter<T>,

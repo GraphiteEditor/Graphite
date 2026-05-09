@@ -1,4 +1,4 @@
-use core_types::table::{Item, Table};
+use core_types::list::{Item, List};
 use core_types::{ATTR_TYPE, Ctx};
 use serde_json::Value;
 
@@ -240,10 +240,10 @@ fn query_json_all(
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
 	unquote_strings: bool,
-) -> Table<String> {
+) -> List<String> {
 	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Table::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return Table::new() };
+	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return List::new() };
+	let Some(segments) = parse_json_path(path.trim()) else { return List::new() };
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);

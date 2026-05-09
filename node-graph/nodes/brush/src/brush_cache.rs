@@ -2,7 +2,7 @@ use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
 use core_types::ATTR_TRANSFORM;
 use core_types::graphene_hash::CacheHashWrapper;
-use core_types::table::Item;
+use core_types::list::Item;
 use raster_types::CPU;
 use raster_types::Raster;
 use std::collections::HashMap;

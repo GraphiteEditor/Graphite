@@ -7,8 +7,8 @@ mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
 use core_types::graphene_hash::CacheHash;
+use core_types::list::{Item, List};
 use core_types::registry::types::{SignedInteger, TextArea};
-use core_types::table::{Item, Table};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -737,7 +737,7 @@ fn string_split(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimiter_escaping: bool,
-) -> Table<String> {
+) -> List<String> {
 	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
 
 	string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
@@ -750,7 +750,7 @@ fn string_split(
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
-	strings: Table<String>,
+	strings: List<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
 	separator: String,
@@ -768,12 +768,12 @@ fn string_join(
 #[node_macro::node(category("Text"))]
 async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	strings: Table<String>,
+	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> String)]
 	mapped: impl Node<Context<'static>, Output = String>,
-) -> Table<String> {
-	let mut result = Table::new();
+) -> List<String> {
+	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
 		let string = row.into_element();

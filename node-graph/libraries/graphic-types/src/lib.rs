@@ -8,7 +8,7 @@ pub use vector_types;
 
 // Re-export commonly used types at the crate root
 pub use artboard::Artboard;
-pub use graphic::{Graphic, IntoGraphicTable, TryFromGraphic, Vector};
+pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {
 	use vector_types::vector::{PathStyle, PointDomain, RegionDomain, SegmentDomain, misc::HandleId};
@@ -16,11 +16,11 @@ pub mod migrations {
 	use crate::Vector;
 
 	// TODO: Eventually remove this migration document upgrade code
-	/// Returns the first `Vector` recovered from any of the legacy on-disk shapes (a single `Vector`, the old `OldVectorData` flat struct, or any of the historical `Table<Vector>` variants).
+	/// Returns the first `Vector` recovered from any of the legacy on-disk shapes (a single `Vector`, the old `OldVectorData` flat struct, or any of the historical `List<Vector>` variants).
 	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vector>, D::Error> {
 		use serde::Deserialize;
 
-		/// Old documents stored a `Vector` flattened with table attributes (`transform`, `alpha_blending`, `upstream_graphic_group`); only the geometry fields are recovered.
+		/// Old documents stored a `Vector` flattened with list attributes (`transform`, `alpha_blending`, `upstream_graphic_group`); only the geometry fields are recovered.
 		#[derive(serde::Deserialize)]
 		struct OldVectorData {
 			style: PathStyle,
@@ -42,7 +42,7 @@ pub mod migrations {
 		enum VectorFormat {
 			Vector(Vector),
 			OldVectorData(OldVectorData),
-			Table(LegacyTable),
+			List(LegacyTable),
 		}
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
@@ -54,7 +54,7 @@ pub mod migrations {
 				segment_domain: old.segment_domain,
 				region_domain: old.region_domain,
 			}),
-			VectorFormat::Table(table) => table.element.into_iter().next(),
+			VectorFormat::List(list) => list.element.into_iter().next(),
 		})
 	}
 }

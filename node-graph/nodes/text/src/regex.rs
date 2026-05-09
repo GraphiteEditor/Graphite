@@ -1,5 +1,5 @@
+use core_types::list::{Item, List};
 use core_types::registry::types::SignedInteger;
-use core_types::table::{Item, Table};
 use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
 
 /// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.
@@ -96,9 +96,9 @@ fn regex_find(
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
-) -> Table<String> {
+) -> List<String> {
 	if pattern.is_empty() {
-		return Table::new();
+		return List::new();
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -111,7 +111,7 @@ fn regex_find(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return Table::new();
+		return List::new();
 	};
 
 	// Capture group names indexed positionally; index 0 (the whole match) is always None.
@@ -124,7 +124,7 @@ fn regex_find(
 	let resolved_index = if match_index < 0 {
 		let from_end = (-match_index) as usize;
 		if from_end > matches.len() {
-			return Table::new();
+			return List::new();
 		}
 		matches.len() - from_end
 	} else {
@@ -132,7 +132,7 @@ fn regex_find(
 	};
 
 	let Some(captures) = matches.get(resolved_index) else {
-		return Table::new();
+		return List::new();
 	};
 
 	// Index 0 is the whole match, 1+ are capture groups
@@ -165,9 +165,9 @@ fn regex_find_all(
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
-) -> Table<String> {
+) -> List<String> {
 	if pattern.is_empty() {
-		return Table::new();
+		return List::new();
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -180,7 +180,7 @@ fn regex_find_all(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return Table::new();
+		return List::new();
 	};
 
 	regex
@@ -208,9 +208,9 @@ fn regex_split(
 	case_insensitive: bool,
 	/// Make `^` and `$` match the start and end of each line, not just the whole string.
 	multiline: bool,
-) -> Table<String> {
+) -> List<String> {
 	if pattern.is_empty() {
-		return Table::new_from_element(string);
+		return List::new_from_element(string);
 	}
 
 	let flags = match (case_insensitive, multiline) {
@@ -223,7 +223,7 @@ fn regex_split(
 
 	let Ok(regex) = fancy_regex::Regex::new(&full_pattern) else {
 		log::error!("Invalid regex pattern: {pattern}");
-		return Table::new_from_element(string);
+		return List::new_from_element(string);
 	};
 
 	regex.split(&string).filter_map(|s| s.ok()).map(|s| s.to_string()).map(Item::new_from_element).collect()

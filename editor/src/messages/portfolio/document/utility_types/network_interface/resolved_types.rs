@@ -4,8 +4,8 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
+use graphene_std::list::List;
 use graphene_std::raster_types::{CPU, Raster};
-use graphene_std::table::Table;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::{Artboard, Graphic};
@@ -65,11 +65,11 @@ impl TypeSource {
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
 				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
 				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
-					n if n == std::any::type_name::<Table<Graphic>>() => FrontendGraphDataType::Graphic,
-					n if n == std::any::type_name::<Table<Artboard>>() => FrontendGraphDataType::Artboard,
-					n if n == std::any::type_name::<Table<Raster<CPU>>>() => FrontendGraphDataType::Raster,
-					n if n == std::any::type_name::<Table<Vector>>() => FrontendGraphDataType::Vector,
-					n if n == std::any::type_name::<Table<String>>() => FrontendGraphDataType::Typography,
+					n if n == std::any::type_name::<List<Graphic>>() => FrontendGraphDataType::Graphic,
+					n if n == std::any::type_name::<List<Artboard>>() => FrontendGraphDataType::Artboard,
+					n if n == std::any::type_name::<List<Raster<CPU>>>() => FrontendGraphDataType::Raster,
+					n if n == std::any::type_name::<List<Vector>>() => FrontendGraphDataType::Vector,
+					n if n == std::any::type_name::<List<String>>() => FrontendGraphDataType::Typography,
 					_ => FrontendGraphDataType::General,
 				},
 				_ => FrontendGraphDataType::General,

@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::table::{AttributeDyn, AttributeValueDyn, Table, TableDyn};
+use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
@@ -26,20 +26,20 @@ async fn context_modification<T>(
 		Context -> DAffine2,
 		Context -> Footprint,
 		Context -> DVec2,
-		Context -> Table<String>,
-		Context -> Table<NodeId>,
-		Context -> Table<f64>,
-		Context -> Table<u8>,
-		Context -> Table<Vector>,
-		Context -> Table<Graphic>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<Artboard>,
-		Context -> Table<GradientStops>,
+		Context -> List<String>,
+		Context -> List<NodeId>,
+		Context -> List<f64>,
+		Context -> List<u8>,
+		Context -> List<Vector>,
+		Context -> List<Graphic>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<Artboard>,
+		Context -> List<GradientStops>,
 		Context -> AttributeDyn,
 		Context -> AttributeValueDyn,
-		Context -> TableDyn,
+		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.

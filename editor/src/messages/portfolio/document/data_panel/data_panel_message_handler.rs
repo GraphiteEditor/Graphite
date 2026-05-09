@@ -8,9 +8,9 @@ use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
 use graphene_std::blending::BlendMode;
 use graphene_std::gradient::GradientStops;
+use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
-use graphene_std::table::Table;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientType};
 use graphene_std::{Artboard, Color, Context, Graphic};
@@ -155,7 +155,7 @@ struct LayoutData<'a> {
 	desired_path: &'a mut Vec<PathStep>,
 	network_interface: &'a NodeNetworkInterface,
 	/// The `network_path` to use when resolving a `NodeId` against the network interface.
-	/// Defaults to root (`&[]`); `Table<NodeId>` rendering temporarily sets it to the path's prefix so nested
+	/// Defaults to root (`&[]`); `List<NodeId>` rendering temporarily sets it to the path's prefix so nested
 	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
 	node_lookup_network_path: Vec<NodeId>,
 	breadcrumbs: Vec<String>,
@@ -175,27 +175,27 @@ macro_rules! generate_layout_downcast {
 }
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `Table<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
-	// `Table` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<NodeId>>>() {
+	// `List<NodeId>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
+	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
+	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<NodeId>>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(&io.output, data));
 	}
 	generate_layout_downcast!(introspected_data, data, [
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<String>,
-		Table<f64>,
-		Table<u8>,
-		Table<bool>,
-		Table<DAffine2>,
-		Table<BlendMode>,
-		Table<GradientType>,
-		Table<GradientSpreadMethod>,
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+		List<f64>,
+		List<u8>,
+		List<bool>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 		GradientStops,
 		f64,
 		u32,
@@ -227,7 +227,7 @@ trait TableItemLayout {
 		data.breadcrumbs.push(self.identifier());
 		self.value_page(data)
 	}
-	/// Renders this value as a single inline widget inside an item of a Table.
+	/// Renders this value as a single inline widget inside an item of a `List`.
 	/// `target` is the [`PathStep`] to push when the widget is clicked to drill into the value.
 	/// `data` provides shared context (notably `network_interface`) for types whose label or content
 	/// depends on lookup beyond their own value (e.g. `NodeId` resolving a node's display name).
@@ -245,9 +245,9 @@ trait TableItemLayout {
 	}
 }
 
-impl<T: TableItemLayout> TableItemLayout for Table<T> {
+impl<T: TableItemLayout> TableItemLayout for List<T> {
 	fn type_name() -> &'static str {
-		"Table"
+		"List"
 	}
 	fn identifier(&self) -> String {
 		format!("{}[] ({} item{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
@@ -312,14 +312,14 @@ impl TableItemLayout for Artboard {
 		"Artboard"
 	}
 	fn identifier(&self) -> String {
-		self.as_graphic_table().identifier()
+		self.as_graphic_list().identifier()
 	}
 	// Don't put a breadcrumb for Artboard
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.value_page(data)
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		self.as_graphic_table().layout_with_breadcrumb(data)
+		self.as_graphic_list().layout_with_breadcrumb(data)
 	}
 }
 
@@ -329,12 +329,12 @@ impl TableItemLayout for Graphic {
 	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::Graphic(table) => table.identifier(),
-			Self::Vector(table) => table.identifier(),
-			Self::RasterCPU(table) => table.identifier(),
-			Self::RasterGPU(table) => table.identifier(),
-			Self::Color(table) => table.identifier(),
-			Self::Gradient(table) => table.identifier(),
+			Self::Graphic(list) => list.identifier(),
+			Self::Vector(list) => list.identifier(),
+			Self::RasterCPU(list) => list.identifier(),
+			Self::RasterGPU(list) => list.identifier(),
+			Self::Color(list) => list.identifier(),
+			Self::Gradient(list) => list.identifier(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -343,12 +343,12 @@ impl TableItemLayout for Graphic {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::Graphic(table) => table.layout_with_breadcrumb(data),
-			Self::Vector(table) => table.layout_with_breadcrumb(data),
-			Self::RasterCPU(table) => table.layout_with_breadcrumb(data),
-			Self::RasterGPU(table) => table.layout_with_breadcrumb(data),
-			Self::Color(table) => table.layout_with_breadcrumb(data),
-			Self::Gradient(table) => table.layout_with_breadcrumb(data),
+			Self::Graphic(list) => list.layout_with_breadcrumb(data),
+			Self::Vector(list) => list.layout_with_breadcrumb(data),
+			Self::RasterCPU(list) => list.layout_with_breadcrumb(data),
+			Self::RasterGPU(list) => list.layout_with_breadcrumb(data),
+			Self::Color(list) => list.layout_with_breadcrumb(data),
+			Self::Gradient(list) => list.layout_with_breadcrumb(data),
 		}
 	}
 }
@@ -834,7 +834,7 @@ impl TableItemLayout for NodeId {
 	}
 	// The value's label resolves the node's display name via the network interface so the button reads as the name shown
 	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
-	// `Table<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
+	// `List<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
 	// signals layer-vs-node kind. Falls back to "Node {id}" with no icon if the lookup misses.
 	fn value_widget(&self, target: PathStep, data: &LayoutData) -> WidgetInstance {
 		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
@@ -935,20 +935,20 @@ impl TableItemLayout for NodeId {
 /// Invokes another macro with the full list of `TableItemLayout`-implementing types whose values may appear
 /// as attribute values. Both the value-rendering and drilldown-navigation dispatchers iterate this list,
 /// so adding a new attribute-displayable type is a single edit here.
-macro_rules! known_table_row_types {
+macro_rules! known_item_types {
 	($apply:ident) => {
 		$apply!(
-			Table<Artboard>,
-			Table<Graphic>,
-			Table<Vector>,
-			Table<Raster<CPU>>,
-			Table<Raster<GPU>>,
-			Table<Color>,
-			Table<GradientStops>,
-			Table<String>,
-			Table<NodeId>,
-			Table<f64>,
-			Table<u8>,
+			List<Artboard>,
+			List<Graphic>,
+			List<Vector>,
+			List<Raster<CPU>>,
+			List<Raster<GPU>>,
+			List<Color>,
+			List<GradientStops>,
+			List<String>,
+			List<NodeId>,
+			List<f64>,
+			List<u8>,
 			GradientStops,
 			Color,
 			NodeId,
@@ -983,7 +983,7 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 	None
 }
 
-/// Type-dispatched widget for displaying an attribute value in a `Table<T>` item.
+/// Type-dispatched widget for displaying an attribute value in a `List<T>` item.
 /// Delegates to [`TableItemLayout::value_widget`] so the same widget code is shared between
 /// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
 /// types so the caller can fall back to a debug-formatted [`TextLabel`].
@@ -997,16 +997,16 @@ fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> 
 			)*
 		};
 	}
-	known_table_row_types!(check);
+	known_item_types!(check);
 	None
 }
 
-/// Renders a `Table<NodeId>` as a path: the standard table view, but each item's `NodeId` value is resolved
+/// Renders a `List<NodeId>` as a path: the standard table view, but each item's `NodeId` value is resolved
 /// against the network path made up of all preceding items. So for a path `[outer, middle, leaf]`, item 0
 /// resolves at root, item 1 resolves at `[outer]`, and item 2 resolves at `[outer, middle]` — letting deeply
 /// nested layers display each step's correct name. Drilling into an item drops into that node's value page
 /// using the same prefix as `network_path`.
-fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut LayoutData) -> Vec<LayoutGroup> {
+fn table_node_id_path_layout_with_breadcrumb(path: &List<NodeId>, data: &mut LayoutData) -> Vec<LayoutGroup> {
 	data.breadcrumbs.push(path.identifier());
 
 	if let Some(step) = data.desired_path.get(data.current_depth).cloned() {
@@ -1044,9 +1044,9 @@ fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut La
 /// Mirrors [`dispatch_value_widget`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
-	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
-	// resolves against the prefix made up of preceding items. Handled before the generic `Table<T>` blanket impl.
-	if let Some(path) = any.downcast_ref::<Table<NodeId>>() {
+	// `List<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value
+	// resolves against the prefix made up of preceding items. Handled before the generic `List<T>` blanket impl.
+	if let Some(path) = any.downcast_ref::<List<NodeId>>() {
 		return Some(table_node_id_path_layout_with_breadcrumb(path, data));
 	}
 	macro_rules! check {
@@ -1058,7 +1058,7 @@ fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Ve
 			)*
 		};
 	}
-	known_table_row_types!(check);
+	known_item_types!(check);
 	None
 }
 

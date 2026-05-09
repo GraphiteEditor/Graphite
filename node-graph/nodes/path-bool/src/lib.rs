@@ -1,4 +1,4 @@
-use core_types::table::{Item, Table};
+use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
@@ -14,15 +14,15 @@ use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, 
 pub use vector_types::vector::misc::BooleanOperation;
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
-// TODO: since before we used a Vec of single-item `Table`s and now we use a single `Table`
+// TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category("Vector: Modifier"), memoize)]
-async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clone>(
+async fn boolean_operation<I: graphic_types::IntoGraphicList + 'n + Send + Clone>(
 	_: impl Ctx,
-	/// The `Table` of vector paths to perform the boolean operation on. Nested `Table`s are automatically flattened.
-	#[implementations(Table<Graphic>, Table<Vector>)]
+	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
+	#[implementations(List<Graphic>, List<Vector>)]
 	content: I,
 	/// Which boolean operation to perform on the paths.
 	///
@@ -31,32 +31,32 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
 	operation: BooleanOperation,
-) -> Table<Vector> {
-	let content = content.into_graphic_table();
+) -> List<Vector> {
+	let content = content.into_graphic_list();
 
 	// The first index is the bottom of the stack
 	let flattened = flatten_vector(&content);
-	let mut result_vector_table = boolean_operation_on_vector_table(&flattened, operation);
+	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	if result_vector_table.element_mut(0).is_some() {
-		let transform: DAffine2 = result_vector_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_table.set_attribute(ATTR_TRANSFORM, 0, DAffine2::IDENTITY);
+	if result_vector_list.element_mut(0).is_some() {
+		let transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		result_vector_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::IDENTITY);
 
-		let result_vector = result_vector_table.element_mut(0).unwrap();
+		let result_vector = result_vector_list.element_mut(0).unwrap();
 		Vector::transform(result_vector, transform);
 		result_vector.style.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Snapshot the input layers as the `editor:merged_layers` attribute so the renderer can recurse into them
 		// for editor click-target preservation.
-		result_vector_table.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
+		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		let merge_transform: DAffine2 = result_vector_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_table.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
+		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
-	result_vector_table
+	result_vector_list
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -113,9 +113,9 @@ impl WindingNumber {
 	}
 }
 
-fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: BooleanOperation) -> Table<Vector> {
+fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
 	const EPSILON: f64 = 1e-5;
-	let mut table = Table::new();
+	let mut list = List::new();
 	let mut paths = Vec::new();
 
 	let copy_from_index = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
@@ -146,8 +146,8 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 		Ok(top) => top,
 		Err(e) => {
 			log::error!("Boolean operation failed while building topology: {e}");
-			table.push(row);
-			return table;
+			list.push(row);
+			return list;
 		}
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
@@ -158,18 +158,18 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 		row.element_mut().append_subpath(subpath.reverse(), false);
 	}
 
-	table.push(row);
-	table
+	list.push(row);
+	list
 }
 
-fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
-	(0..graphic_table.len())
+fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
+	(0..graphic_list.len())
 		.flat_map(|index| {
-			let graphic = graphic_table.element(index).unwrap();
+			let graphic = graphic_list.element(index).unwrap();
 			match graphic.clone() {
 				Graphic::Vector(vector) => {
-					// Apply the parent graphic's transform to each element of the `Table<Vector>`
-					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					// Apply the parent graphic's transform to each element of the `List<Vector>`
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 					vector
 						.into_iter()
 						.map(|mut sub_vector| {
@@ -180,7 +180,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterCPU(image) => {
-					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
@@ -202,7 +202,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: Table<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
 							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
 							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
@@ -212,7 +212,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						.collect::<Vec<_>>()
 				}
 				Graphic::RasterGPU(image) => {
-					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 					let make_item = |transform, layer, blend_mode: BlendMode, opacity: f64, fill: f64, clip: bool| {
 						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
@@ -234,7 +234,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 					(0..image.len())
 						.map(|i| {
 							let row_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM, i);
-							let layer: Table<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
+							let layer: List<NodeId> = image.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, i);
 							let blend_mode: BlendMode = image.attribute_cloned_or_default(ATTR_BLEND_MODE, i);
 							let opacity: f64 = image.attribute_cloned_or(ATTR_OPACITY, i, 1.);
 							let fill: f64 = image.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
@@ -244,15 +244,15 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						.collect::<Vec<_>>()
 				}
 				Graphic::Graphic(mut graphic) => {
-					let parent_transform: DAffine2 = graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-					// Apply the parent graphic's transform to each element of the inner `Table`
+					let parent_transform: DAffine2 = graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+					// Apply the parent graphic's transform to each element of the inner `List`
 					for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*transform = parent_transform * *transform;
 					}
 
-					// Recursively flatten the inner `Table` into the output `Table<Vector>`
+					// Recursively flatten the inner `List` into the output `List<Vector>`
 					let flattened = flatten_vector(&graphic);
-					let unioned = boolean_operation_on_vector_table(&flattened, BooleanOperation::Union);
+					let unioned = boolean_operation_on_vector_list(&flattened, BooleanOperation::Union);
 
 					unioned.into_iter().collect::<Vec<_>>()
 				}
