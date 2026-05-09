@@ -1,4 +1,4 @@
-use core_types::table::{Table, TableRow};
+use core_types::table::{Table, Item};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
@@ -132,9 +132,9 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 			style: copy_from.style.clone(),
 			..Default::default()
 		};
-		TableRow::from_parts(element, attributes)
+		Item::from_parts(element, attributes)
 	} else {
-		TableRow::<Vector>::default()
+		Item::<Vector>::default()
 	};
 
 	for index in 0..vector.len() {
@@ -188,7 +188,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
-						TableRow::new_from_element(element)
+						Item::new_from_element(element)
 							.with_attribute(ATTR_BLEND_MODE, blend_mode)
 							.with_attribute(ATTR_OPACITY, opacity)
 							.with_attribute(ATTR_OPACITY_FILL, fill)
@@ -220,7 +220,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						let mut element = Vector::from_subpath(subpath);
 						element.style.set_fill(Fill::Solid(Color::BLACK));
 
-						TableRow::new_from_element(element)
+						Item::new_from_element(element)
 							.with_attribute(ATTR_BLEND_MODE, blend_mode)
 							.with_attribute(ATTR_OPACITY, opacity)
 							.with_attribute(ATTR_OPACITY_FILL, fill)
@@ -264,7 +264,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						element.style.set_fill(Fill::Solid(color));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
-						TableRow::from_parts(element, attributes)
+						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
 				Graphic::Gradient(gradient) => gradient
@@ -275,7 +275,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						element.style.set_fill(Fill::Gradient(graphic_types::vector_types::gradient::Gradient { stops, ..Default::default() }));
 						element.style.set_stroke_transform(DAffine2::IDENTITY);
 
-						TableRow::from_parts(element, attributes)
+						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
 			}

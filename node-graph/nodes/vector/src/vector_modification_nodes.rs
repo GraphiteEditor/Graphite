@@ -8,10 +8,10 @@ use vector_types::vector::VectorModification;
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Box<VectorModification>, node_path: Table<NodeId>) -> Table<Vector> {
-	use core_types::table::TableRow;
+	use core_types::table::Item;
 
 	if vector.is_empty() {
-		vector.push(TableRow::default());
+		vector.push(Item::default());
 	}
 	modification.apply(vector.element_mut(0).expect("push should give one item"));
 

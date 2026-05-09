@@ -1,4 +1,4 @@
-use core_types::table::{Table, TableRow};
+use core_types::table::{Table, Item};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
@@ -84,7 +84,7 @@ impl PathBuilder {
 			// back to the layer-local frame origin, regardless of which glyph survived
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
 
-			let item = TableRow::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
+			let item = Item::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
 				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
 			self.vector_table.push(item);
@@ -169,7 +169,7 @@ impl PathBuilder {
 		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
 		if self.vector_table.is_empty() {
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
-			let item = TableRow::new_from_element(Vector::default())
+			let item = Item::new_from_element(Vector::default())
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
 				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
 			self.vector_table.push(item);

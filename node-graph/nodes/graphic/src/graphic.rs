@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, TableRow};
+use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, Item};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -304,7 +304,7 @@ fn read_attribute_vector(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -325,7 +325,7 @@ fn read_attribute_number(
 			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
 			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
-		result.push(TableRow::new_from_element(value));
+		result.push(Item::new_from_element(value));
 	}
 	result
 }
@@ -341,7 +341,7 @@ fn read_attribute_bool(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -357,7 +357,7 @@ fn read_attribute_string(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<String>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -373,7 +373,7 @@ fn read_attribute_transform(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -389,7 +389,7 @@ fn read_attribute_color(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -405,7 +405,7 @@ fn read_attribute_blend_mode(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -421,7 +421,7 @@ fn read_attribute_gradient_type(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -437,7 +437,7 @@ fn read_attribute_spread_method(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -453,7 +453,7 @@ fn read_attribute_gradient_stops(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientStops>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -469,7 +469,7 @@ fn read_attribute_artboard(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -485,7 +485,7 @@ fn read_attribute_raster(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -598,7 +598,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`)
 				_ => {
 					let attributes = current_graphic_table.clone_row_attributes(index);
-					output_graphic_table.push(TableRow::from_parts(current_element, attributes));
+					output_graphic_table.push(Item::from_parts(current_element, attributes));
 				}
 			}
 		}

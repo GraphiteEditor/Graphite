@@ -1,5 +1,5 @@
 use crate::Node;
-use crate::table::{AttributeColumnDyn, AttributeValueDyn, Column, Table, TableDyn, TableRow};
+use crate::table::{AttributeColumnDyn, AttributeValueDyn, Column, Table, TableDyn, Item};
 use crate::transform::Footprint;
 use glam::DVec2;
 use graphene_hash::CacheHash;
@@ -65,7 +65,7 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 			.into_iter()
 			.map(|row| {
 				let (element, attributes) = row.into_parts();
-				TableRow::from_parts(element.convert_row(), attributes)
+				Item::from_parts(element.convert_row(), attributes)
 			})
 			.collect();
 		table

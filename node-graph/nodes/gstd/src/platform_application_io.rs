@@ -4,7 +4,7 @@ use base64::Engine;
 use canvas_utils::{Canvas, CanvasHandle};
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
-use core_types::table::{Table, TableRow};
+use core_types::table::{Table, Item};
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
@@ -116,14 +116,14 @@ async fn post_request(
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
 fn string_to_bytes(_: impl Ctx, string: String) -> Table<u8> {
-	string.into_bytes().into_iter().map(TableRow::new_from_element).collect()
+	string.into_bytes().into_iter().map(Item::new_from_element).collect()
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Table<u8> {
 	let Some(image) = image.element(0) else { return Table::new() };
-	image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(TableRow::new_from_element).collect()
+	image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(Item::new_from_element).collect()
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
@@ -236,7 +236,7 @@ where
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	Table::new_from_row(
-		TableRow::new_from_element(Raster::new_cpu(image))
+		Item::new_from_element(Raster::new_cpu(image))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_table),
 	)

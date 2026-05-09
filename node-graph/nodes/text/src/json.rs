@@ -1,4 +1,4 @@
-use core_types::table::{Table, TableRow};
+use core_types::table::{Table, Item};
 use core_types::{ATTR_TYPE, Ctx};
 use serde_json::Value;
 
@@ -250,7 +250,7 @@ fn query_json_all(
 
 	results
 		.into_iter()
-		.map(|(text, ty)| TableRow::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string()))
+		.map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string()))
 		.collect()
 }
 

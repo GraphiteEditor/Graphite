@@ -82,7 +82,7 @@ pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 // =====================
 
 /// Enables type-erased scalar storage that supports Clone, Send, Sync, and downcasting.
-/// Used for individual attribute values in a TableRow.
+/// Used for individual attribute values in an [`Item`].
 pub trait AttributeValue: std::any::Any + Send + Sync {
 	/// Clones this value into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AttributeValue>;
@@ -528,7 +528,7 @@ unsafe impl StaticType for TableDyn {
 /// Scalar attribute storage.
 ///
 /// A small ordered map of type-erased scalar attribute values, keyed by string name.
-/// Used for individual attribute values in a TableRow.
+/// Used for individual attribute values in an [`Item`].
 /// Linear search preserves insertion order and is likely faster than a HashMap for small attribute counts.
 #[derive(Clone, Default)]
 pub struct AttributeValues(Vec<(String, Box<dyn AttributeValue>)>);
@@ -631,7 +631,7 @@ impl AttributeValues {
 ///
 /// A collection of type-erased parallel attribute columns, keyed by string name.
 /// Used for columnar attribute storage in a Table.
-/// Not public. All access goes through Table and TableRow.
+/// Not public. All access goes through [`Table`] and [`Item`].
 /// Invariant: every column in `columns` has exactly `len` elements.
 #[derive(Clone, Default)]
 struct AttributeColumns {
@@ -845,7 +845,7 @@ impl AttributeColumns {
 ///
 /// Elements are stored contiguously in a `Vec<T>`, while attributes live in an internal
 /// [`AttributeColumns`] store that keeps one column per attribute key. Rows are accessed
-/// by index through element/attribute accessor methods, or consumed as owned [`TableRow`]s via iteration.
+/// by index through element/attribute accessor methods, or consumed as owned [`Item`]s via iteration.
 #[derive(Clone, Debug)]
 pub struct Table<T> {
 	element: Vec<T>,
@@ -874,8 +874,8 @@ impl<T> Table<T> {
 		}
 	}
 
-	/// Creates a table containing a single row from the given [`TableRow`], preserving its attributes.
-	pub fn new_from_row(row: TableRow<T>) -> Self {
+	/// Creates a table containing a single item from the given [`Item`], preserving its attributes.
+	pub fn new_from_row(row: Item<T>) -> Self {
 		let mut attributes = AttributeColumns::new();
 		attributes.push_row(row.attributes);
 		Self {
@@ -885,7 +885,7 @@ impl<T> Table<T> {
 	}
 
 	/// Appends a row to the end of this table.
-	pub fn push(&mut self, row: TableRow<T>) {
+	pub fn push(&mut self, row: Item<T>) {
 		self.element.push(row.element);
 		self.attributes.push_row(row.attributes);
 	}
@@ -1046,18 +1046,18 @@ impl<T> Table<T> {
 	// Row-level cloning
 	// ==================
 
-	/// Clones both the element and all attributes at the given row index into a new owned [`TableRow`], or `None` if out of bounds.
-	pub fn clone_row(&self, index: usize) -> Option<TableRow<T>>
+	/// Clones both the element and all attributes at the given item index into a new owned [`Item`], or [`None`] if out of bounds.
+	pub fn clone_row(&self, index: usize) -> Option<Item<T>>
 	where
 		T: Clone,
 	{
-		Some(TableRow {
+		Some(Item {
 			element: self.element.get(index)?.clone(),
 			attributes: self.attributes.clone_row(index),
 		})
 	}
 
-	/// Clones all attribute values at the given row index into a new [`AttributeValues`], without cloning the element.
+	/// Clones all attribute values at the given item index into a new [`AttributeValues`], without cloning the element.
 	pub fn clone_row_attributes(&self, index: usize) -> AttributeValues {
 		self.attributes.clone_row(index)
 	}
@@ -1110,13 +1110,13 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 }
 
 impl<T> IntoIterator for Table<T> {
-	type Item = TableRow<T>;
-	type IntoIter = TableRowIter<T>;
+	type Item = Item<T>;
+	type IntoIter = ItemIter<T>;
 
-	/// Consumes a [`Table`] and returns an iterator of [`TableRow`]s, each containing the owned data of the respective row from the original table.
+	/// Consumes a [`Table`] and returns an iterator of [`Item`]s, each containing the owned data of the respective row from the original table.
 	fn into_iter(self) -> Self::IntoIter {
 		let row_attributes = self.attributes.into_row_vec();
-		TableRowIter {
+		ItemIter {
 			element: self.element.into_iter(),
 			attributes: row_attributes.into_iter(),
 		}
@@ -1179,9 +1179,9 @@ unsafe impl<T: StaticTypeSized> StaticType for Table<T> {
 	type Static = Table<T::Static>;
 }
 
-impl<T> FromIterator<TableRow<T>> for Table<T> {
-	/// Collects an iterator of [`TableRow`]s into a [`Table`], pre-allocating based on the iterator's size hint.
-	fn from_iter<I: IntoIterator<Item = TableRow<T>>>(iter: I) -> Self {
+impl<T> FromIterator<Item<T>> for Table<T> {
+	/// Collects an iterator of [`Item`]s into a [`Table`], pre-allocating based on the iterator's size hint.
+	fn from_iter<I: IntoIterator<Item = Item<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower_bound, _) = iter.size_hint();
 		let mut table = Self::with_capacity(lower_bound);
@@ -1194,34 +1194,34 @@ impl<T> FromIterator<TableRow<T>> for Table<T> {
 	}
 }
 
-// ===========
-// TableRow<T>
-// ===========
+// =======
+// Item<T>
+// =======
 
-/// An owned row containing an element of type `T` and a set of type-erased scalar attributes.
+/// An owned item containing an element of type `T` and a set of type-erased scalar attributes.
 ///
-/// Used to build rows before pushing them into a [`Table`], or when consuming rows out of a
-/// table via [`IntoIterator`]. Attribute values use scalar [`AttributeValues`] storage rather
+/// Used to build individual items before pushing them into a [`Table`], or when consuming rows out
+/// of a table via [`IntoIterator`]. Attribute values use scalar [`AttributeValues`] storage rather
 /// than the columnar layout inside a [`Table`].
 #[derive(Clone, Debug)]
-pub struct TableRow<T> {
+pub struct Item<T> {
 	element: T,
 	attributes: AttributeValues,
 }
 
-impl<T: Default> Default for TableRow<T> {
+impl<T: Default> Default for Item<T> {
 	fn default() -> Self {
 		Self::new_from_element(T::default())
 	}
 }
 
-impl<T: PartialEq> PartialEq for TableRow<T> {
+impl<T: PartialEq> PartialEq for Item<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.element == other.element
 	}
 }
 
-impl<T> TableRow<T> {
+impl<T> Item<T> {
 	/// Constructs a row from a pre-built element and attributes pair.
 	pub fn from_parts(element: T, attributes: AttributeValues) -> Self {
 		Self { element, attributes }
@@ -1309,33 +1309,33 @@ impl<T> TableRow<T> {
 	}
 }
 
-// ===============
-// TableRowIter<T>
-// ===============
+// ===========
+// ItemIter<T>
+// ===========
 
-/// Owning iterator over the rows of a consumed [`Table`], yielding [`TableRow`]s.
+/// Owning iterator over the rows of a consumed [`Table`], yielding [`Item`]s.
 ///
 /// Created by [`Table::into_iter`]. The table's columnar attributes are converted into
 /// per-row scalar [`AttributeValues`] during construction so each yielded row is self-contained.
-pub struct TableRowIter<T> {
+pub struct ItemIter<T> {
 	element: std::vec::IntoIter<T>,
 	attributes: std::vec::IntoIter<AttributeValues>,
 }
 
-impl<T> Iterator for TableRowIter<T> {
-	type Item = TableRow<T>;
+impl<T> Iterator for ItemIter<T> {
+	type Item = Item<T>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		Some(TableRow {
+		Some(Item {
 			element: self.element.next()?,
 			attributes: self.attributes.next()?,
 		})
 	}
 }
 
-impl<T> DoubleEndedIterator for TableRowIter<T> {
+impl<T> DoubleEndedIterator for ItemIter<T> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		Some(TableRow {
+		Some(Item {
 			element: self.element.next_back()?,
 			attributes: self.attributes.next_back()?,
 		})
