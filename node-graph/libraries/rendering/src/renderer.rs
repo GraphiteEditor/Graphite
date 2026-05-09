@@ -21,7 +21,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
@@ -218,6 +218,8 @@ pub struct RenderParams {
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
 	pub artboard_background: Option<Color>,
+	/// Keep track of whether a vector contains only closed paths.
+	pub only_closed_paths: bool,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
 }
@@ -924,6 +926,9 @@ impl Render for Table<Vector> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
+			let mut render_params = render_params.clone();
+			render_params.only_closed_paths = vector.stroke_bezier_paths().all(|subpath| subpath.closed);
+
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -946,14 +951,14 @@ impl Render for Table<Vector> {
 				path.push_str(bezpath.to_svg().as_str());
 			}
 
-			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) {
+			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) && render_params.only_closed_paths {
 				MaskType::Clip
 			} else {
 				MaskType::Mask
 			};
 
-			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
+			let only_closed_paths = vector.stroke_bezier_paths().all(|path| path.closed());
+			let can_draw_aligned_stroke = only_closed_paths && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
 			let can_use_paint_order = !(vector.style.fill().is_none() || !vector.style.fill().is_opaque() || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
@@ -974,7 +979,7 @@ impl Render for Table<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						render_params,
+						&render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -1014,7 +1019,7 @@ impl Render for Table<Vector> {
 							applied_stroke_transform,
 							bounds_matrix,
 							transformed_bounds_matrix,
-							render_params,
+							&render_params,
 						);
 						attributes.push_val(fill_only);
 					});
@@ -1034,7 +1039,7 @@ impl Render for Table<Vector> {
 					let mut svg = SvgRender::new();
 					vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 					let stroke = vector.style.stroke().unwrap();
-					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
+					// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `only_closed_paths`
 					let (largest_scale, _) = singular_values(applied_stroke_transform);
 					let inflation = stroke.max_aabb_inflation(true) * largest_scale;
 					let quad = Quad::from_box(transformed_bounds).inflate(inflation);
@@ -1103,7 +1108,7 @@ impl Render for Table<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						render_params,
+						&render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -1155,7 +1160,7 @@ impl Render for Table<Vector> {
 			let mut layer = false;
 
 			// Whether the renderer will engage the stroke-alignment compositing trick (non-Center align on a fully closed path).
-			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
+			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `only_closed_paths` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = element.style.stroke();
 			let can_draw_aligned_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
@@ -1482,7 +1487,8 @@ impl Render for Table<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, transform: DAffine2) {
-	let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
+	let only_closed_paths = vector.stroke_bezier_paths().all(|s| s.closed());
+	let stroke_width = vector.style.stroke().as_ref().map_or(0., |stroke| stroke.effective_width(only_closed_paths));
 	let filled = vector.style.fill() != &Fill::None;
 	let subpaths: Vec<Subpath<_>> = vector
 		.stroke_bezier_paths()

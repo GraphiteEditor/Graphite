@@ -646,13 +646,13 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 				let seg_to_mouse = (point_to_dvec2(mouse_point) - point_to_dvec2(seg.eval(nearest.t))).normalize_or(normal);
 
 				// Draw debug transformed normal with length of stroke width
-				if let Some(ref mut ctx) = overlay_context {
-					let seg = transform_seg(element_transform);
+				// if let Some(ref mut ctx) = overlay_context {
+				// 	let seg = transform_seg(element_transform);
 
-					let normal_start = point_to_dvec2(seg.eval(nearest.t));
-					let normal_end = normal_start + ((stroke.weight() / 2.0) * transformed_normal);
-					ctx.line(normal_start, normal_end, Some("#d23434"), Some(2.0));
-				}
+				// 	let normal_start = point_to_dvec2(seg.eval(nearest.t));
+				// 	let normal_end = normal_start + ((stroke.weight() / 2.0) * transformed_normal);
+				// 	ctx.line(normal_start, normal_end, Some("#d23434"), Some(2.0));
+				// }
 
 				(normal.dot(seg_to_mouse) <= 0.0, transformed_normal.length())
 			});
@@ -665,7 +665,6 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 				(StrokeAlign::Inside, PaintOrder::StrokeAbove, false) => max_stroke_distance = -f64::INFINITY,
 				(StrokeAlign::Inside, PaintOrder::StrokeBelow, _) => max_stroke_distance = -f64::INFINITY,
 				(StrokeAlign::Center, PaintOrder::StrokeAbove, _) => {}
-				// TODO: Fix logic detection error for open subpaths on (StrokeAlign::Inside, PaintOrder::StrokeBelow)
 				(StrokeAlign::Center, PaintOrder::StrokeBelow, true) => max_stroke_distance = -f64::INFINITY,
 				(StrokeAlign::Center, PaintOrder::StrokeBelow, false) => {}
 				// Paint order does not affect StrokeAlign::Outside
@@ -680,7 +679,7 @@ pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on
 
 				seg.nearest(mouse_point, 0.01).distance_sq.sqrt()
 			};
-			log::info!("nearest_distance, max_stroke_distance: {:?}, {:?}", nearest_distance, max_stroke_distance);
+			// log::info!("nearest_distance, max_stroke_distance: {:?}, {:?}", nearest_distance, max_stroke_distance);
 			if nearest_distance <= max_stroke_distance {
 				is_near = true;
 			}

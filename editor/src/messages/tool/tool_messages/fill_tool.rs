@@ -110,6 +110,9 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
+				if !overlay_context.visibility_settings.fillable_indicator() {
+					return self;
+				}
 				// Choose the working color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = (if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color }).to_rgba_hex_srgb();
@@ -137,9 +140,6 @@ impl Fsm for FillToolFsmState {
 					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
 					subpaths = vector_data.stroke_bezier_paths();
-					if !overlay_context.visibility_settings.fillable_indicator() {
-						return self;
-					}
 					if stroke_exists_and_visible && near_to_stroke {
 						overlay_context.stroke_overlay(subpaths, is_closed_on_all, layer_to_viewport, preview_color.as_str(), stroke);
 					} else if fill_exists_and_visible {

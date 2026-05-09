@@ -426,13 +426,13 @@ impl OverlayContext {
 		self.internal().fill_path(subpaths, transform, color);
 	}
 
-	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
 	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.internal().fill_overlay(subpaths, is_closed_on_all, transform, color, stroke);
 	}
 
-	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
 	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.internal().stroke_overlay(subpaths, is_closed_on_all, transform, color, stroke);
@@ -1121,7 +1121,7 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
-	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
 	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		if let Some(stroke) = stroke {
@@ -1178,7 +1178,7 @@ impl OverlayContextInternal {
 		}
 	}
 
-	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
 	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		if let Some(stroke) = stroke {

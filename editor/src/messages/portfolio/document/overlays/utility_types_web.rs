@@ -11,7 +11,6 @@ use crate::messages::viewport::ViewportMessageHandler;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
-use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
@@ -1083,7 +1082,7 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
-	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
 	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.render_context.save();
@@ -1146,7 +1145,7 @@ impl OverlayContext {
 		self.render_context.restore();
 	}
 
-	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is in gamma space.
+	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// WARN: Don't use source-in, destination-atop, destination-in, copy
 	///       on the main canvas as it will erase the existing overlays
 	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {

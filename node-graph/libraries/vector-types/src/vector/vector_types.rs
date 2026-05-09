@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use super::style::{PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use super::style::{PathStyle, Stroke, StrokeCap, StrokeJoin};
 pub use super::vector_attributes::*;
 use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
 use crate::vector::click_target::{ClickTargetType, FreePoint};
@@ -229,10 +229,10 @@ impl Vector {
 		let Some(stroke) = self.style.stroke() else { return path_bounds };
 		// Stroke alignment is only honored by the renderer when every subpath is closed; open paths fall
 		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
-		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezier_paths().all(|p| p.closed());
-		let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
+		let only_closed_paths = self.stroke_bezier_paths().all(|p| p.closed());
+		let kurbo_width = stroke.effective_width(only_closed_paths);
 		// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
-		if kurbo_width <= 0. {
+		if kurbo_width <= 0. && only_closed_paths {
 			return path_bounds;
 		}
 
