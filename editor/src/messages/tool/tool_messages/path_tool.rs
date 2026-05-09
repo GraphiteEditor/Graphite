@@ -2836,39 +2836,41 @@ impl Fsm for PathToolFsmState {
 					let mut new_layers = Vec::new();
 					for (layer, new_vector, transform) in data {
 						// If layer is not selected then create a new selected layer
-						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
-							layer
-						} else {
-							let Some(node_type) = resolve_network_node_type("Path") else {
-								error!("Could not resolve node type for Path");
-								continue;
-							};
-							let nodes = vec![(NodeId(0), node_type.default_node_template())];
+						let layer = {
+							if shape_editor.selected_shape_state.contains_key(&layer) {
+								layer
+							} else {
+								let Some(node_type) = resolve_network_node_type("Path") else {
+									error!("Could not resolve node type for Path");
+									continue;
+								};
+								let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
-							let parent = document.new_layer_parent(false);
+								let parent = document.new_layer_parent(false);
 
-							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+								let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
-							// Defaults chosen because the pasted geometry has no inherent associated style
-							let stroke_color = Color::BLACK;
-							let fill_color = Color::WHITE;
+								// Defaults chosen because the pasted geometry has no inherent associated style
+								let stroke_color = Color::BLACK;
+								let fill_color = Color::WHITE;
 
-							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
-							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+								let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+								responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 
-							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
-							responses.add(GraphOperationMessage::FillSet { layer, fill });
+								let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+								responses.add(GraphOperationMessage::FillSet { layer, fill });
 
-							new_layers.push(layer);
+								new_layers.push(layer);
 
-							responses.add(GraphOperationMessage::TransformSet {
-								layer,
-								transform,
-								transform_in: TransformIn::Local,
-								skip_rerender: false,
-							});
+								responses.add(GraphOperationMessage::TransformSet {
+									layer,
+									transform,
+									transform_in: TransformIn::Local,
+									skip_rerender: false,
+								});
 
-							layer
+								layer
+							}
 						};
 
 						// Create new point ids and add those into the existing vector content

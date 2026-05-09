@@ -930,7 +930,7 @@ impl Render for Table<Vector> {
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 
-			let element_transform = set_stroke_transform.map(|stroke_transform| *row.transform * stroke_transform.inverse());
+			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();

@@ -1029,7 +1029,7 @@ impl OverlayContext {
 	}
 
 	/// Default canvas pattern used for filling stroke or fill of a path.
-	fn fill_canvas_pattern(&self, color: &Color) -> web_sys::CanvasPattern {
+	fn fill_canvas_pattern(&self, color: &str) -> web_sys::CanvasPattern {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -1045,7 +1045,7 @@ impl OverlayContext {
 		// 4x4 pixels, 4 components (RGBA) per pixel
 		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-		let rgba = color.to_rgba8_srgb();
+		let rgba = hex_to_rgba_u8(color);
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
@@ -1070,7 +1070,7 @@ impl OverlayContext {
 			Reflect::apply(&func.into(), pattern, &Array::of1(matrix))?;
 			Ok::<(), JsValue>(())
 		};
-		set_pattern_transform(&pattern, &dom_matrix);
+		let _ = set_pattern_transform(&pattern, &dom_matrix);
 
 		return pattern;
 	}
@@ -1085,13 +1085,7 @@ impl OverlayContext {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
-		// Render for elements with fill
-		// Render for elements with fill only
-		// Render for elements with fill and stroke
-		//----PaintOrder
-		//----StrokeAlign
-
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 
@@ -1155,13 +1149,7 @@ impl OverlayContext {
 	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// WARN: Don't use source-in, destination-atop, destination-in, copy
 	///       on the main canvas as it will erase the existing overlays
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
-		// Render for elements with stroke
-		//----StrokeAlign
-		// Render for elements with stroke only
-		// Render for elements with stroke and fill
-		//----PaintOrder
-
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 

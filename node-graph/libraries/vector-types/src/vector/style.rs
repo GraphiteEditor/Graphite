@@ -391,6 +391,7 @@ impl Stroke {
 		}
 	}
 
+	/// Converts Stroke to kurbo::Stroke, lose of data is possible since some fields are non-existent in kurbo::Stroke
 	pub fn to_kurbo(&self) -> kurbo::Stroke {
 		kurbo::Stroke {
 			width: self.weight,

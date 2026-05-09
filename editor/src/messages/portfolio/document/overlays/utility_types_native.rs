@@ -11,7 +11,6 @@ use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::ATTR_TRANSFORM;
-use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
@@ -429,13 +428,13 @@ impl OverlayContext {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.internal().fill_overlay(subpaths, is_closed_on_all, transform, color, stroke);
 	}
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		self.internal().stroke_overlay(subpaths, is_closed_on_all, transform, color, stroke);
 	}
 
@@ -1074,14 +1073,14 @@ impl OverlayContextInternal {
 		}
 	}
 
-	pub fn fill_canvas_pattern_image(&self, color: &Color) -> peniko::ImageBrush {
+	pub fn fill_canvas_pattern_image(&self, color: &str) -> peniko::ImageBrush {
 		const PATTERN_WIDTH: u32 = 4;
 		const PATTERN_HEIGHT: u32 = 4;
 
 		// Create a 4x4 pixel pattern with colored pixels at (0,0) and (2,2)
 		// This matches the Canvas2D checkerboard pattern
 		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
-		let rgba = color.to_rgba8_srgb();
+		let rgba = hex_to_rgba_u8(color);
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
@@ -1124,7 +1123,7 @@ impl OverlayContextInternal {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		if let Some(stroke) = stroke {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
@@ -1139,14 +1138,13 @@ impl OverlayContextInternal {
 			};
 			let composite_stroke_out = |scene: &mut Scene, compose_mode: peniko::Compose, stroke_scale: Option<f64>| {
 				let element_transform = Affine::new(element_transform.to_cols_array());
-				let mut stroke = stroke.to_kurbo();
-				if let Some(scale) = stroke_scale {
-					stroke.width *= scale;
-				}
-				let path_bbox = path.bounding_box().inflate(stroke.width * 1.5, stroke.width * 1.5);
+				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
+				// TODO: find a method to rid of the extra offset factor
+				let inflation = stroke.weight() * 1.5;
+				let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
 				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
-				scene.stroke(&stroke, element_transform, &brush, Some(element_transform.inverse()), &path);
+				scene.stroke(&stroke.to_kurbo(), element_transform, &peniko::Brush::Solid(peniko::Color::BLACK), None, &path);
 				scene.pop_layer();
 			};
 
@@ -1182,7 +1180,7 @@ impl OverlayContextInternal {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is in gamma space.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &Color, stroke: Option<Stroke>) {
+	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
 		if let Some(stroke) = stroke {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
@@ -1193,20 +1191,19 @@ impl OverlayContextInternal {
 
 			let do_stroke = |scene: &mut Scene, stroke_scale: Option<f64>| {
 				let element_transform = Affine::new(element_transform.to_cols_array());
-				let mut stroke = stroke.to_kurbo();
-				if let Some(scale) = stroke_scale {
-					stroke.width *= scale;
-				}
+				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0)).to_kurbo();
 
 				scene.stroke(&stroke, element_transform, &brush, Some(element_transform.inverse()), &path);
 			};
 			let composite_fill_out = |scene: &mut Scene, compose_mode: peniko::Compose, stroke_scale: Option<f64>| {
 				let element_transform = Affine::new(element_transform.to_cols_array());
-				let stroke_width = stroke.weight() * stroke_scale.map_or(1.0, |scale| scale) * 1.5;
-				let path_bbox = path.bounding_box().inflate(stroke_width, stroke_width);
+				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
+				// TODO: find a method to rid of the extra offset factor
+				let inflation = stroke.weight() * 1.5;
+				let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
 				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
-				scene.fill(peniko::Fill::NonZero, element_transform, &brush, Some(element_transform.inverse()), &path);
+				scene.fill(peniko::Fill::NonZero, element_transform, &peniko::Brush::Solid(peniko::Color::BLACK), None, &path);
 				scene.pop_layer();
 			};
 
