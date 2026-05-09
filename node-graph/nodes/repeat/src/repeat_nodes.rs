@@ -78,7 +78,7 @@ pub async fn repeat_array<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let generated_content = content.eval(new_ctx.into_context()).await;
 
 		for row_index in 0..generated_content.len() {
-			let Some(mut row) = generated_content.clone_row(row_index) else { continue };
+			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let local_translation = DAffine2::from_translation(local_transform.translation);
@@ -124,7 +124,7 @@ async fn repeat_radial<T: Into<Graphic> + Default + Send + Clone + 'static>(
 		let generated_content = content.eval(new_ctx.into_context()).await;
 
 		for row_index in 0..generated_content.len() {
-			let Some(mut row) = generated_content.clone_row(row_index) else { continue };
+			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let local_translation = DAffine2::from_translation(local_transform.translation);

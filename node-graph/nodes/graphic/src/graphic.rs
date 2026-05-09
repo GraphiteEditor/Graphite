@@ -131,7 +131,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_item(row))).with_index(i);
 		let table = mapped.eval(owned_ctx.into_context()).await;
 
 		rows.extend(table);
@@ -250,8 +250,8 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
 ) -> Table<T> {
 	for index in 0..content.len() {
-		let row = content.clone_row(index).expect("index is within bounds");
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_row(row))).with_index(index);
+		let row = content.clone_item(index).expect("index is within bounds");
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_item(row))).with_index(index);
 		let v = value.eval(owned_ctx.into_context()).await;
 		content.set_attribute_value_dyn(&name, index, v);
 	}
@@ -597,7 +597,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				}
 				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`)
 				_ => {
-					let attributes = current_graphic_table.clone_row_attributes(index);
+					let attributes = current_graphic_table.clone_item_attributes(index);
 					output_graphic_table.push(Item::from_parts(current_element, attributes));
 				}
 			}

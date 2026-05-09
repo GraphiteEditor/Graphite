@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
-use core_types::table::{Table, TableDyn, Item};
+use core_types::table::{Item, Table, TableDyn};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
@@ -321,7 +321,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
 
 			for row_index in 0..content.len() {
-				let Some(mut row) = content.clone_row(row_index) else { continue };
+				let Some(mut row) = content.clone_item(row_index) else { continue };
 				let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 				row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
 
@@ -356,7 +356,7 @@ async fn round_corners(
 		.map(|index| {
 			let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let source_transform_inverse = source_transform.inverse();
-			let attributes = source.clone_row_attributes(index);
+			let attributes = source.clone_item_attributes(index);
 			let source = source.element(index).unwrap();
 
 			// Flip the roundness to help with user intuition
@@ -803,7 +803,7 @@ where
 		.into_iter()
 		.map(|row| {
 			// Single-item `Table` to query its bounding box
-			let single = Table::new_from_row(row.clone());
+			let single = Table::new_from_item(row.clone());
 			let (w, h, top_left) = match single.bounding_box(DAffine2::IDENTITY, false) {
 				RenderBoundingBox::Rectangle([min, max]) => {
 					let size = max - min;
@@ -902,7 +902,7 @@ async fn auto_tangents(
 	(0..source.len())
 		.map(|index| {
 			let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let attributes = source.clone_row_attributes(index);
+			let attributes = source.clone_item_attributes(index);
 			let source = source.element(index).unwrap();
 
 			let mut result = Vector {
@@ -1083,7 +1083,7 @@ async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<Vector> {
 	let mut point_domain = PointDomain::new();
 	point_domain.push(PointId::generate(), vec2);
 
-	Table::new_from_row(Item::new_from_element(Vector { point_domain, ..Default::default() }))
+	Table::new_from_item(Item::new_from_element(Vector { point_domain, ..Default::default() }))
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
@@ -2409,11 +2409,11 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 		let endpoint_index = if time == 0. { source_index } else { target_index };
 		let endpoint_element = content.element(endpoint_index).unwrap();
 
-		let mut attributes = content.clone_row_attributes(endpoint_index);
+		let mut attributes = content.clone_item_attributes(endpoint_index);
 		attributes.insert(ATTR_TRANSFORM, lerped_transform);
 		attributes.insert(ATTR_EDITOR_MERGED_LAYERS, graphic_table_content);
 
-		return Table::new_from_row(Item::from_parts(endpoint_element.clone(), attributes));
+		return Table::new_from_item(Item::from_parts(endpoint_element.clone(), attributes));
 	}
 
 	let mut vector = Vector {
@@ -2569,7 +2569,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let primary_index = if time < 0.5 { source_index } else { target_index };
 	let layer_path: Table<NodeId> = content.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, primary_index);
 
-	Table::new_from_row(
+	Table::new_from_item(
 		Item::new_from_element(vector)
 			.with_attribute(ATTR_TRANSFORM, lerped_transform)
 			.with_attribute(ATTR_BLEND_MODE, lerped_blend_mode)
@@ -3046,7 +3046,7 @@ mod test {
 		Table::new_from_element(Vector::from_bezpath(bezpath))
 	}
 
-	fn create_vector_row(bezpath: BezPath, transform: DAffine2) -> Item<Vector> {
+	fn create_vector_item(bezpath: BezPath, transform: DAffine2) -> Item<Vector> {
 		let mut row = Vector::default();
 		row.append_bezpath(bezpath);
 		Item::new_from_element(row).with_attribute(ATTR_TRANSFORM, transform)
@@ -3155,7 +3155,7 @@ mod test {
 	async fn path_length() {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
-		let row = create_vector_row(bezpath, transform);
+		let row = create_vector_item(bezpath, transform);
 		let table = (0..5).map(|_| row.clone()).collect::<Table<Vector>>();
 
 		let length = super::path_length(Footprint::default(), table).await;
@@ -3173,7 +3173,7 @@ mod test {
 	#[tokio::test]
 	async fn morph() {
 		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
-		let mut second_rectangle = rectangles.clone_row(0).unwrap();
+		let mut second_rectangle = rectangles.clone_item(0).unwrap();
 		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
 		rectangles.push(second_rectangle);
 

@@ -1,4 +1,4 @@
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, BlendMode, Color, Ctx};
 use glam::{DAffine2, DVec2};
@@ -124,7 +124,7 @@ fn boolean_operation_on_vector_table(vector: &Table<Vector>, boolean_operation: 
 		if !vector.is_empty() { Some(vector.len() - 1) } else { None }
 	};
 	let mut row = if let Some(index) = copy_from_index {
-		let mut attributes = vector.clone_row_attributes(index);
+		let mut attributes = vector.clone_item_attributes(index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
 		let copy_from = vector.element(index).unwrap();

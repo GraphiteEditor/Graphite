@@ -49,7 +49,7 @@ pub async fn create_artboard<T: IntoGraphicTable + 'n>(
 	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	Table::new_from_row(
+	Table::new_from_item(
 		Item::new_from_element(Artboard::new(content))
 			.with_attribute(ATTR_LOCATION, normalized_location)
 			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)

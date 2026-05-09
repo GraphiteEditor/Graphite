@@ -392,7 +392,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_row(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
+			return Table::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -450,7 +450,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_row(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	Table::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
@@ -488,7 +488,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 		}
 	}
 
-	Table::new_from_row(
+	Table::new_from_item(
 		Item::new_from_element(Raster::new_cpu(Image {
 			width,
 			height,

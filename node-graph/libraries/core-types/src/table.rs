@@ -816,7 +816,7 @@ impl Attributes {
 	}
 
 	/// Clones all attribute values at the given item index into a new scalar Attributes.
-	fn clone_row(&self, index: usize) -> ItemAttributeValues {
+	fn clone_item(&self, index: usize) -> ItemAttributeValues {
 		let mut attributes = ItemAttributeValues::new();
 
 		for (key, attribute) in &self.attributes {
@@ -829,7 +829,7 @@ impl Attributes {
 	}
 
 	/// Drains all attribute data into a Vec of per-item scalar Attributes.
-	fn into_row_vec(self) -> Vec<ItemAttributeValues> {
+	fn into_item_vec(self) -> Vec<ItemAttributeValues> {
 		let mut items: Vec<ItemAttributeValues> = (0..self.len).map(|_| ItemAttributeValues::new()).collect();
 
 		for (key, attribute) in self.attributes {
@@ -881,7 +881,7 @@ impl<T> Table<T> {
 	}
 
 	/// Creates a table containing a single item from the given [`Item`], preserving its attributes.
-	pub fn new_from_row(item: Item<T>) -> Self {
+	pub fn new_from_item(item: Item<T>) -> Self {
 		let mut attributes = Attributes::new();
 		attributes.push_item(item.attributes);
 		Self {
@@ -1053,19 +1053,19 @@ impl<T> Table<T> {
 	// ==================
 
 	/// Clones both the element and all attributes at the given item index into a new owned [`Item`], or [`None`] if out of bounds.
-	pub fn clone_row(&self, index: usize) -> Option<Item<T>>
+	pub fn clone_item(&self, index: usize) -> Option<Item<T>>
 	where
 		T: Clone,
 	{
 		Some(Item {
 			element: self.element.get(index)?.clone(),
-			attributes: self.attributes.clone_row(index),
+			attributes: self.attributes.clone_item(index),
 		})
 	}
 
 	/// Clones all attribute values at the given item index into a new [`ItemAttributeValues`], without cloning the element.
-	pub fn clone_row_attributes(&self, index: usize) -> ItemAttributeValues {
-		self.attributes.clone_row(index)
+	pub fn clone_item_attributes(&self, index: usize) -> ItemAttributeValues {
+		self.attributes.clone_item(index)
 	}
 }
 
@@ -1121,10 +1121,10 @@ impl<T> IntoIterator for Table<T> {
 
 	/// Consumes a [`Table`] and returns an iterator of [`Item`]s, each containing the owned data of the respective item from the original table.
 	fn into_iter(self) -> Self::IntoIter {
-		let row_attributes = self.attributes.into_row_vec();
+		let attributes = self.attributes.into_item_vec();
 		ItemIter {
 			element: self.element.into_iter(),
-			attributes: row_attributes.into_iter(),
+			attributes: attributes.into_iter(),
 		}
 	}
 }

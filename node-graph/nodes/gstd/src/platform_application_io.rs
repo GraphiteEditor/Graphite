@@ -4,7 +4,7 @@ use base64::Engine;
 use canvas_utils::{Canvas, CanvasHandle};
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
@@ -235,7 +235,7 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(
+	Table::new_from_item(
 		Item::new_from_element(Raster::new_cpu(image))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_table),

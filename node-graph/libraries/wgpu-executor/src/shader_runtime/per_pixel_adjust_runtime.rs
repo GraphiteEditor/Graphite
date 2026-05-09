@@ -1,7 +1,7 @@
 use crate::WgpuContext;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
 use core_types::shaders::buffer_struct::BufferStruct;
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use futures::lock::Mutex;
 use raster_types::{GPU, Raster};
 use std::borrow::Cow;
@@ -233,7 +233,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.set_bind_group(0, Some(&bind_group), &[]);
 				rp.draw(0..3, 0..1);
 
-				let attributes = textures.clone_row_attributes(index);
+				let attributes = textures.clone_item_attributes(index);
 				Item::from_parts(Raster::new(GPU { texture: tex_out }), attributes)
 			})
 			.collect::<Table<_>>();
