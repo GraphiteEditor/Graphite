@@ -6,7 +6,7 @@ use core_types::color::{Alpha, Color, Pixel, Sample};
 use core_types::generic::FnNode;
 use core_types::math::bbox::{AxisAlignedBbox, Bbox};
 use core_types::registry::FutureWrapperNode;
-use core_types::table::{Table, TableRow};
+use core_types::table::{Item, Table};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
 use core_types::value::ClonedNode;
@@ -143,7 +143,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	image.into_element()
 }
 
-pub fn blend_with_mode(background: TableRow<Raster<CPU>>, foreground: TableRow<Raster<CPU>>, blend_mode: BlendMode, opacity: f64) -> TableRow<Raster<CPU>> {
+pub fn blend_with_mode(background: Item<Raster<CPU>>, foreground: Item<Raster<CPU>>, blend_mode: BlendMode, opacity: f64) -> Item<Raster<CPU>> {
 	let opacity = opacity as f32 / 100.;
 	match std::hint::black_box(blend_mode) {
 		// Normal group
@@ -199,12 +199,12 @@ async fn brush(
 	cache: BrushCache,
 ) -> Table<Raster<CPU>> {
 	if background.is_empty() {
-		background.push(TableRow::default());
+		background.push(Item::default());
 	}
 	// TODO: Find a way to handle more than one item
-	let table_row = background.clone_row(0).expect("Expected the one item we just pushed");
+	let table_row = background.clone_item(0).expect("Expected the one item we just pushed");
 
-	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
+	let bounds = Table::new_from_item(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
 	let background_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = trace.iter_element_values().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
@@ -224,7 +224,7 @@ async fn brush(
 	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
 
 	// TODO: Find a way to handle more than one item
-	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_row(brush_plan.background), background_bounds).into_iter().next() else {
+	let Some(mut actual_image) = extend_image_to_bounds((), Table::new_from_item(brush_plan.background), background_bounds).into_iter().next() else {
 		return Table::new();
 	};
 
@@ -263,7 +263,7 @@ async fn brush(
 			);
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				extend_image_to_bounds((), Table::new_from_row(target), stroke_to_layer)
+				extend_image_to_bounds((), Table::new_from_item(target), stroke_to_layer)
 			} else {
 				empty_image((), stroke_to_layer, Table::new_from_element(Color::TRANSPARENT))
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
@@ -286,7 +286,7 @@ async fn brush(
 	let has_erase_or_restore_strokes = trace.iter_element_values().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
 	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = TableRow::new_from_element(Raster::new_cpu(opaque_image)).with_attribute(ATTR_TRANSFORM, background_bounds);
+		let mut erase_restore_mask = Item::new_from_element(Raster::new_cpu(opaque_image)).with_attribute(ATTR_TRANSFORM, background_bounds);
 
 		for stroke in trace.into_iter().map(|row| row.into_element()) {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -311,7 +311,7 @@ async fn brush(
 				FutureWrapperNode::new(ClonedNode::new(positions)),
 				FutureWrapperNode::new(ClonedNode::new(blend_params)),
 			);
-			erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
+			erase_restore_mask = blit_node.eval(Table::new_from_item(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
 		}
 
 		let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));
@@ -336,7 +336,7 @@ async fn brush(
 	background
 }
 
-pub fn blend_image_closure(foreground: TableRow<Raster<CPU>>, mut background: TableRow<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> TableRow<Raster<CPU>> {
+pub fn blend_image_closure(foreground: Item<Raster<CPU>>, mut background: Item<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Item<Raster<CPU>> {
 	let foreground_size = DVec2::new(foreground.element().width as f64, foreground.element().height as f64);
 	let background_size = DVec2::new(background.element().width as f64, background.element().height as f64);
 
@@ -369,7 +369,7 @@ pub fn blend_image_closure(foreground: TableRow<Raster<CPU>>, mut background: Ta
 	background
 }
 
-pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: TableRow<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> TableRow<Raster<CPU>> {
+pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: Item<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Item<Raster<CPU>> {
 	let background_size = DVec2::new(background.element().width as f64, background.element().height as f64);
 
 	// Transforms a point from the background image to the foreground image

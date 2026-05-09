@@ -4,7 +4,7 @@ use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::math::bbox::Bbox;
-use core_types::table::{Table, TableRow};
+use core_types::table::{Item, Table};
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use fastnoise_lite;
@@ -88,7 +88,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 			let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 			attributes.insert(ATTR_TRANSFORM, new_transform);
 
-			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
+			Some(Item::from_parts(Raster::new_cpu(image), attributes))
 		})
 		.collect()
 }
@@ -169,7 +169,7 @@ pub fn combine_channels(
 				}
 			}
 
-			Some(TableRow::from_parts(Raster::new_cpu(image), attributes))
+			Some(Item::from_parts(Raster::new_cpu(image), attributes))
 		})
 		.collect()
 }
@@ -392,7 +392,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
+			return Table::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -450,7 +450,7 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_row(TableRow::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	Table::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
@@ -488,8 +488,8 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 		}
 	}
 
-	Table::new_from_row(
-		TableRow::new_from_element(Raster::new_cpu(Image {
+	Table::new_from_item(
+		Item::new_from_element(Raster::new_cpu(Image {
 			width,
 			height,
 			data,

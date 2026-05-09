@@ -1,4 +1,4 @@
-use core_types::table::{Table, TableRow};
+use core_types::table::{Item, Table};
 use core_types::{ATTR_TYPE, Ctx};
 use serde_json::Value;
 
@@ -248,10 +248,7 @@ fn query_json_all(
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
 
-	results
-		.into_iter()
-		.map(|(text, ty)| TableRow::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string()))
-		.collect()
+	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
 }
 
 /// A parsed segment of a JSON access path.

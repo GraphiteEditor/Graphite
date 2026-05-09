@@ -436,7 +436,7 @@ impl<T: Clone> AtIndex for Table<T> {
 	type Output = Table<T>;
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
-		self.clone_row(index).map(|row| {
+		self.clone_item(index).map(|row| {
 			let mut result_table = Self::default();
 			result_table.push(row);
 			result_table
@@ -469,7 +469,7 @@ impl<T: Clone> OmitIndex for Table<T> {
 		let mut result = Self::default();
 		for i in 0..self.len() {
 			if i != index
-				&& let Some(row) = self.clone_row(i)
+				&& let Some(row) = self.clone_item(i)
 			{
 				result.push(row);
 			}

@@ -220,7 +220,7 @@ fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
 	vec![LayoutGroup::row(error)]
 }
 
-trait TableRowLayout {
+trait TableItemLayout {
 	fn type_name() -> &'static str;
 	fn identifier(&self) -> String;
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
@@ -245,7 +245,7 @@ trait TableRowLayout {
 	}
 }
 
-impl<T: TableRowLayout> TableRowLayout for Table<T> {
+impl<T: TableItemLayout> TableItemLayout for Table<T> {
 	fn type_name() -> &'static str {
 		"Table"
 	}
@@ -307,7 +307,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	}
 }
 
-impl TableRowLayout for Artboard {
+impl TableItemLayout for Artboard {
 	fn type_name() -> &'static str {
 		"Artboard"
 	}
@@ -323,7 +323,7 @@ impl TableRowLayout for Artboard {
 	}
 }
 
-impl TableRowLayout for Graphic {
+impl TableItemLayout for Graphic {
 	fn type_name() -> &'static str {
 		"Graphic"
 	}
@@ -353,7 +353,7 @@ impl TableRowLayout for Graphic {
 	}
 }
 
-impl TableRowLayout for Vector {
+impl TableItemLayout for Vector {
 	fn type_name() -> &'static str {
 		"Vector"
 	}
@@ -512,7 +512,7 @@ impl TableRowLayout for Vector {
 	}
 }
 
-impl TableRowLayout for Raster<CPU> {
+impl TableItemLayout for Raster<CPU> {
 	fn type_name() -> &'static str {
 		"Raster"
 	}
@@ -543,7 +543,7 @@ impl TableRowLayout for Raster<CPU> {
 	}
 }
 
-impl TableRowLayout for Raster<GPU> {
+impl TableItemLayout for Raster<GPU> {
 	fn type_name() -> &'static str {
 		"Raster"
 	}
@@ -556,7 +556,7 @@ impl TableRowLayout for Raster<GPU> {
 	}
 }
 
-impl TableRowLayout for Color {
+impl TableItemLayout for Color {
 	fn type_name() -> &'static str {
 		"Color"
 	}
@@ -576,7 +576,7 @@ impl TableRowLayout for Color {
 	}
 }
 
-impl TableRowLayout for GradientStops {
+impl TableItemLayout for GradientStops {
 	fn type_name() -> &'static str {
 		"Gradient"
 	}
@@ -596,7 +596,7 @@ impl TableRowLayout for GradientStops {
 	}
 }
 
-impl TableRowLayout for f64 {
+impl TableItemLayout for f64 {
 	fn type_name() -> &'static str {
 		"Number (f64)"
 	}
@@ -611,7 +611,7 @@ impl TableRowLayout for f64 {
 	}
 }
 
-impl TableRowLayout for u8 {
+impl TableItemLayout for u8 {
 	fn type_name() -> &'static str {
 		"Byte"
 	}
@@ -624,7 +624,7 @@ impl TableRowLayout for u8 {
 	}
 }
 
-impl TableRowLayout for u32 {
+impl TableItemLayout for u32 {
 	fn type_name() -> &'static str {
 		"Number (u32)"
 	}
@@ -639,7 +639,7 @@ impl TableRowLayout for u32 {
 	}
 }
 
-impl TableRowLayout for u64 {
+impl TableItemLayout for u64 {
 	fn type_name() -> &'static str {
 		"Number (u64)"
 	}
@@ -655,7 +655,7 @@ impl TableRowLayout for u64 {
 	}
 }
 
-impl TableRowLayout for bool {
+impl TableItemLayout for bool {
 	fn type_name() -> &'static str {
 		"Bool"
 	}
@@ -670,7 +670,7 @@ impl TableRowLayout for bool {
 	}
 }
 
-impl TableRowLayout for String {
+impl TableItemLayout for String {
 	fn type_name() -> &'static str {
 		"String"
 	}
@@ -689,7 +689,7 @@ impl TableRowLayout for String {
 	}
 }
 
-impl TableRowLayout for Option<f64> {
+impl TableItemLayout for Option<f64> {
 	fn type_name() -> &'static str {
 		"Option<f64>"
 	}
@@ -704,7 +704,7 @@ impl TableRowLayout for Option<f64> {
 	}
 }
 
-impl TableRowLayout for DVec2 {
+impl TableItemLayout for DVec2 {
 	fn type_name() -> &'static str {
 		"Vec2"
 	}
@@ -719,7 +719,7 @@ impl TableRowLayout for DVec2 {
 	}
 }
 
-impl TableRowLayout for Vec2 {
+impl TableItemLayout for Vec2 {
 	fn type_name() -> &'static str {
 		"Vec2"
 	}
@@ -734,7 +734,7 @@ impl TableRowLayout for Vec2 {
 	}
 }
 
-impl TableRowLayout for DAffine2 {
+impl TableItemLayout for DAffine2 {
 	fn type_name() -> &'static str {
 		"Transform"
 	}
@@ -749,7 +749,7 @@ impl TableRowLayout for DAffine2 {
 	}
 }
 
-impl TableRowLayout for Affine2 {
+impl TableItemLayout for Affine2 {
 	fn type_name() -> &'static str {
 		"Transform"
 	}
@@ -765,7 +765,7 @@ impl TableRowLayout for Affine2 {
 	}
 }
 
-impl TableRowLayout for BlendMode {
+impl TableItemLayout for BlendMode {
 	fn type_name() -> &'static str {
 		"BlendMode"
 	}
@@ -780,7 +780,7 @@ impl TableRowLayout for BlendMode {
 	}
 }
 
-impl TableRowLayout for GradientType {
+impl TableItemLayout for GradientType {
 	fn type_name() -> &'static str {
 		"GradientType"
 	}
@@ -795,7 +795,7 @@ impl TableRowLayout for GradientType {
 	}
 }
 
-impl TableRowLayout for GradientSpreadMethod {
+impl TableItemLayout for GradientSpreadMethod {
 	fn type_name() -> &'static str {
 		"GradientSpreadMethod"
 	}
@@ -820,7 +820,7 @@ fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterfa
 	}
 }
 
-impl TableRowLayout for NodeId {
+impl TableItemLayout for NodeId {
 	fn type_name() -> &'static str {
 		"NodeId"
 	}
@@ -932,7 +932,7 @@ impl TableRowLayout for NodeId {
 	}
 }
 
-/// Invokes another macro with the full list of `TableRowLayout`-implementing types whose values may appear
+/// Invokes another macro with the full list of `TableItemLayout`-implementing types whose values may appear
 /// as attribute values. Both the value-rendering and drilldown-navigation dispatchers iterate this list,
 /// so adding a new attribute-displayable type is a single edit here.
 macro_rules! known_table_row_types {
@@ -984,9 +984,9 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 }
 
 /// Type-dispatched widget for displaying an attribute value in a `Table<T>` item.
-/// Delegates to [`TableRowLayout::value_widget`] so the same widget code is shared between
-/// element-column rendering and attribute-column rendering. Returns `None` for unrecognized types so the
-/// caller can fall back to a debug-formatted [`TextLabel`].
+/// Delegates to [`TableItemLayout::value_widget`] so the same widget code is shared between
+/// element-column rendering and attribute-column rendering. Returns `None` for unrecognized
+/// types so the caller can fall back to a debug-formatted [`TextLabel`].
 fn dispatch_value_widget(any: &dyn Any, target: PathStep, data: &LayoutData) -> Option<WidgetInstance> {
 	macro_rules! check {
 		( $($ty:ty),* $(,)? ) => {
@@ -1041,7 +1041,7 @@ fn table_node_id_path_layout_with_breadcrumb(path: &Table<NodeId>, data: &mut La
 }
 
 /// Type-dispatched recursion into an attribute value for the Data panel breadcrumb navigation.
-/// Mirrors [`dispatch_value_widget`] but routes to [`TableRowLayout::layout_with_breadcrumb`].
+/// Mirrors [`dispatch_value_widget`] but routes to [`TableItemLayout::layout_with_breadcrumb`].
 /// Returns `None` for unrecognized types.
 fn drilldown_attribute_layout(any: &dyn Any, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `Table<NodeId>` is interpreted as a path (e.g. the `editor:layer_path` attribute), so each item's NodeId value

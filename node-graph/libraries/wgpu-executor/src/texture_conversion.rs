@@ -3,7 +3,7 @@ use core_types::Color;
 use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::ops::Convert;
-use core_types::table::{Table, TableRow};
+use core_types::table::{Item, Table};
 use core_types::transform::Footprint;
 use raster_types::Image;
 use raster_types::{CPU, GPU, Raster};
@@ -155,7 +155,7 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
 				let (image, attributes) = row.into_parts();
 				let texture = upload_to_texture(device, queue, &image);
 
-				TableRow::from_parts(Raster::new_gpu(texture), attributes)
+				Item::from_parts(Raster::new_gpu(texture), attributes)
 			})
 			.collect();
 
@@ -199,7 +199,7 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 		for row in self {
 			let (element, attributes) = row.into_parts();
 			converters.push(RasterGpuToRasterCpuConverter::new(device, &mut encoder, element));
-			rows_meta.push(TableRow::from_parts((), attributes));
+			rows_meta.push(Item::from_parts((), attributes));
 		}
 
 		queue.submit([encoder.finish()]);
@@ -219,7 +219,7 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 			.zip(rows_meta)
 			.map(|(element, row)| {
 				let (_, attributes) = row.into_parts();
-				TableRow::from_parts(element, attributes)
+				Item::from_parts(element, attributes)
 			})
 			.collect()
 	}

@@ -6,28 +6,28 @@ use glam::DAffine2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
 
-// =====================================================================
+// =================================================
 // Standard attribute keys used across the data flow
-// =====================================================================
+// =================================================
 
-/// Row's `DAffine2` transformation, composed multiplicatively through nested groups.
+/// Item's `DAffine2` transformation, composed multiplicatively through nested groups.
 pub const ATTR_TRANSFORM: &str = "transform";
 
-/// Row's `BlendMode`, controlling how it composites with content beneath it.
+/// Item's `BlendMode`, controlling how it composites with content beneath it.
 pub const ATTR_BLEND_MODE: &str = "blend_mode";
 
-/// Row's opacity multiplier (`f64`, implicit default `1.`).
-/// Composed multiplicatively through nested groups. Affects content clipped to the row.
+/// Item's opacity multiplier (`f64`, implicit default `1.`).
+/// Composed multiplicatively through nested groups. Affects content clipped to the item.
 pub const ATTR_OPACITY: &str = "opacity";
 
-/// Row's fill opacity multiplier (`f64`, implicit default `1.`).
-/// Like opacity but does not affect content clipped to the row.
+/// Item's fill opacity multiplier (`f64`, implicit default `1.`).
+/// Like opacity but does not affect content clipped to the item.
 pub const ATTR_OPACITY_FILL: &str = "opacity_fill";
 
-/// `bool` for whether a row inherits the alpha of the content beneath it (clipping mask).
+/// `bool` for whether an item inherits the alpha of the content beneath it (clipping mask).
 pub const ATTR_CLIPPING_MASK: &str = "clipping_mask";
 
-/// `Table<NodeId>` path from the root network to the layer node owning this row.
+/// `Table<NodeId>` path from the root network to the layer node owning this item.
 /// Used by editor tools to route clicks/selection back to the originating layer.
 pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 
@@ -36,13 +36,13 @@ pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
 
-/// Optional `Vector` that overrides the row's own geometry for click-target generation.
+/// Optional `Vector` that overrides the item's own geometry for click-target generation.
 /// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
 /// by clicking anywhere within their bounds, not just the filled letterform.
 pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
 
 /// `DAffine2` mapping the unit square `[(0, 0), (1, 1)]` (top-left convention) onto the 'Text'
-/// node's text frame in this row's local space. Each row carries the frame relative to its own
+/// node's text frame in this item's local space. Each item carries the frame relative to its own
 /// glyph origin so it survives `Index Elements` filtering. The Text tool reads this to position
 /// its drag cage. Stored as an affine to allow non-axis-aligned frames in the future.
 pub const ATTR_EDITOR_TEXT_FRAME: &str = "editor:text_frame";
@@ -77,15 +77,15 @@ pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
-// =====================
-// TRAIT: AttributeValue
-// =====================
+// ========================
+// TRAIT: AnyAttributeValue
+// ========================
 
 /// Enables type-erased scalar storage that supports Clone, Send, Sync, and downcasting.
-/// Used for individual attribute values in a TableRow.
-pub trait AttributeValue: std::any::Any + Send + Sync {
+/// Used for individual attribute values in an [`Item`].
+pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	/// Clones this value into a new boxed trait object.
-	fn clone_box(&self) -> Box<dyn AttributeValue>;
+	fn clone_box(&self) -> Box<dyn AnyAttributeValue>;
 
 	/// Returns a shared reference to the underlying concrete type for downcasting.
 	fn as_any(&self) -> &dyn std::any::Any;
@@ -99,14 +99,13 @@ pub trait AttributeValue: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String;
 
-	/// Wraps this scalar value into a new column for columnar storage,
-	/// with `preceding_defaults` default values before this value.
-	fn into_column(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AttributeColumn>;
+	/// Wraps this scalar value into a new attribute with `preceding_defaults` default values before this value.
+	fn into_attribute(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
 }
 
-impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 'static> AttributeValue for T {
+impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 'static> AnyAttributeValue for T {
 	/// Clones this value into a new boxed trait object.
-	fn clone_box(&self) -> Box<dyn AttributeValue> {
+	fn clone_box(&self) -> Box<dyn AnyAttributeValue> {
 		Box::new(self.clone())
 	}
 
@@ -130,28 +129,28 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 		format!("{:?}", self)
 	}
 
-	/// Wraps this scalar value into a new column, padded with `preceding_defaults` default values before it.
-	fn into_column(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AttributeColumn> {
+	/// Wraps this scalar value into a new attribute, padded with `preceding_defaults` default values before it.
+	fn into_attribute(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AnyAttribute> {
 		let mut data = vec![T::default(); preceding_defaults];
 		data.push(*self);
-		Box::new(Column(data))
+		Box::new(Attribute(data))
 	}
 }
 
-impl Clone for Box<dyn AttributeValue> {
+impl Clone for Box<dyn AnyAttributeValue> {
 	fn clone(&self) -> Self {
 		(**self).clone_box()
 	}
 }
 
-// ======================
-// TRAIT: AttributeColumn
-// ======================
+// ===================
+// TRAIT: AnyAttribute
+// ===================
 
-/// Enables type-erased columnar storage for parallel attribute lists in a Table.
-pub trait AttributeColumn: std::any::Any + Send + Sync {
-	/// Clones this column into a new boxed trait object.
-	fn clone_box(&self) -> Box<dyn AttributeColumn>;
+/// Enables type-erased storage for parallel attribute lists in a [`Table`].
+pub trait AnyAttribute: std::any::Any + Send + Sync {
+	/// Clones this attribute into a new boxed trait object.
+	fn clone_box(&self) -> Box<dyn AnyAttribute>;
 
 	/// Returns a shared reference to the underlying concrete type for downcasting.
 	fn as_any(&self) -> &dyn std::any::Any;
@@ -159,29 +158,29 @@ pub trait AttributeColumn: std::any::Any + Send + Sync {
 	/// Returns a mutable reference to the underlying concrete type for downcasting.
 	fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 
-	/// Pushes a scalar attribute value onto the end of this column.
-	fn push(&mut self, value: Box<dyn AttributeValue>);
+	/// Pushes a scalar attribute value onto the end of this attribute.
+	fn push(&mut self, value: Box<dyn AnyAttributeValue>);
 
-	/// Pushes a default value onto the end of this column.
+	/// Pushes a default value onto the end of this attribute.
 	fn push_default(&mut self);
 
-	/// Sets the value at the given index, padding with defaults if the column is shorter than `index`.
+	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
 	/// Falls back to a default if the value's type doesn't match.
-	fn set_at(&mut self, index: usize, value: Box<dyn AttributeValue>);
+	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>);
 
-	/// Creates a new column of the same type filled with `count` number of default values.
-	fn new_with_defaults(&self, count: usize) -> Box<dyn AttributeColumn>;
+	/// Creates a new attribute of the same type filled with `count` number of default values.
+	fn new_with_defaults(&self, count: usize) -> Box<dyn AnyAttribute>;
 
-	/// Returns the number of elements in this column.
+	/// Returns the number of elements in this attribute.
 	fn len(&self) -> usize;
 
-	/// Returns whether this column has any elements.
+	/// Returns whether this attribute has any elements.
 	fn is_empty(&self) -> bool {
 		self.len() == 0
 	}
 
-	/// Appends all values from another column of the same type.
-	fn extend(&mut self, other: Box<dyn AttributeColumn>);
+	/// Appends all values from another attribute of the same type.
+	fn extend(&mut self, other: Box<dyn AnyAttribute>);
 
 	/// Returns a shared reference to the value at the requested index.
 	fn get_any(&self, index: usize) -> Option<&dyn std::any::Any>;
@@ -189,18 +188,18 @@ pub trait AttributeColumn: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted display string for the value at the requested index.
 	fn display_at(&self, index: usize) -> Option<String>;
 
-	/// Clones a single value from this column into a boxed scalar attribute value.
-	fn clone_value(&self, index: usize) -> Option<Box<dyn AttributeValue>>;
+	/// Clones a single value from this attribute into a boxed scalar attribute value.
+	fn clone_value(&self, index: usize) -> Option<Box<dyn AnyAttributeValue>>;
 
-	/// Drains all values out of this column into a Vec of scalar attribute values.
-	fn drain(self: Box<Self>) -> Vec<Box<dyn AttributeValue>>;
+	/// Drains all values out of this attribute into a Vec of scalar attribute values.
+	fn drain(self: Box<Self>) -> Vec<Box<dyn AnyAttributeValue>>;
 
-	/// Hashes every value in this column into the given hasher (object-safe wrapper around `CacheHash`).
+	/// Hashes every value in this attribute into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher);
 
-	/// Compares this column to another for value-by-value equality (object-safe wrapper around `PartialEq`).
+	/// Compares this attribute to another for value-by-value equality (object-safe wrapper around `PartialEq`).
 	/// Returns `false` if the underlying types differ.
-	fn eq_dyn(&self, other: &dyn AttributeColumn) -> bool;
+	fn eq_dyn(&self, other: &dyn AnyAttribute) -> bool;
 }
 
 /// Adapts a `&mut dyn Hasher` so generic `CacheHash::cache_hash<H>` calls (which require `H: Sized + Hasher`) can
@@ -215,23 +214,23 @@ impl core::hash::Hasher for DynHasher<'_> {
 	}
 }
 
-impl Clone for Box<dyn AttributeColumn> {
+impl Clone for Box<dyn AnyAttribute> {
 	fn clone(&self) -> Self {
 		(**self).clone_box()
 	}
 }
 
-// =========
-// Column<T>
-// =========
+// ============
+// Attribute<T>
+// ============
 
-/// Wraps a Vec<T> for column-major attribute storage in a Table.
-pub struct Column<T>(pub Vec<T>);
+/// Wraps a Vec<T> for attribute storage in a [`Table`].
+pub struct Attribute<T>(pub Vec<T>);
 
-impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static> AttributeColumn for Column<T> {
-	/// Clones this column into a new boxed trait object.
-	fn clone_box(&self) -> Box<dyn AttributeColumn> {
-		Box::new(Column(self.0.clone()))
+impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static> AnyAttribute for Attribute<T> {
+	/// Clones this attribute into a new boxed trait object.
+	fn clone_box(&self) -> Box<dyn AnyAttribute> {
+		Box::new(Attribute(self.0.clone()))
 	}
 
 	/// Returns a shared reference to the underlying concrete type for downcasting.
@@ -244,9 +243,9 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		self
 	}
 
-	/// Pushes a scalar attribute value onto the end of this column, downcasting it to `T`.
-	/// Falls back to a default value if the type doesn't match, to maintain the column-length invariant.
-	fn push(&mut self, value: Box<dyn AttributeValue>) {
+	/// Pushes an attribute value onto the end of this attribute's list, downcasting it to `T`.
+	/// Falls back to a default value if the type doesn't match, to maintain the attribute-length invariant.
+	fn push(&mut self, value: Box<dyn AnyAttributeValue>) {
 		if let Ok(value) = value.into_any().downcast::<T>() {
 			self.0.push(*value);
 		} else {
@@ -254,14 +253,14 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		}
 	}
 
-	/// Pushes a default `T` value onto the end of this column.
+	/// Pushes a default `T` value onto the end of this attribute list.
 	fn push_default(&mut self) {
 		self.0.push(T::default());
 	}
 
-	/// Sets the value at the given index, padding with defaults if the column is shorter than `index`.
+	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
 	/// Falls back to a default if the value's type doesn't match.
-	fn set_at(&mut self, index: usize, value: Box<dyn AttributeValue>) {
+	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>) {
 		while self.0.len() < index {
 			self.0.push(T::default());
 		}
@@ -273,19 +272,19 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		}
 	}
 
-	/// Creates a new column filled with `count` default `T` values.
-	fn new_with_defaults(&self, count: usize) -> Box<dyn AttributeColumn> {
-		Box::new(Column(vec![T::default(); count]))
+	/// Creates a new attribute filled with `count` default `T` values.
+	fn new_with_defaults(&self, count: usize) -> Box<dyn AnyAttribute> {
+		Box::new(Attribute(vec![T::default(); count]))
 	}
 
-	/// Returns the number of elements in this column.
+	/// Returns the number of elements in this attribute.
 	fn len(&self) -> usize {
 		self.0.len()
 	}
 
-	/// Appends all values from another column, downcasting it to the same `Column<T>` type.
-	/// Falls back to padding with defaults if the type doesn't match, to maintain the column-length invariant.
-	fn extend(&mut self, other: Box<dyn AttributeColumn>) {
+	/// Appends all values from another attribute, downcasting it to the same `Attribute<T>` type.
+	/// Falls back to padding with defaults if the type doesn't match, to maintain the attribute-length invariant.
+	fn extend(&mut self, other: Box<dyn AnyAttribute>) {
 		let other_len = other.len();
 		if let Ok(other) = (other as Box<dyn std::any::Any>).downcast::<Self>() {
 			self.0.extend(other.0);
@@ -305,48 +304,48 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	}
 
 	/// Clones the value at the given index into a boxed scalar attribute value.
-	fn clone_value(&self, index: usize) -> Option<Box<dyn AttributeValue>> {
-		self.0.get(index).map(|v| Box::new(v.clone()) as Box<dyn AttributeValue>)
+	fn clone_value(&self, index: usize) -> Option<Box<dyn AnyAttributeValue>> {
+		self.0.get(index).map(|v| Box::new(v.clone()) as Box<dyn AnyAttributeValue>)
 	}
 
-	/// Consumes this column and returns all values as a Vec of boxed scalar attribute values.
-	fn drain(self: Box<Self>) -> Vec<Box<dyn AttributeValue>> {
-		self.0.into_iter().map(|v| Box::new(v) as Box<dyn AttributeValue>).collect()
+	/// Consumes this attribute and returns all values as a Vec of boxed scalar attribute values.
+	fn drain(self: Box<Self>) -> Vec<Box<dyn AnyAttributeValue>> {
+		self.0.into_iter().map(|v| Box::new(v) as Box<dyn AnyAttributeValue>).collect()
 	}
 
-	/// Hashes every value in this column into the given hasher (object-safe wrapper around `CacheHash`).
+	/// Hashes every value in this attribute into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
 		self.0.cache_hash(&mut DynHasher(state));
 	}
 
-	/// Compares this column to another for value-by-value equality (object-safe wrapper around `PartialEq`).
-	fn eq_dyn(&self, other: &dyn AttributeColumn) -> bool {
+	/// Compares this attribute to another for value-by-value equality (object-safe wrapper around `PartialEq`).
+	fn eq_dyn(&self, other: &dyn AnyAttribute) -> bool {
 		other.as_any().downcast_ref::<Self>().is_some_and(|other| self.0 == other.0)
 	}
 }
 
-// ===================
-// AttributeColumnDyn
-// ===================
+// ============
+// AttributeDyn
+// ============
 
-/// Type-erased column of attribute values, used as a node graph parameter type.
-/// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<AttributeColumnDyn, ()>`
+/// Type-erased list of attribute values, used as a node graph parameter type.
+/// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<AttributeDyn, ()>`
 /// without monomorphizing over `U` (so the cartesian product of `(content T, source U)` collapses to just `T`).
-pub struct AttributeColumnDyn(pub Box<dyn AttributeColumn>);
+pub struct AttributeDyn(pub Box<dyn AnyAttribute>);
 
-impl AttributeColumnDyn {
-	/// Number of values in this column.
+impl AttributeDyn {
+	/// Number of values in this attribute.
 	pub fn len(&self) -> usize {
 		self.0.len()
 	}
 
-	/// Whether this column has zero values.
+	/// Whether this attribute has zero values.
 	pub fn is_empty(&self) -> bool {
 		self.0.len() == 0
 	}
 
-	/// Builds a new column matching `target_len` items, taking values from this column (wrapping if shorter, truncating if longer).
-	pub fn cloned_to_length(&self, target_len: usize) -> Box<dyn AttributeColumn> {
+	/// Builds a new attribute matching `target_len` items, taking values from this attribute (wrapping if shorter, truncating if longer).
+	pub fn cloned_to_length(&self, target_len: usize) -> Box<dyn AnyAttribute> {
 		let mut result = self.0.new_with_defaults(0);
 		let source_len = self.0.len();
 		if source_len == 0 {
@@ -363,37 +362,37 @@ impl AttributeColumnDyn {
 	}
 }
 
-impl Clone for AttributeColumnDyn {
+impl Clone for AttributeDyn {
 	fn clone(&self) -> Self {
 		Self(self.0.clone_box())
 	}
 }
 
-impl Default for AttributeColumnDyn {
+impl Default for AttributeDyn {
 	fn default() -> Self {
-		Self(Box::new(Column::<bool>(Vec::new())))
+		Self(Box::new(Attribute::<bool>(Vec::new())))
 	}
 }
 
-impl Debug for AttributeColumnDyn {
+impl Debug for AttributeDyn {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "AttributeColumnDyn(len: {})", self.0.len())
+		write!(f, "AttributeDyn(len: {})", self.0.len())
 	}
 }
 
-impl PartialEq for AttributeColumnDyn {
+impl PartialEq for AttributeDyn {
 	fn eq(&self, other: &Self) -> bool {
 		self.0.eq_dyn(&*other.0)
 	}
 }
 
-impl CacheHash for AttributeColumnDyn {
+impl CacheHash for AttributeDyn {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.0.cache_hash_dyn(state);
 	}
 }
 
-unsafe impl StaticType for AttributeColumnDyn {
+unsafe impl StaticType for AttributeDyn {
 	type Static = Self;
 }
 
@@ -404,7 +403,7 @@ unsafe impl StaticType for AttributeColumnDyn {
 /// Type-erased single attribute value, used as a node graph parameter type.
 /// Lets a node accept a value of any concrete type via the auto-inserted `Convert<AttributeValueDyn, ()>`
 /// without monomorphizing over the value type.
-pub struct AttributeValueDyn(pub Box<dyn AttributeValue>);
+pub struct AttributeValueDyn(pub Box<dyn AnyAttributeValue>);
 
 impl Clone for AttributeValueDyn {
 	fn clone(&self) -> Self {
@@ -444,12 +443,12 @@ unsafe impl StaticType for AttributeValueDyn {
 // TableDyn
 // ========
 
-/// Type-erased view of a `Table<T>` exposing only its attribute columns and row count, used as a node graph parameter type.
+/// Type-erased view of a `Table<T>` exposing only its attributes and item count, used as a node graph parameter type.
 /// Lets a node accept any `Table<U>` source via the auto-inserted `Convert<TableDyn, ()>` without monomorphizing over `U`,
 /// for cases where the element type is irrelevant (such as nodes that read out a named attribute regardless of the carrier table).
 #[derive(Default)]
 pub struct TableDyn {
-	columns: Vec<(String, Box<dyn AttributeColumn>)>,
+	attributes: Vec<(String, Box<dyn AnyAttribute>)>,
 	len: usize,
 }
 
@@ -466,14 +465,16 @@ impl TableDyn {
 
 	/// Returns a reference to the attribute value at the given key and item index, downcast to `U`, if present and matching.
 	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
-		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index)?.downcast_ref::<U>() } else { None })
+		self.attributes
+			.iter()
+			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<U>() } else { None })
 	}
 }
 
 impl<T> From<Table<T>> for TableDyn {
 	fn from(table: Table<T>) -> Self {
 		Self {
-			columns: table.attributes.columns,
+			attributes: table.attributes.attributes,
 			len: table.attributes.len,
 		}
 	}
@@ -482,7 +483,7 @@ impl<T> From<Table<T>> for TableDyn {
 impl Clone for TableDyn {
 	fn clone(&self) -> Self {
 		Self {
-			columns: self.columns.iter().map(|(key, column)| (key.clone(), column.clone_box())).collect(),
+			attributes: self.attributes.iter().map(|(key, attribute)| (key.clone(), attribute.clone_box())).collect(),
 			len: self.len,
 		}
 	}
@@ -490,7 +491,7 @@ impl Clone for TableDyn {
 
 impl Debug for TableDyn {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let keys: Vec<&str> = self.columns.iter().map(|(k, _)| k.as_str()).collect();
+		let keys: Vec<&str> = self.attributes.iter().map(|(k, _)| k.as_str()).collect();
 		f.debug_struct("TableDyn").field("keys", &keys).field("len", &self.len).finish()
 	}
 }
@@ -498,21 +499,21 @@ impl Debug for TableDyn {
 impl PartialEq for TableDyn {
 	fn eq(&self, other: &Self) -> bool {
 		self.len == other.len
-			&& self.columns.len() == other.columns.len()
+			&& self.attributes.len() == other.attributes.len()
 			&& self
-				.columns
+				.attributes
 				.iter()
-				.zip(&other.columns)
-				.all(|((key_a, column_a), (key_b, column_b))| key_a == key_b && column_a.eq_dyn(&**column_b))
+				.zip(&other.attributes)
+				.all(|((key_a, attribute_a), (key_b, attribute_b))| key_a == key_b && attribute_a.eq_dyn(&**attribute_b))
 	}
 }
 
 impl CacheHash for TableDyn {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.len.cache_hash(state);
-		for (key, column) in &self.columns {
+		for (key, attribute) in &self.attributes {
 			key.cache_hash(state);
-			column.cache_hash_dyn(state);
+			attribute.cache_hash_dyn(state);
 		}
 	}
 }
@@ -521,26 +522,26 @@ unsafe impl StaticType for TableDyn {
 	type Static = Self;
 }
 
-// ===============
-// AttributeValues
-// ===============
+// ===================
+// ItemAttributeValues
+// ===================
 
-/// Scalar attribute storage.
+/// Scalar attribute storage for a single item.
 ///
 /// A small ordered map of type-erased scalar attribute values, keyed by string name.
-/// Used for individual attribute values in a TableRow.
+/// Used for individual attribute values in an [`Item`].
 /// Linear search preserves insertion order and is likely faster than a HashMap for small attribute counts.
 #[derive(Clone, Default)]
-pub struct AttributeValues(Vec<(String, Box<dyn AttributeValue>)>);
+pub struct ItemAttributeValues(Vec<(String, Box<dyn AnyAttributeValue>)>);
 
-impl Debug for AttributeValues {
+impl Debug for ItemAttributeValues {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let keys: Vec<&str> = self.0.iter().map(|(k, _)| k.as_str()).collect();
 		f.debug_struct("Attributes").field("keys", &keys).finish()
 	}
 }
 
-impl AttributeValues {
+impl ItemAttributeValues {
 	/// Creates an empty set of attributes.
 	pub fn new() -> Self {
 		Self::default()
@@ -623,198 +624,203 @@ impl AttributeValues {
 	}
 }
 
-// ================
-// AttributeColumns
-// ================
+// ==========
+// Attributes
+// ==========
 
-/// Columnar attribute storage.
+/// The storage data structure for attributes.
 ///
-/// A collection of type-erased parallel attribute columns, keyed by string name.
-/// Used for columnar attribute storage in a Table.
-/// Not public. All access goes through Table and TableRow.
-/// Invariant: every column in `columns` has exactly `len` elements.
+/// A collection of type-erased parallel attributes, keyed by string name.
+/// All access goes through [`Table`] and [`Item`] since internals are private.
+/// Invariant: every attribute in `attributes` has exactly `len` elements.
 #[derive(Clone, Default)]
-struct AttributeColumns {
-	columns: Vec<(String, Box<dyn AttributeColumn>)>,
+struct Attributes {
+	attributes: Vec<(String, Box<dyn AnyAttribute>)>,
 	len: usize,
 }
 
-impl Debug for AttributeColumns {
+impl Debug for Attributes {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let keys: Vec<&str> = self.columns.iter().map(|(k, _)| k.as_str()).collect();
-		f.debug_struct("AttributeColumns").field("keys", &keys).field("len", &self.len).finish()
+		let keys: Vec<&str> = self.attributes.iter().map(|(k, _)| k.as_str()).collect();
+		f.debug_struct("Attributes").field("keys", &keys).field("len", &self.len).finish()
 	}
 }
 
-impl AttributeColumns {
-	/// Creates an empty column store with no columns and zero length.
+impl Attributes {
+	/// Creates an empty attribute store with no attributes and zero length.
 	fn new() -> Self {
 		Self::default()
 	}
 
-	/// Creates an empty column store with no columns but a pre-set row count.
+	/// Creates an empty attribute store with no attributes but a pre-set item count.
 	fn with_len(len: usize) -> Self {
-		Self { columns: Vec::new(), len }
+		Self { attributes: Vec::new(), len }
 	}
 
-	/// Pushes a row's scalar attributes into this column store.
-	/// Existing columns that the row lacks receive a default value.
-	/// New attribute keys create a new column padded with defaults for all prior rows.
-	fn push_row(&mut self, row: AttributeValues) {
-		let mut row_entries = row.0;
+	/// Pushes an item's scalar attributes into this attribute store.
+	/// Existing attributes that the item lacks receive a default value.
+	/// New attribute keys create a new attribute padded with defaults for all prior items.
+	fn push_item(&mut self, item: ItemAttributeValues) {
+		let mut item_entries = item.0;
 
-		// Push values into existing columns, or a default if the row lacks that attribute
-		for (column_key, column) in &mut self.columns {
-			if let Some(position) = row_entries.iter().position(|(k, _)| k == column_key) {
-				let (_, value) = row_entries.swap_remove(position);
-				column.push(value);
+		// Push values into existing attributes, or a default if the item lacks that attribute
+		for (attribute_key, attribute) in &mut self.attributes {
+			if let Some(position) = item_entries.iter().position(|(k, _)| k == attribute_key) {
+				let (_, value) = item_entries.swap_remove(position);
+				attribute.push(value);
 			} else {
-				column.push_default();
+				attribute.push_default();
 			}
 		}
 
-		// Create new columns for any remaining row entries, padded with defaults for prior rows
-		for (key, value) in row_entries {
-			self.columns.push((key, value.into_column(self.len)));
+		// Create new attributes for any remaining item values, padded with defaults for prior items
+		for (key, value) in item_entries {
+			self.attributes.push((key, value.into_attribute(self.len)));
 		}
 
 		self.len += 1;
 	}
 
-	/// Appends all column data from another column store into this one.
-	/// Columns present in only one side are padded with defaults for the other side's rows.
-	fn extend(&mut self, other: AttributeColumns) {
+	/// Appends all attribute data from another attribute store into this one.
+	/// Attributes present in only one side are padded with defaults for the other side's items.
+	fn extend(&mut self, other: Attributes) {
 		let other_len = other.len;
-		let mut other_entries = other.columns;
+		let mut other_entries = other.attributes;
 
-		// Extend matching columns, or pad self's columns with defaults for the other's row count
-		for (key, self_column) in &mut self.columns {
+		// Extend matching attributes, or pad self's attributes with defaults for the other's item count
+		for (key, self_attribute) in &mut self.attributes {
 			if let Some(position) = other_entries.iter().position(|(k, _)| k == key) {
-				let (_, other_column) = other_entries.swap_remove(position);
-				self_column.extend(other_column);
+				let (_, other_attribute) = other_entries.swap_remove(position);
+				self_attribute.extend(other_attribute);
 			} else {
 				for _ in 0..other_len {
-					self_column.push_default();
+					self_attribute.push_default();
 				}
 			}
 		}
 
-		// Remaining other columns are new, pad with defaults for self's existing rows
-		for (key, other_column) in other_entries {
-			let mut combined = other_column.new_with_defaults(self.len);
-			combined.extend(other_column);
-			self.columns.push((key, combined));
+		// Remaining other attributes are new, so we pad with defaults for self's existing items
+		for (key, other_attribute) in other_entries {
+			let mut combined = other_attribute.new_with_defaults(self.len);
+			combined.extend(other_attribute);
+			self.attributes.push((key, combined));
 		}
 
 		self.len += other_len;
 	}
 
-	/// Gets a reference to the value at the given index from the column for the given key.
+	/// Gets a reference to the value at the given index from the attribute for the given key.
 	fn get_value<T: 'static>(&self, key: &str, index: usize) -> Option<&T> {
-		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index)?.downcast_ref::<T>() } else { None })
+		self.attributes
+			.iter()
+			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<T>() } else { None })
 	}
 
-	/// Removes the entire column for the given key, if present.
-	fn remove_column(&mut self, key: &str) {
-		if let Some(position) = self.columns.iter().position(|(k, _)| k == key) {
-			self.columns.remove(position);
+	/// Removes the entire attribute for the given key, if present.
+	fn remove_attribute(&mut self, key: &str) {
+		if let Some(position) = self.attributes.iter().position(|(k, _)| k == key) {
+			self.attributes.remove(position);
 		}
 	}
 
-	/// Finds or creates a column for the given key and type, returning its position.
-	/// If a column with the key exists but has the wrong type, it is removed and replaced with a new column of the correct type, padded with defaults.
-	/// A newly created column is filled with `T::default()` for all existing rows.
-	fn find_or_create_column<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> usize {
-		match self.columns.iter().position(|(k, _)| k == key) {
+	/// Finds or creates an attribute for the given key and type, returning its position.
+	/// If an attribute with the key exists but has the wrong type, it is removed and replaced with a new attribute of the correct type, padded with defaults.
+	/// A newly created attribute is filled with `T::default()` for all existing items.
+	fn find_or_create_attribute<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> usize {
+		match self.attributes.iter().position(|(k, _)| k == key) {
 			Some(position) => {
-				if (*self.columns[position].1).as_any().downcast_ref::<Column<T>>().is_some() {
+				if (*self.attributes[position].1).as_any().downcast_ref::<Attribute<T>>().is_some() {
 					position
 				} else {
-					self.columns.remove(position);
-					self.columns.push((key.to_string(), Box::new(Column::<T>(vec![T::default(); self.len]))));
-					self.columns.len() - 1
+					self.attributes.remove(position);
+					self.attributes.push((key.to_string(), Box::new(Attribute::<T>(vec![T::default(); self.len]))));
+					self.attributes.len() - 1
 				}
 			}
 			None => {
-				self.columns.push((key.to_string(), Box::new(Column::<T>(vec![T::default(); self.len]))));
-				self.columns.len() - 1
+				self.attributes.push((key.to_string(), Box::new(Attribute::<T>(vec![T::default(); self.len]))));
+				self.attributes.len() - 1
 			}
 		}
 	}
 
-	/// Gets a mutable reference to the value at the given index, creating the column if it doesn't exist or has the wrong type.
+	/// Gets a mutable reference to the value at the given index, creating the attribute if it doesn't exist or has the wrong type.
 	fn get_or_insert_default_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str, index: usize) -> &mut T {
-		let column_position = self.find_or_create_column::<T>(key);
-		let column = (*self.columns[column_position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
-		&mut column.0[index]
+		let attribute_position = self.find_or_create_attribute::<T>(key);
+		let attribute = (*self.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
+		&mut attribute.0[index]
 	}
 
-	/// Sets the value at the given index in the column for the given key.
-	/// Creates the column with defaults if it doesn't exist.
+	/// Sets the value at the given index in the attribute for the given key.
+	/// Creates the attribute with defaults if it doesn't exist.
 	fn set_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
 		let key = key.into();
-		let column_position = self.find_or_create_column::<T>(&key);
-		let column = (*self.columns[column_position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
-		column.0[index] = value;
+		let attribute_position = self.find_or_create_attribute::<T>(&key);
+		let attribute = (*self.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
+		attribute.0[index] = value;
 	}
 
-	/// Returns a debug-formatted string for the value at the given index in the column for the given key.
+	/// Returns a debug-formatted string for the value at the given index in the attribute for the given key.
 	fn display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
-		self.columns.iter().find_map(|(k, column)| {
+		self.attributes.iter().find_map(|(k, attribute)| {
 			if k == key {
-				if let Some(value) = column.get_any(index)
+				if let Some(value) = attribute.get_any(index)
 					&& let Some(text) = overrides(value)
 				{
 					return Some(text);
 				}
-				column.display_at(index)
+				attribute.display_at(index)
 			} else {
 				None
 			}
 		})
 	}
 
-	/// Returns a type-erased reference to the value at the given index in the column for the given key.
+	/// Returns a type-erased reference to the value at the given index in the attribute for the given key.
 	fn get_any_value(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
-		self.columns.iter().find_map(|(k, column)| if k == key { column.get_any(index) } else { None })
+		self.attributes.iter().find_map(|(k, attribute)| if k == key { attribute.get_any(index) } else { None })
 	}
 
-	/// Returns an iterator over the keys of all stored attribute columns, in insertion order.
+	/// Returns an iterator over the keys of all stored attributes (in insertion order).
 	fn keys(&self) -> impl Iterator<Item = &str> {
-		self.columns.iter().map(|(key, _)| key.as_str())
+		self.attributes.iter().map(|(key, _)| key.as_str())
 	}
 
-	/// Returns a typed slice of the column for the given key, if it exists and can be downcast to `Column<T>`.
-	fn get_column_slice<T: 'static>(&self, key: &str) -> Option<&[T]> {
-		self.columns
-			.iter()
-			.find_map(|(k, column)| if k == key { column.as_any().downcast_ref::<Column<T>>().map(|c| c.0.as_slice()) } else { None })
-	}
-
-	/// Returns a mutable typed slice of the column for the given key, if it exists and can be downcast to `Column<T>`.
-	fn get_column_slice_mut<T: 'static>(&mut self, key: &str) -> Option<&mut [T]> {
-		self.columns.iter_mut().find_map(|(k, column)| {
+	/// Returns a typed slice of the attribute for the given key, if it exists and can be downcast to `Attribute<T>`.
+	fn get_attribute_slice<T: 'static>(&self, key: &str) -> Option<&[T]> {
+		self.attributes.iter().find_map(|(k, attribute)| {
 			if k == key {
-				column.as_any_mut().downcast_mut::<Column<T>>().map(|c| c.0.as_mut_slice())
+				attribute.as_any().downcast_ref::<Attribute<T>>().map(|c| c.0.as_slice())
 			} else {
 				None
 			}
 		})
 	}
 
-	/// Returns a mutable typed slice of the column for the given key, creating a new column filled with defaults if it doesn't exist.
-	fn get_or_create_column_slice_mut<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> &mut [T] {
-		let position = self.find_or_create_column::<T>(key);
-		let column = (*self.columns[position].1).as_any_mut().downcast_mut::<Column<T>>().unwrap();
-		&mut column.0
+	/// Returns a mutable typed slice of the attribute for the given key, if it exists and can be downcast to `Attribute<T>`.
+	fn get_attribute_slice_mut<T: 'static>(&mut self, key: &str) -> Option<&mut [T]> {
+		self.attributes.iter_mut().find_map(|(k, attribute)| {
+			if k == key {
+				attribute.as_any_mut().downcast_mut::<Attribute<T>>().map(|c| c.0.as_mut_slice())
+			} else {
+				None
+			}
+		})
 	}
 
-	/// Clones all attribute values at the given row index into a new scalar Attributes.
-	fn clone_row(&self, index: usize) -> AttributeValues {
-		let mut attributes = AttributeValues::new();
+	/// Returns a mutable typed slice of the attribute for the given key, creating a new attribute filled with defaults if it doesn't exist.
+	fn get_or_create_attribute_slice_mut<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> &mut [T] {
+		let position = self.find_or_create_attribute::<T>(key);
+		let attribute = (*self.attributes[position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
+		&mut attribute.0
+	}
 
-		for (key, column) in &self.columns {
-			if let Some(value) = column.clone_value(index) {
+	/// Clones all attribute values at the given item index into a new scalar Attributes.
+	fn clone_item(&self, index: usize) -> ItemAttributeValues {
+		let mut attributes = ItemAttributeValues::new();
+
+		for (key, attribute) in &self.attributes {
+			if let Some(value) = attribute.clone_value(index) {
 				attributes.0.push((key.clone(), value));
 			}
 		}
@@ -822,17 +828,17 @@ impl AttributeColumns {
 		attributes
 	}
 
-	/// Drains all column data into a Vec of per-row scalar Attributes.
-	fn into_row_vec(self) -> Vec<AttributeValues> {
-		let mut rows: Vec<AttributeValues> = (0..self.len).map(|_| AttributeValues::new()).collect();
+	/// Drains all attribute data into a Vec of per-item scalar Attributes.
+	fn into_item_vec(self) -> Vec<ItemAttributeValues> {
+		let mut items: Vec<ItemAttributeValues> = (0..self.len).map(|_| ItemAttributeValues::new()).collect();
 
-		for (key, column) in self.columns {
-			for (i, value) in column.drain().into_iter().enumerate() {
-				rows[i].0.push((key.clone(), value));
+		for (key, attribute) in self.attributes {
+			for (i, value) in attribute.drain().into_iter().enumerate() {
+				items[i].0.push((key.clone(), value));
 			}
 		}
 
-		rows
+		items
 	}
 }
 
@@ -840,68 +846,68 @@ impl AttributeColumns {
 // Table<T>
 // ========
 
-/// A struct-of-arrays collection where each row holds an element of type `T` alongside
-/// a set of type-erased, dynamically-typed attributes stored in parallel columns.
+/// A struct-of-arrays collection where each item holds an element of type `T` alongside
+/// a set of type-erased, dynamically-typed attributes stored in parallel attributes.
 ///
 /// Elements are stored contiguously in a `Vec<T>`, while attributes live in an internal
-/// [`AttributeColumns`] store that keeps one column per attribute key. Rows are accessed
-/// by index through element/attribute accessor methods, or consumed as owned [`TableRow`]s via iteration.
+/// [`Attributes`] store that keeps one attribute per attribute key. Items are accessed by
+/// index through element/attribute accessor methods, or consumed as owned [`Item`]s via iteration.
 #[derive(Clone, Debug)]
 pub struct Table<T> {
 	element: Vec<T>,
-	attributes: AttributeColumns,
+	attributes: Attributes,
 }
 
 impl<T> Table<T> {
-	/// Creates an empty table with no rows.
+	/// Creates an empty table with no items.
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Creates an empty table with pre-allocated capacity for the given number of rows.
+	/// Creates an empty table with pre-allocated capacity for the given number of items.
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			element: Vec::with_capacity(capacity),
-			attributes: AttributeColumns::new(),
+			attributes: Attributes::new(),
 		}
 	}
 
-	/// Creates a table containing a single row with the given element and no attributes.
+	/// Creates a table containing a single item with the given element and no attributes.
 	pub fn new_from_element(element: T) -> Self {
 		Self {
 			element: vec![element],
-			attributes: AttributeColumns::with_len(1),
+			attributes: Attributes::with_len(1),
 		}
 	}
 
-	/// Creates a table containing a single row from the given [`TableRow`], preserving its attributes.
-	pub fn new_from_row(row: TableRow<T>) -> Self {
-		let mut attributes = AttributeColumns::new();
-		attributes.push_row(row.attributes);
+	/// Creates a table containing a single item from the given [`Item`], preserving its attributes.
+	pub fn new_from_item(item: Item<T>) -> Self {
+		let mut attributes = Attributes::new();
+		attributes.push_item(item.attributes);
 		Self {
-			element: vec![row.element],
+			element: vec![item.element],
 			attributes,
 		}
 	}
 
-	/// Appends a row to the end of this table.
-	pub fn push(&mut self, row: TableRow<T>) {
-		self.element.push(row.element);
-		self.attributes.push_row(row.attributes);
+	/// Appends an item to the end of this table.
+	pub fn push(&mut self, item: Item<T>) {
+		self.element.push(item.element);
+		self.attributes.push_item(item.attributes);
 	}
 
-	/// Appends all rows from another table into this one.
+	/// Appends all items from another table into this one.
 	pub fn extend(&mut self, table: Table<T>) {
 		self.element.extend(table.element);
 		self.attributes.extend(table.attributes);
 	}
 
-	/// Returns the number of rows in this table.
+	/// Returns the number of items in this table.
 	pub fn len(&self) -> usize {
 		self.element.len()
 	}
 
-	/// Returns `true` if this table contains no rows.
+	/// Returns `true` if this table contains no items.
 	pub fn is_empty(&self) -> bool {
 		self.element.is_empty()
 	}
@@ -911,9 +917,9 @@ impl<T> Table<T> {
 		self.attributes.keys()
 	}
 
-	// ===========================
-	// Column-oriented iteration
-	// ===========================
+	// ============================
+	// Attribute-oriented iteration
+	// ============================
 
 	/// Returns an iterator over shared references to all element values.
 	pub fn iter_element_values(&self) -> std::slice::Iter<'_, T> {
@@ -925,31 +931,31 @@ impl<T> Table<T> {
 		self.element.iter_mut()
 	}
 
-	/// Returns an iterator over shared references to the values of a typed attribute column, or `None` if the column doesn't exist or has the wrong type.
+	/// Returns an iterator over shared references to the values of a typed attribute, or `None` if the attribute doesn't exist or has the wrong type.
 	pub fn iter_attribute_values<U: 'static>(&self, key: &str) -> Option<std::slice::Iter<'_, U>> {
-		self.attributes.get_column_slice::<U>(key).map(|s| s.iter())
+		self.attributes.get_attribute_slice::<U>(key).map(|s| s.iter())
 	}
 
-	/// Returns an iterator over mutable references to the values of a typed attribute column, or `None` if the column doesn't exist or has the wrong type.
+	/// Returns an iterator over mutable references to the values of a typed attribute attribute, or `None` if the attribute doesn't exist or has the wrong type.
 	pub fn iter_attribute_values_mut<U: 'static>(&mut self, key: &str) -> Option<std::slice::IterMut<'_, U>> {
-		self.attributes.get_column_slice_mut::<U>(key).map(|s| s.iter_mut())
+		self.attributes.get_attribute_slice_mut::<U>(key).map(|s| s.iter_mut())
 	}
 
-	/// Returns an iterator that yields cloned attribute values for the given key, falling back to `U::default()` for each row if the column is missing or has the wrong type.
+	/// Returns an iterator that yields cloned attribute values for the given key, falling back to `U::default()` for each item if the attribute is missing or has the wrong type.
 	pub fn iter_attribute_values_or_default<U: Clone + Default + 'static>(&self, key: &str) -> impl Iterator<Item = U> + '_ {
-		let slice = self.attributes.get_column_slice::<U>(key);
+		let slice = self.attributes.get_attribute_slice::<U>(key);
 		let len = self.element.len();
 		(0..len).map(move |i| slice.map_or_else(U::default, |s| s[i].clone()))
 	}
 
-	/// Returns a mutable iterator over a typed attribute column, creating the column with default values if it doesn't exist or has the wrong type.
+	/// Returns a mutable iterator over a typed attribute, creating the attribute with default values if it doesn't exist or has the wrong type.
 	pub fn iter_attribute_values_mut_or_default<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> std::slice::IterMut<'_, U> {
-		self.attributes.get_or_create_column_slice_mut::<U>(key).iter_mut()
+		self.attributes.get_or_create_attribute_slice_mut::<U>(key).iter_mut()
 	}
 
-	// =======================
+	// ======================
 	// Indexed element access
-	// =======================
+	// ======================
 
 	/// Returns a shared reference to the element at the given index, or `None` if out of bounds.
 	pub fn element(&self, index: usize) -> Option<&T> {
@@ -961,105 +967,105 @@ impl<T> Table<T> {
 		self.element.get_mut(index)
 	}
 
-	// =========================
+	// ========================
 	// Indexed attribute access
-	// =========================
+	// ========================
 
-	/// Returns a shared reference to the attribute value at the given row index and key, if it exists and can be downcast to the requested type.
+	/// Returns a shared reference to the attribute value at the given item index and key, if it exists and can be downcast to the requested type.
 	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
 		self.attributes.get_value(key, index)
 	}
 
-	/// Returns a clone of the attribute value at the given row index and key, or `U::default()` if absent or of a different type.
+	/// Returns a clone of the attribute value at the given item index and key, or `U::default()` if absent or of a different type.
 	pub fn attribute_cloned_or_default<U: Clone + Default + 'static>(&self, key: &str, index: usize) -> U {
 		self.attributes.get_value::<U>(key, index).cloned().unwrap_or_default()
 	}
 
-	/// Returns a clone of the attribute value at the given row index and key, or the provided default if absent or of a different type.
+	/// Returns a clone of the attribute value at the given item index and key, or the provided default if absent or of a different type.
 	pub fn attribute_cloned_or<U: Clone + 'static>(&self, key: &str, index: usize, default: U) -> U {
 		self.attributes.get_value::<U>(key, index).cloned().unwrap_or(default)
 	}
 
-	/// Sets the attribute value at the given row index and key, creating the column with defaults if it doesn't exist.
+	/// Sets the attribute value at the given item index and key, creating the attribute with defaults if it doesn't exist.
 	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
 		self.attributes.set_value(key, index, value);
 	}
 
-	/// Replaces (or adds) an attribute column from a type-erased source. The source is wrapped or truncated to match this table's item count.
-	pub fn set_column_dyn(&mut self, key: impl Into<String>, source: AttributeColumnDyn) {
+	/// Replaces (or adds) an attribute from a type-erased source. The source is wrapped or truncated to match this table's item count.
+	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, source: AttributeDyn) {
 		let key = key.into();
-		self.attributes.columns.retain(|(k, _)| k != &key);
-		let new_column = source.cloned_to_length(self.element.len());
-		self.attributes.columns.push((key, new_column));
+		self.attributes.attributes.retain(|(k, _)| k != &key);
+		let new_attribute = source.cloned_to_length(self.element.len());
+		self.attributes.attributes.push((key, new_attribute));
 	}
 
-	/// Sets a single type-erased attribute value at the given index, creating the column from the value's underlying type if it doesn't exist (padded with defaults to match the table's length). Falls back to default if the value's type doesn't match an existing column.
-	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, index: usize, value: AttributeValueDyn) {
+	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the table's length).
+	/// Falls back to default if the value's type doesn't match an existing attribute.
+	pub fn set_attribute_value_dyn(&mut self, key: impl Into<String>, index: usize, value: AttributeValueDyn) {
 		let key = key.into();
-		if let Some(position) = self.attributes.columns.iter().position(|(k, _)| k == &key) {
-			self.attributes.columns[position].1.set_at(index, value.0);
+		if let Some(position) = self.attributes.attributes.iter().position(|(k, _)| k == &key) {
+			self.attributes.attributes[position].1.set_at(index, value.0);
 		} else {
-			let mut new_column = value.0.into_column(index);
-			while new_column.len() < self.element.len() {
-				new_column.push_default();
+			let mut new_attribute = value.0.into_attribute(index);
+			while new_attribute.len() < self.element.len() {
+				new_attribute.push_default();
 			}
-			self.attributes.columns.push((key, new_column));
+			self.attributes.attributes.push((key, new_attribute));
 		}
 	}
 
-	/// Removes the entire attribute column for the given key, if present.
+	/// Removes the entire attribute for the given key, if present.
 	pub fn remove_attribute(&mut self, key: &str) {
-		self.attributes.remove_column(key);
+		self.attributes.remove_attribute(key);
 	}
 
-	/// Runs the given closure on a mutable reference to the attribute value at the given row index,
-	/// creating the column with defaults if it doesn't exist, and returns the closure's result.
+	/// Runs the given closure on a mutable reference to the attribute value at the given item index,
+	/// creating the attribute with defaults if it doesn't exist, and returns the closure's result.
 	pub fn with_attribute_mut_or_default<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static, R, F: FnOnce(&mut U) -> R>(&mut self, key: &str, index: usize, f: F) -> R {
 		f(self.attributes.get_or_insert_default_value::<U>(key, index))
 	}
 
-	/// Returns a debug-formatted display string for the attribute at the given row index and key.
+	/// Returns a debug-formatted display string for the attribute at the given item index and key.
 	pub fn attribute_display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
 		self.attributes.display_value(key, index, overrides)
 	}
 
-	/// Returns a type-erased reference to the attribute value at the given row index and key, or `None` if absent.
+	/// Returns a type-erased reference to the attribute value at the given item index and key, or `None` if absent.
 	pub fn attribute_any(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
 		self.attributes.get_any_value(key, index)
 	}
 
-	// =====================
+	// ====================
 	// Split borrow helpers
-	// =====================
+	// ====================
 
-	/// Returns disjoint mutable references to the element slice and a typed attribute column slice,
-	/// creating the column with defaults if it doesn't exist. This enables simultaneous mutable
-	/// access to elements and a single attribute column without borrowing conflicts.
+	/// Returns disjoint mutable references to the element slice and a typed attribute slice, creating the attribute with defaults if it doesn't exist.
+	/// This enables simultaneous mutable access to elements and a single attribute without borrowing conflicts.
 	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
 		let Self { element, attributes } = self;
-		let column_position = attributes.find_or_create_column::<U>(key);
-		let column = (*attributes.columns[column_position].1).as_any_mut().downcast_mut::<Column<U>>().unwrap();
-		(element.as_mut_slice(), &mut column.0)
+		let attribute_position = attributes.find_or_create_attribute::<U>(key);
+		let attribute = (*attributes.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<U>>().unwrap();
+		(element.as_mut_slice(), &mut attribute.0)
 	}
 
 	// ==================
-	// Row-level cloning
+	// Item-level cloning
 	// ==================
 
-	/// Clones both the element and all attributes at the given row index into a new owned [`TableRow`], or `None` if out of bounds.
-	pub fn clone_row(&self, index: usize) -> Option<TableRow<T>>
+	/// Clones both the element and all attributes at the given item index into a new owned [`Item`], or [`None`] if out of bounds.
+	pub fn clone_item(&self, index: usize) -> Option<Item<T>>
 	where
 		T: Clone,
 	{
-		Some(TableRow {
+		Some(Item {
 			element: self.element.get(index)?.clone(),
-			attributes: self.attributes.clone_row(index),
+			attributes: self.attributes.clone_item(index),
 		})
 	}
 
-	/// Clones all attribute values at the given row index into a new [`AttributeValues`], without cloning the element.
-	pub fn clone_row_attributes(&self, index: usize) -> AttributeValues {
-		self.attributes.clone_row(index)
+	/// Clones all attribute values at the given item index into a new [`ItemAttributeValues`], without cloning the element.
+	pub fn clone_item_attributes(&self, index: usize) -> ItemAttributeValues {
+		self.attributes.clone_item(index)
 	}
 }
 
@@ -1110,15 +1116,15 @@ impl<T: BoundingBox> BoundingBox for Table<T> {
 }
 
 impl<T> IntoIterator for Table<T> {
-	type Item = TableRow<T>;
-	type IntoIter = TableRowIter<T>;
+	type Item = Item<T>;
+	type IntoIter = ItemIter<T>;
 
-	/// Consumes a [`Table`] and returns an iterator of [`TableRow`]s, each containing the owned data of the respective row from the original table.
+	/// Consumes a [`Table`] and returns an iterator of [`Item`]s, each containing the owned data of the respective item from the original table.
 	fn into_iter(self) -> Self::IntoIter {
-		let row_attributes = self.attributes.into_row_vec();
-		TableRowIter {
+		let attributes = self.attributes.into_item_vec();
+		ItemIter {
 			element: self.element.into_iter(),
-			attributes: row_attributes.into_iter(),
+			attributes: attributes.into_iter(),
 		}
 	}
 }
@@ -1127,7 +1133,7 @@ impl<T> Default for Table<T> {
 	fn default() -> Self {
 		Self {
 			element: Vec::new(),
-			attributes: AttributeColumns::new(),
+			attributes: Attributes::new(),
 		}
 	}
 }
@@ -1136,11 +1142,11 @@ impl<T: CacheHash> CacheHash for Table<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.element.cache_hash(state);
 
-		// Hash every attribute column (key + values) rather than just the well-known ones, so changes to user-defined keys
+		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
 		// (e.g., gradient_type, spread_method) invalidate downstream graph caches as expected
-		for (key, column) in &self.attributes.columns {
+		for (key, attribute) in &self.attributes.attributes {
 			std::hash::Hash::hash(key.as_str(), state);
-			column.cache_hash_dyn(state);
+			attribute.cache_hash_dyn(state);
 		}
 	}
 }
@@ -1149,13 +1155,13 @@ impl<T: PartialEq> PartialEq for Table<T> {
 	fn eq(&self, other: &Self) -> bool {
 		// Attributes participate in equality so the `a == b` ⇒ `hash(a) == hash(b)` contract holds with `cache_hash`
 		self.element == other.element
-			&& self.attributes.columns.len() == other.attributes.columns.len()
+			&& self.attributes.attributes.len() == other.attributes.attributes.len()
 			&& self
 				.attributes
-				.columns
+				.attributes
 				.iter()
-				.zip(&other.attributes.columns)
-				.all(|((self_key, self_column), (other_key, other_column))| self_key == other_key && self_column.eq_dyn(other_column.as_ref()))
+				.zip(&other.attributes.attributes)
+				.all(|((self_key, self_attribute), (other_key, other_attribute))| self_key == other_key && self_attribute.eq_dyn(other_attribute.as_ref()))
 	}
 }
 
@@ -1179,86 +1185,84 @@ unsafe impl<T: StaticTypeSized> StaticType for Table<T> {
 	type Static = Table<T::Static>;
 }
 
-impl<T> FromIterator<TableRow<T>> for Table<T> {
-	/// Collects an iterator of [`TableRow`]s into a [`Table`], pre-allocating based on the iterator's size hint.
-	fn from_iter<I: IntoIterator<Item = TableRow<T>>>(iter: I) -> Self {
+impl<T> FromIterator<Item<T>> for Table<T> {
+	/// Collects an iterator of [`Item`]s into a [`Table`], pre-allocating based on the iterator's size hint.
+	fn from_iter<I: IntoIterator<Item = Item<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower_bound, _) = iter.size_hint();
 		let mut table = Self::with_capacity(lower_bound);
 
-		for row in iter {
-			table.push(row);
+		for item in iter {
+			table.push(item);
 		}
 
 		table
 	}
 }
 
-// ===========
-// TableRow<T>
-// ===========
+// =======
+// Item<T>
+// =======
 
-/// An owned row containing an element of type `T` and a set of type-erased scalar attributes.
+/// An owned item containing an element of type `T` and a set of type-erased scalar attributes.
 ///
-/// Used to build rows before pushing them into a [`Table`], or when consuming rows out of a
-/// table via [`IntoIterator`]. Attribute values use scalar [`AttributeValues`] storage rather
-/// than the columnar layout inside a [`Table`].
+/// Used to build individual items before pushing them into a [`Table`], or when consuming items out of a table via [`IntoIterator`].
 #[derive(Clone, Debug)]
-pub struct TableRow<T> {
+pub struct Item<T> {
 	element: T,
-	attributes: AttributeValues,
+	attributes: ItemAttributeValues,
 }
 
-impl<T: Default> Default for TableRow<T> {
+impl<T: Default> Default for Item<T> {
 	fn default() -> Self {
 		Self::new_from_element(T::default())
 	}
 }
 
-impl<T: PartialEq> PartialEq for TableRow<T> {
+impl<T: PartialEq> PartialEq for Item<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.element == other.element
 	}
 }
 
-impl<T> TableRow<T> {
-	/// Constructs a row from a pre-built element and attributes pair.
-	pub fn from_parts(element: T, attributes: AttributeValues) -> Self {
+impl<T> Item<T> {
+	/// Constructs an item from a pre-built element and attributes pair.
+	pub fn from_parts(element: T, attributes: ItemAttributeValues) -> Self {
 		Self { element, attributes }
 	}
 
-	/// Constructs a row with the given element and an empty set of attributes.
+	/// Constructs an item with the given element and an empty set of attributes.
 	pub fn new_from_element(element: T) -> Self {
-		Self::from_parts(element, AttributeValues::new())
+		Self::from_parts(element, ItemAttributeValues::new())
 	}
 
-	/// Returns a shared reference to this row's element.
+	/// Returns a shared reference to this item's element.
 	pub fn element(&self) -> &T {
 		&self.element
 	}
 
-	/// Returns a mutable reference to this row's element.
+	/// Returns a mutable reference to this item's element.
 	pub fn element_mut(&mut self) -> &mut T {
 		&mut self.element
 	}
 
-	/// Consumes this row and returns the owned element, discarding attributes.
+	/// Consumes this item and returns the owned element, discarding attributes.
 	pub fn into_element(self) -> T {
 		self.element
 	}
 
-	/// Consumes this row and returns its element and attributes as separate owned values.
-	pub fn into_parts(self) -> (T, AttributeValues) {
+	/// Consumes this item and returns its element and attributes as separate owned values.
+	pub fn into_parts(self) -> (T, ItemAttributeValues) {
 		(self.element, self.attributes)
 	}
 
-	/// Returns a shared reference to all attributes of this row.
-	pub fn attributes(&self) -> &AttributeValues {
+	/// Returns a shared reference to all attributes of this item.
+	pub fn attributes(&self) -> &ItemAttributeValues {
 		&self.attributes
 	}
 
-	/// Returns a mutable reference to all attributes of this row.
-	pub fn attributes_mut(&mut self) -> &mut AttributeValues {
+	/// Returns a mutable reference to all attributes of this item.
+	pub fn attributes_mut(&mut self) -> &mut ItemAttributeValues {
 		&mut self.attributes
 	}
 
@@ -1297,7 +1301,7 @@ impl<T> TableRow<T> {
 		self.attributes.insert(key, value);
 	}
 
-	/// Sets the attribute value for the given key and returns the row, enabling builder-style chaining.
+	/// Sets the attribute value for the given key and returns the item, enabling builder-style chaining.
 	pub fn with_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(mut self, key: impl Into<String>, value: U) -> Self {
 		self.set_attribute(key, value);
 		self
@@ -1309,33 +1313,33 @@ impl<T> TableRow<T> {
 	}
 }
 
-// ===============
-// TableRowIter<T>
-// ===============
+// ===========
+// ItemIter<T>
+// ===========
 
-/// Owning iterator over the rows of a consumed [`Table`], yielding [`TableRow`]s.
+/// Owning iterator over the items of a consumed [`Table`], yielding [`Item`]s.
 ///
-/// Created by [`Table::into_iter`]. The table's columnar attributes are converted into
-/// per-row scalar [`AttributeValues`] during construction so each yielded row is self-contained.
-pub struct TableRowIter<T> {
+/// Created by [`Table::into_iter`]. The table's attributes are converted into per-item
+/// scalar [`ItemAttributeValues`] during construction so each yielded item is self-contained.
+pub struct ItemIter<T> {
 	element: std::vec::IntoIter<T>,
-	attributes: std::vec::IntoIter<AttributeValues>,
+	attributes: std::vec::IntoIter<ItemAttributeValues>,
 }
 
-impl<T> Iterator for TableRowIter<T> {
-	type Item = TableRow<T>;
+impl<T> Iterator for ItemIter<T> {
+	type Item = Item<T>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		Some(TableRow {
+		Some(Item {
 			element: self.element.next()?,
 			attributes: self.attributes.next()?,
 		})
 	}
 }
 
-impl<T> DoubleEndedIterator for TableRowIter<T> {
+impl<T> DoubleEndedIterator for ItemIter<T> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		Some(TableRow {
+		Some(Item {
 			element: self.element.next_back()?,
 			attributes: self.attributes.next_back()?,
 		})

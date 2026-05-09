@@ -142,16 +142,16 @@ macro_rules! tagged_value {
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					Self::F64Array(values) => {
-						let table: Table<f64> = values.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<f64> = values.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Box::new(table)
 					}
 					Self::Color(color) => {
-						let table: Table<Color> = color.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<Color> = color.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Box::new(table)
 					}
 					Self::Gradient(stops) => Box::new(Table::<GradientStops>::new_from_element(stops)),
 					Self::BrushStrokes(strokes) => {
-						let table: Table<BrushStroke> = strokes.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<BrushStroke> = strokes.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Box::new(table)
 					}
 					// =======================
@@ -163,7 +163,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(x) => Box::new(x),
 					Self::NodeIdPath(path) => {
-						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<NodeId> = path.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Box::new(table)
 					}
 					Self::DocumentNode(node) => Box::new(node),
@@ -191,16 +191,16 @@ macro_rules! tagged_value {
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					Self::F64Array(values) => {
-						let table: Table<f64> = values.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<f64> = values.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Arc::new(table)
 					}
 					Self::Color(color) => {
-						let table: Table<Color> = color.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<Color> = color.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Arc::new(table)
 					}
 					Self::Gradient(stops) => Arc::new(Table::<GradientStops>::new_from_element(stops)),
 					Self::BrushStrokes(strokes) => {
-						let table: Table<BrushStroke> = strokes.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<BrushStroke> = strokes.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Arc::new(table)
 					}
 					// =======================
@@ -212,7 +212,7 @@ macro_rules! tagged_value {
 					// =======================
 					Self::RenderOutput(x) => Arc::new(x),
 					Self::NodeIdPath(path) => {
-						let table: Table<NodeId> = path.into_iter().map(core_types::table::TableRow::new_from_element).collect();
+						let table: Table<NodeId> = path.into_iter().map(core_types::table::Item::new_from_element).collect();
 						Arc::new(table)
 					}
 					Self::DocumentNode(node) => Arc::new(node),

@@ -1,6 +1,6 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::table::{Table, TableRow};
+use core_types::table::{Item, Table};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
@@ -56,7 +56,7 @@ async fn image_color_palette(
 			b /= list.len() as f32;
 			a /= list.len() as f32;
 
-			Color::from_rgbaf32(r, g, b, a).map(TableRow::new_from_element).into_iter()
+			Color::from_rgbaf32(r, g, b, a).map(Item::new_from_element).into_iter()
 		})
 		.collect()
 }

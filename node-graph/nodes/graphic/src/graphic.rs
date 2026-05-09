@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, TableRow};
+use core_types::table::{AttributeDyn, AttributeValueDyn, Item, Table, TableDyn};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -131,7 +131,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_item(row))).with_index(i);
 		let table = mapped.eval(owned_ctx.into_context()).await;
 
 		rows.extend(table);
@@ -250,16 +250,16 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
 ) -> Table<T> {
 	for index in 0..content.len() {
-		let row = content.clone_row(index).expect("index is within bounds");
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_row(row))).with_index(index);
+		let row = content.clone_item(index).expect("index is within bounds");
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_item(row))).with_index(index);
 		let v = value.eval(owned_ctx.into_context()).await;
-		content.set_attribute_dyn(&name, index, v);
+		content.set_attribute_value_dyn(&name, index, v);
 	}
 	content
 }
 
 /// Sets a named attribute on the primary table, with each value taken from the corresponding item's element in the source table (paired by index, wrapping if the source has fewer items).
-/// The source is type-erased into an `AttributeColumnDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
+/// The source is type-erased into an `AttributeDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
 fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
@@ -282,14 +282,14 @@ fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	mut content: Table<T>,
 	/// The source values to attach. Any `Table<U>` wired here is type-erased via an auto-inserted convert.
 	#[expose]
-	source: AttributeColumnDyn,
+	source: AttributeDyn,
 	/// The name to assign to the new destination attribute.
 	name: String,
 ) -> Table<T> {
 	if source.is_empty() {
 		return content;
 	}
-	content.set_column_dyn(name, source);
+	content.set_attribute_dyn(name, source);
 	content
 }
 
@@ -304,7 +304,7 @@ fn read_attribute_vector(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -325,7 +325,7 @@ fn read_attribute_number(
 			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
 			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
-		result.push(TableRow::new_from_element(value));
+		result.push(Item::new_from_element(value));
 	}
 	result
 }
@@ -341,7 +341,7 @@ fn read_attribute_bool(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -357,7 +357,7 @@ fn read_attribute_string(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<String>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -373,7 +373,7 @@ fn read_attribute_transform(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -389,7 +389,7 @@ fn read_attribute_color(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -405,7 +405,7 @@ fn read_attribute_blend_mode(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -421,7 +421,7 @@ fn read_attribute_gradient_type(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -437,7 +437,7 @@ fn read_attribute_spread_method(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
@@ -453,7 +453,7 @@ fn read_attribute_gradient_stops(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientStops>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -469,7 +469,7 @@ fn read_attribute_artboard(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -485,7 +485,7 @@ fn read_attribute_raster(
 	let mut result = Table::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
@@ -597,8 +597,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 				}
 				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`)
 				_ => {
-					let attributes = current_graphic_table.clone_row_attributes(index);
-					output_graphic_table.push(TableRow::from_parts(current_element, attributes));
+					let attributes = current_graphic_table.clone_item_attributes(index);
+					output_graphic_table.push(Item::from_parts(current_element, attributes));
 				}
 			}
 		}

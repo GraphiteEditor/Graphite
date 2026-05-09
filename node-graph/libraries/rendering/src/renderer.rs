@@ -7,7 +7,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, TableRow};
+use core_types::table::{Item, Table};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
@@ -987,7 +987,7 @@ impl Render for Table<Vector> {
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
-				let vector_item = Table::new_from_row(TableRow::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, multiplied_transform));
+				let vector_item = Table::new_from_item(Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, multiplied_transform));
 
 				(id, mask_type, vector_item)
 			});
@@ -1312,7 +1312,7 @@ impl Render for Table<Vector> {
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
-						let vector_table = Table::new_from_row(TableRow::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
+						let vector_table = Table::new_from_item(Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
