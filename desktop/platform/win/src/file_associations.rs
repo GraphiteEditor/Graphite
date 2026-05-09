@@ -1,6 +1,7 @@
 use std::env;
-use std::error::Error;
+use std::path::Path;
 
+use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
 use windows_registry::CURRENT_USER;
 
 const PROG_ID: &str = "Graphite.Document";
@@ -11,38 +12,89 @@ const MIME_TYPE: &str = "application/graphite+json";
 const FILE_EXTENSION: &str = ".graphite";
 const SUPPORTED_EXTENSIONS: &[&str] = &[FILE_EXTENSION, ".svg", ".png", ".jpg", ".jpeg"];
 
-pub fn register() {
-	if let Err(e) = register_inner() {
+pub fn write() {
+	if let Err(e) = FileAssociationWriter::new(&env::current_exe().unwrap())
+		.document_type(PROG_ID, DOCUMENT_FRIENDLY_NAME)
+		.application(EXECUTABLE_NAME, APP_FRIENDLY_NAME, SUPPORTED_EXTENSIONS)
+		.extension(FILE_EXTENSION, PROG_ID, MIME_TYPE)
+		.write()
+	{
 		eprintln!("Failed to register file associations: {e}");
 	}
 }
 
-fn register_inner() -> Result<(), Box<dyn Error>> {
-	let exe = env::current_exe()?;
-	let exe_string = exe.to_string_lossy();
-	let open_command = format!("\"{exe_string}\" \"%1\"");
-	let icon_value = format!("{exe_string},0");
+struct FileAssociationWriter {
+	open_command: String,
+	icon_value: String,
+	entries: Vec<RegistryEntry>,
+}
 
-	let prog_id = CURRENT_USER.create(format!("Software\\Classes\\{PROG_ID}"))?;
-	prog_id.set_string("", DOCUMENT_FRIENDLY_NAME)?;
-	let prog_id_icon = CURRENT_USER.create(format!("Software\\Classes\\{PROG_ID}\\DefaultIcon"))?;
-	prog_id_icon.set_string("", &icon_value)?;
-	let prog_id_command = CURRENT_USER.create(format!("Software\\Classes\\{PROG_ID}\\shell\\open\\command"))?;
-	prog_id_command.set_string("", &open_command)?;
+struct RegistryEntry {
+	path: String,
+	name: String,
+	value: String,
+}
 
-	let app_base = format!("Software\\Classes\\Applications\\{EXECUTABLE_NAME}");
-	let app = CURRENT_USER.create(&app_base)?;
-	app.set_string("FriendlyAppName", APP_FRIENDLY_NAME)?;
-	let app_command = CURRENT_USER.create(format!("{app_base}\\shell\\open\\command"))?;
-	app_command.set_string("", &open_command)?;
-	let supported = CURRENT_USER.create(format!("{app_base}\\SupportedTypes"))?;
-	for extension in SUPPORTED_EXTENSIONS {
-		supported.set_string(extension, "")?;
+impl FileAssociationWriter {
+	fn new(executable: &Path) -> Self {
+		let exe_string = executable.to_string_lossy();
+		Self {
+			open_command: format!("\"{exe_string}\" \"%1\""),
+			icon_value: format!("{exe_string},0"),
+			entries: Vec::new(),
+		}
 	}
 
-	let extension = CURRENT_USER.create(format!("Software\\Classes\\{FILE_EXTENSION}"))?;
-	extension.set_string("", PROG_ID)?;
-	extension.set_string("Content Type", MIME_TYPE)?;
+	fn document_type(mut self, prog_id: &str, friendly_name: &str) -> Self {
+		let base = format!("Software\\Classes\\{prog_id}");
+		self.push(&base, "", friendly_name);
+		self.push(&format!("{base}\\DefaultIcon"), "", &self.icon_value.clone());
+		self.push(&format!("{base}\\shell\\open\\command"), "", &self.open_command.clone());
+		self
+	}
 
-	Ok(())
+	fn application(mut self, executable_name: &str, friendly_name: &str, supported_extensions: &[&str]) -> Self {
+		let base = format!("Software\\Classes\\Applications\\{executable_name}");
+		self.push(&base, "FriendlyAppName", friendly_name);
+		self.push(&format!("{base}\\shell\\open\\command"), "", &self.open_command.clone());
+
+		let supported_path = format!("{base}\\SupportedTypes");
+		for extension in supported_extensions {
+			self.push(&supported_path, extension, "");
+		}
+		self
+	}
+
+	fn extension(mut self, extension: &str, prog_id: &str, mime_type: &str) -> Self {
+		let path = format!("Software\\Classes\\{extension}");
+		self.push(&path, "", prog_id);
+		self.push(&path, "Content Type", mime_type);
+		self
+	}
+
+	fn push(&mut self, path: &str, name: &str, value: &str) {
+		self.entries.push(RegistryEntry {
+			path: path.to_owned(),
+			name: name.to_owned(),
+			value: value.to_owned(),
+		});
+	}
+
+	fn write(self) -> windows_registry::Result<()> {
+		let mut changed = false;
+
+		for entry in &self.entries {
+			let key = CURRENT_USER.create(&entry.path)?;
+			if key.get_string(&entry.name).ok().as_deref() == Some(entry.value.as_str()) {
+				continue;
+			}
+			key.set_string(&entry.name, &entry.value)?;
+			changed = true;
+		}
+
+		if changed {
+			unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
+		}
+		Ok(())
+	}
 }
