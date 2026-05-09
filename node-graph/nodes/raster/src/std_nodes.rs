@@ -3,8 +3,8 @@ use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
+use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::table::{Item, Table};
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use fastnoise_lite;
@@ -30,7 +30,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
+pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: List<Raster<CPU>>) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.filter_map(|row| {
@@ -97,11 +97,11 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Tabl
 pub fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
-	#[expose] red: Table<Raster<CPU>>,
-	#[expose] green: Table<Raster<CPU>>,
-	#[expose] blue: Table<Raster<CPU>>,
-	#[expose] alpha: Table<Raster<CPU>>,
-) -> Table<Raster<CPU>> {
+	#[expose] red: List<Raster<CPU>>,
+	#[expose] green: List<Raster<CPU>>,
+	#[expose] blue: List<Raster<CPU>>,
+	#[expose] alpha: List<Raster<CPU>>,
+) -> List<Raster<CPU>> {
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
 	let red = red.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
 	let green = green.into_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
@@ -178,11 +178,11 @@ pub fn combine_channels(
 pub fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: Table<Raster<CPU>>,
+	image: List<Raster<CPU>>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: Table<Raster<CPU>>,
-) -> Table<Raster<CPU>> {
+	stencil: List<Raster<CPU>>,
+) -> List<Raster<CPU>> {
 	// TODO: Figure out what it means to support multiple stencil items?
 	let Some(stencil) = stencil.into_iter().next() else {
 		// No stencil provided so we return the original image
@@ -226,7 +226,7 @@ pub fn mask(
 }
 
 #[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DAffine2) -> Table<Raster<CPU>> {
+pub fn extend_image_to_bounds(_: impl Ctx, image: List<Raster<CPU>>, bounds: DAffine2) -> List<Raster<CPU>> {
 	image
 		.into_iter()
 		.map(|mut row| {
@@ -240,7 +240,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 			let image_data = &row.element().data;
 			let (image_width, image_height) = (row.element().width, row.element().height);
 			if image_width == 0 || image_height == 0 {
-				return empty_image((), bounds, Table::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
+				return empty_image((), bounds, List::new_from_element(Color::TRANSPARENT)).into_iter().next().unwrap();
 			}
 
 			let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -274,23 +274,23 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 }
 
 #[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Table<Raster<CPU>> {
+pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let color = color.element(0).copied().unwrap_or(Color::WHITE);
 	let image = Image::new(width, height, color);
 
-	let mut result_table = Table::new_from_element(Raster::new_cpu(image));
-	result_table.set_attribute(ATTR_TRANSFORM, 0, transform);
+	let mut result_list = List::new_from_element(Raster::new_cpu(image));
+	result_list.set_attribute(ATTR_TRANSFORM, 0, transform);
 
-	// Callers of empty_image can safely unwrap on returned `Table`
-	result_table
+	// Callers of empty_image can safely unwrap on returned `List`
+	result_list
 }
 
 #[node_macro::node(category(""))]
-pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> Table<Raster<CPU>> {
-	Table::new_from_element(Raster::new_cpu(image))
+pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> List<Raster<CPU>> {
+	List::new_from_element(Raster::new_cpu(image))
 }
 
 /// Generates customizable procedural noise patterns.
@@ -328,7 +328,7 @@ pub fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: f64,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -346,7 +346,7 @@ pub fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Table::new();
+		return List::new();
 	}
 
 	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -392,7 +392,7 @@ pub fn noise_pattern(
 				}
 			}
 
-			return Table::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
+			return List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -450,11 +450,11 @@ pub fn noise_pattern(
 		}
 	}
 
-	Table::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	List::new_from_item(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
+pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> List<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -466,7 +466,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Table::new();
+		return List::new();
 	}
 
 	let scale = footprint.scale();
@@ -488,7 +488,7 @@ pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Table<Raster<CPU>> {
 		}
 	}
 
-	Table::new_from_item(
+	List::new_from_item(
 		Item::new_from_element(Raster::new_cpu(Image {
 			width,
 			height,

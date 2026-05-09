@@ -19,12 +19,12 @@ pub mod migrations {
 		#[serde(untagged)]
 		enum BrushStrokesFormat {
 			Strokes(Vec<BrushStroke>),
-			Table(LegacyTable),
+			List(LegacyTable),
 		}
 
 		Ok(match BrushStrokesFormat::deserialize(deserializer)? {
 			BrushStrokesFormat::Strokes(strokes) => strokes,
-			BrushStrokesFormat::Table(table) => table.element,
+			BrushStrokesFormat::List(list) => list.element,
 		})
 	}
 }

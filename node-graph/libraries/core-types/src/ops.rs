@@ -1,5 +1,5 @@
 use crate::Node;
-use crate::table::{Attribute, AttributeDyn, AttributeValueDyn, Item, Table, TableDyn};
+use crate::list::{Attribute, AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use crate::transform::Footprint;
 use glam::DVec2;
 use graphene_hash::CacheHash;
@@ -55,27 +55,27 @@ impl<T: ToString + Send> Convert<String, ()> for T {
 	}
 }
 
-pub trait TableConvert<U> {
+pub trait ListConvert<U> {
 	fn convert_row(self) -> U;
 }
 
-impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
-	async fn convert(self, _: Footprint, _: ()) -> Table<U> {
-		let table: Table<U> = self
+impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
+	async fn convert(self, _: Footprint, _: ()) -> List<U> {
+		let list: List<U> = self
 			.into_iter()
 			.map(|row| {
 				let (element, attributes) = row.into_parts();
 				Item::from_parts(element.convert_row(), attributes)
 			})
 			.collect();
-		table
+		list
 	}
 }
 
 /// Wraps each row's element into a type-erased column. Lets nodes that accept a source attribute
-/// from any `Table<U>` express their signature as `AttributeColumnDyn` and avoid monomorphizing
+/// from any `List<U>` express their signature as `AttributeColumnDyn` and avoid monomorphizing
 /// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
-impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for Table<T> {
+impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for List<T> {
 	async fn convert(self, _: Footprint, _: ()) -> AttributeDyn {
 		let values: Vec<T> = self.into_iter().map(|row| row.into_element()).collect();
 		AttributeDyn(Box::new(Attribute(values)))
@@ -83,7 +83,7 @@ impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash 
 }
 
 /// Wraps a value into a type-erased attribute value. Lets nodes that take a per-item value source
-/// (such as `write_attribute`'s value-producing input) be generic over the destination table type
+/// (such as `write_attribute`'s value-producing input) be generic over the destination list type
 /// alone, with the compiler-inserted convert handling each concrete value type at the wire level.
 impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeValueDyn, ()> for T {
 	async fn convert(self, _: Footprint, _: ()) -> AttributeValueDyn {
@@ -91,11 +91,11 @@ impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash 
 	}
 }
 
-/// Erases a `Table<T>`'s element type, exposing only its attributes and row count. Lets nodes that
-/// only need attribute access (such as the `read_attribute_*` family) take a single `TableDyn` input
-/// instead of monomorphizing over every possible carrier table type.
-impl<T: Send> Convert<TableDyn, ()> for Table<T> {
-	async fn convert(self, _: Footprint, _: ()) -> TableDyn {
+/// Erases a `List<T>`'s element type, exposing only its attributes and row count. Lets nodes that
+/// only need attribute access (such as the `read_attribute_*` family) take a single `ListDyn` input
+/// instead of monomorphizing over every possible carrier list type.
+impl<T: Send> Convert<ListDyn, ()> for List<T> {
+	async fn convert(self, _: Footprint, _: ()) -> ListDyn {
 		self.into()
 	}
 }
@@ -106,7 +106,7 @@ impl Convert<DVec2, ()> for DVec2 {
 	}
 }
 
-// TODO: Add a DVec2 to Table<Vector> anchor point conversion implementation to replace the 'Vec2 to Point' node
+// TODO: Add a DVec2 to List<Vector> anchor point conversion implementation to replace the 'Vec2 to Point' node
 
 /// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
 macro_rules! impl_convert {

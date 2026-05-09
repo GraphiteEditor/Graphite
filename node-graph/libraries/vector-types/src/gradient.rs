@@ -539,12 +539,12 @@ pub fn migrate_to_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer:
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GradientStopsFormat {
 		Stops(GradientStops),
-		Table(LegacyTable),
+		List(LegacyTable),
 	}
 
 	Ok(match GradientStopsFormat::deserialize(deserializer)? {
 		GradientStopsFormat::Stops(stops) => stops,
-		GradientStopsFormat::Table(table) => table.element.into_iter().next().unwrap_or_default(),
+		GradientStopsFormat::List(list) => list.element.into_iter().next().unwrap_or_default(),
 	})
 }
 

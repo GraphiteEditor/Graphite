@@ -220,7 +220,7 @@ pub enum DocumentNodeMetadata {
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
-			DocumentNodeMetadata::DocumentNodePath => concrete!(core_types::table::Table<NodeId>),
+			DocumentNodeMetadata::DocumentNodePath => concrete!(core_types::list::List<NodeId>),
 		}
 	}
 }

@@ -10,9 +10,9 @@ use crate::messages::tool::common_functionality::graph_modification_utils::get_c
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::descriptor;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::list::List;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
-use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
@@ -170,7 +170,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						}
 
 						// Set the bottom input of the artboard back to artboard
-						let bottom_input = NodeInput::type_default(descriptor!(Table<Artboard>), true);
+						let bottom_input = NodeInput::type_default(descriptor!(List<Artboard>), true);
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
@@ -178,7 +178,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
 
 						// Set the bottom input of the artboard back to artboard
-						let bottom_input = NodeInput::type_default(descriptor!(Table<Artboard>), true);
+						let bottom_input = NodeInput::type_default(descriptor!(List<Artboard>), true);
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
 					}
 				}

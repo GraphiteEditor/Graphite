@@ -1,4 +1,4 @@
-use core_types::table::{Item, Table};
+use core_types::list::{Item, List};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
@@ -14,7 +14,7 @@ pub struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	pub vector_table: Table<Vector>,
+	pub vector_list: List<Vector>,
 	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
 	merged_click_target_bboxes: Vec<[DVec2; 2]>,
 	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
@@ -35,7 +35,7 @@ impl PathBuilder {
 		Self {
 			current_subpath: Subpath::new(Vec::new(), false),
 			glyph_subpaths: Vec::new(),
-			vector_table: if per_glyph_items { Table::new() } else { Table::new_from_element(Vector::default()) },
+			vector_list: if per_glyph_items { List::new() } else { List::new_from_element(Vector::default()) },
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
@@ -87,14 +87,14 @@ impl PathBuilder {
 			let item = Item::new_from_element(Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false))
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
 				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
-			self.vector_table.push(item);
+			self.vector_list.push(item);
 
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
-				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Table<Vector>` item
-				self.vector_table.element_mut(0).unwrap().append_subpath(subpath, false);
+				// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
+				self.vector_list.element_mut(0).unwrap().append_subpath(subpath, false);
 			}
 			if let Some(bbox) = glyph_bbox {
 				self.merged_click_target_bboxes.push(bbox);
@@ -163,16 +163,16 @@ impl PathBuilder {
 		}
 	}
 
-	pub fn finalize(mut self) -> Table<Vector> {
-		// Empty table = all glyphs clipped by height. Create a placeholder with the same item-0
-		// transform a populated table would have so `local_transforms` stays stable mid-drag.
+	pub fn finalize(mut self) -> List<Vector> {
+		// Empty list = all glyphs clipped by height. Create a placeholder with the same item-0
+		// transform a populated list would have so `local_transforms` stays stable mid-drag.
 		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
-		if self.vector_table.is_empty() {
+		if self.vector_list.is_empty() {
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
 			let item = Item::new_from_element(Vector::default())
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
 				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
-			self.vector_table.push(item);
+			self.vector_list.push(item);
 		}
 
 		// Widen per-glyph AABBs to close horizontal gaps, then publish as click targets
@@ -184,7 +184,7 @@ impl PathBuilder {
 				.enumerate()
 				.filter_map(|(index, bbox)| {
 					let bbox = (*bbox)?;
-					let offset = self.vector_table.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation;
+					let offset = self.vector_list.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index).translation;
 					Some((index, offset, [bbox[0] + offset, bbox[1] + offset]))
 				})
 				.collect();
@@ -197,7 +197,7 @@ impl PathBuilder {
 			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
 				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
 				let rect = Subpath::new_rectangle(glyph_local[0], glyph_local[1]);
-				self.vector_table.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_subpaths([rect], false));
+				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_subpaths([rect], false));
 			}
 		}
 
@@ -207,18 +207,18 @@ impl PathBuilder {
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
 
 			let widened_subpaths: Vec<_> = bboxes.iter().map(|[min, max]| Subpath::new_rectangle(*min, *max)).collect();
-			self.vector_table.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(widened_subpaths, false));
+			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_subpaths(widened_subpaths, false));
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
 		let frame = DAffine2::from_scale(self.text_frame_size);
-		for index in 0..self.vector_table.len() {
-			if self.vector_table.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
-				self.vector_table.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+		for index in 0..self.vector_list.len() {
+			if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
+				self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
 			}
 		}
 
-		self.vector_table
+		self.vector_list
 	}
 }
 

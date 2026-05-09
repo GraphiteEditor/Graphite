@@ -1,44 +1,44 @@
 use crate::graphic::Graphic;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
+use core_types::list::List;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
 
-/// Nominal wrapper around `Table<Graphic>` representing a single artboard's content.
+/// Nominal wrapper around `List<Graphic>` representing a single artboard's content.
 ///
 /// Per-artboard metadata (location, dimensions, background, clip) lives as row attributes on the
-/// enclosing `Table<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
-/// that prevents arbitrary `Table<Table<...<Graphic>>>` nesting.
+/// enclosing `List<Artboard>`, not as fields here. This keeps `Artboard` a pure type-system boundary
+/// that prevents arbitrary `List<List<...<Graphic>>>` nesting.
 #[derive(Clone, Debug, Default, CacheHash, PartialEq, DynAny)]
-pub struct Artboard(Table<Graphic>);
+pub struct Artboard(List<Graphic>);
 
 impl Artboard {
-	pub fn new(content: Table<Graphic>) -> Self {
+	pub fn new(content: List<Graphic>) -> Self {
 		Self(content)
 	}
 
-	pub fn as_graphic_table(&self) -> &Table<Graphic> {
+	pub fn as_graphic_list(&self) -> &List<Graphic> {
 		&self.0
 	}
 
-	pub fn as_graphic_table_mut(&mut self) -> &mut Table<Graphic> {
+	pub fn as_graphic_list_mut(&mut self) -> &mut List<Graphic> {
 		&mut self.0
 	}
 
-	pub fn into_graphic_table(self) -> Table<Graphic> {
+	pub fn into_graphic_list(self) -> List<Graphic> {
 		self.0
 	}
 }
 
-impl From<Table<Graphic>> for Artboard {
-	fn from(content: Table<Graphic>) -> Self {
+impl From<List<Graphic>> for Artboard {
+	fn from(content: List<Graphic>) -> Self {
 		Self(content)
 	}
 }
 
-impl From<Artboard> for Table<Graphic> {
+impl From<Artboard> for List<Graphic> {
 	fn from(artboard: Artboard) -> Self {
 		artboard.0
 	}

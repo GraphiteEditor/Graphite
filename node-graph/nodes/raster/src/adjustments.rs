@@ -4,7 +4,7 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::table::Table;
+use core_types::list::List;
 use glam::{Vec3, Vec4};
 use no_std_types::color::Color;
 use no_std_types::context::Ctx;
@@ -53,9 +53,9 @@ pub enum LuminanceCalculation {
 fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -78,9 +78,9 @@ fn luminance<T: Adjust<Color>>(
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -99,9 +99,9 @@ fn gamma_correction<T: Adjust<Color>>(
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -123,9 +123,9 @@ fn extract_channel<T: Adjust<Color>>(
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -145,9 +145,9 @@ fn make_opaque<T: Adjust<Color>>(
 fn brightness_contrast_classic<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -176,9 +176,9 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 fn brightness_contrast<T: Adjust<Color>>(
 	_ctx: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -257,9 +257,9 @@ fn brightness_contrast<T: Adjust<Color>>(
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -321,14 +321,14 @@ fn levels<T: Adjust<Color>>(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-// TODO: Currently the un-Table-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
+// TODO: Currently the un-List-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
 #[node_macro::node(name("Black & White"), category(""), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -399,9 +399,9 @@ fn black_and_white<T: Adjust<Color>>(
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -434,9 +434,9 @@ fn hue_saturation<T: Adjust<Color>>(
 fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -457,9 +457,9 @@ fn invert<T: Adjust<Color>>(
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -503,9 +503,9 @@ fn threshold<T: Adjust<Color>>(
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -682,9 +682,9 @@ pub enum DomainWarpType {
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -816,9 +816,9 @@ pub enum SelectiveColorChoice {
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -962,9 +962,9 @@ fn selective_color<T: Adjust<Color>>(
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -996,9 +996,9 @@ fn posterize<T: Adjust<Color>>(
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,

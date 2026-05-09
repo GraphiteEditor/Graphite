@@ -77,12 +77,12 @@ pub fn migrate_to_optional_color<'de, D: serde::Deserializer<'de>>(deserializer:
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum ColorFormat {
 		OptionalColor(Option<Color>),
-		Table(LegacyTable<Color>),
+		List(LegacyTable<Color>),
 	}
 
 	Ok(match ColorFormat::deserialize(deserializer)? {
 		ColorFormat::OptionalColor(color) => color,
-		ColorFormat::Table(table) => table.element.into_iter().next(),
+		ColorFormat::List(list) => list.element.into_iter().next(),
 	})
 }
 
@@ -94,11 +94,11 @@ pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum F64ArrayFormat {
 		Array(Vec<f64>),
-		Table(LegacyTable<f64>),
+		List(LegacyTable<f64>),
 	}
 
 	Ok(match F64ArrayFormat::deserialize(deserializer)? {
 		F64ArrayFormat::Array(values) => values,
-		F64ArrayFormat::Table(table) => table.element,
+		F64ArrayFormat::List(list) => list.element,
 	})
 }

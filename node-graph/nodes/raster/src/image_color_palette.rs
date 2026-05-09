@@ -1,16 +1,16 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::table::{Item, Table};
+use core_types::list::{Item, List};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: Table<Raster<CPU>>,
+	image: List<Raster<CPU>>,
 	#[default(4)]
 	#[hard_min(1)]
 	count: u32,
-) -> Table<Color> {
+) -> List<Color> {
 	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
@@ -71,7 +71,7 @@ mod test {
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			Table::new_from_element(Raster::new_cpu(Image {
+			List::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
@@ -79,6 +79,6 @@ mod test {
 			})),
 			1,
 		);
-		assert_eq!(futures::executor::block_on(result), Table::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
+		assert_eq!(futures::executor::block_on(result), List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
 	}
 }

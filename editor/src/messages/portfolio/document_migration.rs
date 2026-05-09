@@ -28,6 +28,7 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
 	("\"OptionalF64\":", "\"F64\":"),
 	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
+	("\"core_types::table::Table<", "\"core_types::list::List<"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -1803,20 +1804,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
 	}
 
-	// Migrate from the old source/target v1 "Morph" node to the new `Table<Vector>`-based v2 "Morph" node.
-	// This doesn't produce exactly equivalent results in cases involving input `Table<Vector>` values with multiple items.
+	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.
+	// This doesn't produce exactly equivalent results in cases involving input `List<Vector>` values with multiple items.
 	// The old version would zip the source and target items, interpolating each pair together.
-	// The migrated version will instead deeply flatten both merged `Table`s and morph sequentially between all source vectors and all target vector elements.
+	// The migrated version will instead deeply flatten both merged `List`s and morph sequentially between all source vectors and all target vector elements.
 	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && (inputs_count == 3 || inputs_count == 4) {
 		// 3 inputs - old signature (#3405):
-		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
+		// async fn morph(_: impl Ctx, source: List<Vector>, #[expose] target: List<Vector>, #[default(0.5)] time: Fraction) -> List<Vector> { ... }
 		//
 		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
-		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> Table<Vector> { ... }
+		// async fn morph(_: impl Ctx, source: List<Vector>, #[expose] target: List<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> List<Vector> { ... }
 		//
 		// v2 signature:
-		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }
+		// async fn morph<I: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: I, progression: Progression) -> List<Vector> { ... }
 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1873,7 +1874,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Create Count Elements node: counts content `Table` items → N
+		// Create Count Elements node: counts content `List` items → N
 		let Some(count_elements_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
 			log::error!("Could not get count_elements node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -2102,7 +2103,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 			document.network_interface.set_input(
 				&InputConnector::node(*node_id, 0),
-				NodeInput::type_default(descriptor!(graphene_std::table::Table<graphene_std::vector::Vector>), true),
+				NodeInput::type_default(descriptor!(graphene_std::list::List<graphene_std::vector::Vector>), true),
 				network_path,
 			);
 
