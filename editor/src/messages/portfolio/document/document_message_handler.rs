@@ -29,6 +29,7 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
+use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
@@ -2427,7 +2428,7 @@ impl DocumentMessageHandler {
 			});
 
 			if layer_to_move.parent(self.metadata()) != Some(parent) {
-				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty `Table<Vector>` item.
+				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty `List<Vector>` item.
 				// TODO: See #2688 for this issue.
 				let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 				let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
@@ -3362,7 +3363,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::TypeDefault(descriptor!(graphene_std::list::List<graphene_std::Artboard>)), -1, "", &[]);
 	network_interface
 }
 

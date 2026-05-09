@@ -6,16 +6,16 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, concrete};
+use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
 use graphene_std::brush::brush_stroke::BrushStroke;
+use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, GradientSpreadMethod, GradientType, Stroke};
 use graphene_std::vector::{GradientStops, PointId, Vector, VectorModification, VectorModificationType};
-use graphene_std::{Color, Graphic, NodeInputDecleration};
+use graphene_std::{Artboard, Color, Graphic, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -132,11 +132,11 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network.
 	pub fn create_artboard(&mut self, new_id: NodeId, location: DVec2, dimensions: DVec2, background: Color, clip: bool) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_network_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Artboard(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+			Some(NodeInput::type_default(descriptor!(List<Artboard>), true)),
+			Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 			Some(NodeInput::value(TaggedValue::DVec2(location), false)),
 			Some(NodeInput::value(TaggedValue::DVec2(dimensions), false)),
-			Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(background)), false)),
+			Some(NodeInput::value(TaggedValue::Color(Some(background)), false)),
 			Some(NodeInput::value(TaggedValue::Bool(clip), false)),
 		]);
 		self.network_interface.insert_node(new_id, artboard_node_template, &[]);
@@ -147,7 +147,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let boolean = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)
 			.expect("Boolean node does not exist")
 			.node_template_input_override([
-				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
+				Some(NodeInput::type_default(descriptor!(List<Graphic>), true)),
 				Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
 			]);
 
@@ -157,10 +157,9 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
-		let blend = resolve_network_node_type("Blend").expect("Blend node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-			Some(NodeInput::value(TaggedValue::F64(count), false)),
-		]);
+		let blend = resolve_network_node_type("Blend")
+			.expect("Blend node does not exist")
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
 
 		let blend_id = NodeId::new();
 		self.network_interface.insert_node(blend_id, blend, &[]);
@@ -172,10 +171,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		let morph = resolve_proto_node_type(graphene_std::vector::morph::IDENTIFIER)
 			.expect("Morph node does not exist")
-			.node_template_input_override([
-				Some(NodeInput::value(TaggedValue::Graphic(Default::default()), true)),
-				Some(NodeInput::value(TaggedValue::F64(0.5), false)),
-			]);
+			.node_template_input_override([Some(NodeInput::type_default(descriptor!(List<Graphic>), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
 
 		let morph_id = NodeId::new();
 		self.network_interface.insert_node(morph_id, morph, &[]);
@@ -298,10 +294,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) {
 		let color_value = resolve_proto_node_type(graphene_std::math_nodes::color_value::IDENTIFIER)
 			.expect("Color Value node does not exist")
-			.node_template_input_override([
-				Some(NodeInput::value(TaggedValue::None, false)),
-				Some(NodeInput::value(TaggedValue::Color(Table::new_from_element(color)), false)),
-			]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::Color(Some(color)), false))]);
 
 		let color_value_id = NodeId::new();
 		self.network_interface.insert_node(color_value_id, color_value, &[]);
@@ -397,10 +390,10 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
-		// TODO: Allow the 'Path' node to operate on `Table` data by utilizing the reference (index or ID?) for each item.
+		// TODO: Allow the 'Path' node to operate on `List` data by utilizing the reference (index or ID?) for each item.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
-			if layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) {
+			if layer_input_type.compiled_nested_type() == Some(&concrete!(List<Graphic>)) {
 				let Some(flatten_path_definition) = resolve_proto_node_type(graphene_std::vector_nodes::flatten_path::IDENTIFIER) else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
@@ -427,15 +420,15 @@ impl<'a> ModifyInputsContext<'a> {
 		match &fill {
 			Fill::None => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new()), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(None), false), true);
 			}
 			Fill::Solid(color) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Table::new_from_element(*color)), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Some(*color)), false), true);
 			}
 			Fill::Gradient(gradient) => {
 				let input_connector = InputConnector::node(fill_node_id, backup_gradient_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(gradient.clone()), false), true);
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::FillGradient(gradient.clone()), false), true);
 			}
 		}
 		let input_connector = InputConnector::node(fill_node_id, fill_index);
@@ -496,14 +489,13 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the stops table on the 'Gradient Value' node, creating it if necessary.
+	/// Set the GradientStops list on the 'Gradient Value' node, creating it if necessary.
 	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
 		let Some(gradient_node_id) = self.existing_proto_node_id(graphene_std::math_nodes::gradient_value::IDENTIFIER, true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(gradient_node_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
-		let stops_table = Table::new_from_element(stops);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientTable(stops_table), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
 	}
 
 	/// Update the gradient line so its endpoints are at `new_start` and `new_end`.
@@ -606,10 +598,8 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let stroke_color = if let Some(color) = stroke.color { Table::new_from_element(color) } else { Table::new() };
-
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::INDEX);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(stroke_color), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(stroke.color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);
@@ -622,9 +612,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::<graphene_std::table::Table<f64>>::INDEX);
-		let dash_lengths_table = stroke.dash_lengths.into_iter().map(graphene_std::table::TableRow::new_from_element).collect();
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Table(dash_lengths_table), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::<graphene_std::list::List<f64>>::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
@@ -736,8 +725,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_proto_node_id(graphene_std::brush::brush::brush::IDENTIFIER, true) else {
 			return;
 		};
-		let strokes_table = strokes.into_iter().map(graphene_std::table::TableRow::new_from_element).collect();
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokeTable(strokes_table), false), false);
+		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: DVec2, dimensions: DVec2) {

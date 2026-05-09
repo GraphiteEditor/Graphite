@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
+use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
@@ -27,6 +28,7 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
 	("\"OptionalF64\":", "\"F64\":"),
 	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
+	("\"core_types::table::Table<", "\"core_types::list::List<"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -519,10 +521,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::gamma_correction::IDENTIFIER,
 		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::generate_curves::generate_curves::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::generate_curves::GenerateCurvesNode", "graphene_core::raster::adjustments::GenerateCurvesNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
@@ -1622,6 +1620,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 	}
 
+	// Old shape: [background, bounds, trace, cache]. Both "bounds" (input 1) and "cache" (input 3) are dropped, and "cache" is now stored as
+	// internal node state via `#[data]` on the brush node, so it is not a node input at all in the new shape.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1629,9 +1629,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		// We have removed the second input ("bounds"), so we don't add index 1 and we shift the rest of the inputs down by one
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
+	}
+
+	// Old shape: [background, trace, cache]. The "cache" input is dropped because the brush node now stores its cache as internal `#[data]` state.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::RemoveHandlesNode")) {
@@ -1795,20 +1804,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
 	}
 
-	// Migrate from the old source/target v1 "Morph" node to the new `Table<Vector>`-based v2 "Morph" node.
-	// This doesn't produce exactly equivalent results in cases involving input `Table<Vector>` values with multiple items.
+	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.
+	// This doesn't produce exactly equivalent results in cases involving input `List<Vector>` values with multiple items.
 	// The old version would zip the source and target items, interpolating each pair together.
-	// The migrated version will instead deeply flatten both merged `Table`s and morph sequentially between all source vectors and all target vector elements.
+	// The migrated version will instead deeply flatten both merged `List`s and morph sequentially between all source vectors and all target vector elements.
 	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && (inputs_count == 3 || inputs_count == 4) {
 		// 3 inputs - old signature (#3405):
-		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
+		// async fn morph(_: impl Ctx, source: List<Vector>, #[expose] target: List<Vector>, #[default(0.5)] time: Fraction) -> List<Vector> { ... }
 		//
 		// 4 inputs - even older signature (commit 80b8df8d4298b6669f124b929ce61bfabfc44e41):
-		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> Table<Vector> { ... }
+		// async fn morph(_: impl Ctx, source: List<Vector>, #[expose] target: List<Vector>, #[default(0.5)] time: Fraction, start_index: u32) -> List<Vector> { ... }
 		//
 		// v2 signature:
-		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }
+		// async fn morph<I: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: I, progression: Progression) -> List<Vector> { ... }
 
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1865,7 +1874,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Create Count Elements node: counts content `Table` items → N
+		// Create Count Elements node: counts content `List` items → N
 		let Some(count_elements_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count_elements::IDENTIFIER)) else {
 			log::error!("Could not get count_elements node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
@@ -2082,40 +2091,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 	}
 
-	// Migrate Path nodes that stored geometry directly in input 0 (as a Table<Vector>) to instead use a VectorModification in input 1
+	// SVG-import legacy Path nodes baked their geometry at non-exposed input 0; move it to input 1 (the modern slot for VectorModification).
+	// For exposed input 0, any baked value is unused at runtime, so just reset it.
 	if reference == DefinitionIdentifier::Network("Path".into()) {
 		let input_0 = node.inputs.first()?;
 		if let NodeInput::Value { tagged_value, exposed } = input_0
-			&& !exposed
-			&& let TaggedValue::Vector(vector_table) = &**tagged_value
-			&& !vector_table.is_empty()
+			&& let TaggedValue::VectorModification(modification) = &**tagged_value
 		{
-			let vector = vector_table.element(0)?;
-			let modification = Box::new(graphene_std::vector::VectorModification::create_from_vector(vector));
+			let modification = modification.clone();
+			let was_exposed = *exposed;
 
-			// Reset input 0 to the default exposed state
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Vector(Default::default()), true), network_path);
+			document.network_interface.set_input(
+				&InputConnector::node(*node_id, 0),
+				NodeInput::type_default(descriptor!(graphene_std::list::List<graphene_std::vector::Vector>), true),
+				network_path,
+			);
 
-			// Store the converted VectorModification in input 1
-			document
-				.network_interface
-				.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+			if !was_exposed {
+				document
+					.network_interface
+					.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::VectorModification(modification), false), network_path);
+			}
 		}
-	}
-
-	// Migrate Image nodes that stored a Table<Raster<CPU>> in input 1 to instead use bare Image<Color> via TaggedValue::ImageData
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
-		&& let Some(NodeInput::Value { tagged_value, .. }) = node.inputs.get(1)
-		&& let TaggedValue::Raster(raster_table) = &**tagged_value
-		&& let Some(element) = raster_table.element(0)
-	{
-		let image = element.data().clone();
-
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::ImageData(image), false), network_path);
 	}
 
 	// ==================================

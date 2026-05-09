@@ -6,14 +6,12 @@ mod text_context;
 mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
-use core_types::Color;
 use core_types::graphene_hash::CacheHash;
+use core_types::list::{Item, List};
 use core_types::registry::types::{SignedInteger, TextArea};
-use core_types::table::{Table, TableRow};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use raster_types::{CPU, Raster};
 use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
@@ -32,10 +30,13 @@ pub use vector_types;
 pub enum TextAlign {
 	#[default]
 	#[icon("TextAlignLeft")]
+	#[cfg_attr(feature = "serde", serde(alias = "Left"))]
 	AlignLeft,
 	#[icon("TextAlignCenter")]
+	#[cfg_attr(feature = "serde", serde(alias = "Center"))]
 	AlignCenter,
 	#[icon("TextAlignRight")]
+	#[cfg_attr(feature = "serde", serde(alias = "Right"))]
 	AlignRight,
 	#[icon("TextJustifyLeft")]
 	JustifyLeft,
@@ -736,10 +737,10 @@ fn string_split(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimiter_escaping: bool,
-) -> Table<String> {
+) -> List<String> {
 	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
 
-	string.split(&delimiter).map(str::to_string).map(TableRow::new_from_element).collect()
+	string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
@@ -749,7 +750,7 @@ fn string_split(
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
-	strings: Table<String>,
+	strings: List<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
 	separator: String,
@@ -767,12 +768,12 @@ fn string_join(
 #[node_macro::node(category("Text"))]
 async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	strings: Table<String>,
+	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> String)]
 	mapped: impl Node<Context<'static>, Output = String>,
-) -> Table<String> {
-	let mut result = Table::new();
+) -> List<String> {
+	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
 		let string = row.into_element();
@@ -780,7 +781,7 @@ async fn map_string(
 		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
 		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
 
-		result.push(TableRow::new_from_element(mapped_string));
+		result.push(Item::new_from_element(mapped_string));
 	}
 
 	result
@@ -797,24 +798,6 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
 
 /// Converts a value to a JSON string representation.
 #[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(
-	_: impl Ctx,
-	#[implementations(
-		String,
-		bool,
-		f64,
-		u32,
-		u64,
-		DVec2,
-		DAffine2,
-		// Table<Artboard>,
-		// Table<Graphic>,
-		// Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		// Table<GradientStops>,
-	)]
-	value: T,
-) -> String {
+fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: T) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }

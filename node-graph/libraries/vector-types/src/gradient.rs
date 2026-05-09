@@ -526,20 +526,25 @@ impl Gradient {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<core_types::table::Table<GradientStops>, D::Error> {
-	use core_types::table::Table;
+pub fn migrate_to_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientStops, D::Error> {
 	use serde::Deserialize;
+
+	#[derive(serde::Deserialize)]
+	struct LegacyTable {
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<GradientStops>,
+	}
 
 	#[derive(serde::Deserialize)]
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GradientStopsFormat {
-		GradientStops(GradientStops),
-		GradientTable(Table<GradientStops>),
+		Stops(GradientStops),
+		List(LegacyTable),
 	}
 
 	Ok(match GradientStopsFormat::deserialize(deserializer)? {
-		GradientStopsFormat::GradientStops(stops) => Table::new_from_element(stops),
-		GradientStopsFormat::GradientTable(table) => table,
+		GradientStopsFormat::Stops(stops) => stops,
+		GradientStopsFormat::List(list) => list.element.into_iter().next().unwrap_or_default(),
 	})
 }
 

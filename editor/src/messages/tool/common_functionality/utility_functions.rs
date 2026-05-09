@@ -14,9 +14,9 @@ use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::list::List;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::table::Table;
 use graphene_std::text::FontCache;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, Tangent, dvec2_to_point, point_to_dvec2};
@@ -570,11 +570,11 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 	for _ in selected_layers {}
 
-	// Must be a layer of type Table<Vector>
+	// Must be a layer of type List<Vector>
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
 	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
+	if output_type.compiled_nested_type() != Some(&concrete!(List<Vector>)) {
 		return None;
 	}
 

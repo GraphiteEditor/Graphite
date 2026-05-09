@@ -4,7 +4,7 @@ pub use crate::gradient::*;
 use core_types::ATTR_OPACITY;
 use core_types::Color;
 use core_types::color::Alpha;
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -133,16 +133,16 @@ impl From<Option<Color>> for Fill {
 	}
 }
 
-impl From<Table<Color>> for Fill {
-	fn from(color: Table<Color>) -> Fill {
+impl From<List<Color>> for Fill {
+	fn from(color: List<Color>) -> Fill {
 		let alpha: f64 = color.attribute_cloned_or(ATTR_OPACITY, 0, 1.);
 		let color = color.element(0).copied();
 		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha as f32)))
 	}
 }
 
-impl From<Table<GradientStops>> for Fill {
-	fn from(gradient: Table<GradientStops>) -> Fill {
+impl From<List<GradientStops>> for Fill {
+	fn from(gradient: List<GradientStops>) -> Fill {
 		Fill::Gradient(Gradient {
 			stops: gradient.element(0).cloned().unwrap_or_default(),
 			..Default::default()
@@ -220,17 +220,6 @@ impl From<Fill> for FillChoice {
 			Fill::Gradient(gradient) => FillChoice::Gradient(gradient.stops),
 		}
 	}
-}
-
-#[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, DynAny, Hash, graphene_hash::CacheHash, node_macro::ChoiceType)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[widget(Radio)]
-pub enum FillType {
-	#[default]
-	Solid,
-	Gradient,
 }
 
 /// The stroke (outline) style of an SVG element.

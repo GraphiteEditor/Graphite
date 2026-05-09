@@ -1,4 +1,4 @@
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::generate_uuid;
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
@@ -33,12 +33,12 @@ pub struct RenderIntermediate {
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
-		Context -> Table<Artboard>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
+		Context -> List<Artboard>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 ) -> RenderIntermediate {

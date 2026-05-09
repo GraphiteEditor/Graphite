@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::color::Color;
-use core_types::table::{Table, TableDyn};
+use core_types::list::{List, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
@@ -16,12 +16,12 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
@@ -56,18 +56,18 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 fn reset_transform<T>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	mut content: Table<T>,
+	mut content: List<T>,
 	#[default(true)] reset_translation: bool,
 	reset_rotation: bool,
 	reset_scale: bool,
-) -> Table<T> {
+) -> List<T> {
 	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 		if reset_translation {
 			row_transform.translation = DVec2::ZERO;
@@ -89,21 +89,21 @@ fn reset_transform<T>(
 	content
 }
 
-/// Overwrites the transform of each item in the input `Table` with the specified transform.
+/// Overwrites the transform of each item in the input `List` with the specified transform.
 #[node_macro::node(category("Math: Transform"))]
 fn replace_transform<T>(
 	_: impl Ctx + InjectFootprint,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	mut content: Table<T>,
+	mut content: List<T>,
 	transform: DAffine2,
-) -> Table<T> {
+) -> List<T> {
 	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 		*row_transform = transform.transform();
 	}
@@ -111,9 +111,9 @@ fn replace_transform<T>(
 }
 
 // TODO: Figure out how this node should behave once #2982 is implemented.
-/// Obtains the transform of the first item in the input `Table`, if present.
+/// Obtains the transform of the first item in the input `List`, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-async fn extract_transform(_: impl Ctx, content: TableDyn) -> DAffine2 {
+async fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
 	content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default()
 }
 

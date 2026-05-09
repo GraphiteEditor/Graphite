@@ -1,6 +1,6 @@
 use super::{Font, FontCache, TypesettingConfig};
 use core::cell::RefCell;
-use core_types::table::Table;
+use core_types::list::List;
 use glam::DVec2;
 use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
@@ -87,9 +87,9 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_items: bool) -> Table<Vector> {
+	pub fn to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_items: bool) -> List<Vector> {
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
-			return Table::new_from_element(Vector::default());
+			return List::new_from_element(Vector::default());
 		};
 
 		let text_frame_size = DVec2::new(

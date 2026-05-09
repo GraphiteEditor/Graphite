@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::raster::color::Color;
@@ -336,10 +336,9 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 	graph_modification_utils::gradient_space_transform(layer, &document.network_interface)
 }
 
-// TODO: Remove this whole function once all gradients are `Table<GradientStops>`
+// TODO: Remove this whole function once all gradients are stored via the modern `Gradient(GradientStops)` slot
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	if let Some(stops_table) = get_gradient_table(layer, network_interface) {
-		let stops = stops_table.element(0).cloned().unwrap_or_default();
+	if let Some(stops) = get_gradient_stops(layer, network_interface) {
 		let GradientChainState {
 			transform,
 			gradient_type,
@@ -460,8 +459,8 @@ struct SelectedGradient {
 	gradient: Gradient,
 	dragging: GradientDragTarget,
 	initial_gradient: Gradient,
-	// TODO: Remove (and the matching branches in `render_gradient` / pointer-up) once `Table<GradientStops>` replaces legacy `Fill::Gradient`
-	is_gradient_table: bool,
+	// TODO: Remove (and the matching branches in `render_gradient` / pointer-up) once `List<GradientStops>` replaces legacy `Fill::Gradient`
+	is_gradient_list: bool,
 }
 
 fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: DVec2) -> Option<f64> {
@@ -505,14 +504,14 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 impl SelectedGradient {
 	pub fn new(gradient: Gradient, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
 		let transform = gradient_space_transform(layer, document);
-		let is_gradient_table = get_gradient_table(layer, &document.network_interface).is_some();
+		let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
 		Self {
 			layer: Some(layer),
 			transform,
 			gradient: gradient.clone(),
 			dragging: GradientDragTarget::End,
 			initial_gradient: gradient,
-			is_gradient_table,
+			is_gradient_list,
 		}
 	}
 
@@ -728,8 +727,8 @@ impl SelectedGradient {
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(layer) = self.layer {
-			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
-			if self.is_gradient_table {
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `List<GradientStops>`
+			if self.is_gradient_list {
 				dispatch_gradient_writes(layer, &self.gradient, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -1145,9 +1144,9 @@ impl Fsm for GradientToolFsmState {
 				};
 
 				// The gradient has only one point and so should become a fill
-				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `Table<GradientStops>`
+				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `List<GradientStops>`
 				if selected_gradient.gradient.stops.len() == 1 {
-					if selected_gradient.is_gradient_table {
+					if selected_gradient.is_gradient_list {
 						selected_gradient.render_gradient(responses);
 					} else if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
@@ -1243,7 +1242,7 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
-					let is_gradient_table = get_gradient_table(layer, &document.network_interface).is_some();
+					let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
 
 					// Check for dragging a midpoint diamond
 					if drag_hint.is_none() {
@@ -1271,7 +1270,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									dragging: GradientDragTarget::Midpoint(i),
 									initial_gradient: gradient.clone(),
-									is_gradient_table,
+									is_gradient_list,
 								});
 
 								break;
@@ -1312,7 +1311,7 @@ impl Fsm for GradientToolFsmState {
 								gradient: gradient.clone(),
 								dragging: drag_target,
 								initial_gradient: gradient.clone(),
-								is_gradient_table,
+								is_gradient_list,
 							});
 						}
 					}
@@ -1329,7 +1328,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									dragging: dragging_target,
 									initial_gradient: gradient.clone(),
-									is_gradient_table,
+									is_gradient_list,
 								})
 							}
 						}
@@ -1378,14 +1377,14 @@ impl Fsm for GradientToolFsmState {
 					GradientToolFsmState::Drawing { drag_hint: hint }
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-					// Table-based gradients render no geometry, so a click on empty canvas yields no layer. Fall back to a
-					// selected gradient-table layer so the user can drag a fresh gradient line anywhere.
+					// List-based gradients render no geometry, so a click on empty canvas yields no layer.
+					// Fall back to a selected gradient list layer so the user can drag a fresh gradient line anywhere.
 					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_table(layer, &document.network_interface).is_some())
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some())
 					});
 
 					// Apply the gradient to the selected layer
@@ -1748,9 +1747,9 @@ fn apply_gradient_update(
 			}
 			update(&mut gradient);
 
-			// Only check for the gradient table once we know we'll write back, since this is a graph traversal per layer
-			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
-			if get_gradient_table(layer, &context.document.network_interface).is_some() {
+			// Only check for the gradient list once we know we'll write back, since this is a graph traversal per layer
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `List<GradientStops>`
+			if get_gradient_stops(layer, &context.document.network_interface).is_some() {
 				dispatch_gradient_writes(layer, &gradient, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -1791,7 +1790,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 			continue;
 		}
 
-		if get_gradient_table(layer, &context.document.network_interface).is_some() {
+		if get_gradient_stops(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: stops.clone() });
 		} else if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
 			gradient.stops = stops.clone();
@@ -1887,8 +1886,6 @@ mod test_gradient {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::ATTR_TRANSFORM;
-	use graphene_std::table::{Table, TableRow};
 	use graphene_std::vector::style::{Fill, Gradient};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
@@ -1935,7 +1932,7 @@ mod test_gradient {
 		}
 	}
 
-	async fn create_gradient_table_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+	async fn create_gradient_list_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		let document = editor.active_document();
 		let layer = document.metadata().all_layers().next().unwrap();
@@ -1953,21 +1950,18 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::GradientTable(Table::new_from_row(
-					TableRow::new_from_element(GradientStops::new([
-						GradientStop {
-							position: 0.,
-							midpoint: 0.5,
-							color: Color::RED,
-						},
-						GradientStop {
-							position: 1.,
-							midpoint: 0.5,
-							color: Color::BLUE,
-						},
-					]))
-					.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY),
-				)),
+				value: TaggedValue::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: Color::RED,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::BLUE,
+					},
+				])),
 			})
 			.await;
 
@@ -2341,10 +2335,10 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	async fn gradient_table_drag_endpoint() {
+	async fn gradient_list_drag_endpoint() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		let layer = create_gradient_table_layer(&mut editor).await;
+		let layer = create_gradient_list_layer(&mut editor).await;
 
 		// Create original transform for the control geometry and apply it
 		let initial_start = DVec2::new(10., 50.);
@@ -2413,10 +2407,10 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	async fn gradient_table_preserves_stops() {
+	async fn gradient_list_preserves_stops() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		let layer = create_gradient_table_layer(&mut editor).await;
+		let layer = create_gradient_list_layer(&mut editor).await;
 
 		// Set up a 3-stop gradient with distinct colors
 		let original_stops = GradientStops::new([

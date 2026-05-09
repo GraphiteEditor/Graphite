@@ -1,5 +1,5 @@
 use core_types::Ctx;
-use core_types::table::Table;
+use core_types::list::List;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, Raster};
 
@@ -31,6 +31,6 @@ fn unwrap_option<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&Table<Raster<CPU>>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&List<Raster<CPU>>)] value: &'i T) -> T {
 	value.clone()
 }

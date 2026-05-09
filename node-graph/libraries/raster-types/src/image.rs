@@ -1,12 +1,9 @@
-use crate::raster_types::{CPU, Raster};
 use crate::{Bitmap, BitmapMut};
-use core_types::blending::BlendMode;
+use core_types::Color;
 use core_types::color::float_to_srgb_u8;
-use core_types::table::{Table, TableRow};
-use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core_types::color::*;
-use dyn_any::{DynAny, StaticType};
+use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
 use std::vec::Vec;
 
@@ -15,7 +12,7 @@ mod base64_serde {
 
 	use base64::Engine;
 	use core_types::color::*;
-	use serde::{Deserialize, Deserializer, Serialize, Serializer};
+	use serde::{Deserializer, Serialize, Serializer};
 
 	pub fn as_base64<S: Serializer, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error> {
 		let u8_data = bytemuck::cast_slice(key);
@@ -25,16 +22,29 @@ mod base64_serde {
 
 	pub fn from_base64<'a, D: Deserializer<'a>, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error> {
 		use serde::de::Error;
-		<(u64, &[u8])>::deserialize(deserializer)
-			.and_then(|(len, str)| {
+		// Use a small visitor that accepts both borrowed bytes (from a streaming JSON deserializer) and owned strings (from an intermediate like `serde_json::Value`, which can't preserve the borrow).
+		// The migration loader takes the second path, so without this allowance documents containing image base64 data fail with `expected a borrowed byte array`.
+		struct LenAndBase64Visitor<P: Pixel>(std::marker::PhantomData<P>);
+
+		impl<'de, P: Pixel> serde::de::Visitor<'de> for LenAndBase64Visitor<P> {
+			type Value = Vec<P>;
+
+			fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+				f.write_str("a tuple of (length, base64-encoded data)")
+			}
+
+			fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+				let len: u64 = seq.next_element()?.ok_or_else(|| A::Error::missing_field("length"))?;
+				let base64_string: std::borrow::Cow<'de, str> = seq.next_element()?.ok_or_else(|| A::Error::missing_field("base64 data"))?;
 				let mut output: Vec<P> = vec![P::zeroed(); len as usize];
 				base64::engine::general_purpose::STANDARD
-					.decode_slice(str, bytemuck::cast_slice_mut(output.as_mut_slice()))
-					.map_err(|err| Error::custom(err.to_string()))?;
-
+					.decode_slice(base64_string.as_bytes(), bytemuck::cast_slice_mut(output.as_mut_slice()))
+					.map_err(|err| A::Error::custom(err.to_string()))?;
 				Ok(output)
-			})
-			.map_err(serde::de::Error::custom)
+			}
+		}
+
+		deserializer.deserialize_tuple(2, LenAndBase64Visitor::<P>(std::marker::PhantomData))
 	}
 }
 
@@ -217,253 +227,6 @@ impl<P: Pixel> IntoIterator for Image<P> {
 	fn into_iter(self) -> Self::IntoIter {
 		self.data.into_iter()
 	}
-}
-
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Raster<CPU>>, D::Error> {
-	use serde::Deserialize;
-
-	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
-	#[derive(Clone, Debug, Default, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(default))]
-	pub struct LegacyAlphaBlending {
-		pub blend_mode: BlendMode,
-		pub opacity: f32,
-		pub fill: f32,
-		pub clip: bool,
-	}
-
-	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny)]
-	enum RasterFrame {
-		ImageFrame(Table<Image<Color>>),
-	}
-	impl<'de> serde::Deserialize<'de> for RasterFrame {
-		fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-			Ok(RasterFrame::ImageFrame(Table::new_from_element(Image::deserialize(deserializer)?)))
-		}
-	}
-	impl serde::Serialize for RasterFrame {
-		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-			match self {
-				RasterFrame::ImageFrame(table) => table.serialize(serializer),
-			}
-		}
-	}
-
-	#[derive(Clone, Debug, core_types::CacheHash, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub enum GraphicElement {
-		GraphicGroup(Table<GraphicElement>),
-		RasterFrame(RasterFrame),
-	}
-
-	#[derive(Clone, Default, Debug, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct ImageFrame<P: Pixel> {
-		pub image: Image<P>,
-	}
-	impl From<ImageFrame<Color>> for GraphicElement {
-		fn from(image_frame: ImageFrame<Color>) -> Self {
-			GraphicElement::RasterFrame(RasterFrame::ImageFrame(Table::new_from_element(image_frame.image)))
-		}
-	}
-	impl From<GraphicElement> for ImageFrame<Color> {
-		fn from(element: GraphicElement) -> Self {
-			match element {
-				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.element(0).unwrap().clone(),
-				},
-				_ => panic!("Expected Image, found {element:?}"),
-			}
-		}
-	}
-
-	unsafe impl<P> StaticType for ImageFrame<P>
-	where
-		P: dyn_any::StaticTypeSized + Pixel,
-		P::Static: Pixel,
-	{
-		type Static = ImageFrame<P::Static>;
-	}
-
-	#[derive(Clone, Default, Debug, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldImageFrame<P: Pixel> {
-		image: Image<P>,
-		transform: DAffine2,
-		alpha_blending: LegacyAlphaBlending,
-	}
-
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum FormatVersions {
-		Image(Image<Color>),
-		OldImageFrame(OldImageFrame<Color>),
-		OlderImageFrameTable(OlderTable<ImageFrame<Color>>),
-		OldImageFrameTable(OldTable<ImageFrame<Color>>),
-		OldImageTable(OldTable<Image<Color>>),
-		OldRasterTable(OldTable<Raster<CPU>>),
-		ImageFrameTable(Table<ImageFrame<Color>>),
-		ImageTable(Table<Image<Color>>),
-		RasterTable(Table<Raster<CPU>>),
-	}
-
-	#[derive(Clone, Debug)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldTable<T> {
-		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
-		element: Vec<T>,
-		transform: Vec<DAffine2>,
-		alpha_blending: Vec<LegacyAlphaBlending>,
-	}
-
-	#[derive(Clone, Debug)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OlderTable<T> {
-		id: Vec<u64>,
-		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
-		element: Vec<T>,
-	}
-
-	fn from_image_table(table: Table<Image<Color>>) -> Table<Raster<CPU>> {
-		Table::new_from_element(Raster::new_cpu(table.element(0).unwrap().clone()))
-	}
-
-	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
-	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
-	fn old_table_to_new_table<T>(old_table: OldTable<T>) -> Table<T> {
-		old_table.element.into_iter().map(TableRow::new_from_element).collect()
-	}
-
-	fn older_table_to_new_table<T>(old_table: OlderTable<T>) -> Table<T> {
-		old_table.element.into_iter().map(TableRow::new_from_element).collect()
-	}
-
-	fn from_image_frame_table(image_frame: Table<ImageFrame<Color>>) -> Table<Raster<CPU>> {
-		let default = ImageFrame::default();
-		let element = image_frame.element(0).unwrap_or(&default);
-		Table::new_from_element(Raster::new_cpu(element.image.clone()))
-	}
-
-	Ok(match FormatVersions::deserialize(deserializer)? {
-		FormatVersions::Image(image) => Table::new_from_element(Raster::new_cpu(image)),
-		FormatVersions::OldImageFrame(OldImageFrame { image, transform, alpha_blending }) => {
-			let mut image_frame_table = Table::new_from_element(Raster::new_cpu(image));
-			image_frame_table.set_attribute(ATTR_TRANSFORM, 0, transform);
-			image_frame_table.set_attribute(ATTR_BLEND_MODE, 0, alpha_blending.blend_mode);
-			image_frame_table.set_attribute(ATTR_OPACITY, 0, alpha_blending.opacity as f64);
-			image_frame_table.set_attribute(ATTR_OPACITY_FILL, 0, alpha_blending.fill as f64);
-			image_frame_table.set_attribute(ATTR_CLIPPING_MASK, 0, alpha_blending.clip);
-			image_frame_table
-		}
-		FormatVersions::OlderImageFrameTable(old_table) => from_image_frame_table(older_table_to_new_table(old_table)),
-		FormatVersions::OldImageFrameTable(old_table) => from_image_frame_table(old_table_to_new_table(old_table)),
-		FormatVersions::OldImageTable(old_table) => from_image_table(old_table_to_new_table(old_table)),
-		FormatVersions::OldRasterTable(old_table) => old_table_to_new_table(old_table),
-		FormatVersions::ImageFrameTable(image_frame) => from_image_frame_table(image_frame),
-		FormatVersions::ImageTable(table) => from_image_table(table),
-		FormatVersions::RasterTable(table) => table,
-	})
-}
-
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<TableRow<Raster<CPU>>, D::Error> {
-	use serde::Deserialize;
-
-	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
-	#[derive(Clone, Debug, Default, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(default))]
-	pub struct LegacyAlphaBlending {
-		pub blend_mode: BlendMode,
-		pub opacity: f32,
-		pub fill: f32,
-		pub clip: bool,
-	}
-
-	#[derive(Clone, Debug, PartialEq, DynAny)]
-	enum RasterFrame {
-		/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-		ImageFrame(Table<Image<Color>>),
-	}
-	impl<'de> serde::Deserialize<'de> for RasterFrame {
-		fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-			Ok(RasterFrame::ImageFrame(Table::new_from_element(Image::deserialize(deserializer)?)))
-		}
-	}
-	impl serde::Serialize for RasterFrame {
-		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-			match self {
-				RasterFrame::ImageFrame(table) => table.serialize(serializer),
-			}
-		}
-	}
-
-	#[derive(Clone, Debug, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub enum GraphicElement {
-		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
-		GraphicGroup(Table<GraphicElement>),
-		RasterFrame(RasterFrame),
-	}
-
-	#[derive(Clone, Default, Debug, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct ImageFrame<P: Pixel> {
-		pub image: Image<P>,
-	}
-	impl From<ImageFrame<Color>> for GraphicElement {
-		fn from(image_frame: ImageFrame<Color>) -> Self {
-			GraphicElement::RasterFrame(RasterFrame::ImageFrame(Table::new_from_element(image_frame.image)))
-		}
-	}
-	impl From<GraphicElement> for ImageFrame<Color> {
-		fn from(element: GraphicElement) -> Self {
-			match element {
-				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
-					image: image.element(0).unwrap().clone(),
-				},
-				_ => panic!("Expected Image, found {element:?}"),
-			}
-		}
-	}
-
-	unsafe impl<P> StaticType for ImageFrame<P>
-	where
-		P: dyn_any::StaticTypeSized + Pixel,
-		P::Static: Pixel,
-	{
-		type Static = ImageFrame<P::Static>;
-	}
-
-	#[derive(Clone, Default, Debug, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldImageFrame<P: Pixel> {
-		image: Image<P>,
-		transform: DAffine2,
-		alpha_blending: LegacyAlphaBlending,
-	}
-
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum FormatVersions {
-		Image(Image<Color>),
-		OldImageFrame(OldImageFrame<Color>),
-		ImageFrameTable(Table<ImageFrame<Color>>),
-		RasterTable(Table<Raster<CPU>>),
-		RasterTableRow(TableRow<Raster<CPU>>),
-	}
-
-	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
-	// to recover the element. Per-item attribute values are populated at runtime by the node graph.
-	Ok(match FormatVersions::deserialize(deserializer)? {
-		FormatVersions::Image(image) => TableRow::new_from_element(Raster::new_cpu(image)),
-		FormatVersions::OldImageFrame(old) => TableRow::new_from_element(Raster::new_cpu(old.image)),
-		FormatVersions::ImageFrameTable(image_frame) => TableRow::new_from_element(Raster::new_cpu(image_frame.element(0).unwrap().image.clone())),
-		FormatVersions::RasterTable(image_frame_table) => image_frame_table.into_iter().next().unwrap_or_default(),
-		FormatVersions::RasterTableRow(image_table_row) => image_table_row,
-	})
 }
 
 impl<P: std::fmt::Debug + Copy + Pixel> Sample for Image<P> {

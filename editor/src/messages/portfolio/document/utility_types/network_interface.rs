@@ -6446,6 +6446,7 @@ pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
 	/// Each instance of the input node needs to store its own data, since it can lose the reference to its
 	/// node definition if the node signature is modified by the user. For example adding/removing/renaming an import/export of a network node.
+	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap_as_sorted_object")]
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES

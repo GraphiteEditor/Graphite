@@ -1,7 +1,7 @@
 use crate::WgpuContext;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
+use core_types::list::{Item, List};
 use core_types::shaders::buffer_struct::BufferStruct;
-use core_types::table::{Table, TableRow};
 use futures::lock::Mutex;
 use raster_types::{GPU, Raster};
 use std::borrow::Cow;
@@ -33,7 +33,7 @@ impl PerPixelAdjustShaderRuntime {
 }
 
 impl ShaderRuntime {
-	pub async fn run_per_pixel_adjust<T: BufferStruct>(&self, shaders: &Shaders<'_>, textures: Table<Raster<GPU>>, args: Option<&T>) -> Table<Raster<GPU>> {
+	pub async fn run_per_pixel_adjust<T: BufferStruct>(&self, shaders: &Shaders<'_>, textures: List<Raster<GPU>>, args: Option<&T>) -> List<Raster<GPU>> {
 		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
 		let pipeline = cache
 			.entry(shaders.fragment_shader_name.to_owned())
@@ -160,7 +160,7 @@ impl PerPixelAdjustGraphicsPipeline {
 		}
 	}
 
-	pub fn dispatch(&self, context: &WgpuContext, textures: Table<Raster<GPU>>, arg_buffer: Option<Buffer>) -> Table<Raster<GPU>> {
+	pub fn dispatch(&self, context: &WgpuContext, textures: List<Raster<GPU>>, arg_buffer: Option<Buffer>) -> List<Raster<GPU>> {
 		assert_eq!(self.has_uniform, arg_buffer.is_some());
 		let device = &context.device;
 		let name = self.name.as_str();
@@ -233,10 +233,10 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.set_bind_group(0, Some(&bind_group), &[]);
 				rp.draw(0..3, 0..1);
 
-				let attributes = textures.clone_row_attributes(index);
-				TableRow::from_parts(Raster::new(GPU { texture: tex_out }), attributes)
+				let attributes = textures.clone_item_attributes(index);
+				Item::from_parts(Raster::new(GPU { texture: tex_out }), attributes)
 			})
-			.collect::<Table<_>>();
+			.collect::<List<_>>();
 		context.queue.submit([cmd.finish()]);
 		out
 	}

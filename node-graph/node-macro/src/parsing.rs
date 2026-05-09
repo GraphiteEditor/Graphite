@@ -1235,7 +1235,7 @@ mod tests {
 	fn test_node_with_implementations() {
 		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
-			fn levels<P: Pixel>(image: Table<Raster<P>>, #[implementations(f32, f64)] shadows: f64) -> Table<Raster<P>> {
+			fn levels<P: Pixel>(image: List<Raster<P>>, #[implementations(f32, f64)] shadows: f64) -> List<Raster<P>> {
 				// Implementation details...
 			}
 		);
@@ -1261,11 +1261,11 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("image"),
-				ty: parse_quote!(Table<Raster<P>>),
+				ty: parse_quote!(List<Raster<P>>),
 				implementations: Punctuated::new(),
 				context_features: vec![],
 			},
-			output_type: parse_quote!(Table<Raster<P>>),
+			output_type: parse_quote!(List<Raster<P>>),
 			is_async: false,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("shadows"),
@@ -1377,7 +1377,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &PlatformEditorApi, #[expose] path: String) -> Table<Raster<CPU>> {
+			async fn load_image(api: &PlatformEditorApi, #[expose] path: String) -> List<Raster<CPU>> {
 				// Implementation details...
 			}
 		);
@@ -1407,7 +1407,7 @@ mod tests {
 				implementations: Punctuated::new(),
 				context_features: vec![],
 			},
-			output_type: parse_quote!(Table<Raster<CPU>>),
+			output_type: parse_quote!(List<Raster<CPU>>),
 			is_async: true,
 			fields: vec![ParsedField {
 				pat_ident: pat_ident("path"),
@@ -1534,7 +1534,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, Table<Raster<CPU>>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, List<Raster<CPU>>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1560,12 +1560,12 @@ mod tests {
 				#[implementations((), #tuples, Footprint)]
 				footprint: F,
 				#[implementations(
-					() -> Table<Raster<CPU>>,
-					() -> Table<Color>,
-					() -> Table<GradientStops>,
-					Footprint -> Table<Raster<CPU>>,
-					Footprint -> Table<Color>,
-					Footprint -> Table<GradientStops>,
+					() -> List<Raster<CPU>>,
+					() -> List<Color>,
+					() -> List<GradientStops>,
+					Footprint -> List<Raster<CPU>>,
+					Footprint -> List<Color>,
+					Footprint -> List<GradientStops>,
 				)]
 				image: impl Node<F, Output = T>,
 			) -> T {

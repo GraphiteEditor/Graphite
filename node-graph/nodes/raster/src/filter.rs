@@ -1,7 +1,7 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
+use core_types::list::List;
 use core_types::registry::types::PixelLength;
-use core_types::table::Table;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
@@ -11,7 +11,7 @@ use raster_types::{CPU, Raster};
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: Table<Raster<CPU>>,
+	image_frame: List<Raster<CPU>>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
@@ -20,7 +20,7 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {
@@ -47,12 +47,12 @@ async fn blur(
 async fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.
-	image_frame: Table<Raster<CPU>>,
+	image_frame: List<Raster<CPU>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
 	#[range((0., 50.))]
 	#[hard_min(0.)]
 	radius: PixelLength,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {

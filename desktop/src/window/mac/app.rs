@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 use std::ffi::OsStr;
 use std::ops::Deref;
+use std::ops::DerefMut;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::sync::{Mutex, Once};
@@ -14,9 +15,61 @@ use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSURL};
 use crate::event::{AppEvent, AppEventScheduler};
 
 static APP_EVENT_SCHEDULER: Mutex<Option<AppEventScheduler>> = Mutex::new(None);
+static PENDING_EVENTS: Mutex<Option<Vec<AppEvent>>> = Mutex::new(Some(Vec::new()));
+
+fn dispatch_event(event: AppEvent) {
+	let app_event_scheduler_guard = APP_EVENT_SCHEDULER.lock().unwrap();
+	if let Some(app_event_scheduler) = app_event_scheduler_guard.deref() {
+		app_event_scheduler.schedule(event);
+	} else if let Some(pending_events) = PENDING_EVENTS.lock().unwrap().deref_mut() {
+		pending_events.push(event);
+	} else {
+		tracing::error!("Failed to dispatch event");
+	}
+}
+
+fn instance() -> objc2::rc::Retained<NSApplication> {
+	unsafe { msg_send![GraphiteApplication::class(), sharedApplication] }
+}
+
 static INSTALL_DELEGATE: Once = Once::new();
 
-static LAUNCH_DOCUMENTS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+pub(super) fn init() {
+	let _ = instance();
+
+	INSTALL_DELEGATE.call_once(|| {
+		let mtm = MainThreadMarker::new().expect("should only ever be called from main thread");
+		let delegate: Retained<GraphiteApplicationDelegate> = unsafe { msg_send![super(GraphiteApplicationDelegate::alloc(mtm).set_ivars(())), init] };
+		instance().setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+		std::mem::forget(delegate);
+	});
+}
+
+pub(super) fn setup(app_event_scheduler: AppEventScheduler) {
+	let mut app_event_scheduler_guard = APP_EVENT_SCHEDULER.lock().unwrap();
+
+	if let Some(mut pending_events) = PENDING_EVENTS.lock().unwrap().take() {
+		pending_events.drain(..).for_each(|event| {
+			app_event_scheduler.schedule(event);
+		});
+	} else {
+		tracing::error!("Failed to take PENDING_EVENTS and schedule them. This a bug.");
+	}
+
+	*app_event_scheduler_guard = Some(app_event_scheduler);
+}
+
+pub(super) fn hide() {
+	instance().hide(None);
+}
+
+pub(super) fn hide_others() {
+	instance().hideOtherApplications(None);
+}
+
+pub(super) fn show_all() {
+	instance().unhideAllApplications(None);
+}
 
 define_class!(
 	#[unsafe(super(NSApplication, NSResponder, NSObject))]
@@ -47,62 +100,20 @@ define_class!(
 	unsafe impl NSApplicationDelegate for GraphiteApplicationDelegate {
 		#[unsafe(method(application:openURLs:))]
 		fn application_open_urls(&self, _application: &NSApplication, urls: &NSArray<NSURL>) {
-			let app_event_scheduler = APP_EVENT_SCHEDULER.lock().unwrap();
+			let paths = (0..urls.count())
+				.filter_map(|index| {
+					let url = urls.objectAtIndex(index);
+					if !url.isFileURL() {
+						tracing::error!("Ignoring open URL event for non-file URL: {:?}", url);
+						return None;
+					}
+					let cstr = unsafe { CStr::from_ptr(url.fileSystemRepresentation().as_ptr()) };
+					let path = PathBuf::from(OsStr::from_bytes(cstr.to_bytes()));
+					Some(path)
+				})
+				.collect::<Vec<_>>();
 
-			let mut pending_paths_to_open = LAUNCH_DOCUMENTS.lock().unwrap();
-
-			for index in 0..urls.count() {
-				let url = urls.objectAtIndex(index);
-				if !url.isFileURL() {
-					tracing::error!("Ignoring macOS open URL event for non-file URL: {:?}", url);
-					continue;
-				}
-
-				let path = unsafe { CStr::from_ptr(url.fileSystemRepresentation().as_ptr()) };
-				let path = PathBuf::from(OsStr::from_bytes(path.to_bytes()));
-
-				pending_paths_to_open.push(path);
-			}
-
-			if let Some(app_event_scheduler) = app_event_scheduler.deref() {
-				app_event_scheduler.schedule(AppEvent::AddLaunchDocuments(std::mem::take(&mut pending_paths_to_open)));
-			}
+			dispatch_event(AppEvent::OpenFiles(paths));
 		}
 	}
 );
-
-fn instance() -> objc2::rc::Retained<NSApplication> {
-	unsafe { msg_send![GraphiteApplication::class(), sharedApplication] }
-}
-
-pub(super) fn init() {
-	let _ = instance();
-
-	INSTALL_DELEGATE.call_once(|| {
-		let mtm = MainThreadMarker::new().expect("only ever called from main thread");
-		let delegate: Retained<GraphiteApplicationDelegate> = unsafe { msg_send![super(GraphiteApplicationDelegate::alloc(mtm).set_ivars(())), init] };
-		instance().setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
-		std::mem::forget(delegate);
-	});
-}
-
-pub(super) fn setup(app_event_scheduler: AppEventScheduler) {
-	let mut app_event_scheduler_guard = APP_EVENT_SCHEDULER.lock().unwrap();
-
-	let mut pending_paths_to_open = LAUNCH_DOCUMENTS.lock().unwrap();
-	app_event_scheduler.schedule(AppEvent::AddLaunchDocuments(std::mem::take(&mut pending_paths_to_open)));
-
-	*app_event_scheduler_guard = Some(app_event_scheduler);
-}
-
-pub(super) fn hide() {
-	instance().hide(None);
-}
-
-pub(super) fn hide_others() {
-	instance().hideOtherApplications(None);
-}
-
-pub(super) fn show_all() {
-	instance().unhideAllApplications(None);
-}

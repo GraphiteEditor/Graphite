@@ -16,6 +16,7 @@ pub enum DesktopFrontendMessage {
 	OpenFileDialog {
 		title: String,
 		filters: Vec<FileFilter>,
+		multiple: bool,
 		context: OpenFileDialogContext,
 	},
 	SaveFileDialog {
@@ -71,6 +72,7 @@ pub enum DesktopFrontendMessage {
 	WindowMaximize,
 	WindowFullscreen,
 	WindowDrag,
+	WindowFocus,
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
@@ -102,6 +104,7 @@ pub struct FileFilter {
 	pub extensions: Vec<String>,
 }
 
+#[derive(Clone, Copy)]
 pub enum OpenFileDialogContext {
 	Open,
 	Import,
