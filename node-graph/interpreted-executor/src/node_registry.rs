@@ -41,7 +41,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<Raster<CPU>>, to: List<Graphic>),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: List<Raster<GPU>>, to: List<Graphic>),
-		// Type-erased attribute column conversions for the `Attach Attribute` node, so it monomorphizes only over the destination `List` type.
+		// Type-erased attribute conversions for the `Attach Attribute` node, so it monomorphizes only over the destination `List` type.
 		convert_node!(from: List<Artboard>, to: AttributeDyn),
 		convert_node!(from: List<Graphic>, to: AttributeDyn),
 		convert_node!(from: List<Vector>, to: AttributeDyn),

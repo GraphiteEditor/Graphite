@@ -72,8 +72,8 @@ impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
 	}
 }
 
-/// Wraps each row's element into a type-erased column. Lets nodes that accept a source attribute
-/// from any `List<U>` express their signature as `AttributeColumnDyn` and avoid monomorphizing
+/// Wraps each row's element into a type-erased attribute. Lets nodes that accept a source attribute
+/// from any `List<U>` express their signature as `AttributeDyn` and avoid monomorphizing
 /// over `U`; the compiler inserts this convert to bridge concrete-typed graph wires to the dyn input.
 impl<T: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static> Convert<AttributeDyn, ()> for List<T> {
 	async fn convert(self, _: Footprint, _: ()) -> AttributeDyn {

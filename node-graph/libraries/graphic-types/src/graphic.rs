@@ -116,12 +116,12 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 			match current_graphic_row.into_element() {
 				// Compose the parent's transform, opacity, and fill onto each child row
 				Graphic::Graphic(mut sub_list) => {
-					// Identity default means a missing column still composes correctly
+					// Identity default means a missing attribute still composes correctly
 					for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*v = current_transform * *v;
 					}
 
-					// f64 defaults to 0, but opacity/fill default to 1, so missing columns must be set rather than multiplied
+					// f64 defaults to 0, but opacity/fill default to 1, so missing attributes must be set rather than multiplied
 					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY) {
 						for v in values {
 							*v *= current_opacity;
