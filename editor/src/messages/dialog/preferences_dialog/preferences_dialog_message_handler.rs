@@ -184,7 +184,30 @@ impl PreferencesDialogMessageHandler {
 				selection_mode,
 			];
 
-			rows.extend_from_slice(&[header, selection_label, selection_mode]);
+			let checkbox_id = CheckboxId::new();
+			let lorem_ipsum_description = "
+				Fill newly created text boxes with placeholder 'Lorem ipsum' text.\n\
+				\n\
+				*Default: On.*
+				"
+			.trim();
+			let lorem_ipsum_placeholder = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.lorem_ipsum_placeholder)
+					.tooltip_label("Lorem Ipsum Placeholder")
+					.tooltip_description(lorem_ipsum_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::LoremIpsumPlaceholder { enabled: checkbox_input.checked }.into())
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Lorem Ipsum Placeholder")
+					.tooltip_label("Lorem Ipsum Placeholder")
+					.tooltip_description(lorem_ipsum_description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, selection_label, selection_mode, lorem_ipsum_placeholder]);
 		}
 
 		// =========

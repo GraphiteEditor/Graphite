@@ -18,6 +18,7 @@ pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
 	pub brush_tool: bool,
+	pub lorem_ipsum_placeholder: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
@@ -61,6 +62,7 @@ impl Default for PreferencesMessageHandler {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			brush_tool: false,
+			lorem_ipsum_placeholder: true,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
@@ -102,6 +104,9 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				}
 
 				responses.add(ToolMessage::RefreshToolShelf);
+			}
+			PreferencesMessage::LoremIpsumPlaceholder { enabled } => {
+				self.lorem_ipsum_placeholder = enabled;
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
