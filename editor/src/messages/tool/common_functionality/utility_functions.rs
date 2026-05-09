@@ -589,7 +589,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	Some(first_layer)
 }
 
-pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on_all: bool, stroke: Option<Stroke>, layer_to_viewport: DAffine2, mut overlay_context: Option<OverlayContext>) -> bool {
+pub fn near_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, is_closed_on_all: bool, stroke: Option<Stroke>, layer_to_viewport: DAffine2, mut _overlay_context: Option<OverlayContext>) -> bool {
 	let daffine2_to_affine = |transform: DAffine2| -> Affine { Affine::new(transform.to_cols_array()) };
 
 	// Note: mouse position is in viewport space and subpaths are in the stroke/element space
