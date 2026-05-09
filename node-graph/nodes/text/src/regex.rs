@@ -1,5 +1,5 @@
 use core_types::registry::types::SignedInteger;
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
 
 /// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.

@@ -7,7 +7,7 @@ use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{

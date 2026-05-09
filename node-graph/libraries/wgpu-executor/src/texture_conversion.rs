@@ -3,7 +3,7 @@ use core_types::Color;
 use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::ops::Convert;
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use core_types::transform::Footprint;
 use raster_types::Image;
 use raster_types::{CPU, GPU, Raster};

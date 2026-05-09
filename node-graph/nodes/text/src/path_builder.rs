@@ -1,4 +1,4 @@
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
 use parley::GlyphRun;

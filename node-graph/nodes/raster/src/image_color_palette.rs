@@ -1,6 +1,6 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::table::{Table, Item};
+use core_types::table::{Item, Table};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
