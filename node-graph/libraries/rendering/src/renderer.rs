@@ -218,8 +218,6 @@ pub struct RenderParams {
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
 	pub artboard_background: Option<Color>,
-	/// Keep track of whether a vector contains only closed paths.
-	pub only_closed_paths: bool,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
 }
@@ -926,9 +924,6 @@ impl Render for List<Vector> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 
-			let mut render_params = render_params.clone();
-			render_params.only_closed_paths = vector.stroke_bezier_paths().all(|subpath| subpath.closed);
-
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -951,7 +946,7 @@ impl Render for List<Vector> {
 				path.push_str(bezpath.to_svg().as_str());
 			}
 
-			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) && render_params.only_closed_paths {
+			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) {
 				MaskType::Clip
 			} else {
 				MaskType::Mask
@@ -979,7 +974,7 @@ impl Render for List<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						&render_params,
+						render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -1019,7 +1014,7 @@ impl Render for List<Vector> {
 							applied_stroke_transform,
 							bounds_matrix,
 							transformed_bounds_matrix,
-							&render_params,
+							render_params,
 						);
 						attributes.push_val(fill_only);
 					});
@@ -1108,7 +1103,7 @@ impl Render for List<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						&render_params,
+						render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
