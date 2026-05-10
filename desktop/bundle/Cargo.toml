@@ -14,3 +14,7 @@ cef-dll-sys = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 serde = { workspace = true }
 plist = { version = "*" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+msi = "0.10"
+cab = "0.6"
