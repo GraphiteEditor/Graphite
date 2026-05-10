@@ -1,3 +1,6 @@
+// This is a bit of a hack to get file associations working without an installer.
+// TODO: Replace this with a proper installer that can set up file associations.
+
 use std::env;
 use std::path::Path;
 
