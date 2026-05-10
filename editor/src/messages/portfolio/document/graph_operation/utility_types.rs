@@ -464,7 +464,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: GradientStops, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: GradientStops, gradient_type: GradientType, spread_method: GradientSpreadMethod, transform: DAffine2, focal_center: DVec2, focal_radius: f64) {
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
@@ -498,6 +498,18 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
 			NodeInput::value(TaggedValue::GradientType(gradient_type), false),
+			true,
+		);
+
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FocalCenterInput::INDEX),
+			NodeInput::value(TaggedValue::DVec2(focal_center), false),
+			true,
+		);
+
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::FocalRadiusInput::INDEX),
+			NodeInput::value(TaggedValue::F64(focal_radius), false),
 			true,
 		);
 

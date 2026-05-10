@@ -3,7 +3,7 @@ use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, ATTR_FOCAL_CENTER, ATTR_FOCAL_RADIUS, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
@@ -146,9 +146,20 @@ impl RenderExt for List<GradientStops> {
 				);
 			}
 			GradientType::Radial => {
+				let focal_center: DVec2 = self.attribute_cloned_or_default(ATTR_FOCAL_CENTER, 0);
+				let focal_radius: f64 = self.attribute_cloned_or_default(ATTR_FOCAL_RADIUS, 0);
+
+				let mut focal_attrs = String::new();
+				if focal_center.x.abs() > 1e-9 || focal_center.y.abs() > 1e-9 {
+					let _ = write!(focal_attrs, r#" fx="{}" fy="{}""#, focal_center.x, focal_center.y);
+				}
+				if focal_radius > 1e-9 {
+					let _ = write!(focal_attrs, r#" fr="{}""#, focal_radius);
+				}
+
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{spread_method}{gradient_transform}>{}</radialGradient>"#,
+					r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{focal_attrs}{spread_method}{gradient_transform}>{}</radialGradient>"#,
 					gradient_id, stop
 				);
 			}

@@ -58,6 +58,10 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
+/// Radial gradient's `DVec2` focal center relative to the start/center.
+pub const ATTR_FOCAL_CENTER: &str = "focal_center";
+/// Radial gradient's `f64` focal radius relative to the radius.
+pub const ATTR_FOCAL_RADIUS: &str = "focal_radius";
 /// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
