@@ -1,4 +1,4 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
@@ -58,30 +58,37 @@ impl CornerRadius for List<f64> {
 #[node_macro::node(category("Vector: Shape"))]
 fn circle(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[unit(" px")]
 	#[default(50.)]
-	radius: f64,
-) -> List<Vector> {
+	radius: Item<f64>,
+) -> Item<List<Vector>> {
+	let radius = radius.into_element();
+
 	let radius = radius.abs();
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))))
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
 #[node_macro::node(category("Vector: Shape"))]
 fn arc(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[unit(" px")]
 	#[default(50.)]
-	radius: f64,
-	start_angle: Angle,
+	radius: Item<f64>,
+	start_angle: Item<Angle>,
 	#[default(270.)]
 	#[range((0., 360.))]
-	sweep_angle: Angle,
-	arc_type: ArcType,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
+	sweep_angle: Item<Angle>,
+	arc_type: Item<ArcType>,
+) -> Item<List<Vector>> {
+	let radius = radius.into_element();
+	let start_angle = start_angle.into_element();
+	let sweep_angle = sweep_angle.into_element();
+	let arc_type = arc_type.into_element();
+
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
@@ -90,43 +97,53 @@ fn arc(
 			ArcType::Closed => subpath::ArcType::Closed,
 			ArcType::PieSlice => subpath::ArcType::PieSlice,
 		},
-	)))
+	))))
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
 #[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
 fn spiral(
 	_: impl Ctx,
-	_primary: (),
-	spiral_type: SpiralType,
-	#[default(5.)] turns: f64,
-	#[default(0.)] start_angle: f64,
-	#[default(0.)] inner_radius: f64,
-	#[default(25)] outer_radius: f64,
-	#[default(90.)] angular_resolution: f64,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
+	_primary: Item<()>,
+	spiral_type: Item<SpiralType>,
+	#[default(5.)] turns: Item<f64>,
+	#[default(0.)] start_angle: Item<f64>,
+	#[default(0.)] inner_radius: Item<f64>,
+	#[default(25)] outer_radius: Item<f64>,
+	#[default(90.)] angular_resolution: Item<f64>,
+) -> Item<List<Vector>> {
+	let spiral_type = spiral_type.into_element();
+	let turns = turns.into_element();
+	let start_angle = start_angle.into_element();
+	let inner_radius = inner_radius.into_element();
+	let outer_radius = outer_radius.into_element();
+	let angular_resolution = angular_resolution.into_element();
+
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_spiral(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
 		spiral_type,
-	)))
+	))))
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
 #[node_macro::node(category("Vector: Shape"))]
 fn ellipse(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[unit(" px")]
 	#[default(50)]
-	radius_x: f64,
+	radius_x: Item<f64>,
 	#[unit(" px")]
 	#[default(25)]
-	radius_y: f64,
-) -> List<Vector> {
+	radius_y: Item<f64>,
+) -> Item<List<Vector>> {
+	let radius_x = radius_x.into_element();
+	let radius_y = radius_y.into_element();
+
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -140,66 +157,84 @@ fn ellipse(
 			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
 	}
 
-	List::new_from_element(ellipse)
+	Item::new_from_element(List::new_from_element(ellipse))
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
 fn rectangle<T: CornerRadius>(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[unit(" px")]
 	#[default(100)]
-	width: f64,
+	width: Item<f64>,
 	#[unit(" px")]
 	#[default(100)]
-	height: f64,
-	_individual_corner_radii: bool, // TODO: Move this to the bottom once we have a migration capability
-	#[implementations(f64, List<f64>)] corner_radius: T,
-	#[default(true)] clamped: bool,
-) -> List<Vector> {
-	corner_radius.generate(DVec2::new(width, height), clamped)
+	height: Item<f64>,
+	_individual_corner_radii: Item<bool>, // TODO: Move this to the bottom once we have a migration capability
+	#[implementations(Item<f64>, Item<List<f64>>)] corner_radius: Item<T>,
+	#[default(true)] clamped: Item<bool>,
+) -> Item<List<Vector>> {
+	let width = width.into_element();
+	let height = height.into_element();
+	let _individual_corner_radii = _individual_corner_radii.into_element();
+	let corner_radius = corner_radius.into_element();
+	let clamped = clamped.into_element();
+
+	Item::new_from_element(corner_radius.generate(DVec2::new(width, height), clamped))
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
 #[node_macro::node(category("Vector: Shape"))]
 fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[default(6)]
 	#[hard_min(3.)]
-	#[implementations(u32, u64, f64)]
-	sides: T,
+	#[implementations(Item<u32>, Item<u64>, Item<f64>)]
+	sides: Item<T>,
 	#[unit(" px")]
 	#[default(50)]
-	radius: f64,
-) -> List<Vector> {
+	radius: Item<f64>,
+) -> Item<List<Vector>> {
+	let sides = sides.into_element();
+	let radius = radius.into_element();
+
 	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
 #[node_macro::node(category("Vector: Shape"))]
 fn star<T: AsU64>(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[default(5)]
 	#[hard_min(2.)]
-	#[implementations(u32, u64, f64)]
-	sides: T,
+	#[implementations(Item<u32>, Item<u64>, Item<f64>)]
+	sides: Item<T>,
 	#[unit(" px")]
 	#[default(50)]
-	radius_1: f64,
+	radius_1: Item<f64>,
 	#[unit(" px")]
 	#[default(25)]
-	radius_2: f64,
-) -> List<Vector> {
+	radius_2: Item<f64>,
+) -> Item<List<Vector>> {
+	let sides = sides.into_element();
+	let radius_1 = radius_1.into_element();
+	let radius_2 = radius_2.into_element();
+
 	let points = sides.as_u64();
 	let diameter: f64 = radius_1 * 2.;
 	let inner_diameter = radius_2 * 2.;
 
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(
+		DVec2::splat(-diameter),
+		points,
+		diameter,
+		inner_diameter,
+	))))
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -222,18 +257,24 @@ pub enum QRCodeErrorCorrectionLevel {
 #[node_macro::node(category("Vector: Shape"), name("QR Code"))]
 fn qr_code(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	#[default("https://graphite.art")]
-	text: String,
-	#[widget(ParsedWidgetOverride::Hidden)] has_size: bool,
+	text: Item<String>,
+	#[widget(ParsedWidgetOverride::Hidden)] has_size: Item<bool>,
 	#[unit(" px")]
 	#[hard_min(1.)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	size: f64,
-	error_correction: QRCodeErrorCorrectionLevel,
-	#[default(false)] individual_squares: bool,
-) -> List<Vector> {
+	size: Item<f64>,
+	error_correction: Item<QRCodeErrorCorrectionLevel>,
+	#[default(false)] individual_squares: Item<bool>,
+) -> Item<List<Vector>> {
+	let text = text.into_element();
+	let has_size = has_size.into_element();
+	let size = size.into_element();
+	let error_correction = error_correction.into_element();
+	let individual_squares = individual_squares.into_element();
+
 	let ecc = match error_correction {
 		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
 		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
@@ -241,7 +282,7 @@ fn qr_code(
 		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return List::default() };
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return Item::new_from_element(List::default()) };
 
 	let mut vector = match individual_squares {
 		true => {
@@ -270,25 +311,38 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size.max(1.) / qr_code.size() as f64)));
 	}
 
-	List::new_from_element(vector)
+	Item::new_from_element(List::new_from_element(vector))
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
 #[node_macro::node(category("Vector: Shape"))]
 fn arrow(
 	_: impl Ctx,
-	_primary: (),
-	#[default(100., 0.)] arrow_to: PixelSize,
-	#[default(10)] shaft_width: PixelLength,
-	#[default(30)] head_width: PixelLength,
-	#[default(20)] head_length: PixelLength,
-) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
+	_primary: Item<()>,
+	#[default(100., 0.)] arrow_to: Item<PixelSize>,
+	#[default(10)] shaft_width: Item<PixelLength>,
+	#[default(30)] head_width: Item<PixelLength>,
+	#[default(20)] head_length: Item<PixelLength>,
+) -> Item<List<Vector>> {
+	let arrow_to = arrow_to.into_element();
+	let shaft_width = shaft_width.into_element();
+	let head_width = head_width.into_element();
+	let head_length = head_length.into_element();
+
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(
+		DVec2::ZERO,
+		arrow_to,
+		shaft_width,
+		head_width,
+		head_length,
+	))))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: PixelSize) -> List<Vector> {
-	List::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to)))
+fn line(_: impl Ctx, _primary: Item<()>, #[default(100., 100.)] line_to: Item<PixelSize>) -> Item<List<Vector>> {
+	let line_to = line_to.into_element();
+
+	Item::new_from_element(List::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(DVec2::ZERO, line_to))))
 }
 
 trait GridSpacing {
@@ -309,17 +363,23 @@ impl GridSpacing for DVec2 {
 #[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
-	_primary: (),
-	grid_type: GridType,
+	_primary: Item<()>,
+	grid_type: Item<GridType>,
 	#[unit(" px")]
 	#[hard_min(0.)]
 	#[default(10)]
-	#[implementations(f64, DVec2)]
-	spacing: T,
-	#[default(10)] columns: u32,
-	#[default(10)] rows: u32,
-	#[default(30., 30.)] angles: DVec2,
-) -> List<Vector> {
+	#[implementations(Item<f64>, Item<DVec2>)]
+	spacing: Item<T>,
+	#[default(10)] columns: Item<u32>,
+	#[default(10)] rows: Item<u32>,
+	#[default(30., 30.)] angles: Item<DVec2>,
+) -> Item<List<Vector>> {
+	let grid_type = grid_type.into_element();
+	let spacing = spacing.into_element();
+	let columns = columns.into_element();
+	let rows = rows.into_element();
+	let angles = angles.into_element();
+
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
@@ -401,7 +461,7 @@ fn grid<T: GridSpacing>(
 		}
 	}
 
-	List::new_from_element(vector)
+	Item::new_from_element(List::new_from_element(vector))
 }
 
 #[cfg(test)]
@@ -410,11 +470,36 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), GridType::Isometric, 0., 5, 5, (0., 0.).into());
-		grid((), (), GridType::Isometric, 90., 5, 5, (90., 90.).into());
+		grid(
+			(),
+			Item::new_from_element(()),
+			Item::new_from_element(GridType::Isometric),
+			Item::new_from_element(0.),
+			Item::new_from_element(5),
+			Item::new_from_element(5),
+			Item::new_from_element((0., 0.).into()),
+		);
+		grid(
+			(),
+			Item::new_from_element(()),
+			Item::new_from_element(GridType::Isometric),
+			Item::new_from_element(90.),
+			Item::new_from_element(5),
+			Item::new_from_element(5),
+			Item::new_from_element((90., 90.).into()),
+		);
 
 		// Works properly
-		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (30., 30.).into());
+		let grid = grid(
+			(),
+			Item::new_from_element(()),
+			Item::new_from_element(GridType::Isometric),
+			Item::new_from_element(10.),
+			Item::new_from_element(5),
+			Item::new_from_element(5),
+			Item::new_from_element((30., 30.).into()),
+		)
+		.into_element();
 		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
@@ -429,7 +514,16 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), GridType::Isometric, 10., 5, 5, (40., 30.).into());
+		let grid = grid(
+			(),
+			Item::new_from_element(()),
+			Item::new_from_element(GridType::Isometric),
+			Item::new_from_element(10.),
+			Item::new_from_element(5),
+			Item::new_from_element(5),
+			Item::new_from_element((40., 30.).into()),
+		)
+		.into_element();
 		assert_eq!(grid.element(0).unwrap().point_domain.ids().len(), 5 * 5);
 		assert_eq!(grid.element(0).unwrap().segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 		for (_, bezier, _, _) in grid.element(0).unwrap().segment_bezier_iter() {
@@ -442,7 +536,16 @@ mod tests {
 
 	#[test]
 	fn qr_code_test() {
-		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
+		let qr = qr_code(
+			(),
+			Item::new_from_element(()),
+			Item::new_from_element("https://graphite.art".to_string()),
+			Item::new_from_element(false),
+			Item::new_from_element(1.),
+			Item::new_from_element(QRCodeErrorCorrectionLevel::Low),
+			Item::new_from_element(true),
+		)
+		.into_element();
 		assert!(qr.element(0).unwrap().point_domain.ids().len() > 0);
 		assert!(qr.element(0).unwrap().segment_domain.ids().len() > 0);
 	}

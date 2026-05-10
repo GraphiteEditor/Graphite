@@ -1,4 +1,4 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
@@ -7,8 +7,9 @@ use vector_types::vector::VectorModification;
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box<VectorModification>, node_path: List<NodeId>) -> List<Vector> {
-	use core_types::list::Item;
+async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<List<NodeId>>) -> Item<List<Vector>> {
+	let modification = modification.into_element();
+	let node_path = node_path.into_element();
 
 	if vector.is_empty() {
 		vector.push(Item::default());
@@ -30,12 +31,12 @@ async fn path_modify(_ctx: impl Ctx, mut vector: List<Vector>, modification: Box
 	if vector.len() > 1 {
 		warn!("The path modify ran on {} vector items. Only the first can be modified.", vector.len());
 	}
-	vector
+	Item::new_from_element(vector)
 }
 
 /// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
-async fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> List<Vector> {
+async fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> Item<List<Vector>> {
 	let (elements, transforms) = vector.element_and_attribute_slices_mut::<DAffine2>(ATTR_TRANSFORM);
 	for (element, transform) in elements.iter_mut().zip(transforms.iter_mut()) {
 		for (_, point) in element.point_domain.positions_mut() {
@@ -46,5 +47,5 @@ async fn apply_transform(_ctx: impl Ctx, mut vector: List<Vector>) -> List<Vecto
 		*transform = DAffine2::IDENTITY;
 	}
 
-	vector
+	Item::new_from_element(vector)
 }

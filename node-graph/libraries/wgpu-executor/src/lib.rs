@@ -49,6 +49,16 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 	}
 }
 
+/// Mirrors the `From<&EditorApi<T>> for &WgpuExecutor` impl as a `Convert` impl so the registry's
+/// runtime-Item-aware `convert_node!` can lift it through the `Item<>` wrapper. (The `From`-based
+/// `into_node!` path can't be lifted through `Item<>` due to the orphan rule colliding with the
+/// reflexive `From<X> for X` blanket.)
+impl<'a, T: ApplicationIo<Executor = WgpuExecutor> + Send + Sync> core_types::ops::Convert<&'a WgpuExecutor, ()> for &'a EditorApi<T> {
+	async fn convert(self, _: core_types::transform::Footprint, _: ()) -> &'a WgpuExecutor {
+		self.into()
+	}
+}
+
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Arc<wgpu::Texture>> {
 		let texture = self.request_texture(size).await;

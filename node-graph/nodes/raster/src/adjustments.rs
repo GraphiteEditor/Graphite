@@ -4,7 +4,7 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::list::List;
+use core_types::list::{Item, List};
 use glam::{Vec3, Vec4};
 use no_std_types::color::Color;
 use no_std_types::context::Ctx;
@@ -172,22 +172,27 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
+#[cfg(feature = "std")]
 #[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
 fn brightness_contrast<T: Adjust<Color>>(
 	_ctx: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
 	#[gpu_image]
-	mut input: T,
-	brightness: SignedPercentageF32,
-	contrast: SignedPercentageF32,
-	use_classic: bool,
-) -> T {
+	input: Item<T>,
+	brightness: Item<SignedPercentageF32>,
+	contrast: Item<SignedPercentageF32>,
+	use_classic: Item<bool>,
+) -> Item<T> {
+	let mut input = input.into_element();
+	let brightness = brightness.into_element();
+	let contrast = contrast.into_element();
+	let use_classic = use_classic.into_element();
 	if use_classic {
-		return brightness_contrast_classic(_ctx, input, brightness, contrast);
+		return Item::new_from_element(brightness_contrast_classic(_ctx, input, brightness, contrast));
 	}
 
 	const WINDOW_SIZE: usize = 1024;
@@ -242,7 +247,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 
 	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| combined_lut[(c * lut_max).round() as usize]).to_linear_srgb());
 
-	input
+	Item::new_from_element(input)
 }
 
 // Aims for interoperable compatibility with:

@@ -250,7 +250,8 @@ impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 pub async fn upload_texture<'a: 'n, T: Convert<List<Raster<GPU>>, &'a WgpuExecutor>>(
 	_: impl Ctx,
 	#[implementations(List<Raster<CPU>>, List<Raster<GPU>>)] input: T,
-	executor: &'a WgpuExecutor,
-) -> List<Raster<GPU>> {
-	input.convert(Footprint::DEFAULT, executor).await
+	executor: Item<&'a WgpuExecutor>,
+) -> Item<List<Raster<GPU>>> {
+	let executor = executor.into_element();
+	Item::new_from_element(input.convert(Footprint::DEFAULT, executor).await)
 }

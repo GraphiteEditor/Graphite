@@ -182,33 +182,39 @@ pub enum StringCapitalization {
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: TextArea) -> String {
-	string
+fn string_value(_: impl Ctx, _primary: (), string: Item<TextArea>) -> Item<String> {
+	let string = string.into_element();
+	Item::new_from_element(string)
 }
 
 /// Type-asserts a value to be a string.
 #[node_macro::node(category("Debug"))]
-fn to_string(_: impl Ctx, value: String) -> String {
-	value
+fn to_string(_: impl Ctx, value: String) -> Item<String> {
+	Item::new_from_element(value)
 }
 
 /// Joins two strings together.
 #[node_macro::node(category("Text"))]
-fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, second: TextArea) -> String {
-	first + &second
+fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, second: Item<TextArea>) -> Item<String> {
+	let second = second.into_element();
+	Item::new_from_element(first + &second)
 }
 
 /// Replaces all occurrences of "From" with "To" in the input string.
 #[node_macro::node(category("Text"))]
-fn string_replace(_: impl Ctx, string: String, from: TextArea, to: TextArea) -> String {
-	string.replace(&from, &to)
+fn string_replace(_: impl Ctx, string: String, from: Item<TextArea>, to: Item<TextArea>) -> Item<String> {
+	let from = from.into_element();
+	let to = to.into_element();
+	Item::new_from_element(string.replace(&from, &to))
 }
 
 /// Extracts a substring from the input string, starting at "Start" and ending before "End".
 ///
 /// Negative indices count from the end of the string. If the index of "Start" equals or exceeds "End", the result is an empty string.
 #[node_macro::node(category("Text"))]
-fn string_slice(_: impl Ctx, string: String, start: SignedInteger, end: SignedInteger) -> String {
+fn string_slice(_: impl Ctx, string: String, start: Item<SignedInteger>, end: Item<SignedInteger>) -> Item<String> {
+	let start = start.into_element();
+	let end = end.into_element();
 	let total_graphemes = string.graphemes(true).count();
 
 	let start = if start < 0. {
@@ -223,10 +229,10 @@ fn string_slice(_: impl Ctx, string: String, start: SignedInteger, end: SignedIn
 	};
 
 	if start >= end {
-		return String::new();
+		return Item::new_from_element(String::new());
 	}
 
-	string.graphemes(true).skip(start).take(end - start).collect()
+	Item::new_from_element(string.graphemes(true).skip(start).take(end - start).collect())
 }
 
 /// Clips the string to a maximum character length, optionally appending a suffix (like "…") when truncation occurs. Strings already within the limit are not modified.
@@ -237,16 +243,18 @@ fn string_truncate(
 	string: String,
 	/// The maximum number of characters allowed, including the suffix if one is appended.
 	#[default(80)]
-	length: u32,
+	length: Item<u32>,
 	/// A suffix appended to indicate truncation occurred, unless empty. Its length counts towards the character budget.
 	#[default("…")]
-	suffix: String,
-) -> String {
+	suffix: Item<String>,
+) -> Item<String> {
+	let length = length.into_element();
+	let suffix = suffix.into_element();
 	let max_length = length as usize;
 	let grapheme_count = string.graphemes(true).count();
 
 	if grapheme_count <= max_length {
-		return string;
+		return Item::new_from_element(string);
 	}
 
 	let suffix: String = suffix.graphemes(true).take(max_length).collect();
@@ -254,7 +262,7 @@ fn string_truncate(
 
 	let mut truncated: String = string.graphemes(true).take(keep).collect();
 	truncated.push_str(&suffix);
-	truncated
+	Item::new_from_element(truncated)
 }
 
 /// Formats a number as a string with control over decimal places, decimal separator, and thousands grouping.
@@ -265,22 +273,28 @@ fn format_number(
 	number: f64,
 	/// The amount of digits after the decimal point. The value is rounded to fit. Set to 0 to show only whole numbers.
 	#[default(2)]
-	decimal_places: u32,
+	decimal_places: Item<u32>,
 	/// The character(s) used as the decimal point.
 	#[default(".")]
-	decimal_separator: String,
+	decimal_separator: Item<String>,
 	/// Always show the exact number of decimal places, even if they are trailing zeros.
 	#[default(true)]
-	fixed_decimals: bool,
+	fixed_decimals: Item<bool>,
 	/// Whether to group digits with a thousands separator.
-	use_thousands_separator: bool,
+	use_thousands_separator: Item<bool>,
 	/// The character(s) inserted between digit groups.
 	#[default(",")]
-	thousands_separator: String,
+	thousands_separator: Item<String>,
 	/// Don't group 4-digit numbers with a thousands separator (only start grouping at 10,000 and above).
 	#[name("Start at 10,000")]
-	start_at_10000: bool,
-) -> String {
+	start_at_10000: Item<bool>,
+) -> Item<String> {
+	let decimal_places = decimal_places.into_element();
+	let decimal_separator = decimal_separator.into_element();
+	let fixed_decimals = fixed_decimals.into_element();
+	let use_thousands_separator = use_thousands_separator.into_element();
+	let thousands_separator = thousands_separator.into_element();
+	let start_at_10000 = start_at_10000.into_element();
 	// Find the maximum meaningful decimal precision by detecting where float noise begins.
 	// This works correctly whether the value originated as f32 or f64, since we find the
 	// shortest decimal representation that round-trips back to the same f64 value.
@@ -338,19 +352,19 @@ fn format_number(
 	let Some(decimal_string) = decimal_string else {
 		if fixed_decimals && requested_places > 0 {
 			let zeros = "0".repeat(requested_places);
-			return format!("{sign}{grouped_whole}{decimal_separator}{zeros}");
+			return Item::new_from_element(format!("{sign}{grouped_whole}{decimal_separator}{zeros}"));
 		}
-		return format!("{sign}{grouped_whole}");
+		return Item::new_from_element(format!("{sign}{grouped_whole}"));
 	};
 
 	if fixed_decimals {
-		format!("{sign}{grouped_whole}{decimal_separator}{decimal_string}")
+		Item::new_from_element(format!("{sign}{grouped_whole}{decimal_separator}{decimal_string}"))
 	} else {
 		let trimmed = decimal_string.trim_end_matches('0');
 		if trimmed.is_empty() {
-			format!("{sign}{grouped_whole}")
+			Item::new_from_element(format!("{sign}{grouped_whole}"))
 		} else {
-			format!("{sign}{grouped_whole}{decimal_separator}{trimmed}")
+			Item::new_from_element(format!("{sign}{grouped_whole}{decimal_separator}{trimmed}"))
 		}
 	}
 }
@@ -362,9 +376,10 @@ fn string_to_number(
 	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, and scientific notation (e.g. "1e-3") is supported.
 	string: String,
 	/// The value of the result if the string cannot be parsed as a valid number.
-	fallback: f64,
-) -> f64 {
-	string.trim().parse::<f64>().unwrap_or(fallback)
+	fallback: Item<f64>,
+) -> Item<f64> {
+	let fallback = fallback.into_element();
+	Item::new_from_element(string.trim().parse::<f64>().unwrap_or(fallback))
 }
 
 /// Removes leading and/or trailing whitespace from a string. Common whitespace characters include spaces, tabs, and newlines.
@@ -375,17 +390,19 @@ fn string_trim(
 	string: String,
 	/// Whether the start of the string should have its whitespace removed.
 	#[default(true)]
-	start: bool,
+	start: Item<bool>,
 	/// Whether the end of the string should have its whitespace removed.
 	#[default(true)]
-	end: bool,
-) -> String {
-	match (start, end) {
+	end: Item<bool>,
+) -> Item<String> {
+	let start = start.into_element();
+	let end = end.into_element();
+	Item::new_from_element(match (start, end) {
 		(true, true) => string.trim().to_string(),
 		(true, false) => string.trim_start().to_string(),
 		(false, true) => string.trim_end().to_string(),
 		(false, false) => string,
-	}
+	})
 }
 
 /// Converts between literal escape sequences and their corresponding control characters within a string.
@@ -399,9 +416,10 @@ fn string_escape(
 	string: String,
 	/// Convert the control characters back into their escape sequence representations.
 	#[default(true)]
-	unescape: bool,
-) -> String {
-	if unescape { unescape_string(string) } else { escape_string(string) }
+	unescape: Item<bool>,
+) -> Item<String> {
+	let unescape = unescape.into_element();
+	Item::new_from_element(if unescape { unescape_string(string) } else { escape_string(string) })
 }
 
 /// Reverses the sequence of characters making up the string so it reads back-to-front. ("Backwards text" becomes "txet sdrawkcaB".)
@@ -410,8 +428,8 @@ fn string_reverse(
 	_: impl Ctx,
 	/// The string to be reversed.
 	string: String,
-) -> String {
-	string.graphemes(true).rev().collect()
+) -> Item<String> {
+	Item::new_from_element(string.graphemes(true).rev().collect())
 }
 
 /// Repeats the string a given number of times, optionally with a separator between each repetition.
@@ -423,15 +441,18 @@ fn string_repeat(
 	/// The number of times the string should appear in the output.
 	#[default(2)]
 	#[hard_min(1)]
-	count: u32,
+	count: Item<u32>,
 	/// The string placed between each repetition.
 	#[default("\\n")]
-	separator: String,
+	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
-	separator_escaping: bool,
-) -> String {
+	separator_escaping: Item<bool>,
+) -> Item<String> {
+	let count = count.into_element();
+	let separator = separator.into_element();
+	let separator_escaping = separator_escaping.into_element();
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
 	let count = count.max(1) as usize;
@@ -443,7 +464,7 @@ fn string_repeat(
 		}
 		result.push_str(&string);
 	}
-	result
+	Item::new_from_element(result)
 }
 
 /// Pads the string to a target length by filling with the given repeated substring. If the string already meets or exceeds the target length, it is returned unchanged.
@@ -454,21 +475,25 @@ fn string_pad(
 	string: String,
 	/// The target character length after padding. When "Up To" is set, this length concerns only the portion before (or after) that substring.
 	#[default(10)]
-	length: u32,
+	length: Item<u32>,
 	/// The repeated substring used to fill the remaining space. A multi-charcter substring may end partway through its final repetition.
 	#[default("#")]
-	padding: String,
+	padding: Item<String>,
 	/// Pad only the length of the string encountered before the start of the first (or after the end of the last) occurrence of this substring, if given and present (otherwise the full string is considered).
 	///
 	/// For example, this can pad numbers with leading zeros to align them before the decimal point.
-	up_to: String,
+	up_to: Item<String>,
 	/// Pad at the end of the string instead of the start.
-	from_end: bool,
-) -> String {
+	from_end: Item<bool>,
+) -> Item<String> {
+	let length = length.into_element();
+	let padding = padding.into_element();
+	let up_to = up_to.into_element();
+	let from_end = from_end.into_element();
 	let target_length = length as usize;
 
 	if padding.is_empty() {
-		return string;
+		return Item::new_from_element(string);
 	}
 
 	// Split the string at the "up to" substring if provided, and only pad that portion
@@ -482,32 +507,32 @@ fn string_pad(
 			let after_substring = &after[up_to.len()..];
 			let current_length = after_substring.graphemes(true).count();
 			if current_length >= target_length {
-				return string;
+				return Item::new_from_element(string);
 			}
 			let pad_length = target_length - current_length;
 			let padding: String = padding.graphemes(true).cycle().take(pad_length).collect();
-			return format!("{before}{up_to}{after_substring}{padding}");
+			return Item::new_from_element(format!("{before}{up_to}{after_substring}{padding}"));
 		} else {
 			// Pad the portion before the substring
 			let current_length = before.graphemes(true).count();
 			if current_length >= target_length {
-				return string;
+				return Item::new_from_element(string);
 			}
 			let pad_length = target_length - current_length;
 			let padding: String = padding.graphemes(true).cycle().take(pad_length).collect();
-			return format!("{padding}{before}{after}");
+			return Item::new_from_element(format!("{padding}{before}{after}"));
 		}
 	}
 
 	let current_length = string.graphemes(true).count();
 	if current_length >= target_length {
-		return string;
+		return Item::new_from_element(string);
 	}
 
 	let pad_length = target_length - current_length;
 	let padding: String = padding.graphemes(true).cycle().take(pad_length).collect();
 
-	if from_end { string + &padding } else { padding + &string }
+	Item::new_from_element(if from_end { string + &padding } else { padding + &string })
 }
 
 /// Checks whether the string contains the given substring. Optionally restricts the match to only the start and/or end of the string.
@@ -517,18 +542,21 @@ fn string_contains(
 	/// The string to search within.
 	string: String,
 	/// The substring to search for.
-	substring: String,
+	substring: Item<String>,
 	/// Only match if the substring appears at the start of the string.
-	at_start: bool,
+	at_start: Item<bool>,
 	/// Only match if the substring appears at the end of the string.
-	at_end: bool,
-) -> bool {
-	match (at_start, at_end) {
+	at_end: Item<bool>,
+) -> Item<bool> {
+	let substring = substring.into_element();
+	let at_start = at_start.into_element();
+	let at_end = at_end.into_element();
+	Item::new_from_element(match (at_start, at_end) {
 		(true, true) => string.starts_with(&*substring) && string.ends_with(&*substring),
 		(true, false) => string.starts_with(&*substring),
 		(false, true) => string.ends_with(&*substring),
 		(false, false) => string.contains(&*substring),
-	}
+	})
 }
 
 /// Similar to the **String Contains** node, this searches within the input string for the first (or last) occurrence of a substring and returns the index of where that begins, or -1 if not found.
@@ -538,15 +566,17 @@ fn string_find_index(
 	/// The string to search within.
 	string: String,
 	/// The substring to search for.
-	substring: String,
+	substring: Item<String>,
 	/// Find the start index of the last occurrence instead of the first.
-	from_end: bool,
-) -> f64 {
+	from_end: Item<bool>,
+) -> Item<f64> {
+	let substring = substring.into_element();
+	let from_end = from_end.into_element();
 	if substring.is_empty() {
-		return if from_end { string.graphemes(true).count() as f64 } else { 0. };
+		return Item::new_from_element(if from_end { string.graphemes(true).count() as f64 } else { 0. });
 	}
 
-	if from_end {
+	Item::new_from_element(if from_end {
 		// Search backwards by finding all byte-level matches and taking the last one
 		string
 			.rmatch_indices(&*substring)
@@ -557,7 +587,7 @@ fn string_find_index(
 			.match_indices(&*substring)
 			.next()
 			.map_or(-1., |(byte_index, _)| string[..byte_index].graphemes(true).count() as f64)
-	}
+	})
 }
 
 /// Counts the number of occurrences of a substring within the string.
@@ -567,20 +597,22 @@ fn string_occurrences(
 	/// The string to search within.
 	string: String,
 	/// The substring to count occurrences of.
-	substring: String,
+	substring: Item<String>,
 	/// Whether to count overlapping occurrences, using the substring as a sliding window.
 	///
 	/// For example, "aa" occurs twice in "aaaa" without overlapping but three times with overlapping.
-	overlapping: bool,
-) -> f64 {
+	overlapping: Item<bool>,
+) -> Item<f64> {
+	let substring = substring.into_element();
+	let overlapping = overlapping.into_element();
 	if substring.is_empty() {
-		return 0.;
+		return Item::new_from_element(0.);
 	}
 
 	// NON-OVERLAPPING: Simple linear scan.
 	// O(n), where n = string length
 	if !overlapping {
-		return string.matches(&*substring).count() as f64;
+		return Item::new_from_element(string.matches(&*substring).count() as f64);
 	}
 
 	// OVERLAPPING: KMP (Knuth-Morris-Pratt) algorithm.
@@ -626,7 +658,7 @@ fn string_occurrences(
 		}
 	}
 
-	count as f64
+	Item::new_from_element(count as f64)
 }
 
 /// Converts a string's capitalization style to another of the common upper and lower case patterns, optionally joining words with a chosen separator.
@@ -636,14 +668,17 @@ fn string_capitalization(
 	/// The string to have its letter capitalization converted.
 	string: String,
 	/// The capitalization style to apply.
-	capitalization: StringCapitalization,
+	capitalization: Item<StringCapitalization>,
 	/// Whether to split the string into words and reconnect with the chosen joiner. When disabled, the existing word structure separators are preserved.
-	use_joiner: bool,
+	use_joiner: Item<bool>,
 	/// The string placed between each word.
-	joiner: String,
-) -> String {
+	joiner: Item<String>,
+) -> Item<String> {
+	let capitalization = capitalization.into_element();
+	let use_joiner = use_joiner.into_element();
+	let joiner = joiner.into_element();
 	// When the joiner is enabled, apply word-level casing and optionally reconnect words with the selected joiner
-	if use_joiner {
+	Item::new_from_element(if use_joiner {
 		match capitalization {
 			// Simple case mappings that preserve the string's existing structure
 			StringCapitalization::LowerCase => string.to_lowercase(),
@@ -711,15 +746,15 @@ fn string_capitalization(
 				})
 			}
 		}
-	}
+	})
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts the number of characters in a string.
 #[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, string: String) -> f64 {
-	string.graphemes(true).count() as f64
+fn string_length(_: impl Ctx, string: String) -> Item<f64> {
+	Item::new_from_element(string.graphemes(true).count() as f64)
 }
 
 /// Splits a string into a list of substrings based on the specified delimiter. This is the inverse of the **String Join** node.
@@ -732,15 +767,17 @@ fn string_split(
 	string: String,
 	/// The character(s) that separate the substrings. These are not included in the outputs.
 	#[default("\\n")]
-	delimiter: String,
+	delimiter: Item<String>,
 	/// Whether to convert escape sequences found in the delimiter into their corresponding characters:
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
-	delimiter_escaping: bool,
-) -> List<String> {
+	delimiter_escaping: Item<bool>,
+) -> Item<List<String>> {
+	let delimiter = delimiter.into_element();
+	let delimiter_escaping = delimiter_escaping.into_element();
 	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
 
-	string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
+	Item::new_from_element(string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect())
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
@@ -753,15 +790,17 @@ fn string_join(
 	strings: List<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
-	separator: String,
+	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
-	separator_escaping: bool,
-) -> String {
+	separator_escaping: Item<bool>,
+) -> Item<String> {
+	let separator = separator.into_element();
+	let separator_escaping = separator_escaping.into_element();
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
-	strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator)
+	Item::new_from_element(strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator))
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
@@ -770,34 +809,34 @@ async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	strings: List<String>,
 	#[expose]
-	#[implementations(Context -> String)]
-	mapped: impl Node<Context<'static>, Output = String>,
-) -> List<String> {
+	#[implementations(Context -> Item<String>)]
+	mapped: impl Node<Context<'static>, Output = Item<String>>,
+) -> Item<List<String>> {
 	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
 		let string = row.into_element();
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
-		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
+		let mapped_string = mapped.eval(owned_ctx.into_context()).await.into_element();
 
 		result.push(Item::new_from_element(mapped_string));
 	}
 
-	result
+	Item::new_from_element(result)
 }
 
 /// Reads the current string from within a **Map String** node's loop.
 #[node_macro::node(category("Context"))]
-fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
-	let Ok(var_arg) = ctx.vararg(0) else { return String::new() };
+fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Item::new_from_element(String::new()) };
 	let var_arg = var_arg as &dyn std::any::Any;
 
-	var_arg.downcast_ref::<String>().cloned().unwrap_or_default()
+	Item::new_from_element(var_arg.downcast_ref::<String>().cloned().unwrap_or_default())
 }
 
 /// Converts a value to a JSON string representation.
 #[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: T) -> String {
-	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
+fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: T) -> Item<String> {
+	Item::new_from_element(serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string()))
 }

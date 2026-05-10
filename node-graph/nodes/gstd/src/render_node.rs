@@ -1,4 +1,4 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::generate_uuid;
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
@@ -33,15 +33,15 @@ pub struct RenderIntermediate {
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
-		Context -> List<Artboard>,
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
+		Context -> Item<List<Artboard>>,
+		Context -> Item<List<Graphic>>,
+		Context -> Item<List<Vector>>,
+		Context -> Item<List<Raster<CPU>>>,
+		Context -> Item<List<Color>>,
+		Context -> Item<List<GradientStops>>,
 	)]
-	data: impl Node<Context<'static>, Output = T>,
-) -> RenderIntermediate {
+	data: impl Node<Context<'static>, Output = Item<T>>,
+) -> Item<RenderIntermediate> {
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
@@ -49,12 +49,12 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		.expect("Downcasting render params yielded invalid type");
 
 	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let data = data.eval(ctx).await;
+	let data = data.eval(ctx).await.into_element();
 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None);
-	match &render_params.render_output_type {
+	Item::new_from_element(match &render_params.render_output_type {
 		RenderOutputTypeRequest::Vello => {
 			let mut scene = vello::Scene::new();
 
@@ -76,11 +76,13 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 				metadata,
 			}
 		}
-	}
+	})
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderIntermediate) -> RenderOutput {
+async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: Item<&'a PlatformEditorApi>, data: Item<RenderIntermediate>) -> Item<RenderOutput> {
+	let editor_api = editor_api.into_element();
+	let data = data.into_element();
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -147,11 +149,13 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
-	RenderOutput { data, metadata }
+	Item::new_from_element(RenderOutput { data, metadata })
 }
 
 #[node_macro::node(category(""))]
-async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a PlatformEditorApi, data: RenderOutput) -> RenderOutput {
+async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: Item<&'a PlatformEditorApi>, data: Item<RenderOutput>) -> Item<RenderOutput> {
+	let editor_api = editor_api.into_element();
+	let data = data.into_element();
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -160,7 +164,7 @@ async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVar
 		.expect("Downcasting render params yielded invalid type");
 
 	if !render_params.to_canvas() {
-		return data;
+		return Item::new_from_element(data);
 	}
 
 	let RenderOutput { data: foreground_data, metadata } = data;
@@ -248,15 +252,15 @@ async fn render_background<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVar
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};
 
-	RenderOutput { data, metadata }
+	Item::new_from_element(RenderOutput { data, metadata })
 }
 
 #[node_macro::node(category(""))]
 async fn create_context<'a: 'n>(
 	// Context injections are defined in the wrap_network_in_scope function
 	render_config: RenderConfig,
-	data: impl Node<Context<'static>, Output = RenderOutput>,
-) -> RenderOutput {
+	data: impl Node<Context<'static>, Output = Item<RenderOutput>>,
+) -> Item<RenderOutput> {
 	let footprint = render_config.viewport;
 
 	let render_output_type = match render_config.export_format {
@@ -281,5 +285,5 @@ async fn create_context<'a: 'n>(
 		.with_vararg(Box::new(render_params))
 		.into_context();
 
-	data.eval(ctx).await
+	Item::new_from_element(data.eval(ctx).await.into_element())
 }

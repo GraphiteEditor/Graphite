@@ -55,6 +55,20 @@ impl<T: ToString + Send> Convert<String, ()> for T {
 	}
 }
 
+/// Forwards a `Convert` impl through the `Item<T>` wrapper: converts the inner element while
+/// preserving the wrapping item's attributes.
+impl<T, U, C> Convert<Item<U>, C> for Item<T>
+where
+	T: Convert<U, C> + Send,
+	U: Send,
+	C: Send,
+{
+	async fn convert(self, footprint: Footprint, converter: C) -> Item<U> {
+		let (element, attributes) = self.into_parts();
+		Item::from_parts(element.convert(footprint, converter).await, attributes)
+	}
+}
+
 pub trait ListConvert<U> {
 	fn convert_row(self) -> U;
 }

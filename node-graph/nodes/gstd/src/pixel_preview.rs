@@ -1,4 +1,5 @@
 use crate::render_node::RenderOutputType;
+use core_types::list::Item;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2};
@@ -11,13 +12,14 @@ use vector_types::vector::style::RenderMode;
 #[node_macro::node(category(""))]
 pub async fn pixel_preview<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
-	editor_api: &'a PlatformEditorApi,
-	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
-) -> RenderOutput {
+	editor_api: Item<&'a PlatformEditorApi>,
+	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
+) -> Item<RenderOutput> {
+	let editor_api = editor_api.into_element();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");
 		let context = OwnedContextImpl::from(ctx).into_context();
-		return data.eval(context).await;
+		return Item::new_from_element(data.eval(context).await.into_element());
 	};
 	let physical_scale = render_params.scale;
 
@@ -26,7 +28,7 @@ pub async fn pixel_preview<'a: 'n>(
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
 		let context = OwnedContextImpl::from(ctx).into_context();
-		return data.eval(context).await;
+		return Item::new_from_element(data.eval(context).await.into_element());
 	}
 
 	let physical_resolution = footprint.resolution;
@@ -52,9 +54,9 @@ pub async fn pixel_preview<'a: 'n>(
 	};
 
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(upstream_footprint).with_vararg(Box::new(render_params)).into_context();
-	let mut result = data.eval(new_ctx).await;
+	let mut result = data.eval(new_ctx).await.into_element();
 
-	let RenderOutputType::Texture(ref source_texture) = result.data else { return result };
+	let RenderOutputType::Texture(ref source_texture) = result.data else { return Item::new_from_element(result) };
 
 	let transform = DAffine2::from_translation(-upstream_min) * footprint.transform.inverse() * DAffine2::from_scale(logical_resolution);
 
@@ -67,5 +69,5 @@ pub async fn pixel_preview<'a: 'n>(
 		.metadata
 		.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min) * DAffine2::from_scale(DVec2::splat(physical_scale)));
 
-	result
+	Item::new_from_element(result)
 }

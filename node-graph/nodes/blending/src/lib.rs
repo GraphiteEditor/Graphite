@@ -1,4 +1,4 @@
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::registry::types::Percentage;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
 use graphic_types::Graphic;
@@ -166,19 +166,22 @@ fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Graphic>>,
+		Item<List<Vector>>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
-	mut content: T,
+	content: Item<T>,
 	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
-	blend_mode: BlendMode,
-) -> T {
+	blend_mode: Item<BlendMode>,
+) -> Item<T> {
+	let mut content = content.into_element();
+	let blend_mode = blend_mode.into_element();
+
 	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	content.set_blend_mode(blend_mode);
-	content
+	Item::new_from_element(content)
 }
 
 /// Modifies the opacity and/or fill of the input graphics by multiplying the existing values by these percentages.
@@ -189,31 +192,37 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Graphic>>,
+		Item<List<Vector>>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
-	mut content: T,
+	content: Item<T>,
 	/// Whether the *Opacity* property is enabled, multiplying the existing opacity by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	#[default(true)]
-	has_opacity: bool,
+	has_opacity: Item<bool>,
 	/// How visible the content should be, including any content clipped to it.
 	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	opacity: Percentage,
+	opacity: Item<Percentage>,
 	/// Whether the *Fill* property is enabled, multiplying the existing fill by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
-	has_fill: bool,
+	has_fill: Item<bool>,
 	/// How visible the content should be, independent of any content clipped to it.
 	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
 	#[default(100.)]
-	fill: Percentage,
-) -> T {
+	fill: Item<Percentage>,
+) -> Item<T> {
+	let mut content = content.into_element();
+	let has_opacity = has_opacity.into_element();
+	let opacity = opacity.into_element();
+	let has_fill = has_fill.into_element();
+	let fill = fill.into_element();
+
 	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	if has_opacity {
 		content.multiply_alpha(opacity / 100.);
@@ -221,7 +230,7 @@ fn opacity<T: MultiplyAlpha + MultiplyFill>(
 	if has_fill {
 		content.multiply_fill(fill / 100.);
 	}
-	content
+	Item::new_from_element(content)
 }
 
 /// Sets whether the input graphics inherit the alpha of the content beneath them, "clipping" them to that content.
@@ -230,17 +239,20 @@ fn clipping_mask<T: SetClip>(
 	_: impl Ctx,
 	/// The layer stack that will be composited when rendering.
 	#[implementations(
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Graphic>>,
+		Item<List<Vector>>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
-	mut content: T,
+	content: Item<T>,
 	/// Whether the content inherits the alpha of the content beneath it.
-	clip: bool,
-) -> T {
+	clip: Item<bool>,
+) -> Item<T> {
+	let mut content = content.into_element();
+	let clip = clip.into_element();
+
 	// TODO: Find a way to make this apply once to the list's parent (i.e. its item in its parent List<T> or Item<T>) rather than applying to each item in its own list, which produces the undesired result
 	content.set_clip(clip);
-	content
+	Item::new_from_element(content)
 }

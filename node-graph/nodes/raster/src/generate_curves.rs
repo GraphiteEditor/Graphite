@@ -1,13 +1,17 @@
 use crate::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use core_types::color::{Channel, Linear};
 use core_types::context::Ctx;
+use core_types::list::Item;
 use kurbo::{CubicBez, ParamCurve, PathSeg, Point};
 use vector_types::vector::algorithms::bezpath_algorithms::pathseg_find_tvalues_for_x;
 
 const WINDOW_SIZE: usize = 1024;
 
 #[node_macro::node(category(""))]
-fn generate_curves<C: Channel + Linear>(_: impl Ctx, curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
+fn generate_curves<C: Channel + Linear>(_: impl Ctx, curve: Item<Curve>, #[implementations(Item<f32>, Item<f64>)] _target_format: Item<C>) -> Item<ValueMapperNode<C>> {
+	let curve = curve.into_element();
+	let _target_format = _target_format.into_element();
+
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
 	let mut lut = vec![C::from_f64(0.); WINDOW_SIZE];
 	let end = CurveManipulatorGroup {
@@ -41,5 +45,5 @@ fn generate_curves<C: Channel + Linear>(_: impl Ctx, curve: Curve, #[implementat
 		pos = sample.anchor;
 		param = sample.handles[1];
 	}
-	ValueMapperNode::new(lut)
+	Item::new_from_element(ValueMapperNode::new(lut))
 }

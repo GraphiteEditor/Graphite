@@ -1,6 +1,6 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::registry::types::PixelLength;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
@@ -11,17 +11,22 @@ use raster_types::{CPU, Raster};
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: List<Raster<CPU>>,
+	image_frame: Item<List<Raster<CPU>>>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
-	radius: PixelLength,
+	radius: Item<PixelLength>,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
-	box_blur: bool,
+	box_blur: Item<bool>,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
-	gamma: bool,
-) -> List<Raster<CPU>> {
-	image_frame
+	gamma: Item<bool>,
+) -> Item<List<Raster<CPU>>> {
+	let image_frame = image_frame.into_element();
+	let radius = radius.into_element();
+	let box_blur = box_blur.into_element();
+	let gamma = gamma.into_element();
+
+	let result: List<Raster<CPU>> = image_frame
 		.into_iter()
 		.map(|mut row| {
 			let image = row.element().clone();
@@ -39,7 +44,9 @@ async fn blur(
 			*row.element_mut() = blurred_image;
 			row
 		})
-		.collect()
+		.collect();
+
+	Item::new_from_element(result)
 }
 
 /// Applies a median filter to reduce noise while preserving edges.
@@ -47,13 +54,16 @@ async fn blur(
 async fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.
-	image_frame: List<Raster<CPU>>,
+	image_frame: Item<List<Raster<CPU>>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
 	#[range((0., 50.))]
 	#[hard_min(0.)]
-	radius: PixelLength,
-) -> List<Raster<CPU>> {
-	image_frame
+	radius: Item<PixelLength>,
+) -> Item<List<Raster<CPU>>> {
+	let image_frame = image_frame.into_element();
+	let radius = radius.into_element();
+
+	let result: List<Raster<CPU>> = image_frame
 		.into_iter()
 		.map(|mut row| {
 			let image = row.element().clone();
@@ -69,7 +79,9 @@ async fn median_filter(
 			*row.element_mut() = filtered_image;
 			row
 		})
-		.collect()
+		.collect();
+
+	Item::new_from_element(result)
 }
 
 // 1D gaussian kernel

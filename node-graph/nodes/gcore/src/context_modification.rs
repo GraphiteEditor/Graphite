@@ -1,6 +1,6 @@
 use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
-use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
+use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
 use core_types::{Color, OwnedContextImpl};
@@ -16,35 +16,36 @@ async fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
-		Context -> (),
-		Context -> bool,
-		Context -> u32,
-		Context -> u64,
-		Context -> f32,
-		Context -> f64,
-		Context -> String,
-		Context -> DAffine2,
-		Context -> Footprint,
-		Context -> DVec2,
-		Context -> List<String>,
-		Context -> List<NodeId>,
-		Context -> List<f64>,
-		Context -> List<u8>,
-		Context -> List<Vector>,
-		Context -> List<Graphic>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<Artboard>,
-		Context -> List<GradientStops>,
-		Context -> AttributeDyn,
-		Context -> AttributeValueDyn,
-		Context -> ListDyn,
+		Context -> Item<()>,
+		Context -> Item<bool>,
+		Context -> Item<u32>,
+		Context -> Item<u64>,
+		Context -> Item<f32>,
+		Context -> Item<f64>,
+		Context -> Item<String>,
+		Context -> Item<DAffine2>,
+		Context -> Item<Footprint>,
+		Context -> Item<DVec2>,
+		Context -> Item<List<String>>,
+		Context -> Item<List<NodeId>>,
+		Context -> Item<List<f64>>,
+		Context -> Item<List<u8>>,
+		Context -> Item<List<Vector>>,
+		Context -> Item<List<Graphic>>,
+		Context -> Item<List<Raster<CPU>>>,
+		Context -> Item<List<Raster<GPU>>>,
+		Context -> Item<List<Color>>,
+		Context -> Item<List<Artboard>>,
+		Context -> Item<List<GradientStops>>,
+		Context -> Item<AttributeDyn>,
+		Context -> Item<AttributeValueDyn>,
+		Context -> Item<ListDyn>,
 	)]
-	value: impl Node<Context<'static>, Output = T>,
+	value: impl Node<Context<'static>, Output = Item<T>>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
-	features_to_keep: ContextFeatures,
-) -> T {
+	features_to_keep: Item<ContextFeatures>,
+) -> Item<T> {
+	let features_to_keep = features_to_keep.into_element();
 	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep);
 
 	value.eval(Some(new_context.into())).await

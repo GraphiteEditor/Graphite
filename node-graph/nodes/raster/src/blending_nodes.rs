@@ -1,6 +1,6 @@
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
-use core_types::list::List;
+use core_types::list::{Item, List};
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
@@ -141,28 +141,34 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
+#[cfg(feature = "std")]
 #[node_macro::node(category("Raster"), cfg(feature = "std"))]
 fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
 	#[gpu_image]
-	over: T,
+	over: Item<T>,
 	#[expose]
 	#[implementations(
-		List<Raster<CPU>>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
 	#[gpu_image]
-	under: T,
-	blend_mode: BlendMode,
-	#[default(100.)] opacity: PercentageF32,
-) -> T {
-	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
+	under: Item<T>,
+	blend_mode: Item<BlendMode>,
+	#[default(100.)] opacity: Item<PercentageF32>,
+) -> Item<T> {
+	let over = over.into_element();
+	let under = under.into_element();
+	let blend_mode = blend_mode.into_element();
+	let opacity = opacity.into_element();
+
+	Item::new_from_element(over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.)))
 }
 
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
@@ -197,7 +203,7 @@ fn color_overlay<T: Adjust<Color>>(
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;
-	use core_types::list::List;
+	use core_types::list::{Item, List};
 	use raster_types::Image;
 	use raster_types::Raster;
 
@@ -212,8 +218,14 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100.;
 
-		let result = super::color_overlay((), List::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.element(0).unwrap().clone();
+		let result = super::color_overlay(
+			(),
+			Item::new_from_element(List::new_from_element(Raster::new_cpu(image.clone()))),
+			Item::new_from_element(overlay_color),
+			Item::new_from_element(BlendMode::Multiply),
+			Item::new_from_element(opacity),
+		);
+		let result = result.into_element().element(0).unwrap().clone();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

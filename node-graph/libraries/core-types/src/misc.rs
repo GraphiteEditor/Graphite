@@ -61,6 +61,20 @@ impl Clampable for DVec2 {
 	}
 }
 
+// Forward Clampable through `Item<T>` so the macro-generated clamp can run on a wrapped value.
+impl<T: Clampable> Clampable for crate::list::Item<T> {
+	#[inline(always)]
+	fn clamp_hard_min(self, min: f64) -> Self {
+		let (element, attributes) = self.into_parts();
+		Self::from_parts(element.clamp_hard_min(min), attributes)
+	}
+	#[inline(always)]
+	fn clamp_hard_max(self, max: f64) -> Self {
+		let (element, attributes) = self.into_parts();
+		Self::from_parts(element.clamp_hard_max(max), attributes)
+	}
+}
+
 #[cfg(feature = "serde")]
 #[derive(serde::Deserialize)]
 struct LegacyTable<T> {

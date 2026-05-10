@@ -1,5 +1,5 @@
 use core_types::context::Ctx;
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::registry::types::Percentage;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
@@ -8,8 +8,11 @@ use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentage) -> List<Raster<CPU>> {
-	image_frame
+async fn dehaze(_: impl Ctx, image_frame: Item<List<Raster<CPU>>>, strength: Item<Percentage>) -> Item<List<Raster<CPU>>> {
+	let image_frame = image_frame.into_element();
+	let strength = strength.into_element();
+
+	let result: List<Raster<CPU>> = image_frame
 		.into_iter()
 		.map(|mut row| {
 			let image = std::mem::replace(row.element_mut(), Raster::new_cpu(Image::default()));
@@ -34,7 +37,9 @@ async fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentag
 			*row.element_mut() = Raster::new_cpu(dehazed_image);
 			row
 		})
-		.collect()
+		.collect();
+
+	Item::new_from_element(result)
 }
 
 // There is no real point in modifying these values because they do not change the final result all that much.

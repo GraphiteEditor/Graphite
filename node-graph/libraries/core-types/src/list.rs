@@ -1225,6 +1225,16 @@ impl<T: PartialEq> PartialEq for Item<T> {
 	}
 }
 
+impl<T: CacheHash> CacheHash for Item<T> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.element.cache_hash(state);
+	}
+}
+
+unsafe impl<T: StaticTypeSized> StaticType for Item<T> {
+	type Static = Item<T::Static>;
+}
+
 impl<T> Item<T> {
 	/// Constructs an item from a pre-built element and attributes pair.
 	pub fn from_parts(element: T, attributes: ItemAttributeValues) -> Self {

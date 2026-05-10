@@ -13,32 +13,36 @@ pub async fn create_artboard<T: IntoGraphicList + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// Graphics to include within the artboard.
 	#[implementations(
-		Context -> List<Graphic>,
-		Context -> List<Vector>,
-		Context -> List<Raster<CPU>>,
-		Context -> List<Raster<GPU>>,
-		Context -> List<Color>,
-		Context -> List<GradientStops>,
-		Context -> DAffine2,
+		Context -> Item<List<Graphic>>,
+		Context -> Item<List<Vector>>,
+		Context -> Item<List<Raster<CPU>>>,
+		Context -> Item<List<Raster<GPU>>>,
+		Context -> Item<List<Color>>,
+		Context -> Item<List<GradientStops>>,
+		Context -> Item<DAffine2>,
 	)]
-	content: impl Node<Context<'static>, Output = T>,
+	content: impl Node<Context<'static>, Output = Item<T>>,
 	/// Coordinate of the top-left corner of the artboard within the document.
-	location: DVec2,
+	location: Item<DVec2>,
 	/// Width and height of the artboard within the document.
-	dimensions: DVec2,
+	dimensions: Item<DVec2>,
 	/// Color of the artboard background.
-	background: List<Color>,
+	background: Item<List<Color>>,
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
-	clip: bool,
-) -> List<Artboard> {
+	clip: Item<bool>,
+) -> Item<List<Artboard>> {
+	let location = location.into_element();
+	let dimensions = dimensions.into_element();
+	let background = background.into_element();
+	let clip = clip.into_element();
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
 		footprint.translate(location);
 		new_ctx = new_ctx.with_footprint(footprint);
 	}
-	let content = content.eval(new_ctx.into_context()).await.into_graphic_list();
+	let content = content.eval(new_ctx.into_context()).await.into_element().into_graphic_list();
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
@@ -49,11 +53,11 @@ pub async fn create_artboard<T: IntoGraphicList + 'n>(
 	let background = background.element(0).copied().unwrap_or(Color::WHITE);
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	List::new_from_item(
+	Item::new_from_element(List::new_from_item(
 		Item::new_from_element(Artboard::new(content))
 			.with_attribute(ATTR_LOCATION, normalized_location)
 			.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
 			.with_attribute(ATTR_BACKGROUND, background)
 			.with_attribute(ATTR_CLIP, clip),
-	)
+	))
 }

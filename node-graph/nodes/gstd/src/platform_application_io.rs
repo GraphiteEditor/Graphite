@@ -47,14 +47,18 @@ fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 #[node_macro::node(category("Web Request"))]
 async fn get_request(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	/// The web address to send the GET request to.
 	#[name("URL")]
-	url: String,
+	url: Item<String>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
-	discard_result: bool,
-	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
-) -> String {
+	discard_result: Item<bool>,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
+) -> Item<String> {
+	let _primary = _primary.into_element();
+	let url = url.into_element();
+	let discard_result = discard_result.into_element();
+	let headers = headers.into_element();
 	let header_map = parse_headers(&headers);
 	let request = reqwest::Client::new().get(url).headers(header_map);
 
@@ -67,29 +71,34 @@ async fn get_request(
 		tokio::spawn(async move {
 			let _ = request.send().await;
 		});
-		return String::new();
+		return Item::new_from_element(String::new());
 	}
 
 	let Ok(response) = request.send().await else {
-		return String::new();
+		return Item::new_from_element(String::new());
 	};
-	response.text().await.ok().unwrap_or_default()
+	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
 /// Sends an HTTP POST request to a specified URL with the provided binary data and optionally waits for the response (unless discarded) which is output as a string.
 #[node_macro::node(category("Web Request"))]
 async fn post_request(
 	_: impl Ctx,
-	_primary: (),
+	_primary: Item<()>,
 	/// The web address to send the POST request to.
 	#[name("URL")]
-	url: String,
+	url: Item<String>,
 	/// The binary data to include in the body of the POST request.
-	body: List<u8>,
+	body: Item<List<u8>>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
-	discard_result: bool,
-	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
-) -> String {
+	discard_result: Item<bool>,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
+) -> Item<String> {
+	let _primary = _primary.into_element();
+	let url = url.into_element();
+	let body = body.into_element();
+	let discard_result = discard_result.into_element();
+	let headers = headers.into_element();
 	let mut header_map = parse_headers(&headers);
 	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
 	let body_bytes: Vec<u8> = body.iter_element_values().copied().collect();
@@ -104,51 +113,57 @@ async fn post_request(
 		tokio::spawn(async move {
 			let _ = request.send().await;
 		});
-		return String::new();
+		return Item::new_from_element(String::new());
 	}
 
 	let Ok(response) = request.send().await else {
-		return String::new();
+		return Item::new_from_element(String::new());
 	};
-	response.text().await.ok().unwrap_or_default()
+	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: String) -> List<u8> {
-	string.into_bytes().into_iter().map(Item::new_from_element).collect()
+fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<List<u8>> {
+	let string = string.into_element();
+	Item::new_from_element(string.into_bytes().into_iter().map(Item::new_from_element).collect())
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
-	let Some(image) = image.element(0) else { return List::new() };
-	image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(Item::new_from_element).collect()
+fn image_to_bytes(_: impl Ctx, image: Item<List<Raster<CPU>>>) -> Item<List<u8>> {
+	let image = image.into_element();
+	let Some(image) = image.element(0) else { return Item::new_from_element(List::new()) };
+	Item::new_from_element(image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(Item::new_from_element).collect())
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a PlatformEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: Item<()>, #[scope("editor-api")] editor_resources: Item<&'a PlatformEditorApi>, #[name("URL")] url: Item<String>) -> Item<Arc<[u8]>> {
+	let _primary = _primary.into_element();
+	let editor_resources = editor_resources.into_element();
+	let url = url.into_element();
 	let Some(api) = editor_resources.application_io.as_ref() else {
-		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
+		return Item::new_from_element(Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec()));
 	};
 	let Ok(data) = api.load_resource(url) else {
-		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
+		return Item::new_from_element(Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec()));
 	};
 	let Ok(data) = data.await else {
-		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
+		return Item::new_from_element(Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec()));
 	};
 
-	data
+	Item::new_from_element(data)
 }
 
 /// Converts raw binary data to a raster image.
 ///
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
+fn decode_image(_: impl Ctx, data: Item<Arc<[u8]>>) -> Item<List<Raster<CPU>>> {
+	let data = data.into_element();
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return List::new();
+		return Item::new_from_element(List::new());
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -161,13 +176,13 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 		..Default::default()
 	};
 
-	List::new_from_element(Raster::new_cpu(image))
+	Item::new_from_element(List::new_from_element(Raster::new_cpu(image)))
 }
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn create_canvas(_: impl Ctx) -> CanvasHandle {
-	CanvasHandle::new()
+async fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
+	Item::new_from_element(CanvasHandle::new())
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
@@ -176,24 +191,27 @@ async fn create_canvas(_: impl Ctx) -> CanvasHandle {
 async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Graphic>,
-		List<Color>,
-		List<GradientStops>,
+		Item<List<Vector>>,
+		Item<List<Raster<CPU>>>,
+		Item<List<Graphic>>,
+		Item<List<Color>>,
+		Item<List<GradientStops>>,
 	)]
-	mut data: List<T>,
-	footprint: Footprint,
-	mut canvas: CanvasHandle,
-) -> List<Raster<CPU>>
+	data: Item<List<T>>,
+	footprint: Item<Footprint>,
+	canvas: Item<CanvasHandle>,
+) -> Item<List<Raster<CPU>>>
 where
 	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
+	let mut data = data.into_element();
+	let footprint = footprint.into_element();
+	let mut canvas = canvas.into_element();
 	use glam::{DAffine2, DVec2};
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return List::new();
+		return Item::new_from_element(List::new());
 	}
 
 	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
@@ -235,9 +253,9 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	List::new_from_item(
+	Item::new_from_element(List::new_from_item(
 		Item::new_from_element(Raster::new_cpu(image))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
-	)
+	))
 }

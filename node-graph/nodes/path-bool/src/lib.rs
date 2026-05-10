@@ -22,16 +22,18 @@ pub use vector_types::vector::misc::BooleanOperation;
 async fn boolean_operation<I: graphic_types::IntoGraphicList + 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
-	#[implementations(List<Graphic>, List<Vector>)]
-	content: I,
+	#[implementations(Item<List<Graphic>>, Item<List<Vector>>)]
+	content: Item<I>,
 	/// Which boolean operation to perform on the paths.
 	///
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
 	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
-	operation: BooleanOperation,
-) -> List<Vector> {
+	operation: Item<BooleanOperation>,
+) -> Item<List<Vector>> {
+	let content = content.into_element();
+	let operation = operation.into_element();
 	let content = content.into_graphic_list();
 
 	// The first index is the bottom of the stack
@@ -56,7 +58,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList + 'n + Send + Clone
 		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
 	}
 
-	result_vector_list
+	Item::new_from_element(result_vector_list)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

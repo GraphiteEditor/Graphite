@@ -16,35 +16,41 @@ fn format_json(
 	#[name("JSON")]
 	json: String,
 	/// Removes optional spaces within curly brackets and after colons and commas.
-	compact: bool,
+	compact: Item<bool>,
 	/// Break arrays and objects across multiple lines when they exceed the line break length.
 	#[default(true)]
 	#[name("Multi-Line")]
-	multi_line: bool,
+	multi_line: Item<bool>,
 	/// The indentation string used for each nesting level. Escape sequences like `\t` (the tab character) are supported. Two or four spaces are also common choices.
 	#[default("\\t")]
-	indent: String,
+	indent: Item<String>,
 	/// The maximum line length before a container (array or object) is broken across lines. Set this to 0 to always break containers. (Requires *Multi-Line* to take effect.)
 	///
 	/// This is not a maximum line length guarantee. Deep nesting and long keys or values may exceed this length.
 	#[default(120)]
-	break_length: u32,
+	break_length: Item<u32>,
 	/// Always break a container (array or object) across lines if it holds another container, even if it would fit within the break length. (Requires *Multi-Line* to take effect.)
 	#[default(true)]
-	break_nested: bool,
-) -> String {
+	break_nested: Item<bool>,
+) -> Item<String> {
+	let compact = compact.into_element();
+	let multi_line = multi_line.into_element();
+	let indent = indent.into_element();
+	let break_length = break_length.into_element();
+	let break_nested = break_nested.into_element();
+
 	let cleaned = strip_trailing_commas(&json);
-	let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else { return json };
+	let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else { return Item::new_from_element(json) };
 	let indent = unescape_string(indent);
 	let colon = if compact { ":" } else { ": " };
 	let comma_space = if compact { "," } else { ", " };
 	let line_width = break_length as usize;
 
-	if multi_line {
+	Item::new_from_element(if multi_line {
 		format_value(&value, 0, &indent, colon, comma_space, compact, break_nested, line_width)
 	} else {
 		format_inline(&value, colon, comma_space, compact)
-	}
+	})
 }
 
 /// Strips trailing commas before `]` and `}` to accept JSON-with-trailing-commas input.
@@ -198,19 +204,22 @@ fn query_json(
 	/// Use `.size` or `["size"]` to get the `size` property of `{ "size": 10 }`. The latter form is required if the key contains spaces or special characters like `["this key with spaces!"]`.
 	/// Use chained accessors like `.fonts[0].name` to query deeper.
 	/// Use the `[]` accessor to query all elements, like `.fonts[].weights[]` to get every weight of every font.
-	path: String,
+	path: Item<String>,
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
-	unquote_strings: bool,
-) -> String {
+	unquote_strings: Item<bool>,
+) -> Item<String> {
+	let path = path.into_element();
+	let unquote_strings = unquote_strings.into_element();
+
 	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return String::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return String::new() };
+	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Item::new_from_element(String::new()) };
+	let Some(segments) = parse_json_path(path.trim()) else { return Item::new_from_element(String::new()) };
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
 
-	results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default()
+	Item::new_from_element(results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default())
 }
 
 /// Extracts every matched value from a JSON string using a path expression (see that parameter's description for its syntax). A list of zero or more resultant strings is produced. The `[]` path accessor is used to read more than one value.
@@ -236,19 +245,22 @@ fn query_json_all(
 	/// Use `.size` or `["size"]` to get the `size` property of `{ "size": 10 }`. The latter form is required if the key contains spaces or special characters like `["this key with spaces!"]`.
 	/// Use chained accessors like `.fonts[0].name` to query deeper.
 	/// Use the `[]` accessor to query all elements, like `.fonts[].weights[]` to get every weight of every font.
-	path: String,
+	path: Item<String>,
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
-	unquote_strings: bool,
-) -> List<String> {
+	unquote_strings: Item<bool>,
+) -> Item<List<String>> {
+	let path = path.into_element();
+	let unquote_strings = unquote_strings.into_element();
+
 	let cleaned = strip_trailing_commas(&json);
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return List::new() };
-	let Some(segments) = parse_json_path(path.trim()) else { return List::new() };
+	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return Item::new_from_element(List::new()) };
+	let Some(segments) = parse_json_path(path.trim()) else { return Item::new_from_element(List::new()) };
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !unquote_strings, &mut results);
 
-	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
+	Item::new_from_element(results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect())
 }
 
 /// A parsed segment of a JSON access path.

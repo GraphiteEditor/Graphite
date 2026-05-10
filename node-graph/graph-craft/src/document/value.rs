@@ -123,11 +123,12 @@ macro_rules! tagged_value {
 		impl<'a> TaggedValue {
 			/// Converts to a Box<dyn DynAny>
 			pub fn to_dynany(self) -> DAny<'a> {
+				use core_types::list::Item;
 				match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
-					Self::None => Box::new(()),
+					Self::None => Box::new(Item::new_from_element(())),
 					Self::TypeDefault(td) => {
 						// Construct the actual default for types without a `TaggedValue` variant directly.
 						// Recursion through `from_type_or_none` below is safe only because `for_each_type_default!`
@@ -135,116 +136,118 @@ macro_rules! tagged_value {
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Box::new(<$type_default>::default()); }
+								if name == std::any::type_name::<Item<$type_default>>() { return Box::new(Item::new_from_element(<$type_default>::default())); }
 							};
 						}
 						for_each_type_default!(check);
 						Self::from_type_or_none(&Type::Concrete(td)).to_dynany()
 					}
 					Self::F64Array(values) => {
-						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
+						let list: List<f64> = values.into_iter().map(Item::new_from_element).collect();
+						Box::new(Item::new_from_element(list))
 					}
 					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
+						let list: List<Color> = color.into_iter().map(Item::new_from_element).collect();
+						Box::new(Item::new_from_element(list))
 					}
-					Self::Gradient(stops) => Box::new(List::<GradientStops>::new_from_element(stops)),
+					Self::Gradient(stops) => Box::new(Item::new_from_element(List::<GradientStops>::new_from_element(stops))),
 					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
+						let list: List<BrushStroke> = strokes.into_iter().map(Item::new_from_element).collect();
+						Box::new(Item::new_from_element(list))
 					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Box::new(x), )*
+					$( Self::$identifier(x) => Box::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Box::new(x),
+					Self::RenderOutput(x) => Box::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Box::new(list)
+						let list: List<NodeId> = path.into_iter().map(Item::new_from_element).collect();
+						Box::new(Item::new_from_element(list))
 					}
-					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(features),
-					Self::EditorApi(x) => Box::new(x),
+					Self::DocumentNode(node) => Box::new(Item::new_from_element(node)),
+					Self::ContextFeatures(features) => Box::new(Item::new_from_element(features)),
+					Self::EditorApi(x) => Box::new(Item::new_from_element(x)),
 				}
 			}
 
 			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
 			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
+				use core_types::list::Item;
 				match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
-					Self::None => Arc::new(()),
+					Self::None => Arc::new(Item::new_from_element(())),
 					Self::TypeDefault(td) => {
 						// Same direct-construction path as `to_dynany` for the same reason as in `to_dynany`.
 						let name = td.name.as_ref();
 						macro_rules! check {
 							($type_default:ty) => {
-								if name == std::any::type_name::<$type_default>() { return Arc::new(<$type_default>::default()); }
+								if name == std::any::type_name::<Item<$type_default>>() { return Arc::new(Item::new_from_element(<$type_default>::default())); }
 							};
 						}
 						for_each_type_default!(check);
 						Self::from_type_or_none(&Type::Concrete(td)).to_any()
 					}
 					Self::F64Array(values) => {
-						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
+						let list: List<f64> = values.into_iter().map(Item::new_from_element).collect();
+						Arc::new(Item::new_from_element(list))
 					}
 					Self::Color(color) => {
-						let list: List<Color> = color.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
+						let list: List<Color> = color.into_iter().map(Item::new_from_element).collect();
+						Arc::new(Item::new_from_element(list))
 					}
-					Self::Gradient(stops) => Arc::new(List::<GradientStops>::new_from_element(stops)),
+					Self::Gradient(stops) => Arc::new(Item::new_from_element(List::<GradientStops>::new_from_element(stops))),
 					Self::BrushStrokes(strokes) => {
-						let list: List<BrushStroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
+						let list: List<BrushStroke> = strokes.into_iter().map(Item::new_from_element).collect();
+						Arc::new(Item::new_from_element(list))
 					}
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(x) => Arc::new(x), )*
+					$( Self::$identifier(x) => Arc::new(Item::new_from_element(x)), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(x) => Arc::new(x),
+					Self::RenderOutput(x) => Arc::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => {
-						let list: List<NodeId> = path.into_iter().map(core_types::list::Item::new_from_element).collect();
-						Arc::new(list)
+						let list: List<NodeId> = path.into_iter().map(Item::new_from_element).collect();
+						Arc::new(Item::new_from_element(list))
 					}
-					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(features),
-					Self::EditorApi(x) => Arc::new(x),
+					Self::DocumentNode(node) => Arc::new(Item::new_from_element(node)),
+					Self::ContextFeatures(features) => Arc::new(Item::new_from_element(features)),
+					Self::EditorApi(x) => Arc::new(Item::new_from_element(x)),
 				}
 			}
 
 			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
 			pub fn ty(&self) -> Type {
+				use core_types::list::Item;
 				match self {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
-					Self::None => concrete!(()),
+					Self::None => concrete!(Item<()>),
 					Self::TypeDefault(td) => Type::Concrete(td.clone()),
-					Self::F64Array(_) => concrete!(List<f64>),
-					Self::Color(_) => concrete!(List<Color>),
-					Self::Gradient(_) => concrete!(List<GradientStops>),
-					Self::BrushStrokes(_) => concrete!(List<BrushStroke>),
+					Self::F64Array(_) => concrete!(Item<List<f64>>),
+					Self::Color(_) => concrete!(Item<List<Color>>),
+					Self::Gradient(_) => concrete!(Item<List<GradientStops>>),
+					Self::BrushStrokes(_) => concrete!(Item<List<BrushStroke>>),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( Self::$identifier(_) => concrete!($ty), )*
+					$( Self::$identifier(_) => concrete!(Item<$ty>), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::NodeIdPath(_) => concrete!(List<NodeId>),
-					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => concrete!(ContextFeatures),
-					Self::EditorApi(_) => concrete!(&PlatformEditorApi),
+					Self::RenderOutput(_) => concrete!(Item<RenderOutput>),
+					Self::NodeIdPath(_) => concrete!(Item<List<NodeId>>),
+					Self::DocumentNode(_) => concrete!(Item<DocumentNode>),
+					Self::ContextFeatures(_) => concrete!(Item<ContextFeatures>),
+					Self::EditorApi(_) => concrete!(Item<&PlatformEditorApi>),
 				}
 			}
 

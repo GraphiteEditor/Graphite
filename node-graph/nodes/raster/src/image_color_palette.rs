@@ -6,11 +6,14 @@ use raster_types::{CPU, Raster};
 #[node_macro::node(category("Color"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: List<Raster<CPU>>,
+	image: Item<List<Raster<CPU>>>,
 	#[default(4)]
 	#[hard_min(1)]
-	count: u32,
-) -> List<Color> {
+	count: Item<u32>,
+) -> Item<List<Color>> {
+	let image = image.into_element();
+	let count = count.into_element();
+
 	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
@@ -33,7 +36,7 @@ async fn image_color_palette(
 
 	let shorted = histogram.iter().enumerate().filter(|&(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
 
-	shorted
+	let result: List<Color> = shorted
 		.iter()
 		.take(count as usize)
 		.flat_map(|&i| {
@@ -58,7 +61,9 @@ async fn image_color_palette(
 
 			Color::from_rgbaf32(r, g, b, a).map(Item::new_from_element).into_iter()
 		})
-		.collect()
+		.collect();
+
+	Item::new_from_element(result)
 }
 
 #[cfg(test)]
@@ -71,14 +76,14 @@ mod test {
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			List::new_from_element(Raster::new_cpu(Image {
+			Item::new_from_element(List::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
 				base64_string: None,
-			})),
-			1,
+			}))),
+			Item::new_from_element(1),
 		);
-		assert_eq!(futures::executor::block_on(result), List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
+		assert_eq!(futures::executor::block_on(result).into_element(), List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
 	}
 }

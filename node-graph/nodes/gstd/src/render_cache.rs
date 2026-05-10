@@ -1,5 +1,6 @@
 //! Tile-based render caching for efficient viewport panning.
 
+use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
@@ -327,22 +328,23 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	editor_api: &'a PlatformEditorApi,
-	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
+	editor_api: Item<&'a PlatformEditorApi>,
+	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 	#[data] tile_cache: TileCache,
-) -> RenderOutput {
+) -> Item<RenderOutput> {
+	let editor_api = editor_api.into_element();
 	let footprint = ctx.footprint();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint);
-		return data.eval(context.into_context()).await;
+		return Item::new_from_element(data.eval(context.into_context()).await.into_element());
 	};
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
 	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
-		return data.eval(context.into_context()).await;
+		return Item::new_from_element(data.eval(context.into_context()).await.into_element());
 	}
 
 	let device_scale = render_params.scale;
@@ -383,7 +385,7 @@ pub async fn render_output_cache<'a: 'n>(
 		}
 		let region = render_missing_region(
 			missing_region,
-			|ctx| data.eval(ctx),
+			|ctx| async { data.eval(ctx).await.into_element() },
 			ctx.clone(),
 			render_params,
 			&footprint.transform,
@@ -401,7 +403,7 @@ pub async fn render_output_cache<'a: 'n>(
 	// If no regions, fall back to direct render
 	if all_regions.is_empty() {
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
-		return data.eval(context.into_context()).await;
+		return Item::new_from_element(data.eval(context.into_context()).await.into_element());
 	}
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
@@ -410,10 +412,10 @@ pub async fn render_output_cache<'a: 'n>(
 
 	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, exec);
 
-	RenderOutput {
+	Item::new_from_element(RenderOutput {
 		data: RenderOutputType::Texture(output_texture.into()),
 		metadata: combined_metadata,
-	}
+	})
 }
 
 async fn render_missing_region<F, Fut>(
