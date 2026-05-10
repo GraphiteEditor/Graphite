@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount } from "svelte";
+	import { onMount, createEventDispatcher } from "svelte";
 
 	const SELECTION_ENDPOINT_SIZE = 5;
 	const RULER_THICKNESS = 16;
