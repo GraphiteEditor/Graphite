@@ -1482,18 +1482,22 @@ impl Render for List<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, transform: DAffine2) {
-	let only_closed_paths = vector.stroke_bezier_paths().all(|s| s.closed());
-	let stroke_width = vector.style.stroke().as_ref().map_or(0., |stroke| stroke.effective_width(only_closed_paths));
+	let mut only_closed_paths = true;
 	let filled = vector.style.fill() != &Fill::None;
 	let subpaths: Vec<Subpath<_>> = vector
 		.stroke_bezier_paths()
 		.map(|mut subpath| {
+			// Our assumption is false if at least one subpath is open.
+			if !subpath.closed {
+				only_closed_paths = false;
+			}
 			if filled {
 				subpath.set_closed(true);
 			}
 			subpath
 		})
 		.collect();
+	let stroke_width = vector.style.stroke().as_ref().map_or(0., |stroke| stroke.effective_width(only_closed_paths));
 	if !subpaths.is_empty() {
 		let mut click_target = ClickTarget::new_with_compound_path(subpaths, stroke_width);
 		click_target.apply_transform(transform);

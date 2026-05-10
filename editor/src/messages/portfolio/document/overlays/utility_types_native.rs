@@ -1,7 +1,8 @@
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	GRADIENT_MIDPOINT_DIAMOND_RADIUS, INFLATE_FACTOR, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET,
+	SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -1002,7 +1003,7 @@ impl OverlayContextInternal {
 		path.push(bezier.as_path_el());
 	}
 
-	fn path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, auto_close: bool, transform: DAffine2) -> BezPath {
+	fn path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, transform: DAffine2) -> BezPath {
 		let mut path = BezPath::new();
 
 		for subpath in subpaths {
@@ -1043,7 +1044,7 @@ impl OverlayContextInternal {
 				}
 			}
 
-			if subpath.closed() && auto_close {
+			if subpath.closed() && close_path {
 				path.close_path();
 			}
 		}
@@ -1129,6 +1130,7 @@ impl OverlayContextInternal {
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
 			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
 			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 
@@ -1140,7 +1142,7 @@ impl OverlayContextInternal {
 				let element_transform = Affine::new(element_transform.to_cols_array());
 				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
 				// TODO: find a method to rid of the extra offset factor
-				let inflation = stroke.weight() * 1.5;
+				let inflation = stroke.weight() * INFLATE_FACTOR;
 				let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
 				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
@@ -1186,6 +1188,7 @@ impl OverlayContextInternal {
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
 			let path = self.path_from_subpaths(subpaths, false, applied_stroke_transform);
 			let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
 
@@ -1199,7 +1202,7 @@ impl OverlayContextInternal {
 				let element_transform = Affine::new(element_transform.to_cols_array());
 				let stroke = stroke.clone().with_weight(stroke.weight() * stroke_scale.unwrap_or(1.0));
 				// TODO: find a method to rid of the extra offset factor
-				let inflation = stroke.weight() * 1.5;
+				let inflation = stroke.weight() * INFLATE_FACTOR;
 				let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
 				scene.push_layer(peniko::Fill::NonZero, BlendMode::new(peniko::Mix::Normal, compose_mode), 1.0, element_transform, &path_bbox);
@@ -1212,7 +1215,6 @@ impl OverlayContextInternal {
 
 			match (stroke_align, stroke.paint_order) {
 				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
-					// TODO: Fix overlay leak outside the stroke region
 					do_stroke(&mut self.scene, Some(2.0));
 					composite_fill_out(&mut self.scene, peniko::Compose::DestIn, Some(2.0));
 				}

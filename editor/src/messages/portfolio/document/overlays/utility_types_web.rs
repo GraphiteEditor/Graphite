@@ -954,7 +954,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, auto_close: bool, stroke_transform: DAffine2) {
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, stroke_transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow().clone();
@@ -995,7 +995,7 @@ impl OverlayContext {
 				}
 			}
 
-			if subpath.closed() && auto_close {
+			if subpath.closed() && close_path {
 				self.render_context.close_path();
 			}
 		}
@@ -1095,6 +1095,7 @@ impl OverlayContext {
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
 			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default
@@ -1159,6 +1160,7 @@ impl OverlayContext {
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
 			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default

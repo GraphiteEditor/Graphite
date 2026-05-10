@@ -232,7 +232,7 @@ impl Vector {
 		let only_closed_paths = self.stroke_bezier_paths().all(|p| p.closed());
 		let kurbo_width = stroke.effective_width(only_closed_paths);
 		// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
-		if kurbo_width <= 0. && only_closed_paths {
+		if kurbo_width <= 0. {
 			return path_bounds;
 		}
 
