@@ -50,17 +50,20 @@ impl Fill {
 		}
 	}
 
-	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.
+	/// Evaluate the color at a representative point on the fill.
 	pub fn color(&self) -> Color {
 		match self {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
-			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
-			Self::Gradient(Gradient { stops, .. }) => {
-				if stops.is_empty() {
+			Self::Gradient(gradient) => {
+				if gradient.stops.is_empty() {
 					Color::BLACK
 				} else {
-					stops.color[0]
+					let t = match gradient.gradient_type {
+						GradientType::Linear => 0.5,
+						GradientType::Radial => 0.,
+					};
+					gradient.stops.evaluate(t)
 				}
 			}
 		}

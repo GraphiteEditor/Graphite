@@ -389,6 +389,26 @@ impl GradientStops {
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+pub enum GradientUnits {
+	#[default]
+	UserSpaceOnUse,
+	ObjectBoundingBox,
+}
+
+impl GradientUnits {
+	pub fn svg_name(&self) -> &'static str {
+		match self {
+			GradientUnits::UserSpaceOnUse => "userSpaceOnUse",
+			GradientUnits::ObjectBoundingBox => "objectBoundingBox",
+		}
+	}
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
 pub enum GradientSpreadMethod {
 	#[default]
 	Pad,
@@ -419,6 +439,12 @@ pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
 	#[cfg_attr(feature = "serde", serde(default))]
+	pub focal_center: DVec2,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub focal_radius: f64,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub gradient_units: GradientUnits,
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub spread_method: GradientSpreadMethod,
 }
 
@@ -429,6 +455,9 @@ impl Default for Gradient {
 			gradient_type: GradientType::Linear,
 			start: DVec2::new(0., 0.5),
 			end: DVec2::new(1., 0.5),
+			focal_center: DVec2::new(0., 0.5),
+			focal_radius: 0.,
+			gradient_units: GradientUnits::UserSpaceOnUse,
 			spread_method: GradientSpreadMethod::Pad,
 		}
 	}
@@ -468,6 +497,9 @@ impl Gradient {
 			end,
 			stops,
 			gradient_type,
+			focal_center: start,
+			focal_radius: 0.,
+			gradient_units: GradientUnits::UserSpaceOnUse,
 			spread_method,
 		}
 	}
@@ -475,6 +507,8 @@ impl Gradient {
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		let start = self.start + (other.start - self.start) * time;
 		let end = self.end + (other.end - self.end) * time;
+		let focal_center = self.focal_center + (other.focal_center - self.focal_center) * time;
+		let focal_radius = self.focal_radius + (other.focal_radius - self.focal_radius) * time;
 		let stops = self.stops.iter().zip(other.stops.iter()).map(|(a, b)| {
 			let position = a.position + (b.position - a.position) * time;
 			let color = a.color.lerp(&b.color, time as f32);
@@ -482,6 +516,7 @@ impl Gradient {
 		});
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
+		let gradient_units = if time < 0.5 { self.gradient_units } else { other.gradient_units };
 		let spread_method = if time < 0.5 { self.spread_method } else { other.spread_method };
 
 		Self {
@@ -489,6 +524,9 @@ impl Gradient {
 			end,
 			stops,
 			gradient_type,
+			focal_center,
+			focal_radius,
+			gradient_units,
 			spread_method,
 		}
 	}

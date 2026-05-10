@@ -1,10 +1,10 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
 use core_types::uuid::generate_uuid;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
-use vector_types::gradient::GradientSpreadMethod;
+use vector_types::gradient::{GradientSpreadMethod, GradientUnits};
 
 pub trait RenderExt {
 	type Output;
@@ -54,21 +54,39 @@ impl RenderExt for Gradient {
 			format!(r#" spreadMethod="{}""#, self.spread_method.svg_name())
 		};
 
+		let gradient_units = if self.gradient_units == GradientUnits::UserSpaceOnUse {
+			String::new()
+		} else {
+			format!(r#" gradientUnits="{}""#, self.gradient_units.svg_name())
+		};
+
 		let gradient_id = generate_uuid();
 
 		match self.gradient_type {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{spread_method}{gradient_transform}>{}</linearGradient>"#,
+					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{gradient_units}{spread_method}{gradient_transform}>{}</linearGradient>"#,
 					gradient_id, start.x, start.y, end.x, end.y, stop
 				);
 			}
 			GradientType::Radial => {
-				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
+				let radius = start.distance(end);
+				let focal = transform_points.transform_point2(self.focal_center);
+				let focal_edge = transform_points.transform_point2(self.focal_center + DVec2::X * self.focal_radius);
+				let focal_radius = focal.distance(focal_edge);
+
+				let mut focal_attrs = String::new();
+				if (focal.x - start.x).abs() > 1e-9 || (focal.y - start.y).abs() > 1e-9 {
+					let _ = write!(focal_attrs, r#" fx="{}" fy="{}""#, focal.x, focal.y);
+				}
+				if focal_radius > 1e-9 {
+					let _ = write!(focal_attrs, r#" fr="{}""#, focal_radius);
+				}
+
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{spread_method}{gradient_transform}>{}</radialGradient>"#,
+					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{focal_attrs}{gradient_units}{spread_method}{gradient_transform}>{}</radialGradient>"#,
 					gradient_id, start.x, start.y, radius, stop
 				);
 			}

@@ -329,6 +329,9 @@ fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 			spread_method,
 			start: transform.transform_point2(DVec2::ZERO),
 			end: transform.transform_point2(DVec2::X),
+			focal_center: transform.transform_point2(DVec2::ZERO),
+			focal_radius: 0.,
+			gradient_units: Default::default(),
 		});
 	}
 	graph_modification_utils::get_gradient(layer, network_interface)

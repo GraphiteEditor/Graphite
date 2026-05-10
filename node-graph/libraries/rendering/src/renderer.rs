@@ -1202,9 +1202,10 @@ impl Render for Table<Vector> {
 							.into(),
 							GradientType::Radial => {
 								let radius = start.distance(end);
+								let focal = mod_points.transform_point2(gradient.focal_center);
 								peniko::RadialGradientPosition {
-									start_center: to_point(start),
-									start_radius: 0.,
+									start_center: to_point(focal),
+									start_radius: gradient.focal_radius as f32,
 									end_center: to_point(start),
 									end_radius: radius as f32,
 								}

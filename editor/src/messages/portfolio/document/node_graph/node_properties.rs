@@ -31,7 +31,7 @@ use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, GradientUnits};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -2663,6 +2663,55 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		]);
 
 		widgets.push(LayoutGroup::row(spread_methods_row));
+
+		// Gradient Units
+		let mut gradient_units_row = vec![TextLabel::new("").widget_instance()];
+		add_blank_assist(&mut gradient_units_row);
+
+		let gradient_units_entries = [GradientUnits::UserSpaceOnUse, GradientUnits::ObjectBoundingBox]
+			.iter()
+			.map(|&gradient_units| {
+				let gradient_for_input = gradient_for_closure.clone();
+				let gradient_for_backup = gradient_for_closure.clone();
+
+				let set_input_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient_for_input.clone();
+						new_gradient.gradient_units = gradient_units;
+						TaggedValue::Fill(Fill::Gradient(new_gradient))
+					},
+					node_id,
+					FillInput::<Color>::INDEX,
+				);
+
+				let set_backup_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient_for_backup.clone();
+						new_gradient.gradient_units = gradient_units;
+						TaggedValue::Gradient(new_gradient)
+					},
+					node_id,
+					BackupGradientInput::INDEX,
+				);
+
+				RadioEntryData::new(format!("{:?}", gradient_units))
+					.label(format!("{:?}", gradient_units))
+					.on_update(move |_| Message::Batched {
+						messages: Box::new([
+							set_input_value(&()),
+							set_backup_value(&()),
+						]),
+					})
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		gradient_units_row.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			RadioInput::new(gradient_units_entries).selected_index(Some(gradient.gradient_units as u32)).widget_instance(),
+		]);
+
+		widgets.push(LayoutGroup::row(gradient_units_row));
 	}
 
 	widgets

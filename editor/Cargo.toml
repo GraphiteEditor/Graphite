@@ -40,6 +40,7 @@ tsify = { workspace = true }
 dyn-any = { workspace = true }
 num_enum = { workspace = true }
 usvg = { workspace = true }
+svgtypes = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
 vello = { workspace = true }

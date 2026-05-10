@@ -2184,6 +2184,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "spin",
+ "svgtypes",
  "thiserror 2.0.18",
  "tokio",
  "tsify",
