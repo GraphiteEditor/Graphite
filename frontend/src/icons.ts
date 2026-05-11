@@ -199,6 +199,17 @@ import StackLower from "/../branding/assets/icon-16px-solid/stack-lower.svg";
 import StackRaise from "/../branding/assets/icon-16px-solid/stack-raise.svg";
 import StackReverse from "/../branding/assets/icon-16px-solid/stack-reverse.svg";
 import Stack from "/../branding/assets/icon-16px-solid/stack.svg";
+import StrokeAlignCenter from "/../branding/assets/icon-16px-solid/stroke-align-center.svg";
+import StrokeAlignInside from "/../branding/assets/icon-16px-solid/stroke-align-inside.svg";
+import StrokeAlignOutside from "/../branding/assets/icon-16px-solid/stroke-align-outside.svg";
+import StrokeCapButt from "/../branding/assets/icon-16px-solid/stroke-cap-butt.svg";
+import StrokeCapRound from "/../branding/assets/icon-16px-solid/stroke-cap-round.svg";
+import StrokeCapSquare from "/../branding/assets/icon-16px-solid/stroke-cap-square.svg";
+import StrokeJoinBevel from "/../branding/assets/icon-16px-solid/stroke-join-bevel.svg";
+import StrokeJoinMiter from "/../branding/assets/icon-16px-solid/stroke-join-miter.svg";
+import StrokeJoinRound from "/../branding/assets/icon-16px-solid/stroke-join-round.svg";
+import StrokeOrderAbove from "/../branding/assets/icon-16px-solid/stroke-order-above.svg";
+import StrokeOrderBelow from "/../branding/assets/icon-16px-solid/stroke-order-below.svg";
 import TextAlignCenter from "/../branding/assets/icon-16px-solid/text-align-center.svg";
 import TextAlignLeft from "/../branding/assets/icon-16px-solid/text-align-left.svg";
 import TextAlignRight from "/../branding/assets/icon-16px-solid/text-align-right.svg";
@@ -327,6 +338,17 @@ const SOLID_16PX = {
 	StackLower: { svg: StackLower, size: 16 },
 	StackRaise: { svg: StackRaise, size: 16 },
 	StackReverse: { svg: StackReverse, size: 16 },
+	StrokeAlignCenter: { svg: StrokeAlignCenter, size: 16 },
+	StrokeAlignInside: { svg: StrokeAlignInside, size: 16 },
+	StrokeAlignOutside: { svg: StrokeAlignOutside, size: 16 },
+	StrokeCapButt: { svg: StrokeCapButt, size: 16 },
+	StrokeCapRound: { svg: StrokeCapRound, size: 16 },
+	StrokeCapSquare: { svg: StrokeCapSquare, size: 16 },
+	StrokeJoinBevel: { svg: StrokeJoinBevel, size: 16 },
+	StrokeJoinMiter: { svg: StrokeJoinMiter, size: 16 },
+	StrokeJoinRound: { svg: StrokeJoinRound, size: 16 },
+	StrokeOrderAbove: { svg: StrokeOrderAbove, size: 16 },
+	StrokeOrderBelow: { svg: StrokeOrderBelow, size: 16 },
 	TextAlignCenter: { svg: TextAlignCenter, size: 16 },
 	TextAlignLeft: { svg: TextAlignLeft, size: 16 },
 	TextAlignRight: { svg: TextAlignRight, size: 16 },
