@@ -222,23 +222,30 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
-		let stops_value = self.data.current_gradient_stops.clone().map(FillChoice::Gradient).unwrap_or_else(|| {
-			FillChoice::Gradient(GradientStops::new([
-				GradientStop {
-					position: 0.,
-					midpoint: 0.5,
-					color: self.data.primary_color,
-				},
-				GradientStop {
-					position: 1.,
-					midpoint: 0.5,
-					color: self.data.secondary_color,
-				},
-			]))
-		});
+		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
+		let stops_value = self
+			.data
+			.current_gradient_stops
+			.clone()
+			.or_else(|| self.data.default_gradient_stops.clone())
+			.map(FillChoice::Gradient)
+			.unwrap_or_else(|| {
+				FillChoice::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: self.data.primary_color,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: self.data.secondary_color,
+					},
+				]))
+			});
 		let stops_widget = ColorInput::new(stops_value)
 			.allow_none(false)
-			.disabled(!self.data.has_selected_gradient)
+			.narrow(true)
 			.tooltip_label("Gradient Stops")
 			.tooltip_description("Edit the gradient's color stops.")
 			.on_update(|input: &ColorInput| {
@@ -786,9 +793,13 @@ struct GradientToolData {
 	auto_pan_shift: DVec2,
 	gradient_angle: f64,
 	has_selected_gradient: bool,
-	/// Cached stops of the currently selected layer's gradient, mirrored into the control-bar widget. Independent of any
-	/// in-progress drag (which uses `selected_gradient`) so it stays current after selection changes too.
+	/// Cached stops of the currently selected layer's gradient, mirrored into the control-bar widget.
+	/// Independent of any in-progress drag (which uses `selected_gradient`) so it stays current after selection changes too.
 	current_gradient_stops: Option<GradientStops>,
+	/// User-customized default gradient stop colors: used when nothing that has a gradient is selected.
+	/// `None` means to follow the working colors.
+	/// Cleared on tool deactivation so each fresh activation starts from the working colors again.
+	default_gradient_stops: Option<GradientStops>,
 	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
 	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
 	gradient_orientation_rightward: bool,
@@ -1545,6 +1556,8 @@ impl Fsm for GradientToolFsmState {
 			}
 			(_, GradientToolMessage::Abort) => {
 				dismiss_color_stop_color_picker(tool_data, responses);
+				// Clear the tool-default gradient override so re-activating the tool starts fresh from the working colors
+				tool_data.default_gradient_stops = None;
 
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
@@ -1785,6 +1798,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 		.selected_visible_layers(&context.document.network_interface)
 		.collect();
 
+	let mut updated_any_layer = false;
 	for layer in selected_layers {
 		if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
 			continue;
@@ -1792,20 +1806,30 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 
 		if get_gradient_stops(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: stops.clone() });
+			updated_any_layer = true;
 		} else if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
 			gradient.stops = stops.clone();
 			responses.add(GraphOperationMessage::FillSet {
 				layer,
 				fill: Fill::Gradient(gradient),
 			});
+			updated_any_layer = true;
 		}
 	}
 
 	if let Some(selected_gradient) = &mut data.selected_gradient {
-		selected_gradient.gradient.stops = stops;
+		selected_gradient.gradient.stops = stops.clone();
+	}
+
+	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
+	// Save those stops so the widget keeps showing them until the tool is deactivated.
+	if !updated_any_layer {
+		data.default_gradient_stops = Some(stops);
 	}
 
 	responses.add(PropertiesPanelMessage::Refresh);
+	// Refresh the tool options so the swatch's `chosen_gradient` (precomputed CSS string) updates live as the user edits stops in the picker.
+	responses.add(ToolMessage::RefreshToolOptions);
 }
 
 /// Find the first selected visible layer that has a gradient and return both the layer ID and its resolved gradient.

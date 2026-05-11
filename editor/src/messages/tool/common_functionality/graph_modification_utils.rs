@@ -15,7 +15,7 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, Gradient};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient};
 use graphene_std::vector::{GradientStops, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -524,6 +524,159 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 		}
 	}
+}
+
+/// Returns the `Fill` value from a layer's upstream Fill node.
+pub fn get_fill_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Fill> {
+	let fill_index = graphene_std::vector::fill::FillInput::<Fill>::INDEX;
+	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER), fill_index)?;
+	if let TaggedValue::Fill(fill) = tagged { Some(fill.clone()) } else { None }
+}
+
+/// Returns the stroke color from a layer's upstream Stroke node.
+pub fn get_stroke_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Option<Color>> {
+	let color_index = graphene_std::vector::stroke::ColorInput::INDEX;
+	let tagged = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER), color_index)?;
+	if let TaggedValue::Color(color) = tagged { Some(*color) } else { None }
+}
+
+/// Aggregated fill state across all selected non-artboard layers.
+pub struct SelectedFillState {
+	/// `None` means mixed values between selected layers.
+	pub enabled: Option<bool>,
+	/// `None` means mixed values between selected layers.
+	pub fill_choice: Option<FillChoice>,
+}
+
+/// Aggregated stroke state across all selected non-artboard layers.
+pub struct SelectedStrokeState {
+	/// `None` means mixed values between selected layers.
+	pub enabled: Option<bool>,
+	/// `None` means mixed values between selected layers.
+	pub optional_color: Option<Option<Color>>,
+}
+
+/// Reads the fill state across all selected non-artboard layers, including whether their enabled states or colors differ.
+/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Fill node is attached, even when that fill's value is [`FillChoice::None`].
+/// Unticked means there is no Fill node. Returns `None` only when no layer is selected.
+pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<SelectedFillState> {
+	let selected_nodes = document.network_interface.selected_nodes();
+	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
+		if get_fill_id(layer, &document.network_interface).is_none() {
+			return (false, FillChoice::None);
+		}
+		let fill_choice = get_fill_value(layer, &document.network_interface).map_or(FillChoice::None, FillChoice::from);
+		(true, fill_choice)
+	});
+
+	let (first_enabled, first_choice) = per_layer.next()?;
+	let mut enabled_mixed = false;
+	let mut color_mixed = false;
+	for (enabled, fill_choice) in per_layer {
+		if enabled != first_enabled {
+			enabled_mixed = true;
+		}
+		// Colors are only "mixed" when both layers are enabled but their fill values differ
+		if enabled && first_enabled && fill_choice != first_choice {
+			color_mixed = true;
+		}
+	}
+
+	Some(SelectedFillState {
+		enabled: (!enabled_mixed).then_some(first_enabled),
+		fill_choice: (!color_mixed).then_some(first_choice),
+	})
+}
+
+/// Reads the stroke state across all selected non-artboard layers, including whether their enabled states or colors differ.
+/// "Enabled" tracks node attachment: a layer counts as enabled whenever a Stroke node is attached, even when that stroke's color is `None`.
+/// Unticked means there is no Stroke node. Returns `None` only when no layer is selected.
+pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<SelectedStrokeState> {
+	let selected_nodes = document.network_interface.selected_nodes();
+	let mut per_layer = selected_nodes.selected_layers_except_artboards(&document.network_interface).map(|layer| {
+		if get_stroke_id(layer, &document.network_interface).is_none() {
+			return (false, None);
+		}
+		let color = get_stroke_color(layer, &document.network_interface).flatten();
+		(true, color)
+	});
+
+	let (first_enabled, first_color) = per_layer.next()?;
+	let mut enabled_mixed = false;
+	let mut color_mixed = false;
+	for (enabled, color) in per_layer {
+		if enabled != first_enabled {
+			enabled_mixed = true;
+		}
+		if enabled && first_enabled && color != first_color {
+			color_mixed = true;
+		}
+	}
+
+	Some(SelectedStrokeState {
+		enabled: (!enabled_mixed).then_some(first_enabled),
+		optional_color: (!color_mixed).then_some(first_color),
+	})
+}
+
+/// Sets the fill on all selected non-artboard layers, preserving gradient transform data when the layer already has a gradient fill.
+pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+	for layer in layers {
+		let existing_gradient = get_fill_value(layer, &document.network_interface).and_then(|f| match f {
+			Fill::Gradient(g) => Some(g),
+			_ => None,
+		});
+		let fill = fill_choice.clone().to_fill(existing_gradient.as_ref());
+		responses.add(GraphOperationMessage::FillSet { layer, fill });
+	}
+}
+
+/// Sets the stroke color on all selected non-artboard layers. Layers without an existing Stroke node get one created using
+/// the provided `weight`, so picking any color (including `None`) from an unticked stroke control bar entry both attaches
+/// the Stroke node and applies the chosen color.
+pub fn set_stroke_color_for_selected_layers(color: Option<Color>, weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+	for layer in layers {
+		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
+			let input_index = graphene_std::vector::stroke::ColorInput::INDEX;
+			let value = TaggedValue::Color(color);
+			responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
+		} else {
+			let stroke = graphene_std::vector::style::Stroke::new(color, weight);
+			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+		}
+	}
+}
+
+/// Removes the Fill node from all selected non-artboard layers.
+pub fn remove_fill_for_selected_layers(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+	for layer in layers {
+		if let Some(node_id) = get_fill_id(layer, &document.network_interface) {
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![node_id],
+				delete_children: true,
+			});
+		}
+	}
+	responses.add(NodeGraphMessage::RunDocumentGraph);
+	responses.add(NodeGraphMessage::SendGraph);
+}
+
+/// Removes the Stroke node from all selected non-artboard layers.
+pub fn remove_stroke_for_selected_layers(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let layers: Vec<_> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();
+	for layer in layers {
+		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![node_id],
+				delete_children: true,
+			});
+		}
+	}
+	responses.add(NodeGraphMessage::RunDocumentGraph);
+	responses.add(NodeGraphMessage::SendGraph);
 }
 
 /// Reads a specific input from the matching proto node on the first selected non-artboard layer that has one.

@@ -8,7 +8,9 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::portfolio::utility_types::{CachedData, FontCatalog, FontCatalogStyle};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::color_selector::{
+	ToolColorOptions, apply_fill_only_color_pick, apply_fill_only_enabled, refresh_slot_working_color, selection_changed_since_last_sync, solid_gamma, sync_fill_only,
+};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
@@ -20,7 +22,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::Fill;
+use graphene_std::vector::style::{Fill, FillChoice};
 use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
@@ -37,6 +39,8 @@ pub struct TextOptions {
 	fill: ToolColorOptions,
 	tilt: f64,
 	align: TextAlign,
+	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
+	last_synced_selection: Vec<LayerNodeIdentifier>,
 }
 
 impl Default for TextOptions {
@@ -45,9 +49,10 @@ impl Default for TextOptions {
 			font_size: 24.,
 			character_spacing: 0.,
 			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
-			fill: ToolColorOptions::new_primary(),
+			fill: ToolColorOptions::new_enabled(),
 			tilt: 0.,
 			align: TextAlign::default(),
+			last_synced_selection: Vec::new(),
 		}
 	}
 }
@@ -78,12 +83,12 @@ pub enum TextToolMessage {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TextOptionsUpdate {
-	FillColor(Option<Color>),
-	FillColorType(ToolColorType),
+	FillColor(FillChoice),
+	FillEnabled(bool),
 	Font { font: Font },
 	FontSize(f64),
 	Align(TextAlign),
-	WorkingColors(Option<Color>, Option<Color>),
+	WorkingColorsChanged,
 }
 
 impl ToolMetadata for TextTool {
@@ -263,34 +268,20 @@ impl TextTool {
 	}
 
 	fn layout(&self, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Layout {
-		let mut widgets = create_text_widgets(self, font_catalog, document);
-
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		widgets.append(&mut self.options.fill.create_widgets(
-			"Fill",
-			true,
-			|_| {
-				TextToolMessage::UpdateOptions {
-					options: TextOptionsUpdate::FillColor(None),
-				}
-				.into()
-			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
+		let mut widgets = vec![
+			ColorInput::new(self.options.fill.fill_choice.clone().unwrap_or(graphene_std::vector::style::FillChoice::None))
+				.narrow(true)
+				.on_update(|color: &ColorInput| {
 					TextToolMessage::UpdateOptions {
-						options: TextOptionsUpdate::FillColorType(color_type.clone()),
+						options: TextOptionsUpdate::FillColor(color.value.clone()),
 					}
 					.into()
 				})
-			},
-			|color: &ColorInput| {
-				TextToolMessage::UpdateOptions {
-					options: TextOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
-				}
-				.into()
-			},
-		));
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		];
+
+		widgets.extend(create_text_widgets(self, font_catalog, document));
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -299,6 +290,12 @@ impl TextTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		// On tool deactivation (Abort fires from the dispatcher's tool transition),
+		// reset the displayed fill color so the next activation starts fresh from the current working color.
+		if matches!(&message, ToolMessage::Text(TextToolMessage::Abort)) {
+			self.options.fill.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
+		}
+
 		let options = match message {
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
@@ -314,6 +311,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 						editing_text.font = font.clone();
 					}
 				}
+
+				// Sync fill from the selected layer, falling back to the natural default (fill enabled, primary working color) when nothing is selected.
+				let selection_changed = selection_changed_since_last_sync(&mut self.options.last_synced_selection, context.document);
+				sync_fill_only(&mut self.options.fill, true, context.global_tool_data.primary_color, context.document, selection_changed);
+
 				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
 				return;
 			}
@@ -361,14 +363,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					});
 				}
 			}
-			TextOptionsUpdate::FillColor(color) => {
-				self.options.fill.custom_color = color;
-				self.options.fill.color_type = ToolColorType::Custom;
+			TextOptionsUpdate::FillColor(fill_choice) => {
+				// Text fill is bound to the primary working color (no swap concept).
+				apply_fill_only_color_pick(&mut self.options.fill, fill_choice, true, context.document, responses);
 			}
-			TextOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-			TextOptionsUpdate::WorkingColors(primary, secondary) => {
-				self.options.fill.primary_working_color = primary;
-				self.options.fill.secondary_working_color = secondary;
+			TextOptionsUpdate::FillEnabled(enabled) => {
+				apply_fill_only_enabled(&mut self.options.fill, enabled, context.global_tool_data.primary_color, context.document, responses);
+			}
+			TextOptionsUpdate::WorkingColorsChanged => {
+				refresh_slot_working_color(&mut self.options.fill, context.global_tool_data.primary_color, context.document);
 			}
 		}
 
@@ -639,7 +642,6 @@ impl Fsm for TextToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
-			global_tool_data,
 			input,
 			cached_data,
 			viewport,
@@ -1036,7 +1038,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {
 				responses.add(TextToolMessage::UpdateOptions {
-					options: TextOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+					options: TextOptionsUpdate::WorkingColorsChanged,
 				});
 				self
 			}

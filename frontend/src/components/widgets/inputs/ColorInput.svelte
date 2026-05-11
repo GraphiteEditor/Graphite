@@ -14,8 +14,12 @@
 	// export let allowTransparency = false; // TODO: Implement
 	export let menuDirection: MenuDirection = "Bottom";
 	export let disabled = false;
+	export let mixed = false;
 	// Styling
 	export let narrow = false;
+	// Sizing
+	export let minWidth = 0;
+	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -23,7 +27,7 @@
 
 	let open = false;
 
-	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
+	$: outlineFactor = contrastingOutlineFactor(value, "--color-3-darkgray", 0.01);
 	$: outlined = outlineFactor > 0.0001;
 	$: gradientStops = fillChoiceGradientStops(value);
 	$: solidColor = fillChoiceColor(value);
@@ -31,7 +35,17 @@
 	$: transparency = gradientStops ? gradientStops.color.some((color) => color.alpha < 1) : solidColor ? solidColor.alpha < 1 : false;
 </script>
 
-<LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
+<LayoutCol
+	class="color-input"
+	classes={{ open, disabled, narrow, none, transparency, outlined, mixed, "direction-top": menuDirection === "Top" }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
+>
 	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
 	<ColorPicker
 		{open}
@@ -53,7 +67,7 @@
 </LayoutCol>
 
 <style lang="scss">
-	.color-button {
+	.color-input {
 		position: relative;
 		min-width: 80px;
 
@@ -129,6 +143,28 @@
 			right: 0;
 			background: var(--color-4-dimgray);
 			opacity: 0.5;
+		}
+
+		&.mixed > button {
+			position: relative;
+			background: var(--color-e-nearwhite);
+			background-image: none;
+
+			&::before {
+				background: var(--color-e-nearwhite);
+			}
+
+			&::after {
+				content: "";
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 8px;
+				height: 2px;
+				border-radius: 1px;
+				transform: translate(-50%, -50%);
+				background: var(--color-8-uppergray);
+			}
 		}
 
 		&:not(.disabled):hover > button .text-label,

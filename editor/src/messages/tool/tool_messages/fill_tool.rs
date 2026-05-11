@@ -1,16 +1,19 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::tool::common_functionality::color_selector::solid_gamma;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use graphene_std::raster::color::Color;
 use graphene_std::vector::style::Fill;
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
+	primary_color: Color,
 }
 
 #[impl_message(Message, ToolMessage, Fill)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,
@@ -22,6 +25,7 @@ pub enum FillToolMessage {
 	PointerUp,
 	FillPrimaryColor,
 	FillSecondaryColor,
+	SetColor { color: Option<Color> },
 }
 
 impl ToolMetadata for FillTool {
@@ -38,13 +42,39 @@ impl ToolMetadata for FillTool {
 
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
-		Layout::default()
+		let widgets = vec![
+			ColorInput::new(solid_gamma(self.primary_color))
+				.narrow(true)
+				.on_update(|color: &ColorInput| {
+					FillToolMessage::SetColor {
+						color: color.value.as_solid().map(|c| c.to_linear_srgb()),
+					}
+					.into()
+				})
+				.widget_instance(),
+		];
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FillTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		// User picked a color in the control bar: push it to the global primary working color (no tool-local customization)
+		if let ToolMessage::Fill(FillToolMessage::SetColor { color: Some(color) }) = &message {
+			responses.add(ToolMessage::SelectWorkingColor { color: *color, primary: true });
+			return;
+		}
+
+		// Mirror the global primary working color into the control bar's color swatch
+		if matches!(message, ToolMessage::Fill(FillToolMessage::WorkingColorChanged)) {
+			let new_color = context.global_tool_data.primary_color;
+			if self.primary_color != new_color {
+				self.primary_color = new_color;
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
+		}
+
 		self.fsm_state.process_event(message, &mut (), context, &(), responses, true);
 	}
 	fn actions(&self) -> ActionList {
@@ -105,7 +135,7 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
-				// Choose the working color to preview
+				// Choose the color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
