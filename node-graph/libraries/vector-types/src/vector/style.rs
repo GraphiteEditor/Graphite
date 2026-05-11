@@ -230,8 +230,11 @@ impl From<Fill> for FillChoice {
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
+	#[icon("StrokeCapButt")]
 	Butt,
+	#[icon("StrokeCapRound")]
 	Round,
+	#[icon("StrokeCapSquare")]
 	Square,
 }
 
@@ -252,8 +255,11 @@ impl StrokeCap {
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
+	#[icon("StrokeJoinMiter")]
 	Miter,
+	#[icon("StrokeJoinBevel")]
 	Bevel,
+	#[icon("StrokeJoinRound")]
 	Round,
 }
 
@@ -274,8 +280,11 @@ impl StrokeJoin {
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
+	#[icon("StrokeAlignCenter")]
 	Center,
+	#[icon("StrokeAlignInside")]
 	Inside,
+	#[icon("StrokeAlignOutside")]
 	Outside,
 }
 
@@ -292,7 +301,9 @@ impl StrokeAlign {
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
+	#[icon("StrokeOrderAbove")]
 	StrokeAbove,
+	#[icon("StrokeOrderBelow")]
 	StrokeBelow,
 }
 
