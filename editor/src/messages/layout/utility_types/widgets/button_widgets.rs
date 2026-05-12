@@ -202,6 +202,13 @@ pub struct ColorInput {
 	#[serde(rename = "menuDirection")]
 	pub menu_direction: Option<MenuDirection>,
 	pub disabled: bool,
+	pub mixed: bool,
+
+	// Sizing
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 
 	// Styling
 	pub narrow: bool,

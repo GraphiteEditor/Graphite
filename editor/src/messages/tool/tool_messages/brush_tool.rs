@@ -4,12 +4,13 @@ use crate::messages::portfolio::document::graph_operation::transform_utils::get_
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, solid_gamma};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Color;
 use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_std::raster::BlendMode;
+use graphene_std::vector::style::FillChoice;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
@@ -73,13 +74,12 @@ pub enum BrushToolMessageOptionsUpdate {
 	BlendMode(BlendMode),
 	ChangeDiameter(f64),
 	Color(Option<Color>),
-	ColorType(ToolColorType),
 	Diameter(f64),
 	DrawMode(DrawMode),
 	Flow(f64),
 	Hardness(f64),
 	Spacing(f64),
-	WorkingColors(Option<Color>, Option<Color>),
+	WorkingColorsChanged,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -104,6 +104,18 @@ impl ToolMetadata for BrushTool {
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
+			ColorInput::new(self.options.color.fill_choice.clone().unwrap_or(FillChoice::None))
+				.mixed(self.options.color.fill_choice.is_none())
+				.narrow(true)
+				.on_update(|color: &ColorInput| {
+					BrushToolMessage::UpdateOptions {
+						// The picker emits gamma-space colors; working colors are stored in linear sRGB.
+						options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|c| c.to_linear_srgb())),
+					}
+					.into()
+				})
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.options.diameter))
 				.label("Diameter")
 				.min(1.)
@@ -170,33 +182,6 @@ impl LayoutHolder for BrushTool {
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_instance());
 
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		widgets.append(&mut self.options.color.create_widgets(
-			"Color",
-			false,
-			|_| {
-				BrushToolMessage::UpdateOptions {
-					options: BrushToolMessageOptionsUpdate::Color(None),
-				}
-				.into()
-			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
-					BrushToolMessage::UpdateOptions {
-						options: BrushToolMessageOptionsUpdate::ColorType(color_type.clone()),
-					}
-					.into()
-				})
-			},
-			|color: &ColorInput| {
-				BrushToolMessage::UpdateOptions {
-					options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|color| color.to_linear_srgb())),
-				}
-				.into()
-			},
-		));
-
 		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
@@ -254,13 +239,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 			BrushToolMessageOptionsUpdate::Flow(flow) => self.options.flow = flow,
 			BrushToolMessageOptionsUpdate::Spacing(spacing) => self.options.spacing = spacing,
 			BrushToolMessageOptionsUpdate::Color(color) => {
-				self.options.color.custom_color = color;
-				self.options.color.color_type = ToolColorType::Custom;
+				// User picked a color: push to the global primary working color (no tool-local customization).
+				if let Some(color) = color {
+					responses.add(ToolMessage::SelectWorkingColor { color, primary: true });
+				}
 			}
-			BrushToolMessageOptionsUpdate::ColorType(color_type) => self.options.color.color_type = color_type,
-			BrushToolMessageOptionsUpdate::WorkingColors(primary, secondary) => {
-				self.options.color.primary_working_color = primary;
-				self.options.color.secondary_working_color = secondary;
+			BrushToolMessageOptionsUpdate::WorkingColorsChanged => {
+				self.options.color.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
 			}
 		}
 
@@ -355,9 +340,7 @@ impl Fsm for BrushToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext {
-			document, global_tool_data, input, ..
-		} = tool_action_data;
+		let ToolActionMessageContext { document, input, .. } = tool_action_data;
 
 		let ToolMessage::Brush(event) = event else { return self };
 		match (self, event) {
@@ -450,7 +433,7 @@ impl Fsm for BrushToolFsmState {
 			}
 			(_, BrushToolMessage::WorkingColorChanged) => {
 				responses.add(BrushToolMessage::UpdateOptions {
-					options: BrushToolMessageOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+					options: BrushToolMessageOptionsUpdate::WorkingColorsChanged,
 				});
 				self
 			}

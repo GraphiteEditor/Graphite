@@ -20,6 +20,7 @@ pub struct CheckboxInput {
 	#[serde(rename = "forLabel")]
 	pub for_label: CheckboxId,
 	pub disabled: bool,
+	pub mixed: bool,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
