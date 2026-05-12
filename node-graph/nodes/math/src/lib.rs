@@ -1,11 +1,11 @@
 use core_types::Context;
-use core_types::list::List;
+use core_types::list::{ATTR_FILL_GRAPHIC, List};
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, num_traits};
 use glam::{DAffine2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Artboard, Graphic, IntoGraphicList, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -983,6 +983,29 @@ fn length(_: impl Ctx, vector: DVec2) -> f64 {
 #[node_macro::node(category("Math: Vector"))]
 fn normalize(_: impl Ctx, vector: DVec2) -> DVec2 {
 	vector.normalize_or_zero()
+}
+
+/// Sets the `fill_graphic` attribute on each item of the input vector list.
+/// Used for testing of clipping-based fill rendering until the proper Fill node refactor lands.
+#[node_macro::node(category("Debug"))]
+fn fill_graphic<P: IntoGraphicList + 'n + Send>(
+	_: impl Ctx,
+	mut vectors: List<Vector>,
+	#[implementations(
+        List<Graphic>,
+        List<Vector>,
+        List<Raster<CPU>>,
+        List<Raster<GPU>>,
+        List<Color>,
+        List<GradientStops>,
+    )]
+	fill_graphic: P,
+) -> List<Vector> {
+	let paint_list = fill_graphic.into_graphic_list();
+	for row_idx in 0..vectors.len() {
+		vectors.set_attribute(ATTR_FILL_GRAPHIC, row_idx, paint_list.clone());
+	}
+	vectors
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{Item, List};
+use core_types::list::{ATTR_FILL_GRAPHIC, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -18,7 +18,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::graphic::fill_to_paint;
+use graphic_types::graphic::fill_to_graphic_list;
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1111,7 +1111,7 @@ impl Render for List<Vector> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
 
 		for index in 0..self.len() {
@@ -1182,26 +1182,32 @@ impl Render for List<Vector> {
 			let use_layer = can_draw_aligned_stroke;
 			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
-			// TODO: This conversion is only necessary during the transition period from Fill to Table<Graphic>
-			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
-				let Some(paint_table) = fill_to_paint(element.style.fill()) else {
+			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
+				// Try to use ATTR_FILL_GRAPHIC attribute, which is set by `fill_graphic` debug node, then fall back to Fill enum.
+				// TODO: Drop the Fill fall back once the Fill node becomes ready to store corresponding Graphic list directly.
+				let Some(fill_graphic) = self
+					.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
+					.filter(|t| !t.is_empty())
+					.cloned()
+					.or_else(|| fill_to_graphic_list(element.style.fill()))
+				else {
 					return;
 				};
 
-				for paint_idx in 0..paint_table.len() {
-					let Some(paint) = paint_table.element(paint_idx) else { continue };
+				for paint_idx in 0..fill_graphic.len() {
+					let Some(paint) = fill_graphic.element(paint_idx) else { continue };
 					match paint {
-						Graphic::Color(table) => {
-							let Some(color) = table.element(0) else { continue };
+						Graphic::Color(list) => {
+							let Some(color) = list.element(0) else { continue };
 
 							let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
-						Graphic::Gradient(stops_table) => {
-							let Some(stops) = stops_table.element(0) else { continue };
-							let gradient_type: GradientType = stops_table.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
-							let gradient_transform: DAffine2 = stops_table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-							let spread_method: GradientSpreadMethod = stops_table.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+						Graphic::Gradient(stops_list) => {
+							let Some(stops) = stops_list.element(0) else { continue };
+							let gradient_type: GradientType = stops_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
+							let gradient_transform: DAffine2 = stops_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+							let spread_method: GradientSpreadMethod = stops_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
 
 							let mut peniko_stops = peniko::ColorStops::new();
 							for (position, color, _) in stops.interpolated_samples() {
@@ -1259,14 +1265,18 @@ impl Render for List<Vector> {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 						}
-						_ => todo!(),
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) => {
+							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
+							paint.render_to_vello(scene, multiplied_transform, context, render_params);
+							scene.pop_layer();
+						}
 					};
 				}
 			};
 
 			// Branching vectors without regions (e.g. mesh grids) need face-by-face fill rendering.
 			let use_face_fill = element.use_face_fill();
-			let do_fill = |scene: &mut Scene| {
+			let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
 				if use_face_fill {
 					for mut face_path in element.construct_faces().filter(|face| face.area() >= 0.) {
 						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
@@ -1274,12 +1284,12 @@ impl Render for List<Vector> {
 						for element in face_path {
 							kurbo_path.push(element);
 						}
-						do_fill_path(scene, &kurbo_path, peniko::Fill::NonZero);
+						do_fill_path(scene, context, &kurbo_path, peniko::Fill::NonZero);
 					}
 				} else if element.is_branching() {
-					do_fill_path(scene, &path, peniko::Fill::EvenOdd);
+					do_fill_path(scene, context, &path, peniko::Fill::EvenOdd);
 				} else {
-					do_fill_path(scene, &path, peniko::Fill::NonZero);
+					do_fill_path(scene, context, &path, peniko::Fill::NonZero);
 				}
 			};
 
@@ -1349,7 +1359,7 @@ impl Render for List<Vector> {
 
 						if wants_stroke_below {
 							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_list.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+							vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
@@ -1357,13 +1367,13 @@ impl Render for List<Vector> {
 							scene.pop_layer();
 							scene.pop_layer();
 
-							do_fill(scene);
+							do_fill(scene, context);
 						} else {
 							// Fill first (unclipped), then stroke (clipped) above
-							do_fill(scene);
+							do_fill(scene, context);
 
 							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_list.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+							vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
@@ -1385,7 +1395,7 @@ impl Render for List<Vector> {
 
 						for operation in &order {
 							match operation {
-								Op::Fill => do_fill(scene),
+								Op::Fill => do_fill(scene, context),
 								Op::Stroke => do_stroke(scene, 1.),
 							}
 						}

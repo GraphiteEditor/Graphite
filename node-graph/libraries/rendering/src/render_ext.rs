@@ -1,11 +1,11 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::color::SRGBA8;
 use core_types::uuid::generate_uuid;
 use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
-use graphic_types::graphic::fill_to_paint;
+use graphic_types::graphic::fill_to_graphic_list;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
@@ -17,7 +17,7 @@ pub trait RenderExt {
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output;
 }
 
-impl RenderExt for Table<Color> {
+impl RenderExt for List<Color> {
 	type Output = String;
 
 	fn render(
@@ -40,7 +40,7 @@ impl RenderExt for Table<Color> {
 	}
 }
 
-impl RenderExt for Table<GradientStops> {
+impl RenderExt for List<GradientStops> {
 	type Output = u64;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
@@ -118,13 +118,13 @@ impl RenderExt for Fill {
 
 	/// Renders the fill, adding necessary defs through mutating the first argument.
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output {
-		let Some(paint_table) = fill_to_paint(self) else { return r#" fill="none""#.to_string() };
-		let Some(paint) = paint_table.element(0) else { return String::new() };
+		let Some(paint_list) = fill_to_graphic_list(self) else { return r#" fill="none""#.to_string() };
+		let Some(paint) = paint_list.element(0) else { return String::new() };
 
 		match paint {
-			Graphic::Color(color_table) => color_table.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params),
-			Graphic::Gradient(stops_table) => {
-				let gradient_id = stops_table.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+			Graphic::Color(color_list) => color_list.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params),
+			Graphic::Gradient(stops_list) => {
+				let gradient_id = stops_list.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 			_ => {
