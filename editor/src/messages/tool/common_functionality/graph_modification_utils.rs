@@ -569,22 +569,30 @@ pub fn selected_fill_state(document: &DocumentMessageHandler) -> Option<Selected
 		(true, fill_choice)
 	});
 
-	let (first_enabled, first_choice) = per_layer.next()?;
+	let (initial_enabled, initial_choice) = per_layer.next()?;
 	let mut enabled_mixed = false;
 	let mut color_mixed = false;
+	let mut comparison_enabled = initial_enabled;
+	let mut comparison_choice = initial_choice;
 	for (enabled, fill_choice) in per_layer {
-		if enabled != first_enabled {
+		if enabled != initial_enabled {
 			enabled_mixed = true;
 		}
-		// Colors are only "mixed" when both layers are enabled but their fill values differ
-		if enabled && first_enabled && fill_choice != first_choice {
-			color_mixed = true;
+		if enabled {
+			if comparison_enabled {
+				if fill_choice != comparison_choice {
+					color_mixed = true;
+				}
+			} else {
+				comparison_enabled = true;
+				comparison_choice = fill_choice;
+			}
 		}
 	}
 
 	Some(SelectedFillState {
-		enabled: (!enabled_mixed).then_some(first_enabled),
-		fill_choice: (!color_mixed).then_some(first_choice),
+		enabled: (!enabled_mixed).then_some(initial_enabled),
+		fill_choice: (!color_mixed).then_some(comparison_choice),
 	})
 }
 
@@ -601,21 +609,30 @@ pub fn selected_stroke_state(document: &DocumentMessageHandler) -> Option<Select
 		(true, color)
 	});
 
-	let (first_enabled, first_color) = per_layer.next()?;
+	let (initial_enabled, initial_color) = per_layer.next()?;
 	let mut enabled_mixed = false;
 	let mut color_mixed = false;
+	let mut comparison_enabled = initial_enabled;
+	let mut comparison_color = initial_color;
 	for (enabled, color) in per_layer {
-		if enabled != first_enabled {
+		if enabled != initial_enabled {
 			enabled_mixed = true;
 		}
-		if enabled && first_enabled && color != first_color {
-			color_mixed = true;
+		if enabled {
+			if comparison_enabled {
+				if color != comparison_color {
+					color_mixed = true;
+				}
+			} else {
+				comparison_enabled = true;
+				comparison_color = color;
+			}
 		}
 	}
 
 	Some(SelectedStrokeState {
-		enabled: (!enabled_mixed).then_some(first_enabled),
-		optional_color: (!color_mixed).then_some(first_color),
+		enabled: (!enabled_mixed).then_some(initial_enabled),
+		optional_color: (!color_mixed).then_some(comparison_color),
 	})
 }
 

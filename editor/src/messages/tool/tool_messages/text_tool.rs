@@ -270,6 +270,7 @@ impl TextTool {
 	fn layout(&self, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Layout {
 		let mut widgets = vec![
 			ColorInput::new(self.options.fill.fill_choice.clone().unwrap_or(graphene_std::vector::style::FillChoice::None))
+				.mixed(self.options.fill.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					TextToolMessage::UpdateOptions {
@@ -292,7 +293,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		// On tool deactivation (Abort fires from the dispatcher's tool transition),
 		// reset the displayed fill color so the next activation starts fresh from the current working color.
-		if matches!(&message, ToolMessage::Text(TextToolMessage::Abort)) {
+		// Guarded on `Ready` so Esc-mid-editing (which also fires Abort) doesn't wipe the user's customized fill option.
+		if matches!(&message, ToolMessage::Text(TextToolMessage::Abort)) && self.fsm_state == TextToolFsmState::Ready {
 			self.options.fill.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
 		}
 
@@ -312,9 +314,16 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					}
 				}
 
-				// Sync fill from the selected layer, falling back to the natural default (fill enabled, primary working color) when nothing is selected.
+				// Only sync from a text selection; reading a non-text layer's fill would pollute the swatch
 				let selection_changed = selection_changed_since_last_sync(&mut self.options.last_synced_selection, context.document);
-				sync_fill_only(&mut self.options.fill, true, context.global_tool_data.primary_color, context.document, selection_changed);
+				if can_edit_selected(context.document).is_some() {
+					sync_fill_only(&mut self.options.fill, true, context.global_tool_data.primary_color, context.document, selection_changed);
+				} else if selection_changed {
+					self.options.fill.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
+					self.options.fill.tracks_working_color = true;
+				}
+				// Text tool has no fill checkbox; keep enabled so new text never starts with `None`
+				self.options.fill.enabled = Some(true);
 
 				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
 				return;
@@ -621,9 +630,10 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !document.metadata().is_text_layer(layer) {
-		return None;
-	}
+	// Detect text layers by the presence of a Text proto node in the chain, not via `metadata().is_text_layer()` which is
+	// populated lazily by the renderer after `RunDocumentGraph`. A freshly created text layer's `text_frames` entry isn't
+	// available yet when SelectionChanged fires, so the metadata check would incorrectly classify it as non-text.
+	graph_modification_utils::get_text_id(layer, &document.network_interface)?;
 
 	Some(layer)
 }

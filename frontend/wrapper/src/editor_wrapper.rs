@@ -334,7 +334,16 @@ impl EditorWrapper {
 	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		self.widget_value_commit_helper(layout_target.clone(), widget_id, value.clone())?;
 		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)?;
+		// Close out a transaction that the widget's `on_commit` opened (if any), so a single click on widgets like the
+		// NumberInput's increment buttons collapses into one history step instead of leaving the transaction in `Modified`
+		self.dispatch(DocumentMessage::EndTransaction);
 		Ok(())
+	}
+
+	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
+	#[wasm_bindgen(js_name = endTransaction)]
+	pub fn end_transaction(&self) {
+		self.dispatch(DocumentMessage::EndTransaction);
 	}
 
 	pub fn widget_value_update_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {

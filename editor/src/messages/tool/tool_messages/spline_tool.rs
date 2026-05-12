@@ -111,6 +111,7 @@ fn create_weight_widget(line_weight: Option<f64>, disabled: bool) -> WidgetInsta
 				Message::NoOp
 			}
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
@@ -174,7 +175,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Spli
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
 		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		if matches!(&message, ToolMessage::Spline(SplineToolMessage::Abort)) {
+		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
+		if matches!(&message, ToolMessage::Spline(SplineToolMessage::Abort)) && self.fsm_state == SplineToolFsmState::Ready {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
 		}
 

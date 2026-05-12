@@ -215,6 +215,7 @@
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
+					commitHistoryTransaction: () => editor.endTransaction(),
 				},
 			}),
 		},

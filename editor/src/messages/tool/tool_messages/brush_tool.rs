@@ -105,10 +105,12 @@ impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
 			ColorInput::new(self.options.color.fill_choice.clone().unwrap_or(FillChoice::None))
+				.mixed(self.options.color.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					BrushToolMessage::UpdateOptions {
-						options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid()),
+						// The picker emits gamma-space colors; working colors are stored in linear sRGB.
+						options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|c| c.to_linear_srgb())),
 					}
 					.into()
 				})

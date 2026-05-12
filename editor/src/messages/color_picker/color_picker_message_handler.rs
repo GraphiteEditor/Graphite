@@ -102,6 +102,8 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.gradient = None;
 				self.active_marker_index = None;
 				self.active_marker_is_midpoint = false;
+
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			ColorPickerMessage::VisualUpdate { update } => {
 				self.hue = update.hue;

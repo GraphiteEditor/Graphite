@@ -12,7 +12,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
 
 	const editor = getContext<EditorWrapper>("editor");
 
@@ -84,6 +84,9 @@
 	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
+	// True between dispatching `startHistoryTransaction` and the matching `commitHistoryTransaction`, so we only commit
+	// when this widget actually opened a transaction (skipping clicks-without-drag and aborts-before-drag-started).
+	let transactionInProgress = false;
 	// Cleanup function for active drag interactions, called on destroy to prevent leaked listeners
 	let activeDragCleanup: (() => void) | undefined;
 	// Track the slider abort state for cleanup on destroy
@@ -243,9 +246,16 @@
 
 		if (newValue !== undefined) {
 			const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
-			if (newValue !== oldValue) dispatch("startHistoryTransaction");
+			if (newValue !== oldValue) {
+				dispatch("startHistoryTransaction");
+				transactionInProgress = true;
+			}
 		}
 		updateValue(newValue);
+		if (transactionInProgress) {
+			dispatch("commitHistoryTransaction");
+			transactionInProgress = false;
+		}
 
 		editing = false;
 		self?.unFocus();
@@ -477,6 +487,12 @@
 
 			// Clean up the event listeners.
 			activeDragCleanup?.();
+
+			// Close out the transaction `startDragging` opened so the many emits collapse into one history step (covers both confirmed and aborted drags).
+			if (transactionInProgress) {
+				dispatch("commitHistoryTransaction");
+				transactionInProgress = false;
+			}
 		};
 
 		addEventListener("pointerup", pointerUp);
@@ -626,12 +642,20 @@
 		removeEventListener("keydown", sliderAbortFromMousedown);
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
+
+		// Close out the transaction `startDragging` opened, so the drag's many emits collapse into one history step.
+		// Covers the abort path too (sliderAbort already restored the original value, so the committed step is a no-op).
+		if (transactionInProgress) {
+			dispatch("commitHistoryTransaction");
+			transactionInProgress = false;
+		}
 	}
 
 	function startDragging() {
 		// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
 		// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
 		dispatch("startHistoryTransaction");
+		transactionInProgress = true;
 	}
 
 	// We want to let the user abort while dragging the slider by right clicking or pressing Escape.
