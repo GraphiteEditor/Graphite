@@ -1,4 +1,3 @@
-use crate::transform::Footprint;
 use std::any::TypeId;
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -346,8 +345,67 @@ pub fn simplify_identifier_name(ty: &str) -> String {
 		.join("<")
 }
 
+/// Converts a Rust-internal type name to its user-facing form.
 pub fn make_type_user_readable(ty: &str) -> String {
-	ty.replace("Option<Arc<OwnedContextImpl>>", "Context").replace("Raster<CPU>", "Raster").replace("Raster<GPU>", "Raster")
+	let ty = ty
+		.replace("Option<Arc<OwnedContextImpl>>", "Context")
+		.replace("Raster<CPU>", "Raster")
+		.replace("Raster<GPU>", "Raster")
+		.replace("DAffine2", "Transform")
+		.replace("Affine2", "Transform")
+		.replace("DVec2", "Vec2")
+		.replace("IVec2", "Vec2")
+		.replace("UVec2", "Vec2")
+		.replace("&str", "String");
+
+	rewrite_list_as_array_brackets(&ty)
+}
+
+/// Rewrites `List<T>` as `T[]`. Handles nesting (e.g. `List<List<Vector>>` becomes `Vector[][]`).
+/// Respects word boundaries so unrelated identifiers that happen to end in `List` are not affected.
+fn rewrite_list_as_array_brackets(input: &str) -> String {
+	let bytes = input.as_bytes();
+	let mut result = String::with_capacity(input.len());
+	let mut i = 0;
+
+	while i < bytes.len() {
+		let at_word_boundary = i == 0 || !is_identifier_byte(bytes[i - 1]);
+		if at_word_boundary && bytes[i..].starts_with(b"List<") {
+			let inner_start = i + b"List<".len();
+			if let Some(close) = find_matching_angle_bracket(bytes, inner_start) {
+				let inner = &input[inner_start..close];
+				result.push_str(&rewrite_list_as_array_brackets(inner));
+				result.push_str("[]");
+				i = close + 1;
+				continue;
+			}
+		}
+		result.push(bytes[i] as char);
+		i += 1;
+	}
+
+	result
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+	byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn find_matching_angle_bracket(bytes: &[u8], start: usize) -> Option<usize> {
+	let mut depth = 1_usize;
+	for (offset, &byte) in bytes[start..].iter().enumerate() {
+		match byte {
+			b'<' => depth += 1,
+			b'>' => {
+				depth -= 1;
+				if depth == 0 {
+					return Some(start + offset);
+				}
+			}
+			_ => {}
+		}
+	}
+	None
 }
 
 impl std::fmt::Debug for Type {
@@ -359,18 +417,10 @@ impl std::fmt::Debug for Type {
 // Display
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		use glam::*;
-
 		match self {
 			Type::Generic(name) => write!(f, "{}", make_type_user_readable(name)),
-			Type::Concrete(ty) => match () {
-				() if self == &concrete!(DVec2) || self == &concrete!(Vec2) || self == &concrete!(IVec2) || self == &concrete!(UVec2) => write!(f, "Vec2"),
-				() if self == &concrete!(glam::DAffine2) => write!(f, "Transform"),
-				() if self == &concrete!(Footprint) => write!(f, "Footprint"),
-				() if self == &concrete!(&str) || self == &concrete!(String) => write!(f, "String"),
-				_ => write!(f, "{}", make_type_user_readable(&simplify_identifier_name(&ty.name))),
-			},
-			Type::Fn(call_arg, return_value) => write!(f, "{return_value} called with {call_arg}"),
+			Type::Concrete(ty) => write!(f, "{ty}"),
+			Type::Fn(_, return_value) => write!(f, "{return_value}"),
 			Type::Future(ty) => write!(f, "{ty}"),
 		}
 	}
