@@ -8,11 +8,12 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
-	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_line_weight, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation,
-	swap_fill_and_stroke, sync_drawing_state,
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation, swap_fill_and_stroke,
+	sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
@@ -73,7 +74,7 @@ enum SplineToolFsmState {
 pub enum SplineOptionsUpdate {
 	FillColor(FillChoice),
 	FillEnabled(bool),
-	LineWeight(f64),
+	StrokeOption(StrokeOptionsUpdate),
 	StrokeColor(Option<Color>),
 	StrokeEnabled(bool),
 	SwapFillAndStroke,
@@ -90,29 +91,6 @@ impl ToolMetadata for SplineTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Spline
 	}
-}
-
-fn create_weight_widget(line_weight: Option<f64>, disabled: bool) -> WidgetInstance {
-	NumberInput::new(line_weight)
-		.unit(" px")
-		.label("Weight")
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.min_width(100)
-		.narrow(true)
-		.disabled(disabled)
-		.on_update(|number_input: &NumberInput| {
-			if let Some(value) = number_input.value {
-				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::LineWeight(value),
-				}
-				.into()
-			} else {
-				Message::NoOp
-			}
-		})
-		.on_commit(|_| DocumentMessage::StartTransaction.into())
-		.widget_instance()
 }
 
 impl LayoutHolder for SplineTool {
@@ -162,9 +140,13 @@ impl LayoutHolder for SplineTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
-		widgets.push(create_weight_widget(self.options.drawing.line_weight, weight_disabled));
+		widgets.push(create_stroke_options_popover_widget(&self.options.drawing, weight_disabled, |update| {
+			SplineToolMessage::UpdateOptions {
+				options: SplineOptionsUpdate::StrokeOption(update),
+			}
+			.into()
+		}));
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -195,8 +177,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Spli
 			return;
 		};
 		match options {
-			SplineOptionsUpdate::LineWeight(line_weight) => {
-				apply_line_weight(&mut self.options.drawing, line_weight, context.document, responses);
+			SplineOptionsUpdate::StrokeOption(update) => {
+				apply_stroke_option(&mut self.options.drawing, update, context.document, responses);
 			}
 			SplineOptionsUpdate::FillColor(fill_choice) => {
 				apply_fill_color_pick(&mut self.options.drawing, fill_choice, context.document, responses);
@@ -425,7 +407,7 @@ impl Fsm for SplineToolFsmState {
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
 				tool_options.drawing.fill.apply_fill(layer, responses);
 				tool_data.current_layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(viewport_vec);

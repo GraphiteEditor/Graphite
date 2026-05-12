@@ -668,6 +668,7 @@ impl Diffable for WidgetInstance {
 				&& button1.tooltip_description == button2.tooltip_description
 				&& button1.tooltip_shortcut == button2.tooltip_shortcut
 				&& button1.popover_min_width == button2.popover_min_width
+				&& button1.popover_layout.0.len() == button2.popover_layout.0.len()
 			{
 				// Only the popover layout differs, diff it recursively
 				for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {

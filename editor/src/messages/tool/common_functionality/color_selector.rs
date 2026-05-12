@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::DocumentToolData;
 use graphene_std::Color;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// Color selector widgets seen in [`LayoutTarget::ToolOptions`] bar.
 pub struct ToolColorOptions {
@@ -109,13 +109,25 @@ impl ToolColorOptions {
 }
 
 /// Shared per-tool state for drawing tools that produce a stroked-and-filled shape (Shape, Pen, Freehand, Spline).
-/// Bundles the weight, color, and selection-sync fields that would otherwise be duplicated across each tool's options struct.
-/// The displayed fill/stroke colors track the global working colors.
 pub struct DrawingToolState {
 	/// The current stroke weight. `None` = mixed across selected layers.
 	pub line_weight: Option<f64>,
 	/// Persistent default weight, updated when the user edits the weight while no layer is selected.
 	pub default_line_weight: f64,
+	/// Stroke alignment from the selection. `None` = mixed.
+	pub stroke_align: Option<StrokeAlign>,
+	/// Stroke cap from the selection. `None` = mixed.
+	pub stroke_cap: Option<StrokeCap>,
+	/// Stroke join from the selection. `None` = mixed.
+	pub stroke_join: Option<StrokeJoin>,
+	/// Stroke miter limit from the selection. `None` = mixed.
+	pub miter_limit: Option<f64>,
+	/// Paint order from the selection. `None` = mixed.
+	pub paint_order: Option<PaintOrder>,
+	/// Dash lengths from the selection. `None` = mixed.
+	pub dash_lengths: Option<Vec<f64>>,
+	/// Dash offset from the selection. `None` = mixed.
+	pub dash_offset: Option<f64>,
 	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
 	pub last_synced_selection: Vec<LayerNodeIdentifier>,
 	/// The fill swatch's color, checkbox, and mixed state.
@@ -132,6 +144,13 @@ impl DrawingToolState {
 		Self {
 			line_weight: Some(DEFAULT_STROKE_WIDTH),
 			default_line_weight: DEFAULT_STROKE_WIDTH,
+			stroke_align: Some(StrokeAlign::default()),
+			stroke_cap: Some(StrokeCap::default()),
+			stroke_join: Some(StrokeJoin::default()),
+			miter_limit: Some(4.),
+			paint_order: Some(PaintOrder::default()),
+			dash_lengths: Some(Vec::new()),
+			dash_offset: Some(0.),
 			last_synced_selection: Vec::new(),
 			fill: if fill_enabled { ToolColorOptions::new_enabled() } else { ToolColorOptions::new_disabled() },
 			stroke: ToolColorOptions::new_enabled(),
@@ -142,6 +161,33 @@ impl DrawingToolState {
 	/// The line weight to apply, falling back to the persistent default when [`Self::line_weight`] is `None` (mixed).
 	pub fn effective_line_weight(&self) -> f64 {
 		self.line_weight.unwrap_or(self.default_line_weight)
+	}
+
+	/// Dash lengths to apply, falling back to empty when [`Self::dash_lengths`] is `None` (mixed).
+	pub fn effective_dash_lengths(&self) -> Vec<f64> {
+		self.dash_lengths.clone().unwrap_or_default()
+	}
+
+	/// Applies a stroke to a freshly created `layer` using the tool's currently selected color, weight, and stroke options (align, cap, join, etc.).
+	/// Used by the drawing tools at shape-creation time so new shapes inherit the popover's options instead of defaulting to the `Stroke` struct's defaults.
+	pub fn apply_stroke_to_new_layer(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		if !self.stroke.is_active() {
+			return;
+		}
+		let Some(FillChoice::Solid(color)) = &self.stroke.fill_choice else { return };
+		let stroke = graphene_std::vector::style::Stroke {
+			color: Some(*color),
+			weight: self.effective_line_weight(),
+			align: self.stroke_align.unwrap_or_default(),
+			cap: self.stroke_cap.unwrap_or_default(),
+			join: self.stroke_join.unwrap_or_default(),
+			join_miter_limit: self.miter_limit.unwrap_or(4.),
+			paint_order: self.paint_order.unwrap_or_default(),
+			dash_lengths: self.effective_dash_lengths(),
+			dash_offset: self.dash_offset.unwrap_or(0.),
+			transform: glam::DAffine2::IDENTITY,
+		};
+		responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 	}
 }
 
@@ -250,7 +296,70 @@ pub fn sync_drawing_state(drawing: &mut DrawingToolState, natural_fill_enabled: 
 		needs_refresh = true;
 	}
 
+	needs_refresh |= sync_stroke_options(drawing, document);
+
 	needs_refresh
+}
+
+/// Reads the stroke proto-node inputs (align, cap, join, miter limit, paint order, dash lengths, dash offset) across the selection and updates
+/// the matching fields on `drawing`. Each field becomes `None` (mixed) when selected strokes disagree. With no selection, fields are left as-is.
+fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessageHandler) -> bool {
+	let strokes: Vec<_> = document
+		.network_interface
+		.selected_nodes()
+		.selected_layers_except_artboards(&document.network_interface)
+		.filter_map(|layer| graph_modification_utils::get_stroke_options(layer, &document.network_interface))
+		.collect();
+	if strokes.is_empty() {
+		return false;
+	}
+
+	fn unanimous<T: PartialEq + Clone>(values: impl IntoIterator<Item = T>) -> Option<T> {
+		let mut iter = values.into_iter();
+		let first = iter.next()?;
+		iter.all(|v| v == first).then_some(first)
+	}
+
+	let new_align = unanimous(strokes.iter().map(|s| s.align));
+	let new_cap = unanimous(strokes.iter().map(|s| s.cap));
+	let new_join = unanimous(strokes.iter().map(|s| s.join));
+	let new_miter = unanimous(strokes.iter().map(|s| s.miter_limit));
+	let new_paint_order = unanimous(strokes.iter().map(|s| s.paint_order));
+	let new_dash_lengths = unanimous(strokes.iter().map(|s| s.dash_lengths.clone()));
+	let new_dash_offset = unanimous(strokes.iter().map(|s| s.dash_offset));
+
+	let mut changed = false;
+
+	if drawing.stroke_align != new_align {
+		drawing.stroke_align = new_align;
+		changed = true;
+	}
+	if drawing.stroke_cap != new_cap {
+		drawing.stroke_cap = new_cap;
+		changed = true;
+	}
+	if drawing.stroke_join != new_join {
+		drawing.stroke_join = new_join;
+		changed = true;
+	}
+	if drawing.miter_limit != new_miter {
+		drawing.miter_limit = new_miter;
+		changed = true;
+	}
+	if drawing.paint_order != new_paint_order {
+		drawing.paint_order = new_paint_order;
+		changed = true;
+	}
+	if drawing.dash_lengths != new_dash_lengths {
+		drawing.dash_lengths = new_dash_lengths;
+		changed = true;
+	}
+	if drawing.dash_offset != new_dash_offset {
+		drawing.dash_offset = new_dash_offset;
+		changed = true;
+	}
+
+	changed
 }
 
 /// Same as [`sync_color_options`] but for tools that only have a fill option (e.g., text). The fill follows the given working color when nothing is selected.
