@@ -19,3 +19,9 @@ impl RenderComplexity for Color {
 		1
 	}
 }
+
+impl RenderComplexity for String {
+	fn render_complexity(&self) -> usize {
+		1
+	}
+}

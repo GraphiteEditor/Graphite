@@ -278,6 +278,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
+				Graphic::Text(_) => Vec::new(),
 			}
 		})
 		.collect()

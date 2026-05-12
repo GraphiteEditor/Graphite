@@ -27,6 +27,8 @@ vector-types = { workspace = true }
 graphic-types = { workspace = true }
 vello = { workspace = true }
 vello_encoding = { workspace = true }
+parley = { workspace = true }
+skrifa = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

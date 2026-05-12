@@ -13,7 +13,7 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
-	ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+	ATTR_FONT_FAMILY, ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -25,14 +25,43 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
-use kurbo::{Affine, Cap, Join, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
+use parley::{FontContext, FontFamily, FontStack, LayoutContext, PositionedLayoutItem, StyleProperty};
+use skrifa::GlyphId;
+use skrifa::MetadataProvider;
+use skrifa::instance::{LocationRef, NormalizedCoord, Size};
+use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::FontRef as SkrifaFontRef;
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
 use vello::*;
+
+// Thread local storage for font bytes
+thread_local! {
+	static RENDER_FONTS: RefCell<Arc<[(String, Arc<[u8]>)]>> = RefCell::new(Arc::from([]));
+}
+
+// Thread-local parley font shaping context
+thread_local! {
+	static FONT_CTX: RefCell<(FontContext, LayoutContext<()>)> = RefCell::new((FontContext::default(), LayoutContext::default()));
+}
+
+// Tracks which font bytes have already been registered into FONT_CTX
+thread_local! {
+	static REGISTERED_FONTS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+}
+
+// Set the font bytes available to the renderer for the current execution.
+pub fn set_render_fonts(fonts: impl IntoIterator<Item = (String, Arc<[u8]>)>) {
+	let slice: Arc<[(String, Arc<[u8]>)]> = fonts.into_iter().collect::<Vec<_>>().into();
+	RENDER_FONTS.with(|f| *f.borrow_mut() = slice);
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -224,16 +253,26 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
+	// All loaded font bytes extracted from the `FontCache`, keyed by CSS family name.
+	pub available_fonts: Arc<[(String, Arc<[u8]>)]>,
 }
 
 impl RenderParams {
 	pub fn for_clipper(&self) -> Self {
-		Self { for_mask: true, ..*self }
+		Self {
+			for_mask: true,
+			available_fonts: self.available_fonts.clone(),
+			..*self
+		}
 	}
 
 	pub fn for_alignment(&self, transform: DAffine2) -> Self {
 		let alignment_parent_transform = Some(transform);
-		Self { alignment_parent_transform, ..*self }
+		Self {
+			alignment_parent_transform,
+			available_fonts: self.available_fonts.clone(),
+			..*self
+		}
 	}
 
 	pub fn for_pattern(&self) -> Self {
@@ -547,6 +586,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(list) => list.render_svg(render, render_params),
 			Graphic::Gradient(list) => list.render_svg(render, render_params),
+			Graphic::Text(list) => list.render_svg(render, render_params),
 		}
 	}
 
@@ -558,6 +598,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
 			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Text(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -611,6 +652,14 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
+				Graphic::Text(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
 			}
 		}
 
@@ -621,6 +670,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
 			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Text(list) => list.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
@@ -632,6 +682,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
 			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Text(list) => list.add_upstream_click_targets(click_targets),
 		}
 	}
 
@@ -643,6 +694,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
 			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Text(list) => list.add_upstream_outline_targets(outlines),
 		}
 	}
 
@@ -654,6 +706,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(list) => list.contains_artboard(),
 			Graphic::Color(list) => list.contains_artboard(),
 			Graphic::Gradient(list) => list.contains_artboard(),
+			Graphic::Text(_) => false,
 		}
 	}
 
@@ -665,6 +718,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(_) => (),
+			Graphic::Text(_) => (),
 		}
 	}
 }
@@ -2240,6 +2294,287 @@ impl Render for List<GradientStops> {
 			if layer {
 				scene.pop_layer();
 			}
+		}
+	}
+}
+
+/// Helper struct to write path data to a string
+struct SvgGlyphPen {
+	d: String,
+	ox: f64,
+	oy: f64,
+}
+
+impl SvgGlyphPen {
+	#[inline]
+	fn px(&self, x: f32) -> f64 {
+		self.ox + x as f64
+	}
+
+	#[inline]
+	fn py(&self, y: f32) -> f64 {
+		self.oy - y as f64
+	}
+}
+
+impl OutlinePen for SvgGlyphPen {
+	fn move_to(&mut self, x: f32, y: f32) {
+		write!(self.d, "M {} {} ", self.px(x), self.py(y)).ok();
+	}
+	fn line_to(&mut self, x: f32, y: f32) {
+		write!(self.d, "L {} {} ", self.px(x), self.py(y)).ok();
+	}
+	fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+		write!(self.d, "Q {} {} {} {} ", self.px(x1), self.py(y1), self.px(x), self.py(y)).ok();
+	}
+	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+		write!(self.d, "C {} {} {} {} {} {} ", self.px(x1), self.py(y1), self.px(x2), self.py(y2), self.px(x), self.py(y)).ok();
+	}
+	fn close(&mut self) {
+		self.d.push_str("Z ");
+	}
+}
+
+/// Helper struct to build a `kurbo::BezPath` for Vello rendering.
+struct VelloPen<'a> {
+	path: &'a mut BezPath,
+	ox: f64,
+	oy: f64,
+}
+
+impl OutlinePen for VelloPen<'_> {
+	fn move_to(&mut self, x: f32, y: f32) {
+		self.path.move_to((self.ox + x as f64, self.oy - y as f64));
+	}
+	fn line_to(&mut self, x: f32, y: f32) {
+		self.path.line_to((self.ox + x as f64, self.oy - y as f64));
+	}
+	fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+		self.path.quad_to((self.ox + cx as f64, self.oy - cy as f64), (self.ox + x as f64, self.oy - y as f64));
+	}
+	fn curve_to(&mut self, cx1: f32, cy1: f32, cx2: f32, cy2: f32, x: f32, y: f32) {
+		self.path.curve_to(
+			(self.ox + cx1 as f64, self.oy - cy1 as f64),
+			(self.ox + cx2 as f64, self.oy - cy2 as f64),
+			(self.ox + x as f64, self.oy - y as f64),
+		);
+	}
+	fn close(&mut self) {
+		self.path.close_path();
+	}
+}
+
+/// Registers all fonts from `RENDER_FONTS` that aren't yet in `FONT_CTX`.
+fn ensure_fonts_registered(font_ctx: &mut parley::FontContext) {
+	REGISTERED_FONTS.with(|reg| {
+		let mut reg = reg.borrow_mut();
+		RENDER_FONTS.with(|rf| {
+			for (_, bytes) in rf.borrow().iter() {
+				let key = bytes.as_ptr() as usize;
+				if reg.insert(key) {
+					struct ArcBytes(std::sync::Arc<[u8]>);
+					impl AsRef<[u8]> for ArcBytes {
+						fn as_ref(&self) -> &[u8] {
+							&self.0
+						}
+					}
+					let font_data: std::sync::Arc<dyn AsRef<[u8]> + Send + Sync> = std::sync::Arc::new(ArcBytes(bytes.clone()));
+					font_ctx.collection.register_fonts(parley::fontique::Blob::new(font_data), None);
+				}
+			}
+		});
+	});
+}
+
+const DEFAULT_FONT_FAMILY: &str = "Lato";
+const DEFAULT_FONT_SIZE: f64 = 16.;
+
+impl Render for List<String> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			let Some(text) = self.element(index) else { continue };
+			if text.is_empty() {
+				continue;
+			}
+
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
+			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
+			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+
+			let mut glyph_paths: Vec<String> = Vec::new();
+
+			FONT_CTX.with(|ctx| {
+				let Ok(mut ctx) = ctx.try_borrow_mut() else { return };
+				let (font_ctx, layout_ctx) = &mut *ctx;
+
+				ensure_fonts_registered(font_ctx);
+
+				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
+				builder.push_default(StyleProperty::FontSize(font_size as f32));
+				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				let mut layout = builder.build(text);
+				layout.break_all_lines(None);
+
+				for line in layout.lines() {
+					for item in line.items() {
+						let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+
+						let mut run_x = glyph_run.offset();
+						let run_y = glyph_run.baseline();
+						let run = glyph_run.run();
+						let font = run.font();
+						let font_size_pts = run.font_size();
+						let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
+
+						let font_data = font.data.as_ref();
+						let Ok(font_ref) = SkrifaFontRef::from_index(font_data, font.index) else { continue };
+						let outlines = font_ref.outline_glyphs();
+
+						for glyph in glyph_run.glyphs() {
+							let ox = (run_x + glyph.x) as f64;
+							let oy = (run_y - glyph.y) as f64;
+							run_x += glyph.advance;
+
+							let glyph_id = GlyphId::from(glyph.id);
+							let Some(outline) = outlines.get(glyph_id) else { continue };
+							let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
+							let mut pen = SvgGlyphPen { d: String::new(), ox, oy };
+							if outline.draw(settings, &mut pen).is_ok() && !pen.d.is_empty() {
+								glyph_paths.push(pen.d);
+							}
+						}
+					}
+				}
+			});
+
+			if glyph_paths.is_empty() {
+				continue;
+			}
+
+			// Wrap all glyph <path> elements in a <g> with the item's transform/opacity/blend-mode.
+			render.parent_tag(
+				"g",
+				|attributes| {
+					let matrix = format_transform_matrix(transform);
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+					if blend_mode_attr != BlendMode::default() {
+						attributes.push("style", blend_mode_attr.render());
+					}
+				},
+				|render| {
+					for path_d in glyph_paths {
+						render.leaf_tag("path", |attributes| {
+							attributes.push("d", path_d);
+							if let RenderMode::Outline = render_params.render_mode {
+								attributes.push("fill", "none");
+								attributes.push("stroke", "black");
+								attributes.push("stroke-width", "1");
+							} else {
+								attributes.push("fill", "black");
+								attributes.push("fill-rule", "nonzero");
+							}
+						});
+					}
+				},
+			);
+		}
+	}
+
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			let Some(text) = self.element(index) else { continue };
+			if text.is_empty() {
+				continue;
+			}
+
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
+			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
+			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
+			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+
+			let affine = Affine::new((transform * item_transform).to_cols_array());
+
+			FONT_CTX.with(|ctx| {
+				let Ok(mut ctx) = ctx.try_borrow_mut() else { return };
+				let (font_ctx, layout_ctx) = &mut *ctx;
+
+				ensure_fonts_registered(font_ctx);
+
+				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
+				builder.push_default(StyleProperty::FontSize(font_size as f32));
+				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				let mut layout = builder.build(text);
+				layout.break_all_lines(None);
+
+				for line in layout.lines() {
+					for item in line.items() {
+						let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+
+						let mut run_x = glyph_run.offset();
+						let run_y = glyph_run.baseline();
+						let run = glyph_run.run();
+						let font = run.font();
+						let font_size_pts = run.font_size();
+						let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
+
+						let font_data = font.data.as_ref();
+						let Ok(font_ref) = SkrifaFontRef::from_index(font_data, font.index) else { continue };
+						let outlines = font_ref.outline_glyphs();
+
+						for glyph in glyph_run.glyphs() {
+							let ox = (run_x + glyph.x) as f64;
+							let oy = (run_y - glyph.y) as f64;
+							run_x += glyph.advance;
+
+							let glyph_id = GlyphId::from(glyph.id);
+							let Some(outline) = outlines.get(glyph_id) else { continue };
+							let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
+
+							let mut bez_path = BezPath::new();
+							let mut pen = VelloPen { path: &mut bez_path, ox, oy };
+							if outline.draw(settings, &mut pen).is_ok() && !bez_path.elements().is_empty() {
+								if let RenderMode::Outline = render_params.render_mode {
+									let (outline_stroke, outline_color) = get_outline_styles(render_params);
+									scene.stroke(&outline_stroke, affine, outline_color, None, &bez_path);
+								} else {
+									let color = peniko::Color::new([0_f32, 0., 0., opacity]);
+									scene.fill(peniko::Fill::NonZero, affine, color, None, &bez_path);
+								}
+							}
+						}
+					}
+				}
+			});
+		}
+	}
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		let Some(element_id) = element_id else { return };
+		metadata.upstream_footprints.insert(element_id, footprint);
+		if !self.is_empty() {
+			metadata.local_transforms.insert(element_id, self.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		for index in 0..self.len() {
+			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			// TODO: temporary stepping stone until the Data Trees (Issue #3779) refactor is complete
+			let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(font_size * 6., font_size));
+			let mut target = ClickTarget::new_with_subpath(subpath, 0.);
+			target.apply_transform(transform);
+			click_targets.push(target);
 		}
 	}
 }
