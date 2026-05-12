@@ -1,6 +1,6 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::List;
+use core_types::list::{Item, List};
 use core_types::ops::ListConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
@@ -170,20 +170,20 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 	output
 }
 
-/// Converts a `Fill` enum into the `Table<Graphic>` representation used as paint storage.
-/// TODO: Remove once all paint sources flow through `Table<Graphic>` directly without going through the `Fill` enum.
-pub fn fill_to_paint(fill: &Fill) -> Option<Table<Graphic>> {
+/// Converts a `Fill` enum into the `List<Graphic>` representation used as paint storage.
+/// TODO: Remove once all paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn fill_to_graphic_list(fill: &Fill) -> Option<List<Graphic>> {
 	match fill {
 		Fill::None => None,
-		Fill::Solid(color) => Some(Table::new_from_element((*color).into())),
+		Fill::Solid(color) => Some(List::new_from_element((*color).into())),
 		Fill::Gradient(gradient) => {
-			let gradient_row = TableRow::new_from_element(gradient.stops.clone())
+			let gradient_row = Item::new_from_element(gradient.stops.clone())
 				.with_attribute(ATTR_TRANSFORM, gradient.to_transform())
 				.with_attribute(ATTR_GRADIENT_TYPE, gradient.gradient_type)
 				.with_attribute(ATTR_SPREAD_METHOD, gradient.spread_method);
-			let gradient_table = Table::new_from_row(gradient_row);
+			let gradient_list = List::new_from_item(gradient_row);
 
-			Some(Table::new_from_element(Graphic::Gradient(gradient_table)))
+			Some(List::new_from_element(Graphic::Gradient(gradient_list)))
 		}
 	}
 }
