@@ -6,6 +6,7 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { layersPanelControlBarLeftLayout, layersPanelControlBarRightLayout, layersPanelBottomBarLayout } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
@@ -68,9 +69,14 @@
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
 
+	// Drag-toggle: tracked here so the template can render the invisible lock placeholder during a `layer-lock` gesture
+	let activeDragToggleGroup: string | undefined = undefined;
+
 	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
 
 	onMount(() => {
+		createDragToggleManager((group) => (activeDragToggleGroup = group));
+
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("mousedown", draggingMouseDown);
@@ -83,6 +89,8 @@
 	});
 
 	onDestroy(() => {
+		destroyDragToggleManager();
+
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("mousedown", draggingMouseDown);
@@ -614,6 +622,17 @@
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
 							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
 							tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+							data-drag-toggle-group="layer-lock"
+							data-drag-toggle-state={listing.entry.unlocked ? "unlocked" : "locked"}
+						/>
+					{:else if activeDragToggleGroup === "layer-lock"}
+						<IconButton
+							class="status-toggle drag-toggle-placeholder"
+							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							size={24}
+							icon="PadlockUnlocked"
+							data-drag-toggle-group="layer-lock"
+							data-drag-toggle-state="unlocked"
 						/>
 					{/if}
 					<IconButton
@@ -625,6 +644,8 @@
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
 						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
 						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						data-drag-toggle-group="layer-visibility"
+						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
 					/>
 				</LayoutRow>
 			{/each}
@@ -842,6 +863,17 @@
 
 					&.inherited {
 						background-image: var(--inheritance-stripes-background);
+					}
+
+					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted.
+					// Overlaid with absolute positioning so it doesn't shift the layer name's width.
+					&.drag-toggle-placeholder {
+						position: absolute;
+						width: 24px;
+						right: 24px;
+						top: 0;
+						bottom: 0;
+						opacity: 0; // Not `visibility: hidden`, which would exclude it from hit-testing
 					}
 
 					.icon-button {
