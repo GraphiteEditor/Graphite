@@ -40,7 +40,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList>(
 	let flattened = flatten_vector(&content);
 
 	let mut result_vector_list = match operation {
-		BooleanOperation::Union | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack | BooleanOperation::Intersect | BooleanOperation::Difference => {
+		BooleanOperation::Union | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack | BooleanOperation::Intersect | BooleanOperation::Exclude => {
 			boolean_operation_on_vector_list(&flattened, operation)
 		}
 		BooleanOperation::Trim | BooleanOperation::Crop => cascading_subtract(&flattened, operation),
@@ -127,7 +127,7 @@ impl WindingNumber {
 			BooleanOperation::SubtractFront => self.elems.first().is_some_and(is_in) && self.elems.iter().skip(1).all(is_out),
 			BooleanOperation::SubtractBack => self.elems.last().is_some_and(is_in) && self.elems.iter().rev().skip(1).all(is_out),
 			BooleanOperation::Intersect => !self.elems.is_empty() && self.elems.iter().all(is_in),
-			BooleanOperation::Difference => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
+			BooleanOperation::Exclude => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
 			BooleanOperation::Trim => unreachable!(),
 			BooleanOperation::Crop => unreachable!(),
 		}
