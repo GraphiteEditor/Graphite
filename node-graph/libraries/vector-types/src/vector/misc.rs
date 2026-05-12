@@ -21,8 +21,8 @@ pub enum BooleanOperation {
 	SubtractBack,
 	#[icon("BooleanIntersect")]
 	Intersect,
-	#[icon("BooleanDifference")]
-	Difference,
+	#[icon("BooleanExclude")]
+	Exclude,
 	#[icon("BooleanSubtractFront")]
 	Trim,
 	#[icon("BooleanSubtractFront")]

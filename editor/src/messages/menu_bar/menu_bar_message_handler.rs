@@ -486,11 +486,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
 									.disabled(no_active_document || !has_selected_layers),
-								MenuListEntry::new("Difference")
-									.label("Difference")
-									.icon("BooleanDifference")
+								MenuListEntry::new("Exclude")
+									.label("Exclude")
+									.icon("BooleanExclude")
 									.on_commit(|_| {
-										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Difference);
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Exclude);
 										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
 									.disabled(no_active_document || !has_selected_layers),
