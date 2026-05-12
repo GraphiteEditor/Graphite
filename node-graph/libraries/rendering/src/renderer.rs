@@ -253,24 +253,16 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
-	// All loaded font bytes extracted from the `FontCache`, keyed by CSS family name.
-	pub available_fonts: Arc<[(String, Arc<[u8]>)]>,
 }
 
 impl RenderParams {
 	pub fn for_clipper(&self) -> Self {
-		Self {
-			for_mask: true,
-			available_fonts: self.available_fonts.clone(),
-			..*self
-		}
+		Self { for_mask: true, ..*self }
 	}
 
 	pub fn for_alignment(&self, transform: DAffine2) -> Self {
-		let alignment_parent_transform = Some(transform);
 		Self {
-			alignment_parent_transform,
-			available_fonts: self.available_fonts.clone(),
+			alignment_parent_transform: Some(transform),
 			..*self
 		}
 	}
@@ -2499,11 +2491,19 @@ impl Render for List<String> {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let affine = Affine::new((transform * item_transform).to_cols_array());
+
+			let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
+			if needs_layer {
+				let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
+				let inf_rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(f64::INFINITY, f64::INFINITY));
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &inf_rect);
+			}
 
 			FONT_CTX.with(|ctx| {
 				let Ok(mut ctx) = ctx.try_borrow_mut() else { return };
@@ -2548,14 +2548,17 @@ impl Render for List<String> {
 									let (outline_stroke, outline_color) = get_outline_styles(render_params);
 									scene.stroke(&outline_stroke, affine, outline_color, None, &bez_path);
 								} else {
-									let color = peniko::Color::new([0_f32, 0., 0., opacity]);
-									scene.fill(peniko::Fill::NonZero, affine, color, None, &bez_path);
+									scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, &bez_path);
 								}
 							}
 						}
 					}
 				}
 			});
+
+			if needs_layer {
+				scene.pop_layer();
+			}
 		}
 	}
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
