@@ -37,7 +37,7 @@ async fn boolean_operation<I: graphic_types::IntoGraphicList + 'n + Send + Clone
 
 	let mut result_vector_list = match operation {
 		BooleanOperation::Union | BooleanOperation::SubtractFront | BooleanOperation::SubtractBack | BooleanOperation::Intersect | BooleanOperation::Exclude => {
-			boolean_operation_on_vector_list(&flattened, operation)
+			single_pass_boolean_operation(&flattened, operation)
 		}
 		BooleanOperation::Trim | BooleanOperation::Crop => cascading_subtract(&flattened, operation),
 	};
@@ -141,7 +141,7 @@ impl WindingNumber {
 	}
 }
 
-fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
+fn single_pass_boolean_operation(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
 	let mut list = List::new();
 
 	let copy_from_index = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
@@ -165,7 +165,10 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 	let top = match try_create_topology(vector) {
 		Some(top) => top,
-		None => return list,
+		None => {
+			list.push(item);
+			return list;
+		}
 	};
 
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
@@ -343,7 +346,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 
 					// Recursively flatten the inner `List` into the output `List<Vector>`
 					let flattened = flatten_vector(&graphic);
-					let unioned = boolean_operation_on_vector_list(&flattened, BooleanOperation::Union);
+					let unioned = single_pass_boolean_operation(&flattened, BooleanOperation::Union);
 
 					unioned.into_iter().collect::<Vec<_>>()
 				}
