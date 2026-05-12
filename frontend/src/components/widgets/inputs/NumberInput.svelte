@@ -138,7 +138,16 @@
 		removeEventListener("keydown", sliderAbortFromDragging);
 		removeEventListener("keydown", incrementPressAbort);
 		if (sliderResetAbortHandler) removeEventListener("pointerup", sliderResetAbortHandler);
+
+		commitTransactionIfInProgress();
 	});
+
+	function commitTransactionIfInProgress() {
+		if (transactionInProgress) {
+			dispatch("commitHistoryTransaction");
+			transactionInProgress = false;
+		}
+	}
 
 	// ===============================
 	// TRACKING AND UPDATING THE VALUE
@@ -252,10 +261,7 @@
 			}
 		}
 		updateValue(newValue);
-		if (transactionInProgress) {
-			dispatch("commitHistoryTransaction");
-			transactionInProgress = false;
-		}
+		commitTransactionIfInProgress();
 
 		editing = false;
 		self?.unFocus();
@@ -489,10 +495,7 @@
 			activeDragCleanup?.();
 
 			// Close out the transaction `startDragging` opened so the many emits collapse into one history step (covers both confirmed and aborted drags).
-			if (transactionInProgress) {
-				dispatch("commitHistoryTransaction");
-				transactionInProgress = false;
-			}
+			commitTransactionIfInProgress();
 		};
 
 		addEventListener("pointerup", pointerUp);
@@ -645,10 +648,7 @@
 
 		// Close out the transaction `startDragging` opened, so the drag's many emits collapse into one history step.
 		// Covers the abort path too (sliderAbort already restored the original value, so the committed step is a no-op).
-		if (transactionInProgress) {
-			dispatch("commitHistoryTransaction");
-			transactionInProgress = false;
-		}
+		commitTransactionIfInProgress();
 	}
 
 	function startDragging() {
@@ -687,6 +687,8 @@
 			// dragging the slider, now that we're no longer dragging it due to the loss of window focus.
 			removeEventListener("pointermove", sliderAbortFromDragging);
 			removeEventListener("keydown", sliderAbortFromDragging);
+
+			commitTransactionIfInProgress();
 		}
 	}
 
