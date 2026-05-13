@@ -3812,11 +3812,15 @@ version = "0.1.0"
 dependencies = [
  "core-types",
  "glam",
+ "graphene-core",
  "graphic-types",
+ "kurbo",
  "linesweeper",
  "log",
  "node-macro",
  "smallvec",
+ "tokio",
+ "vector-nodes",
  "vector-types",
 ]
 
