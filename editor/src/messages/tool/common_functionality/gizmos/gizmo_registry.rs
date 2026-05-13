@@ -63,159 +63,137 @@ pub fn get_gizmo_info(identifier: &DefinitionIdentifier) -> Option<GizmoInfo> {
 		return None;
 	};
 
-	if *proto_id == graphene_std::vector::generator_nodes::star::IDENTIFIER {
-		return Some(GizmoInfo {
-			node_identifier: proto_id.clone(),
-			parameters: vec![
-				GizmoParameterInfo {
-					name: "Sides",
-					input_index: 1,
-					gizmo_type: GizmoType::Dial,
-					position_hint: PositionHint::BoundingBoxCenter,
-					min: Some(3.0),
-					max: None,
-				},
-				GizmoParameterInfo {
-					name: "Outer Radius",
-					input_index: 2,
-					gizmo_type: GizmoType::Slider,
-					position_hint: PositionHint::ParameterDerived(2),
-					min: Some(0.0),
-					max: None,
-				},
-				GizmoParameterInfo {
-					name: "Inner Radius",
-					input_index: 3,
-					gizmo_type: GizmoType::Slider,
-					position_hint: PositionHint::ParameterDerived(3),
-					min: Some(0.0),
-					max: None,
-				},
-			],
-		});
-	}
+	use graphene_std::vector::generator_nodes::grid;
+	use graphene_std::vector::generator_nodes::spiral;
 
-	if *proto_id == graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER {
-		return Some(GizmoInfo {
-			node_identifier: proto_id.clone(),
-			parameters: vec![
-				GizmoParameterInfo {
-					name: "Sides",
-					input_index: 1,
-					gizmo_type: GizmoType::Dial,
-					position_hint: PositionHint::BoundingBoxCenter,
-					min: Some(3.0),
-					max: None,
-				},
-				GizmoParameterInfo {
-					name: "Radius",
-					input_index: 2,
-					gizmo_type: GizmoType::Slider,
-					position_hint: PositionHint::ParameterDerived(2),
-					min: Some(0.0),
-					max: None,
-				},
-			],
-		});
-	}
-
-	if *proto_id == graphene_std::vector::generator_nodes::arc::IDENTIFIER {
-		return Some(GizmoInfo {
-			node_identifier: proto_id.clone(),
-			parameters: vec![
-				GizmoParameterInfo {
-					name: "Radius",
-					input_index: 1,
-					gizmo_type: GizmoType::Slider,
-					position_hint: PositionHint::ParameterDerived(1),
-					min: Some(0.0),
-					max: None,
-				},
-				GizmoParameterInfo {
-					name: "Start Angle",
-					input_index: 2,
-					gizmo_type: GizmoType::Angle,
-					position_hint: PositionHint::ParameterDerived(2),
-					min: Some(0.0),
-					max: Some(360.0),
-				},
-				GizmoParameterInfo {
-					name: "Sweep Angle",
-					input_index: 3,
-					gizmo_type: GizmoType::Angle,
-					position_hint: PositionHint::ParameterDerived(3),
-					min: Some(-360.0),
-					max: Some(360.0),
-				},
-			],
-		});
-	}
-
-	if *proto_id == graphene_std::vector::generator_nodes::circle::IDENTIFIER {
-		return Some(GizmoInfo {
-			node_identifier: proto_id.clone(),
-			parameters: vec![GizmoParameterInfo {
+	let parameters = if *proto_id == graphene_std::vector::generator_nodes::star::IDENTIFIER {
+		vec![
+			GizmoParameterInfo {
+				name: "Sides",
+				input_index: 1,
+				gizmo_type: GizmoType::Dial,
+				position_hint: PositionHint::BoundingBoxCenter,
+				min: Some(3.0),
+				max: None,
+			},
+			GizmoParameterInfo {
+				name: "Outer Radius",
+				input_index: 2,
+				gizmo_type: GizmoType::Slider,
+				position_hint: PositionHint::ParameterDerived(2),
+				min: Some(0.0),
+				max: None,
+			},
+			GizmoParameterInfo {
+				name: "Inner Radius",
+				input_index: 3,
+				gizmo_type: GizmoType::Slider,
+				position_hint: PositionHint::ParameterDerived(3),
+				min: Some(0.0),
+				max: None,
+			},
+		]
+	} else if *proto_id == graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER {
+		vec![
+			GizmoParameterInfo {
+				name: "Sides",
+				input_index: 1,
+				gizmo_type: GizmoType::Dial,
+				position_hint: PositionHint::BoundingBoxCenter,
+				min: Some(3.0),
+				max: None,
+			},
+			GizmoParameterInfo {
+				name: "Radius",
+				input_index: 2,
+				gizmo_type: GizmoType::Slider,
+				position_hint: PositionHint::ParameterDerived(2),
+				min: Some(0.0),
+				max: None,
+			},
+		]
+	} else if *proto_id == graphene_std::vector::generator_nodes::arc::IDENTIFIER {
+		vec![
+			GizmoParameterInfo {
 				name: "Radius",
 				input_index: 1,
 				gizmo_type: GizmoType::Slider,
 				position_hint: PositionHint::ParameterDerived(1),
 				min: Some(0.0),
 				max: None,
-			}],
-		});
-	}
+			},
+			GizmoParameterInfo {
+				name: "Start Angle",
+				input_index: 2,
+				gizmo_type: GizmoType::Angle,
+				position_hint: PositionHint::ParameterDerived(2),
+				min: Some(0.0),
+				max: Some(360.0),
+			},
+			GizmoParameterInfo {
+				name: "Sweep Angle",
+				input_index: 3,
+				gizmo_type: GizmoType::Angle,
+				position_hint: PositionHint::ParameterDerived(3),
+				min: Some(-360.0),
+				max: Some(360.0),
+			},
+		]
+	} else if *proto_id == graphene_std::vector::generator_nodes::circle::IDENTIFIER {
+		vec![GizmoParameterInfo {
+			name: "Radius",
+			input_index: 1,
+			gizmo_type: GizmoType::Slider,
+			position_hint: PositionHint::ParameterDerived(1),
+			min: Some(0.0),
+			max: None,
+		}]
+	} else if *proto_id == graphene_std::vector::generator_nodes::grid::IDENTIFIER {
+		vec![
+			GizmoParameterInfo {
+				name: "Columns",
+				input_index: grid::ColumnsInput::INDEX,
+				gizmo_type: GizmoType::Dial,
+				position_hint: PositionHint::BoundingBoxEdge,
+				min: Some(1.0),
+				max: None,
+			},
+			GizmoParameterInfo {
+				name: "Rows",
+				input_index: grid::RowsInput::INDEX,
+				gizmo_type: GizmoType::Dial,
+				position_hint: PositionHint::BoundingBoxEdge,
+				min: Some(1.0),
+				max: None,
+			},
+		]
+	} else if *proto_id == graphene_std::vector::generator_nodes::spiral::IDENTIFIER {
+		vec![
+			GizmoParameterInfo {
+				name: "Turns",
+				input_index: spiral::TurnsInput::INDEX,
+				gizmo_type: GizmoType::Slider,
+				position_hint: PositionHint::ParameterDerived(spiral::TurnsInput::INDEX),
+				min: Some(0.0),
+				max: None,
+			},
+			GizmoParameterInfo {
+				name: "Outer Radius",
+				input_index: spiral::OuterRadiusInput::INDEX,
+				gizmo_type: GizmoType::Slider,
+				position_hint: PositionHint::ParameterDerived(spiral::OuterRadiusInput::INDEX),
+				min: Some(0.0),
+				max: None,
+			},
+		]
+	} else {
+		return None;
+	};
 
-	if *proto_id == graphene_std::vector::generator_nodes::grid::IDENTIFIER {
-		use graphene_std::vector::generator_nodes::grid::*;
-		return Some(GizmoInfo {
-			node_identifier: proto_id.clone(),
-			parameters: vec![
-				GizmoParameterInfo {
-					name: "Columns",
-					input_index: ColumnsInput::INDEX,
-					gizmo_type: GizmoType::Dial,
-					position_hint: PositionHint::BoundingBoxEdge,
-					min: Some(1.0),
-					max: None,
-				},
-				GizmoParameterInfo {
-					name: "Rows",
-					input_index: RowsInput::INDEX,
-					gizmo_type: GizmoType::Dial,
-					position_hint: PositionHint::BoundingBoxEdge,
-					min: Some(1.0),
-					max: None,
-				},
-			],
-		});
-	}
-
-	if *proto_id == graphene_std::vector::generator_nodes::spiral::IDENTIFIER {
-		use graphene_std::vector::generator_nodes::spiral::*;
-		return Some(GizmoInfo {
-			node_identifier: proto_id.clone(),
-			parameters: vec![
-				GizmoParameterInfo {
-					name: "Turns",
-					input_index: TurnsInput::INDEX,
-					gizmo_type: GizmoType::Slider,
-					position_hint: PositionHint::ParameterDerived(TurnsInput::INDEX),
-					min: Some(0.0),
-					max: None,
-				},
-				GizmoParameterInfo {
-					name: "Outer Radius",
-					input_index: OuterRadiusInput::INDEX,
-					gizmo_type: GizmoType::Slider,
-					position_hint: PositionHint::ParameterDerived(OuterRadiusInput::INDEX),
-					min: Some(0.0),
-					max: None,
-				},
-			],
-		});
-	}
-
-	None
+	Some(GizmoInfo {
+		node_identifier: proto_id.clone(),
+		parameters,
+	})
 }
 
 #[cfg(test)]
