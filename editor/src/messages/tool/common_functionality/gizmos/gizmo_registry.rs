@@ -63,14 +63,13 @@ pub fn get_gizmo_info(identifier: &DefinitionIdentifier) -> Option<GizmoInfo> {
 		return None;
 	};
 
-	use graphene_std::vector::generator_nodes::grid;
-	use graphene_std::vector::generator_nodes::spiral;
+	use graphene_std::vector::generator_nodes::{arc, circle, grid, regular_polygon, spiral, star};
 
-	let parameters = if *proto_id == graphene_std::vector::generator_nodes::star::IDENTIFIER {
+	let parameters = if *proto_id == star::IDENTIFIER {
 		vec![
 			GizmoParameterInfo {
 				name: "Sides",
-				input_index: 1,
+				input_index: star::SidesInput::<f64>::INDEX,
 				gizmo_type: GizmoType::Dial,
 				position_hint: PositionHint::BoundingBoxCenter,
 				min: Some(3.0),
@@ -78,26 +77,26 @@ pub fn get_gizmo_info(identifier: &DefinitionIdentifier) -> Option<GizmoInfo> {
 			},
 			GizmoParameterInfo {
 				name: "Outer Radius",
-				input_index: 2,
+				input_index: star::Radius1Input::INDEX,
 				gizmo_type: GizmoType::Slider,
-				position_hint: PositionHint::ParameterDerived(2),
+				position_hint: PositionHint::ParameterDerived(star::Radius1Input::INDEX),
 				min: Some(0.0),
 				max: None,
 			},
 			GizmoParameterInfo {
 				name: "Inner Radius",
-				input_index: 3,
+				input_index: star::Radius2Input::INDEX,
 				gizmo_type: GizmoType::Slider,
-				position_hint: PositionHint::ParameterDerived(3),
+				position_hint: PositionHint::ParameterDerived(star::Radius2Input::INDEX),
 				min: Some(0.0),
 				max: None,
 			},
 		]
-	} else if *proto_id == graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER {
+	} else if *proto_id == regular_polygon::IDENTIFIER {
 		vec![
 			GizmoParameterInfo {
 				name: "Sides",
-				input_index: 1,
+				input_index: regular_polygon::SidesInput::<f64>::INDEX,
 				gizmo_type: GizmoType::Dial,
 				position_hint: PositionHint::BoundingBoxCenter,
 				min: Some(3.0),
@@ -105,46 +104,46 @@ pub fn get_gizmo_info(identifier: &DefinitionIdentifier) -> Option<GizmoInfo> {
 			},
 			GizmoParameterInfo {
 				name: "Radius",
-				input_index: 2,
+				input_index: regular_polygon::RadiusInput::INDEX,
 				gizmo_type: GizmoType::Slider,
-				position_hint: PositionHint::ParameterDerived(2),
+				position_hint: PositionHint::ParameterDerived(regular_polygon::RadiusInput::INDEX),
 				min: Some(0.0),
 				max: None,
 			},
 		]
-	} else if *proto_id == graphene_std::vector::generator_nodes::arc::IDENTIFIER {
+	} else if *proto_id == arc::IDENTIFIER {
 		vec![
 			GizmoParameterInfo {
 				name: "Radius",
-				input_index: 1,
+				input_index: arc::RadiusInput::INDEX,
 				gizmo_type: GizmoType::Slider,
-				position_hint: PositionHint::ParameterDerived(1),
+				position_hint: PositionHint::ParameterDerived(arc::RadiusInput::INDEX),
 				min: Some(0.0),
 				max: None,
 			},
 			GizmoParameterInfo {
 				name: "Start Angle",
-				input_index: 2,
+				input_index: arc::StartAngleInput::INDEX,
 				gizmo_type: GizmoType::Angle,
-				position_hint: PositionHint::ParameterDerived(2),
+				position_hint: PositionHint::ParameterDerived(arc::StartAngleInput::INDEX),
 				min: Some(0.0),
 				max: Some(360.0),
 			},
 			GizmoParameterInfo {
 				name: "Sweep Angle",
-				input_index: 3,
+				input_index: arc::SweepAngleInput::INDEX,
 				gizmo_type: GizmoType::Angle,
-				position_hint: PositionHint::ParameterDerived(3),
+				position_hint: PositionHint::ParameterDerived(arc::SweepAngleInput::INDEX),
 				min: Some(-360.0),
 				max: Some(360.0),
 			},
 		]
-	} else if *proto_id == graphene_std::vector::generator_nodes::circle::IDENTIFIER {
+	} else if *proto_id == circle::IDENTIFIER {
 		vec![GizmoParameterInfo {
 			name: "Radius",
-			input_index: 1,
+			input_index: circle::RadiusInput::INDEX,
 			gizmo_type: GizmoType::Slider,
-			position_hint: PositionHint::ParameterDerived(1),
+			position_hint: PositionHint::ParameterDerived(circle::RadiusInput::INDEX),
 			min: Some(0.0),
 			max: None,
 		}]
