@@ -53,7 +53,11 @@ pub struct NodeGraphExecutor {
 	current_execution_id: u64,
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
-	previous_node_to_inspect: Option<NodeId>,
+	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
+	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
+	/// so the runtime can splice its monitor node alongside the target rather than only at the top level.
+	/// Tracking the previously-sent value lets `update_node_graph` re-send the network when the inspection target changes.
+	previous_node_to_inspect: Vec<NodeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +79,7 @@ impl NodeGraphExecutor {
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 			node_graph_hash: 0,
 			current_execution_id: 0,
-			previous_node_to_inspect: None,
+			previous_node_to_inspect: Vec::new(),
 		};
 		(node_runtime, node_executor)
 	}
@@ -109,18 +113,18 @@ impl NodeGraphExecutor {
 		let instrumented = Instrumented::new(&mut network);
 
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
 
 	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
 			let network = document.network_interface.document_network().clone();
-			self.previous_node_to_inspect = node_to_inspect;
+			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 
 			self.runtime_io
@@ -174,7 +178,7 @@ impl NodeGraphExecutor {
 		viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
-		node_to_inspect: Option<NodeId>,
+		node_to_inspect: Vec<NodeId>,
 		ignore_hash: bool,
 		pointer: DVec2,
 	) -> Result<Message, String> {
@@ -239,10 +243,12 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
+		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
+		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -271,7 +277,7 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((
@@ -305,6 +311,7 @@ impl NodeGraphExecutor {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -338,7 +345,7 @@ impl NodeGraphExecutor {
 					});
 
 					// Update the Data panel on the frontend using the value of the inspect result.
-					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
+					if let Some(inspect_result) = (!self.previous_node_to_inspect.is_empty()).then_some(inspect_result).flatten() {
 						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
 					} else {
 						responses.add(DataPanelMessage::ClearLayout);
@@ -351,6 +358,7 @@ impl NodeGraphExecutor {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 
 							log::trace!("{e}");
@@ -411,8 +419,11 @@ impl NodeGraphExecutor {
 			local_transforms,
 			first_element_source_id,
 			click_targets,
+			outlines,
+			text_frames,
 			clip_targets,
 			vector_data,
+			backgrounds: _,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately
@@ -422,6 +433,8 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateOutlines { outlines });
+		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);

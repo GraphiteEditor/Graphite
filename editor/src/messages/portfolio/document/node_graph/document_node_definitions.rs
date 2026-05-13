@@ -6,21 +6,20 @@ use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
-	NumberInputSettings, Vec2InputSettings, WidgetOverride,
+	Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
-use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graphene_std::brush::brush_cache::BrushCache;
+use graph_craft::{concrete, descriptor};
 use graphene_std::extract_xy::XY;
+use graphene_std::list::List;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
-use graphene_std::table::Table;
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -133,46 +132,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, 
 /// Only the position can be set for protonodes within a definition. The rest of the metadata comes from the node macro in NODE_METADATA
 fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 	let custom = vec![
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Passthrough",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Content", "TODO").into()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
-			properties: None,
-		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Monitor",
-			category: "",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					call_argument: generic!(T),
-					skip_deduplication: true,
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("In", "TODO").into()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
-			properties: Some("monitor_properties"),
-		},
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
 			category: "General",
@@ -189,37 +148,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Cache",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-					call_argument: generic!(T),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Data", "TODO").into()],
-					output_names: vec!["Data".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed(
-				"Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.\n\
-				\n\
-				Stores the last evaluated data that flowed through this node, and immediately returns that data on subsequent renders if the context has not changed.",
-			),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(4), 0)],
+						exports: vec![NodeInput::node(NodeId(5), 0)],
 						nodes: [
 							// Primary (bottom) input type coercion
 							DocumentNode {
@@ -233,22 +168,33 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::wrap_graphic::IDENTIFIER),
 								..Default::default()
 							},
-							// Store the ID of the parent node (which encapsulates this sub-network) in each row we are extending the table with.
+							// Derive the parent layer's NodeId from the document path
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::source_node_id::IDENTIFIER),
+								inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
+								..Default::default()
+							},
+							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
+							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
+							DocumentNode {
+								inputs: vec![
+									NodeInput::node(NodeId(1), 0),
+									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
+									NodeInput::node(NodeId(2), 0),
+								],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(2), 0)],
+								inputs: vec![NodeInput::node(NodeId(3), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
 								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 								..Default::default()
 							},
@@ -259,10 +205,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
-						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
-					],
+					inputs: vec![NodeInput::type_default(descriptor!(List<Graphic>), true), NodeInput::type_default(descriptor!(List<Graphic>), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -272,6 +215,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
+								// 0: to_graphic
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
@@ -279,6 +223,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 1: wrap_graphic
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
@@ -286,6 +231,15 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 2: path_of_subgraph
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 1)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								// 3: write_attribute
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
@@ -293,6 +247,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 4: monitor
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
@@ -300,6 +255,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 5: extend
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -3)),
@@ -319,7 +275,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Merges the provided content as a new element in the graphic table that represents a layer compositing stack."),
+			description: Cow::Borrowed("Merges the provided content as a new item in the layer's compositing stack."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -328,15 +284,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(3), 0)],
+						exports: vec![NodeInput::node(NodeId(4), 0)],
 						nodes: [
-							// Ensure this ID is kept in sync with the ID in set_alias so that the name input is kept in sync with the alias
 							DocumentNode {
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(artboard::create_artboard::IDENTIFIER),
 								inputs: vec![
 									NodeInput::import(concrete!(TaggedValue), 1),
-									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
 									NodeInput::import(concrete!(TaggedValue), 2),
 									NodeInput::import(concrete!(TaggedValue), 3),
 									NodeInput::import(concrete!(TaggedValue), 4),
@@ -344,16 +298,26 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// Store the ID of the parent node (which encapsulates this sub-network) in each row we are extending the table with.
+							// Derive the parent layer's NodeId from the document path
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::source_node_id::IDENTIFIER),
+								inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
+								..Default::default()
+							},
+							// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
+							// so editor tools (e.g. selection, click target routing) can trace data back to its owning layer.
+							DocumentNode {
+								inputs: vec![
+									NodeInput::node(NodeId(0), 0),
+									NodeInput::value(TaggedValue::String(graphene_std::ATTR_EDITOR_LAYER_PATH.to_string()), false),
+									NodeInput::node(NodeId(1), 0),
+								],
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.
-							// TODO: Check if thumbnail is reversed
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								inputs: vec![NodeInput::node(NodeId(2), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
@@ -361,8 +325,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(Table<Artboard>))), 0),
-									NodeInput::node(NodeId(2), 0),
+									NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(List<Artboard>))), 0),
+									NodeInput::node(NodeId(3), 0),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 								..Default::default()
@@ -375,11 +339,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Artboard(Default::default()), true),
-						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
+						NodeInput::type_default(descriptor!(List<Artboard>), true),
+						NodeInput::type_default(descriptor!(List<Graphic>), true),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(1920., 1080.)), false),
-						NodeInput::value(TaggedValue::Color(Table::new_from_element(Color::WHITE)), false),
+						NodeInput::value(TaggedValue::Color(Some(Color::WHITE)), false),
 						NodeInput::value(TaggedValue::Bool(true), false),
 					],
 					..Default::default()
@@ -418,6 +382,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
+								// 0: create_artboard
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
@@ -425,6 +390,15 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 1: path_of_subgraph
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								// 2: write_attribute
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
@@ -432,6 +406,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 3: monitor
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
@@ -439,6 +414,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
+								// 4: extend
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
@@ -597,11 +573,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Vector(Default::default()), true),
+						NodeInput::type_default(descriptor!(List<Vector>), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::Bool(Default::default()), false),
 						NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-						NodeInput::value(TaggedValue::Vector(Default::default()), false),
+						NodeInput::type_default(descriptor!(List<Vector>), false),
 					],
 					..Default::default()
 				},
@@ -650,7 +626,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 4: Multiply (total instances)
+								// 4: Multiply (total items)
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 1)),
@@ -848,7 +824,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::Vector(Default::default()), true)],
+					inputs: vec![NodeInput::type_default(descriptor!(List<Vector>), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1017,7 +993,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1033,7 +1009,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Vector(Default::default()), true),
+						NodeInput::type_default(descriptor!(List<Vector>), true),
 						NodeInput::value(
 							TaggedValue::Footprint(Footprint {
 								transform: DAffine2::from_scale_angle_translation(DVec2::new(1000., 1000.), 0., DVec2::new(0., 0.)),
@@ -1087,59 +1063,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Noise Pattern",
-			category: "Raster: Pattern",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::Bool(true), false),
-						NodeInput::value(TaggedValue::U32(0), false),
-						NodeInput::value(TaggedValue::F64(10.), false),
-						NodeInput::value(TaggedValue::NoiseType(NoiseType::default()), false),
-						NodeInput::value(TaggedValue::DomainWarpType(DomainWarpType::default()), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::FractalType(FractalType::default()), false),
-						NodeInput::value(TaggedValue::U32(3), false),
-						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::F64(0.5), false),
-						NodeInput::value(TaggedValue::F64(0.), false), // 0-1 range
-						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::CellularDistanceFunction(CellularDistanceFunction::default()), false),
-						NodeInput::value(TaggedValue::CellularReturnType(CellularReturnType::default()), false),
-						NodeInput::value(TaggedValue::F64(1.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("Spacer", "TODO").into(),
-						("Clip", "TODO").into(),
-						("Seed", "TODO").into(),
-						InputMetadata::with_name_description_override("Scale", "TODO", WidgetOverride::Custom("noise_properties_scale".to_string())),
-						InputMetadata::with_name_description_override("Noise Type", "TODO", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
-						InputMetadata::with_name_description_override("Domain Warp Type", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
-						InputMetadata::with_name_description_override("Domain Warp Amplitude", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
-						InputMetadata::with_name_description_override("Fractal Type", "TODO", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
-						InputMetadata::with_name_description_override("Fractal Octaves", "TODO", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
-						InputMetadata::with_name_description_override("Fractal Lacunarity", "TODO", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
-						InputMetadata::with_name_description_override("Fractal Gain", "TODO", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
-						InputMetadata::with_name_description_override("Fractal Weighted Strength", "TODO", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
-						InputMetadata::with_name_description_override("Fractal Ping Pong Strength", "TODO", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
-						InputMetadata::with_name_description_override("Cellular Distance Function", "TODO", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
-						InputMetadata::with_name_description_override("Cellular Return Type", "TODO", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
-						InputMetadata::with_name_description_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Generates customizable procedural noise patterns."),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Split Channels",
 			category: "Raster: Channels",
@@ -1156,7 +1079,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
+									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1165,7 +1088,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
+									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1174,7 +1097,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
+									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1183,7 +1106,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
+									NodeInput::import(concrete!(List<Raster<CPU>>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
@@ -1197,7 +1120,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
+					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1319,81 +1242,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			properties: None,
 		},
-		// TODO: Remove this and just use the proto node definition directly
-		DocumentNodeDefinition {
-			identifier: "Brush",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![
-								NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-								NodeInput::import(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
-								NodeInput::import(concrete!(BrushCache), 2),
-							],
-							implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Raster(Default::default()), true),
-						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
-						NodeInput::value(TaggedValue::BrushCache(BrushCache::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Background", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [DocumentNodeMetadata {
-								persistent_metadata: DocumentNodePersistentMetadata {
-									node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-									..Default::default()
-								},
-								..Default::default()
-							}]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Memoize",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Upload Texture",
@@ -1409,7 +1257,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(Table<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::import(concrete!(List<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
 								..Default::default()
@@ -1417,7 +1265,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							DocumentNode {
 								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::memoize::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -1427,7 +1275,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
+					inputs: vec![NodeInput::type_default(descriptor!(List<Raster<CPU>>), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1477,7 +1325,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Extract,
-					inputs: vec![NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true)],
+					inputs: vec![NodeInput::type_default(descriptor!(DocumentNode), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1498,11 +1346,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![
 							// Primary output: the whole match (String)
 							NodeInput::node(NodeId(1), 0),
-							// Secondary output: capture groups (Vec<String>)
+							// Secondary output: capture groups (List<String>), each item carries `start`/`end`/`name` attributes from `regex_find`
 							NodeInput::node(NodeId(2), 0),
 						],
 						nodes: [
-							// Node 0: regex_find proto node — returns Vec<String> of [whole_match, ...capture_groups]
+							// Node 0: regex_find proto node — returns List<String> of [whole_match, ...capture_groups]
 							DocumentNode {
 								inputs: vec![
 									NodeInput::import(concrete!(String), 0),
@@ -1514,13 +1362,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								implementation: DocumentNodeImplementation::ProtoNode(text_nodes::regex::regex_find::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 1: index_elements at index 0 — extracts the whole match as a String
+							// Node 1: extract_element at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
-								implementation: DocumentNodeImplementation::ProtoNode(graphic::index_elements::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::extract_element::IDENTIFIER),
 								..Default::default()
 							},
-							// Node 2: omit_element at index 0 — returns capture groups as Vec<String>
+							// Node 2: omit_element at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(graphic::omit_element::IDENTIFIER),
@@ -1596,34 +1444,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			properties: None,
 		},
-		// Aims for interoperable compatibility with:
-		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
-		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
-		//
-		// Some further analysis available at:
-		// https://geraldbakker.nl/psnumbers/curves.html
-		// TODO: Fix this, it's currently broken
-		// DocumentNodeDefinition {
-		// 	identifier: "Curves",
-		// 	category: "Raster: Adjustment",
-		// 	node_template: NodeTemplate {
-		// 		document_node: DocumentNode {
-		// 			implementation: DocumentNodeImplementation::proto("core_types::raster::CurvesNode"),
-		// 			inputs: vec![
-		// 				NodeInput::value(TaggedValue::Raster(Default::default()), true),
-		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
-		// 			],
-		// 			..Default::default()
-		// 		},
-		// 		persistent_node_metadata: DocumentNodePersistentMetadata {
-		// 			input_properties: vec![("Image", "TODO").into(), ("Curve", "TODO").into()],
-		// 			output_names: vec!["Image".to_string()],
-		// 			..Default::default()
-		// 		},
-		// 	},
-		// 	description: Cow::Borrowed("TODO"),
-		// 	properties: None,
-		// },
 		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
@@ -1633,7 +1453,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: vec![
 							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(Table<Vector>), 0)],
+								inputs: vec![NodeInput::import(concrete!(List<Vector>), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
@@ -1657,7 +1477,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Vector(Default::default()), true),
+						NodeInput::type_default(descriptor!(List<Vector>), true),
 						NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 					],
 					..Default::default()
@@ -1697,430 +1517,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Transform",
-			category: "Math: Transform",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					inputs: vec![
-						// Value
-						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
-						// Translation
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						// Rotation
-						NodeInput::value(TaggedValue::F64(0.), false),
-						// Scale
-						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
-						// Skew
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						// Origin Offset
-						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						// Scale Appearance
-						NodeInput::value(TaggedValue::Bool(true), false),
-					],
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![
-							// From the Transform node
-							NodeInput::node(NodeId(1), 0),
-						],
-						nodes: [
-							// Monitor node
-							DocumentNode {
-								inputs: vec![
-									// From the Value import
-									NodeInput::import(generic!(T), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-								call_argument: generic!(T),
-								skip_deduplication: true,
-								..Default::default()
-							},
-							// Transform node
-							DocumentNode {
-								inputs: vec![
-									// From the Monitor node
-									NodeInput::node(NodeId(0), 0),
-									// From the Translation import
-									NodeInput::import(concrete!(DVec2), 1),
-									// From the Rotation import
-									NodeInput::import(concrete!(f64), 2),
-									// From the Scale import
-									NodeInput::import(concrete!(DVec2), 3),
-									// From the Skew import
-									NodeInput::import(concrete!(DVec2), 4),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_metadata: vec![
-						("Value", "TODO").into(),
-						InputMetadata::with_name_description_override(
-							"Translation",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: " px".to_string(),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Rotation", "TODO", WidgetOverride::Custom("transform_rotation".to_string())),
-						InputMetadata::with_name_description_override(
-							"Scale",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "W".to_string(),
-								y: "H".to_string(),
-								unit: "x".to_string(),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						InputMetadata::with_name_description_override("Origin Offset", "TODO", WidgetOverride::Custom("hidden".to_string())),
-						InputMetadata::with_name_description_override("Scale Appearance", "TODO", WidgetOverride::Custom("hidden".to_string())),
-					],
-					output_names: vec!["Data".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Boolean Operation",
-			category: "Vector: Modifier",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: vec![
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(Table<Vector>), 0), NodeInput::import(concrete!(vector::style::Fill), 1)],
-								implementation: DocumentNodeImplementation::ProtoNode(path_bool_nodes::boolean_operation::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Graphic(Default::default()), true),
-						NodeInput::value(TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_metadata: vec![("Content", "TODO").into(), ("Operation", "TODO").into()],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Sample Polyline",
-			category: "Vector: Modifier",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(Table<Vector>), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(vector::subpath_segment_lengths::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(Table<Vector>), 0),
-									NodeInput::import(concrete!(vector::misc::PointSpacingType), 1),
-									NodeInput::import(concrete!(f64), 2),
-									NodeInput::import(concrete!(u32), 3),
-									NodeInput::import(concrete!(f64), 4),
-									NodeInput::import(concrete!(f64), 5),
-									NodeInput::import(concrete!(bool), 6),
-									NodeInput::node(NodeId(0), 0),
-								],
-								implementation: DocumentNodeImplementation::ProtoNode(vector::sample_polyline::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Vector(Default::default()), true),
-						NodeInput::value(TaggedValue::PointSpacingType(Default::default()), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::U32(100), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 7)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_metadata: vec![
-						("Content", "The shape to be resampled and converted into a polyline.").into(),
-						("Spacing", node_properties::SAMPLE_POLYLINE_DESCRIPTION_SPACING).into(),
-						InputMetadata::with_name_description_override(
-							"Separation",
-							node_properties::SAMPLE_POLYLINE_DESCRIPTION_SEPARATION,
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.),
-								unit: Some(" px".to_string()),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Quantity",
-							node_properties::SAMPLE_POLYLINE_DESCRIPTION_QUANTITY,
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(2.),
-								is_integer: true,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Start Offset",
-							node_properties::SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET,
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.),
-								unit: Some(" px".to_string()),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Stop Offset",
-							node_properties::SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET,
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.),
-								unit: Some(" px".to_string()),
-								..Default::default()
-							}),
-						),
-						("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_DESCRIPTION_ADAPTIVE_SPACING).into(),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Convert vector geometry into a polyline composed of evenly spaced points."),
-			properties: Some("sample_polyline_properties"),
-		},
-		DocumentNodeDefinition {
-			identifier: "Scatter Points",
-			category: "Vector: Modifier",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![
-									NodeInput::import(concrete!(Table<Vector>), 0),
-									NodeInput::import(concrete!(f64), 1),
-									NodeInput::import(concrete!(u32), 2),
-								],
-								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(vector::poisson_disk_points::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								call_argument: generic!(T),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::Vector(Default::default()), true),
-						NodeInput::value(TaggedValue::F64(10.), false),
-						NodeInput::value(TaggedValue::U32(0), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					input_metadata: vec![
-						("Content", "TODO").into(),
-						InputMetadata::with_name_description_override(
-							"Separation",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.01),
-								mode: NumberInputMode::Range,
-								range_min: Some(1.),
-								range_max: Some(100.),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Seed",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(0.),
-								is_integer: true,
-								..Default::default()
-							}),
-						),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 	];
 
 	document_node_derive::post_process_nodes(custom)
@@ -2131,11 +1527,16 @@ type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesCont
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sync::Lazy::new(static_node_properties);
 
-/// Defines the logic for inputs to display a custom properties panel widget.
+/// Defines the logic for inputs to display a custom Properties panel widget.
 fn static_node_properties() -> NodeProperties {
 	let mut map: NodeProperties = HashMap::new();
 	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
+	map.insert("levels_properties".to_string(), Box::new(node_properties::levels_properties));
+	map.insert("hue_saturation_properties".to_string(), Box::new(node_properties::hue_saturation_properties));
+	map.insert("black_and_white_properties".to_string(), Box::new(node_properties::black_and_white_properties));
+	map.insert("threshold_properties".to_string(), Box::new(node_properties::threshold_properties));
+	map.insert("vibrance_properties".to_string(), Box::new(node_properties::vibrance_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
 	map.insert("offset_path_properties".to_string(), Box::new(node_properties::offset_path_properties));
@@ -2160,7 +1561,7 @@ type InputProperties = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodeProper
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 static INPUT_OVERRIDES: once_cell::sync::Lazy<InputProperties> = once_cell::sync::Lazy::new(static_input_properties);
 
-/// Defines the logic for inputs to display a custom properties panel widget.
+/// Defines the logic for inputs to display a custom Properties panel widget.
 fn static_input_properties() -> InputProperties {
 	let mut map: InputProperties = HashMap::new();
 	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
@@ -2282,6 +1683,19 @@ fn static_input_properties() -> InputProperties {
 				}
 			};
 			// NOTE: The bool input MUST be at the input index directly before the f64 input!
+			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
+				ParameterWidgetsInfo::new(node_id, index, false, context),
+				index - 1,
+				number_input,
+			))])
+		}),
+	);
+	map.insert(
+		// Like `optional_f64`, but the number input is configured as a percentage with a 0-100 range.
+		// As with `optional_f64`, the bool input must be at the input index directly before the f64 input.
+		"optional_percentage".to_string(),
+		Box::new(|node_id, index, context| {
+			let number_input = NumberInput::default().percentage().min(0.).max(100.);
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
 				ParameterWidgetsInfo::new(node_id, index, false, context),
 				index - 1,
@@ -2562,6 +1976,25 @@ fn static_input_properties() -> InputProperties {
 
 			Ok(vec![LayoutGroup::row(widgets)])
 		}),
+	);
+	// Translation uses a Vec2 widget with X/Y labels and a "px" unit suffix
+	map.insert(
+		"transform_translation".to_string(),
+		Box::new(|node_id, index, context| {
+			Ok(vec![node_properties::vec2_widget(
+				ParameterWidgetsInfo::new(node_id, index, true, context),
+				"X",
+				"Y",
+				" px",
+				None,
+				false,
+			)])
+		}),
+	);
+	// Scale uses a Vec2 widget with W/H labels and an "x" unit suffix
+	map.insert(
+		"transform_scale".to_string(),
+		Box::new(|node_id, index, context| Ok(vec![node_properties::vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), "W", "H", "x", None, false)])),
 	);
 	// Skew has a custom override that maps to degrees
 	map.insert(

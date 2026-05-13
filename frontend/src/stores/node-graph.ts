@@ -6,6 +6,8 @@ import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, Cont
 
 export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 
+export type NodeGraphTransform = { scale: number; x: number; y: number };
+
 type NodeGraphStoreState = {
 	box: BoxSelection | undefined;
 	clickTargets: FrontendClickTargets | undefined;
@@ -14,17 +16,12 @@ type NodeGraphStoreState = {
 	layerWidths: Map<bigint, number>;
 	chainWidths: Map<bigint, number>;
 	hasLeftInputWire: Map<bigint, boolean>;
-	updateImportsExports: MessageBody<"UpdateImportsExports"> | undefined;
 	nodes: Map<bigint, FrontendNode>;
-	visibleNodes: Set<bigint>;
-	/// The index is the exposed input index. The exports have a first key value of u32::MAX.
-	wires: Map<bigint, Map<number, WirePath>>;
 	wirePathInProgress: WirePath | undefined;
 	nodeDescriptions: Map<string, string>;
 	nodeTypes: FrontendNodeType[];
 	thumbnails: Map<bigint, string>;
 	selected: bigint[];
-	transform: { scale: number; x: number; y: number };
 	inSelectedNetwork: boolean;
 	reorderImportIndex: number | undefined;
 	reorderExportIndex: number | undefined;
@@ -37,16 +34,12 @@ const initialState: NodeGraphStoreState = {
 	layerWidths: new Map(),
 	chainWidths: new Map(),
 	hasLeftInputWire: new Map(),
-	updateImportsExports: undefined,
 	nodes: new Map(),
-	visibleNodes: new Set(),
-	wires: new Map(),
 	wirePathInProgress: undefined,
 	nodeDescriptions: new Map(),
 	nodeTypes: [],
 	thumbnails: new Map(),
 	selected: [],
-	transform: { scale: 1, x: 0, y: 0 },
 	inSelectedNetwork: true,
 	reorderImportIndex: undefined,
 	reorderExportIndex: undefined,
@@ -58,6 +51,22 @@ let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 const store: Writable<NodeGraphStoreState> = import.meta.hot?.data?.store || writable<NodeGraphStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
+
+// Separate transform store so pan/zoom updates don't trigger re-rendering the entire node graph
+const transformStore: Writable<NodeGraphTransform> = import.meta.hot?.data?.transformStore || writable<NodeGraphTransform>({ scale: 1, x: 0, y: 0 });
+if (import.meta.hot) import.meta.hot.data.transformStore = transformStore;
+
+// Separate imports/exports store so viewport-anchored position updates don't trigger node re-renders
+const importsExportsStore: Writable<MessageBody<"UpdateImportsExports"> | undefined> = import.meta.hot?.data?.importsExportsStore || writable(undefined);
+if (import.meta.hot) import.meta.hot.data.importsExportsStore = importsExportsStore;
+
+// Separate visible nodes store so viewport culling changes don't trigger full node re-renders
+const visibleNodesStore: Writable<Set<bigint>> = import.meta.hot?.data?.visibleNodesStore || writable(new Set());
+if (import.meta.hot) import.meta.hot.data.visibleNodesStore = visibleNodesStore;
+
+// Separate wires store so wire path updates (e.g. export connector movement during pan) don't trigger node re-renders
+const wiresStore: Writable<Map<bigint, Map<number, WirePath>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
+if (import.meta.hot) import.meta.hot.data.wiresStore = wiresStore;
 
 export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
@@ -108,10 +117,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateImportsExports", (data) => {
-		update((state) => {
-			state.updateImportsExports = data;
-			return state;
-		});
+		importsExportsStore.set(data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateInSelectedNetwork", (data) => {
@@ -148,20 +154,35 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateVisibleNodes", (data) => {
-		update((state) => {
-			state.visibleNodes = new Set<bigint>(data.nodes);
-			return state;
+		const newNodes = new Set<bigint>(data.nodes);
+
+		// Short-circuit when the visible set hasn't changed to avoid unnecessary re-renders
+		let changed = false;
+		const unsubscribe = visibleNodesStore.subscribe((current) => {
+			if (current.size !== newNodes.size) {
+				changed = true;
+			} else {
+				newNodes.forEach((node) => {
+					if (!current.has(node)) changed = true;
+				});
+			}
 		});
+		unsubscribe();
+
+		if (!changed) return;
+
+		visibleNodesStore.set(newNodes);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
-		update((state) => {
+		if (data.wires.length === 0) return;
+
+		wiresStore.update((wires) => {
 			data.wires.forEach((wireUpdate) => {
-				let inputMap = state.wires.get(wireUpdate.id);
-				// If it doesn't exist, create it and set it in the outer map
+				let inputMap = wires.get(wireUpdate.id);
 				if (!inputMap) {
 					inputMap = new Map();
-					state.wires.set(wireUpdate.id, inputMap);
+					wires.set(wireUpdate.id, inputMap);
 				}
 				if (wireUpdate.wirePathUpdate !== undefined) {
 					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
@@ -169,15 +190,12 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 					inputMap.delete(wireUpdate.inputIndex);
 				}
 			});
-			return state;
+			return wires;
 		});
 	});
 
 	subscriptions.subscribeFrontendMessage("ClearAllNodeGraphWires", () => {
-		update((state) => {
-			state.wires.clear();
-			return state;
-		});
+		wiresStore.set(new Map());
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphSelection", (data) => {
@@ -188,10 +206,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphTransform", (data) => {
-		update((state) => {
-			state.transform = { scale: data.scale, x: data.translation[0], y: data.translation[1] };
-			return state;
-		});
+		transformStore.set({ scale: data.scale, x: data.translation[0], y: data.translation[1] });
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeThumbnail", (data) => {
@@ -208,7 +223,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	return { subscribe };
+	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore };
 }
 
 export function destroyNodeGraphStore() {

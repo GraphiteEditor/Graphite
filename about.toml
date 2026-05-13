@@ -1,4 +1,5 @@
 accepted = [
+	"0BSD", # Keep this list in sync with those in `/deny.toml`
 	"Apache-2.0 WITH LLVM-exception", # Keep this list in sync with those in `/deny.toml`
 	"Apache-2.0", # Keep this list in sync with those in `/deny.toml`
 	"BSD-2-Clause", # Keep this list in sync with those in `/deny.toml`

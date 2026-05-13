@@ -32,7 +32,7 @@ pub mod vector {
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
 	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
-	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap};
+	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder
 	pub use vector_types::vector::HandleExt;
@@ -44,7 +44,6 @@ pub mod vector {
 
 pub mod graphic {
 	pub use graphic_nodes::graphic::*;
-	pub use graphic_types::Artboard;
 	pub use graphic_types::graphic::*;
 }
 

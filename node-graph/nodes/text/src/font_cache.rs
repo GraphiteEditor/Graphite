@@ -1,3 +1,4 @@
+use core_types::graphene_hash::CacheHash;
 use dyn_any::DynAny;
 use parley::fontique::Blob;
 use std::collections::HashMap;
@@ -5,13 +6,14 @@ use std::sync::Arc;
 
 /// A font type (storing font family and font style and an optional preview URL)
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, DynAny)]
+#[derive(Debug, Clone, Eq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Font {
-	#[serde(rename = "fontFamily")]
+	#[cfg_attr(feature = "serde", serde(rename = "fontFamily"))]
 	pub font_family: String,
-	#[serde(rename = "fontStyle", deserialize_with = "migrate_font_style")]
+	#[cfg_attr(feature = "serde", serde(rename = "fontStyle", deserialize_with = "migrate_font_style"))]
 	pub font_style: String,
-	#[serde(skip)]
+	#[cfg_attr(feature = "serde", serde(skip))]
 	pub font_style_to_restore: Option<String>,
 }
 
@@ -19,6 +21,14 @@ impl std::hash::Hash for Font {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.font_family.hash(state);
 		self.font_style.hash(state);
+		// Don't consider `font_style_to_restore` in the HashMaps
+	}
+}
+
+impl CacheHash for Font {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.font_family.cache_hash(state);
+		self.font_style.cache_hash(state);
 		// Don't consider `font_style_to_restore` in the HashMaps
 	}
 }
@@ -63,7 +73,8 @@ impl Default for Font {
 }
 
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Clone, serde::Serialize, serde::Deserialize, Default, DynAny)]
+#[derive(Clone, Default, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font
 	font_file_data: HashMap<Font, Vec<u8>>,

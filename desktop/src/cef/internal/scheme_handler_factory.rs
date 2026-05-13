@@ -25,7 +25,7 @@ impl<H: CefEventHandler> SchemeHandlerFactoryImpl<H> {
 			scheme_options |= cef_scheme_options_t::CEF_SCHEME_OPTION_FETCH_ENABLED as i32;
 			scheme_options |= cef_scheme_options_t::CEF_SCHEME_OPTION_SECURE as i32;
 			scheme_options |= cef_scheme_options_t::CEF_SCHEME_OPTION_CORS_ENABLED as i32;
-			registrar.add_custom_scheme(Some(&CefString::from(RESOURCE_SCHEME)), scheme_options);
+			registrar.add_custom_scheme(Some(&RESOURCE_SCHEME.into()), scheme_options);
 		}
 	}
 }

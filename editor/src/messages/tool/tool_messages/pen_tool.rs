@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
@@ -7,7 +7,10 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_over
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::color_selector::{
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_line_weight, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation,
+	swap_fill_and_stroke, sync_drawing_state,
+};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
@@ -16,6 +19,7 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::subpath::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
+use graphene_std::vector::style::FillChoice;
 use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, StrokeId, Vector, VectorModificationType};
 use kurbo::{CubicBez, PathSeg};
 
@@ -27,18 +31,14 @@ pub struct PenTool {
 }
 
 pub struct PenOptions {
-	line_weight: f64,
-	fill: ToolColorOptions,
-	stroke: ToolColorOptions,
+	drawing: DrawingToolState,
 	pen_overlay_mode: PenOverlayMode,
 }
 
 impl Default for PenOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: DEFAULT_STROKE_WIDTH,
-			fill: ToolColorOptions::new_secondary(),
-			stroke: ToolColorOptions::new_primary(),
+			drawing: DrawingToolState::new(true),
 			pen_overlay_mode: PenOverlayMode::FrontierHandles,
 		}
 	}
@@ -119,12 +119,13 @@ pub enum PenOverlayMode {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PenOptionsUpdate {
-	FillColor(Option<Color>),
-	FillColorType(ToolColorType),
+	FillColor(FillChoice),
+	FillEnabled(bool),
 	LineWeight(f64),
 	StrokeColor(Option<Color>),
-	StrokeColorType(ToolColorType),
-	WorkingColors(Option<Color>, Option<Color>),
+	StrokeEnabled(bool),
+	SwapFillAndStroke,
+	WorkingColorsChanged,
 	OverlayModeType(PenOverlayMode),
 }
 
@@ -140,80 +141,83 @@ impl ToolMetadata for PenTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetInstance {
-	NumberInput::new(Some(line_weight))
+fn create_weight_widget(line_weight: Option<f64>, disabled: bool) -> WidgetInstance {
+	NumberInput::new(line_weight)
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+		.min_width(100)
+		.narrow(true)
+		.disabled(disabled)
 		.on_update(|number_input: &NumberInput| {
-			PenToolMessage::UpdateOptions {
-				options: PenOptionsUpdate::LineWeight(number_input.value.unwrap()),
+			if let Some(value) = number_input.value {
+				PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::LineWeight(value),
+				}
+				.into()
+			} else {
+				Message::NoOp
 			}
-			.into()
 		})
+		.on_commit(|_| DocumentMessage::StartTransaction.into())
 		.widget_instance()
 }
 
 impl LayoutHolder for PenTool {
 	fn layout(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
-			"Fill",
-			true,
-			|_| {
+		let mut widgets = self.options.drawing.fill.create_widgets(
+			"Fill:",
+			|checkbox: &CheckboxInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::FillColor(None),
+					options: PenOptionsUpdate::FillEnabled(checkbox.checked),
 				}
 				.into()
 			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
-					PenToolMessage::UpdateOptions {
-						options: PenOptionsUpdate::FillColorType(color_type.clone()),
-					}
-					.into()
-				})
-			},
 			|color: &ColorInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+					options: PenOptionsUpdate::FillColor(color.value.clone()),
 				}
 				.into()
 			},
 		);
 
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		widgets.append(&mut self.options.stroke.create_widgets(
-			"Stroke",
-			true,
-			|_| {
-				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::StrokeColor(None),
-				}
-				.into()
-			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
+		widgets.push(
+			IconButton::new("SwapHorizontal", 16)
+				.tooltip_label("Swap Fill/Stroke Colors")
+				.on_update(|_| {
 					PenToolMessage::UpdateOptions {
-						options: PenOptionsUpdate::StrokeColorType(color_type.clone()),
+						options: PenOptionsUpdate::SwapFillAndStroke,
 					}
 					.into()
 				})
+				.widget_instance(),
+		);
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+
+		widgets.append(&mut self.options.drawing.stroke.create_widgets(
+			"Stroke:",
+			|checkbox: &CheckboxInput| {
+				PenToolMessage::UpdateOptions {
+					options: PenOptionsUpdate::StrokeEnabled(checkbox.checked),
+				}
+				.into()
 			},
 			|color: &ColorInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+					options: PenOptionsUpdate::StrokeColor(color.value.as_solid()),
 				}
 				.into()
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
-		widgets.push(create_weight_widget(self.options.line_weight));
+		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
+		widgets.push(create_weight_widget(self.options.drawing.line_weight, weight_disabled));
 
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Section).widget_instance());
 
 		widgets.push(
 			RadioInput::new(vec![
@@ -249,6 +253,20 @@ impl LayoutHolder for PenTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
+		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
+		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::Abort)) && self.fsm_state == PenToolFsmState::Ready {
+			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+		}
+
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::SelectionChanged))
+			&& self.fsm_state == PenToolFsmState::Ready
+			&& sync_drawing_state(&mut self.options.drawing, true, true, context.global_tool_data, context.document)
+		{
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
+
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
@@ -259,22 +277,26 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				self.options.pen_overlay_mode = overlay_mode_type;
 				responses.add(OverlaysMessage::Draw);
 			}
-			PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-			PenOptionsUpdate::FillColor(color) => {
-				self.options.fill.custom_color = color;
-				self.options.fill.color_type = ToolColorType::Custom;
+			PenOptionsUpdate::LineWeight(line_weight) => {
+				apply_line_weight(&mut self.options.drawing, line_weight, context.document, responses);
 			}
-			PenOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			PenOptionsUpdate::FillColor(fill_choice) => {
+				apply_fill_color_pick(&mut self.options.drawing, fill_choice, context.document, responses);
+			}
+			PenOptionsUpdate::FillEnabled(enabled) => {
+				apply_fill_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
+			}
 			PenOptionsUpdate::StrokeColor(color) => {
-				self.options.stroke.custom_color = color;
-				self.options.stroke.color_type = ToolColorType::Custom;
+				apply_stroke_color_pick(&mut self.options.drawing, color, context.document, responses);
 			}
-			PenOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-			PenOptionsUpdate::WorkingColors(primary, secondary) => {
-				self.options.stroke.primary_working_color = primary;
-				self.options.stroke.secondary_working_color = secondary;
-				self.options.fill.primary_working_color = primary;
-				self.options.fill.secondary_working_color = secondary;
+			PenOptionsUpdate::StrokeEnabled(enabled) => {
+				apply_stroke_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
+			}
+			PenOptionsUpdate::SwapFillAndStroke => {
+				swap_fill_and_stroke(&mut self.options.drawing, context.document, responses);
+			}
+			PenOptionsUpdate::WorkingColorsChanged => {
+				apply_working_colors(&mut self.options.drawing, context.global_tool_data, context.document);
 			}
 		}
 
@@ -624,6 +646,8 @@ impl PenToolData {
 			if let Some(point) = self.latest_point_mut() {
 				point.in_segment = None;
 			}
+
+			return;
 		}
 
 		// Closing path
@@ -1292,8 +1316,8 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-		tool_options.fill.apply_fill(layer, responses);
+		tool_options.drawing.stroke.apply_stroke(tool_options.drawing.effective_line_weight(), layer, responses);
+		tool_options.drawing.fill.apply_fill(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -1476,7 +1500,6 @@ impl Fsm for PenToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
-			global_tool_data,
 			input,
 			shape_editor,
 			viewport,
@@ -1825,7 +1848,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::WorkingColorChanged) => {
 				responses.add(PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+					options: PenOptionsUpdate::WorkingColorsChanged,
 				});
 				self
 			}

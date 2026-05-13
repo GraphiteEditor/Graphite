@@ -4,7 +4,7 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::table::Table;
+use core_types::list::List;
 use glam::{Vec3, Vec4};
 use no_std_types::color::Color;
 use no_std_types::context::Ctx;
@@ -34,7 +34,8 @@ use vector_types::GradientStops;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 #[repr(u32)]
@@ -52,9 +53,9 @@ pub enum LuminanceCalculation {
 fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -77,9 +78,9 @@ fn luminance<T: Adjust<Color>>(
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -98,9 +99,9 @@ fn gamma_correction<T: Adjust<Color>>(
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -122,9 +123,9 @@ fn extract_channel<T: Adjust<Color>>(
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -139,18 +140,14 @@ fn make_opaque<T: Adjust<Color>>(
 }
 
 // TODO: Remove this once GPU shader nodes are able to support the non-classic algorithm
-#[node_macro::node(
-	name("Brightness/Contrast Classic"),
-	category("Raster: Adjustment"),
-	properties("brightness_contrast_properties"),
-	shader_node(PerPixelAdjust)
-)]
+// TODO: Maybe re-add the "Raster: Adjustment" category to make this user-facing if we care to make this not just for testing
+#[node_macro::node(name("Brightness/Contrast Classic"), category(""), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
 fn brightness_contrast_classic<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -179,9 +176,9 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 fn brightness_contrast<T: Adjust<Color>>(
 	_ctx: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -256,13 +253,13 @@ fn brightness_contrast<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("levels_properties"), shader_node(PerPixelAdjust))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -324,13 +321,14 @@ fn levels<T: Adjust<Color>>(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-#[node_macro::node(name("Black & White"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+// TODO: Currently the un-List-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
+#[node_macro::node(name("Black & White"), category(""), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -397,13 +395,13 @@ fn black_and_white<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
-#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), properties("hue_saturation_properties"), shader_node(PerPixelAdjust))]
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -436,9 +434,9 @@ fn hue_saturation<T: Adjust<Color>>(
 fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -455,13 +453,13 @@ fn invert<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -501,13 +499,13 @@ fn threshold<T: Adjust<Color>>(
 // It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
 // When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
 // (Except for some noise probably due to rounding error.)
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -565,7 +563,8 @@ fn vibrance<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
@@ -576,7 +575,8 @@ pub enum RedGreenBlue {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 #[repr(u32)]
@@ -590,7 +590,8 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum NoiseType {
@@ -608,7 +609,8 @@ pub enum NoiseType {
 
 /// Style of layered levels of the noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum FractalType {
 	#[default]
@@ -625,7 +627,8 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum CellularDistanceFunction {
 	#[default]
@@ -637,7 +640,8 @@ pub enum CellularDistanceFunction {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum CellularReturnType {
 	CellValue,
@@ -657,7 +661,8 @@ pub enum CellularReturnType {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
@@ -677,9 +682,9 @@ pub enum DomainWarpType {
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -771,7 +776,8 @@ fn channel_mixer<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
@@ -782,7 +788,8 @@ pub enum RelativeAbsolute {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 pub enum SelectiveColorChoice {
 	#[default]
@@ -809,9 +816,9 @@ pub enum SelectiveColorChoice {
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -955,9 +962,9 @@ fn selective_color<T: Adjust<Color>>(
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -989,9 +996,9 @@ fn posterize<T: Adjust<Color>>(
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -1014,4 +1021,21 @@ fn exposure<T: Adjust<Color>>(
 		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 	});
 	input
+}
+
+#[cfg(feature = "std")]
+mod _graphene_hash_impls {
+	use super::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice};
+	graphene_hash::impl_via_hash!(
+		LuminanceCalculation,
+		RedGreenBlue,
+		RedGreenBlueAlpha,
+		NoiseType,
+		FractalType,
+		CellularDistanceFunction,
+		CellularReturnType,
+		DomainWarpType,
+		RelativeAbsolute,
+		SelectiveColorChoice
+	);
 }

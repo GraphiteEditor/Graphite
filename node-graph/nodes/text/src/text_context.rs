@@ -1,6 +1,6 @@
 use super::{Font, FontCache, TypesettingConfig};
 use core::cell::RefCell;
-use core_types::table::Table;
+use core_types::list::List;
 use glam::DVec2;
 use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
@@ -87,19 +87,71 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path<Upstream: Default + 'static>(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector<Upstream>> {
+	pub fn to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_items: bool) -> List<Vector> {
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
-			return Table::new_from_element(Vector::default());
+			return List::new_from_element(Vector::default());
 		};
 
-		let mut path_builder = PathBuilder::new(per_glyph_instances, layout.scale() as f64);
+		let text_frame_size = DVec2::new(
+			typesetting.max_width.unwrap_or_else(|| layout.full_width() as f64),
+			typesetting.max_height.unwrap_or_else(|| layout.height() as f64),
+		);
+
+		// First glyph offset (pre-height-filter) so the empty placeholder item in `per_glyph_items`
+		// mode keeps the same item 0's transform, preventing `local_transforms` from jumping mid-drag
+		let first_glyph_offset = layout
+			.lines()
+			.flat_map(|line| line.items())
+			.find_map(|item| match item {
+				PositionedLayoutItem::GlyphRun(run) => run.glyphs().next().map(|glyph| DVec2::new((run.offset() + glyph.x) as f64, (run.baseline() - glyph.y) as f64)),
+				_ => None,
+			})
+			.unwrap_or_default();
+
+		let alignment_width = typesetting.max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
+		let last_line_correction = typesetting.align.last_line_correction();
+
+		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
 		for line in layout.lines() {
+			let range = line.text_range();
+			// Parley always includes a hard-break `\n` as the last byte of the preceding line's range, so the line
+			// is at the end of a paragraph if it's the very last line of the buffer or its text ends with `\n`.
+			let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
+
+			let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+				let metrics = line.metrics();
+				let content_advance = metrics.advance - metrics.trailing_whitespace;
+				let free_space = alignment_width - content_advance;
+
+				match correction {
+					parley::Alignment::Center => (free_space * 0.5, 0.),
+					parley::Alignment::Right => (free_space, 0.),
+					parley::Alignment::Justify => {
+						// Exclude trailing-whitespace clusters from the divisor so the redistribution stretches only the internal spaces.
+						// Parley's `trailing_whitespace` is in advance units, not bytes, so we re-derive the byte boundary here to filter cluster ranges.
+						let line_text = text.get(range.clone()).unwrap_or("");
+						let trailing_len = line_text.len() - line_text.trim_end().len();
+						let visible_end_index = range.end - trailing_len;
+
+						let space_count: usize = line
+							.runs()
+							.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
+							.sum();
+						let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
+						(0., extra)
+					}
+					_ => (0., 0.),
+				}
+			} else {
+				(0., 0.)
+			};
+
 			for item in line.items() {
 				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
 					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
 				{
-					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
+					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_items, x_offset, space_extra);
 				}
 			}
 		}

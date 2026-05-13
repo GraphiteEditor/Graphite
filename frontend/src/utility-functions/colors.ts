@@ -1,4 +1,3 @@
-import { sampleInterpolatedGradient } from "/wrapper/pkg/graphite_wasm_wrapper";
 import type { Color, FillChoice, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
@@ -63,12 +62,6 @@ export function colorFromCSS(colorCode: string): Color | undefined {
 	return createColor(r / 255, g / 255, b / 255, a / 255);
 }
 
-export function colorEquals(c1: Color | undefined, c2: Color | undefined): boolean {
-	if (c1 === undefined && c2 === undefined) return true;
-	if (c1 === undefined || c2 === undefined) return false;
-	return Math.abs(c1.red - c2.red) < 1e-6 && Math.abs(c1.green - c2.green) < 1e-6 && Math.abs(c1.blue - c2.blue) < 1e-6 && Math.abs(c1.alpha - c2.alpha) < 1e-6;
-}
-
 export function colorToHexNoAlpha(color: Color): string {
 	const r = Math.round(color.red * 255)
 		.toString(16)
@@ -81,15 +74,6 @@ export function colorToHexNoAlpha(color: Color): string {
 		.padStart(2, "0");
 
 	return `#${r}${g}${b}`;
-}
-
-export function colorToHexOptionalAlpha(color: Color): string {
-	const hex = colorToHexNoAlpha(color);
-	const a = Math.round(color.alpha * 255)
-		.toString(16)
-		.padStart(2, "0");
-
-	return a === "ff" ? hex : `${hex}${a}`;
 }
 
 export function colorToRgb255(color: Color): RGB {
@@ -203,23 +187,6 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 
 export function isGradientStops(value: unknown): value is GradientStops {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
-}
-
-export function gradientToLinearGradientCSS(gradient: GradientStops): string {
-	if (gradient.position.length === 1) {
-		return `linear-gradient(to right, ${colorToHexOptionalAlpha(gradient.color[0])} 0%, ${colorToHexOptionalAlpha(gradient.color[0])} 100%)`;
-	}
-
-	const pieces = sampleInterpolatedGradient(new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color, false);
-	return `linear-gradient(to right, ${pieces})`;
-}
-
-export function gradientFirstColor(gradient: GradientStops): Color | undefined {
-	return gradient.color[0];
-}
-
-export function gradientLastColor(gradient: GradientStops): Color | undefined {
-	return gradient.color[gradient.color.length - 1];
 }
 
 // FILL CHOICE UTILITY FUNCTIONS

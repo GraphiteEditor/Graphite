@@ -70,5 +70,6 @@
 		"*.graphite": "json"
 	},
 	"editor.renderWhitespace": "boundary",
-	"editor.minimap.markSectionHeaderRegex": "// ===+\\n\\s*//\\s*(?<label>[^\\n]{1,18})[^\\n]*(\\n\\s*//[^\\n]*)*\\n\\s*// ===+"
+	"editor.minimap.markSectionHeaderRegex": "// ===+\\n\\s*//\\s*(?<label>[^\\n]{1,18})[^\\n]*(\\n\\s*//[^\\n]*)*\\n\\s*// ===+",
+	"git.addAICoAuthor": "off"
 }

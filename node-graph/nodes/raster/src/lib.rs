@@ -11,13 +11,9 @@ pub mod fullscreen_vertex;
 pub use raster_nodes_shaders::WGSL_SHADER;
 
 #[cfg(feature = "std")]
-pub mod curve;
-#[cfg(feature = "std")]
 pub mod dehaze;
 #[cfg(feature = "std")]
 pub mod filter;
-#[cfg(feature = "std")]
-pub mod generate_curves;
 #[cfg(feature = "std")]
 pub mod gradient_map;
 #[cfg(feature = "std")]

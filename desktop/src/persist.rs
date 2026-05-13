@@ -37,7 +37,7 @@ pub(crate) fn write_state(state: PersistedState) {
 	if let Err(e) = std::fs::write(state_file_path(), data) {
 		tracing::error!("Failed to write persistent data to disk: {e}");
 	}
-	garbage_collect_document_files(&state);
+	garbage_collect_document_files(state);
 }
 
 pub(crate) fn write_document_content(id: DocumentId, document_content: String) {

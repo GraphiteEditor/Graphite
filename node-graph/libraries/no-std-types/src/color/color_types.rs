@@ -2,7 +2,6 @@ use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, Luminance
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
-use core::hash::Hash;
 use glam::Vec4;
 use half::f16;
 use node_macro::BufferStruct;
@@ -220,7 +219,8 @@ impl Pixel for Luma {}
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Pod, Zeroable, BufferStruct)]
+#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -228,23 +228,8 @@ pub struct Color {
 	alpha: f32,
 }
 
-impl PartialEq for Color {
-	fn eq(&self, other: &Self) -> bool {
-		self.red == other.red && self.green == other.green && self.blue == other.blue && self.alpha == other.alpha
-	}
-}
-
+// `f32` channels mean `Color` doesn't qualify for a derived `Eq`, but in practice we never store NaN here, and the renderer's `HashMap<CacheHashWrapper<Image<Color>>, _>` deduplication needs `Color: Eq` to propagate up through the wrapper.
 impl Eq for Color {}
-
-#[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for Color {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.red.to_bits().hash(state);
-		self.green.to_bits().hash(state);
-		self.blue.to_bits().hash(state);
-		self.alpha.to_bits().hash(state);
-	}
-}
 
 impl RGB for Color {
 	type ColorChannel = f32;
@@ -877,6 +862,15 @@ impl Color {
 			(self.b() * 255.) as u8,
 			(self.a() * 255.) as u8,
 		)
+	}
+
+	/// [`Color::BLACK`] or [`Color::WHITE`], whichever gives more legible text against this color (alpha composited over white, WCAG-style luminance threshold). Use this if this [`Color`] is in gamma space.
+	pub fn contrasting_text_color_from_gamma(&self) -> Color {
+		let composited = Self::WHITE.alpha_blend(Self::from_unassociated_alpha(self.r(), self.g(), self.b(), self.a()));
+		let luminance = composited.to_linear_srgb().luminance_srgb();
+		// WCAG-derived perceptual midpoint between black and white (~0.179)
+		let threshold = (1.05_f32 * 0.05).sqrt() - 0.05;
+		if luminance > threshold { Self::BLACK } else { Self::WHITE }
 	}
 
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in gamma space.

@@ -986,6 +986,7 @@ impl OverlayContext {
 				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 			}
 			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+			ClickTargetType::CompoundPath(compound) => subpaths.extend(compound.iter().cloned()),
 		});
 
 		if !subpaths.is_empty() {

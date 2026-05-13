@@ -11,10 +11,13 @@ workspace = true
 
 [features]
 default = ["std"]
+serde = ["dep:serde", "core-types?/serde", "raster-types?/serde", "vector-types?/serde"]
 shader-nodes = ["std", "dep:raster-nodes-shaders", "dep:wgpu-executor"]
 std = [
+	"serde",
 	"dep:core-types",
 	"dep:dyn-any",
+	"dep:graphene-hash",
 	"dep:raster-types",
 	"dep:vector-types",
 	"dep:image",
@@ -22,7 +25,6 @@ std = [
 	"dep:rand",
 	"dep:rand_chacha",
 	"dep:fastnoise-lite",
-	"dep:serde",
 	"dep:kurbo",
 ]
 wasm = [
@@ -41,6 +43,7 @@ node-macro = { workspace = true }
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 core-types = { workspace = true, optional = true }
+graphene-hash = { workspace = true, optional = true }
 raster-types = { workspace = true, optional = true }
 vector-types = { workspace = true, optional = true }
 wgpu-executor = { workspace = true, optional = true }

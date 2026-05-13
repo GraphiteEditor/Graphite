@@ -1,4 +1,5 @@
-use core_types::{Ctx, table::Table};
+use core_types::Ctx;
+use core_types::list::List;
 use graph_craft::application_io::PlatformEditorApi;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -59,9 +60,9 @@ fn text<'i: 'n>(
 	/// To have an effect on a single line of text, *Max Width* must be set.
 	#[widget(ParsedWidgetOverride::Custom = "text_align")]
 	align: TextAlign,
-	/// Whether to split every letterform into its own vector path element. Otherwise, a single compound path is produced.
-	separate_glyph_elements: bool,
-) -> Table<Vector> {
+	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
+	separate_glyphs: bool,
+) -> List<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size: size,
 		line_height_ratio: line_height,
@@ -72,5 +73,5 @@ fn text<'i: 'n>(
 		align,
 	};
 
-	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyph_elements)
+	to_path(&text, &font, &editor_resources.font_cache, typesetting, separate_glyphs)
 }

@@ -14,6 +14,8 @@ pub enum Message {
 	#[child]
 	Clipboard(ClipboardMessage),
 	#[child]
+	ColorPicker(ColorPickerMessage),
+	#[child]
 	Debug(DebugMessage),
 	#[child]
 	Defer(DeferMessage),

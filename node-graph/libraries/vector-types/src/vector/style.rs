@@ -1,9 +1,10 @@
 //! Contains stylistic options for SVG elements.
 
 pub use crate::gradient::*;
+use core_types::ATTR_OPACITY;
 use core_types::Color;
 use core_types::color::Alpha;
-use core_types::table::Table;
+use core_types::list::List;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -16,7 +17,8 @@ use std::f64::consts::{PI, TAU};
 /// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Fill {
 	#[default]
 	None,
@@ -131,18 +133,18 @@ impl From<Option<Color>> for Fill {
 	}
 }
 
-impl From<Table<Color>> for Fill {
-	fn from(color: Table<Color>) -> Fill {
-		let alpha = color.get(0).map(|c| c.alpha_blending.opacity).unwrap_or(1.);
-		let color: Option<Color> = color.into();
-		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha)))
+impl From<List<Color>> for Fill {
+	fn from(color: List<Color>) -> Fill {
+		let alpha: f64 = color.attribute_cloned_or(ATTR_OPACITY, 0, 1.);
+		let color = color.element(0).copied();
+		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha as f32)))
 	}
 }
 
-impl From<Table<GradientStops>> for Fill {
-	fn from(gradient: Table<GradientStops>) -> Fill {
+impl From<List<GradientStops>> for Fill {
+	fn from(gradient: List<GradientStops>) -> Fill {
 		Fill::Gradient(Gradient {
-			stops: gradient.iter().nth(0).map(|row| row.element.clone()).unwrap_or_default(),
+			stops: gradient.element(0).cloned().unwrap_or_default(),
 			..Default::default()
 		})
 	}
@@ -161,7 +163,8 @@ impl From<Gradient> for Fill {
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FillChoice {
 	#[default]
 	None,
@@ -180,6 +183,18 @@ impl FillChoice {
 	pub fn as_gradient(&self) -> Option<&GradientStops> {
 		let Self::Gradient(gradient) = self else { return None };
 		Some(gradient)
+	}
+
+	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoice::None`]. Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
+	pub fn to_css_background_image(&self) -> Option<String> {
+		match self {
+			Self::None => None,
+			Self::Solid(color) => {
+				let hex = color.to_rgba_hex_srgb_from_gamma();
+				Some(format!("linear-gradient(#{hex}, #{hex})"))
+			}
+			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
+		}
 	}
 
 	/// Convert this [`FillChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.
@@ -207,25 +222,19 @@ impl From<Fill> for FillChoice {
 	}
 }
 
-#[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, node_macro::ChoiceType)]
-#[widget(Radio)]
-pub enum FillType {
-	#[default]
-	Solid,
-	Gradient,
-}
-
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
+	#[icon("StrokeCapButt")]
 	Butt,
+	#[icon("StrokeCapRound")]
 	Round,
+	#[icon("StrokeCapSquare")]
 	Square,
 }
 
@@ -241,12 +250,16 @@ impl StrokeCap {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
+	#[icon("StrokeJoinMiter")]
 	Miter,
+	#[icon("StrokeJoinBevel")]
 	Bevel,
+	#[icon("StrokeJoinRound")]
 	Round,
 }
 
@@ -262,12 +275,16 @@ impl StrokeJoin {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
+	#[icon("StrokeAlignCenter")]
 	Center,
+	#[icon("StrokeAlignInside")]
 	Inside,
+	#[icon("StrokeAlignOutside")]
 	Outside,
 }
 
@@ -279,11 +296,14 @@ impl StrokeAlign {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
+	#[icon("StrokeOrderAbove")]
 	StrokeAbove,
+	#[icon("StrokeOrderBelow")]
 	StrokeBelow,
 }
 
@@ -299,8 +319,9 @@ fn daffine2_identity() -> DAffine2 {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct Stroke {
 	/// Stroke color
 	pub color: Option<Color>,
@@ -308,36 +329,18 @@ pub struct Stroke {
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
 	pub dash_offset: f64,
-	#[serde(alias = "line_cap")]
+	#[cfg_attr(feature = "serde", serde(alias = "line_cap"))]
 	pub cap: StrokeCap,
-	#[serde(alias = "line_join")]
+	#[cfg_attr(feature = "serde", serde(alias = "line_join"))]
 	pub join: StrokeJoin,
-	#[serde(alias = "line_join_miter_limit")]
+	#[cfg_attr(feature = "serde", serde(alias = "line_join_miter_limit"))]
 	pub join_miter_limit: f64,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub align: StrokeAlign,
-	#[serde(default = "daffine2_identity")]
+	#[cfg_attr(feature = "serde", serde(default = "daffine2_identity"))]
 	pub transform: DAffine2,
-	#[serde(default)]
+	#[cfg_attr(feature = "serde", serde(default))]
 	pub paint_order: PaintOrder,
-}
-
-impl std::hash::Hash for Stroke {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.color.hash(state);
-		self.weight.to_bits().hash(state);
-		{
-			self.dash_lengths.len().hash(state);
-			self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
-		}
-		self.dash_offset.to_bits().hash(state);
-		self.cap.hash(state);
-		self.join.hash(state);
-		self.join_miter_limit.to_bits().hash(state);
-		self.align.hash(state);
-		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.paint_order.hash(state);
-	}
 }
 
 impl Stroke {
@@ -412,6 +415,32 @@ impl Stroke {
 				StrokeAlign::Inside => 0.,
 				StrokeAlign::Outside => 2.,
 			}
+	}
+
+	/// Worst-case upper bound on the perpendicular extent (per side) of the visible stroke from the path
+	/// centerline, accounting for stroke alignment, miter join overshoot, and square cap diagonal extent.
+	/// Used as a cheap, safe inflation amount for renderer clip rects so alignment compositing layers
+	/// don't crop the actual stroke geometry. Constant-time — no path traversal.
+	///
+	/// `path_is_closed` indicates whether every subpath of the vector being measured is closed. The renderer
+	/// only honors stroke alignment for fully-closed paths and falls back to drawing a Center-aligned
+	/// `weight`-wide stroke otherwise, so callers must pass `false` when any subpath is open or an
+	/// `Inside`-aligned stroke would silently get an inflation of `0` and crop at the blend layer.
+	///
+	/// Tight for round/bevel joins with butt/round caps. Otherwise overestimates: miter joins are assumed
+	/// to reach the miter limit at every join (most don't), and square caps are assumed to sit at 45° to
+	/// the axes (rarely the case). For an exact bound, use `Vector::stroke_inclusive_bounding_box_with_transform`
+	/// at the cost of running kurbo to compute the stroke's outline path.
+	pub fn max_aabb_inflation(&self, path_is_closed: bool) -> f64 {
+		// Match the renderer: stroke alignment only applies to closed paths; open paths render as Center
+		let half_width = if self.align != StrokeAlign::Center && path_is_closed {
+			self.effective_width()
+		} else {
+			self.weight
+		} * 0.5;
+		let join_factor = if self.join == StrokeJoin::Miter { self.join_miter_limit.max(1.) } else { 1. };
+		let cap_factor = if self.cap == StrokeCap::Square { core::f64::consts::SQRT_2 } else { 1. };
+		half_width * join_factor.max(cap_factor)
 	}
 
 	pub fn dash_lengths(&self) -> String {
@@ -512,17 +541,11 @@ impl Default for Stroke {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny)]
+#[derive(Debug, Clone, PartialEq, Default, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PathStyle {
 	pub stroke: Option<Stroke>,
 	pub fill: Fill,
-}
-
-impl std::hash::Hash for PathStyle {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.stroke.hash(state);
-		self.fill.hash(state);
-	}
 }
 
 impl std::fmt::Display for PathStyle {
@@ -680,7 +703,8 @@ impl PathStyle {
 
 /// Ways the user can choose to view the artwork in the viewport.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]

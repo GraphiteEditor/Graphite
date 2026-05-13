@@ -6,13 +6,12 @@ mod text_context;
 mod to_path;
 
 use convert_case::{Boundary, Converter, pattern};
-use core_types::Color;
+use core_types::graphene_hash::CacheHash;
+use core_types::list::{Item, List};
 use core_types::registry::types::{SignedInteger, TextArea};
-use core_types::table::Table;
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use raster_types::{CPU, Raster};
 use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
@@ -25,30 +24,71 @@ pub use vector_types;
 /// Alignment of lines of type within a text block.
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum TextAlign {
 	#[default]
-	Left,
-	Center,
-	Right,
-	#[label("Justify")]
+	#[icon("TextAlignLeft")]
+	#[cfg_attr(feature = "serde", serde(alias = "Left"))]
+	AlignLeft,
+	#[icon("TextAlignCenter")]
+	#[cfg_attr(feature = "serde", serde(alias = "Center"))]
+	AlignCenter,
+	#[icon("TextAlignRight")]
+	#[cfg_attr(feature = "serde", serde(alias = "Right"))]
+	AlignRight,
+	#[icon("TextJustifyLeft")]
 	JustifyLeft,
-	// TODO: JustifyCenter, JustifyRight, JustifyAll
+	#[icon("TextJustifyCenter")]
+	JustifyCenter,
+	#[icon("TextJustifyRight")]
+	JustifyRight,
+	#[icon("TextJustifyAll")]
+	JustifyAll,
 }
 
 impl From<TextAlign> for parley::Alignment {
 	fn from(val: TextAlign) -> Self {
 		match val {
-			TextAlign::Left => parley::Alignment::Left,
-			TextAlign::Center => parley::Alignment::Center,
-			TextAlign::Right => parley::Alignment::Right,
-			TextAlign::JustifyLeft => parley::Alignment::Justify,
+			TextAlign::AlignLeft => parley::Alignment::Left,
+			TextAlign::AlignCenter => parley::Alignment::Center,
+			TextAlign::AlignRight => parley::Alignment::Right,
+			_ => parley::Alignment::Justify,
 		}
 	}
 }
 
-#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+impl TextAlign {
+	/// What `parley::Alignment` to apply as a post-correction to the last line of a paragraph, or `None` if parley's default already handles it.
+	///
+	/// `JustifyLeft` returns `None` because parley already left-aligns the last line of a `Justify` layout. The other justify modes need
+	/// the last line shifted (`Center`/`Right`) or its inter-word spaces redistributed (`Justify` / `JustifyAll`).
+	pub fn last_line_correction(self) -> Option<parley::Alignment> {
+		match self {
+			Self::JustifyCenter => Some(parley::Alignment::Center),
+			Self::JustifyRight => Some(parley::Alignment::Right),
+			Self::JustifyAll => Some(parley::Alignment::Justify),
+			_ => None,
+		}
+	}
+
+	/// CSS `(text-align, text-align-last)` values approximating this alignment for the `contenteditable` text overlay.
+	pub fn css(self) -> (&'static str, &'static str) {
+		match self {
+			Self::AlignLeft => ("left", "auto"),
+			Self::AlignCenter => ("center", "auto"),
+			Self::AlignRight => ("right", "auto"),
+			Self::JustifyLeft => ("justify", "auto"),
+			Self::JustifyCenter => ("justify", "center"),
+			Self::JustifyRight => ("justify", "right"),
+			Self::JustifyAll => ("justify", "justify"),
+		}
+	}
+}
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypesettingConfig {
 	pub font_size: f64,
 	pub line_height_ratio: f64,
@@ -116,7 +156,7 @@ fn escape_string(input: String) -> String {
 	result
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum StringCapitalization {
 	/// "on the origin of species" — Converts all letters to lower case.
@@ -697,10 +737,10 @@ fn string_split(
 	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimiter_escaping: bool,
-) -> Vec<String> {
+) -> List<String> {
 	let delimiter = if delimiter_escaping { unescape_string(delimiter) } else { delimiter };
 
-	string.split(&delimiter).map(str::to_string).collect()
+	string.split(&delimiter).map(str::to_string).map(Item::new_from_element).collect()
 }
 
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
@@ -710,7 +750,7 @@ fn string_split(
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
-	strings: Vec<String>,
+	strings: List<String>,
 	/// The text placed between each pair of strings.
 	#[default(", ")]
 	separator: String,
@@ -721,26 +761,27 @@ fn string_join(
 ) -> String {
 	let separator = if separator_escaping { unescape_string(separator) } else { separator };
 
-	strings.join(&separator)
+	strings.iter_element_values().map(|s| s.as_str()).collect::<Vec<_>>().join(&separator)
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
 #[node_macro::node(category("Text"))]
 async fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
-	strings: Vec<String>,
+	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> String)]
 	mapped: impl Node<Context<'static>, Output = String>,
-) -> Vec<String> {
-	let mut result = Vec::new();
+) -> List<String> {
+	let mut result = List::new();
 
-	for (i, string) in strings.into_iter().enumerate() {
+	for (i, row) in strings.into_iter().enumerate() {
+		let string = row.into_element();
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(string)).with_index(i);
-		let mapped_strings = mapped.eval(owned_ctx.into_context()).await;
+		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
 
-		result.push(mapped_strings);
+		result.push(Item::new_from_element(mapped_string));
 	}
 
 	result
@@ -757,24 +798,6 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> String {
 
 /// Converts a value to a JSON string representation.
 #[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(
-	_: impl Ctx,
-	#[implementations(
-		String,
-		bool,
-		f64,
-		u32,
-		u64,
-		DVec2,
-		DAffine2,
-		// Table<Artboard>,
-		// Table<Graphic>,
-		// Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		// Table<GradientStops>,
-	)]
-	value: T,
-) -> String {
+fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: T) -> String {
 	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }

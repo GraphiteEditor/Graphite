@@ -8,20 +8,24 @@
 	import PopoverButton from "/src/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import CheckboxInput from "/src/components/widgets/inputs/CheckboxInput.svelte";
+	import ColorComparisonInput from "/src/components/widgets/inputs/ColorComparisonInput.svelte";
 	import ColorInput from "/src/components/widgets/inputs/ColorInput.svelte";
-	import CurveInput from "/src/components/widgets/inputs/CurveInput.svelte";
+	import ColorPresetsInput from "/src/components/widgets/inputs/ColorPresetsInput.svelte";
 	import DropdownInput from "/src/components/widgets/inputs/DropdownInput.svelte";
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
 	import ReferencePointInput from "/src/components/widgets/inputs/ReferencePointInput.svelte";
+	import SpectrumInput from "/src/components/widgets/inputs/SpectrumInput.svelte";
 	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import VisualColorPickersInput from "/src/components/widgets/inputs/VisualColorPickersInput.svelte";
 	import WorkingColorsInput from "/src/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import ImageLabel from "/src/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import type { ColorPickerStore } from "/src/stores/color-picker";
 	import { parseFillChoice } from "/src/utility-functions/colors";
 	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -33,6 +37,7 @@
 	type UnwrappedWidget = { [K in WidgetKind]: [kind: K, props: WidgetProps<K>] }[WidgetKind];
 
 	const editor = getContext<EditorWrapper>("editor");
+	const colorPickerStore = getContext<ColorPickerStore>("colorPicker");
 
 	export let widgets: WidgetInstance[];
 	export let direction: "row" | "column";
@@ -116,6 +121,15 @@
 				$$events: { checked: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
+		ColorComparisonInput: {
+			component: ColorComparisonInput,
+			getProps: (props, index) => ({
+				...props,
+				$$events: {
+					swap: () => widgetValueCommitAndUpdate(index, undefined, true),
+				},
+			}),
+		},
 		ColorInput: {
 			component: ColorInput,
 			getProps: (props, index) => ({
@@ -127,13 +141,14 @@
 				},
 			}),
 		},
-		CurveInput: {
-			// TODO: CurvesInput is currently unused
-			component: CurveInput,
+		ColorPresetsInput: {
+			component: ColorPresetsInput,
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false),
+					// The widget dispatches `"None"` or a bare `Color`, wrap the color in `{ Solid: ... }` so the payload matches Rust's `FillChoice` shape (which the `Preset` variant expects).
+					preset: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { Preset: e.detail === "None" ? "None" : { Solid: e.detail } }, true),
+					eyedropperColorCode: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { EyedropperColorCode: e.detail }, true),
 				},
 			}),
 		},
@@ -200,6 +215,7 @@
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
+					commitHistoryTransaction: () => editor.endTransaction(),
 				},
 			}),
 		},
@@ -208,6 +224,28 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: { value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
+			}),
+		},
+		SpectrumInput: {
+			component: SpectrumInput,
+			getProps: (props, index) => ({
+				...props,
+				$$events: {
+					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
+				},
+			}),
+		},
+		VisualColorPickersInput: {
+			component: VisualColorPickersInput,
+			getProps: (props, index) => ({
+				...props,
+				$$events: {
+					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					startHistoryTransaction: () => widgetValueCommit(index, undefined),
+					commitHistoryTransaction: () => widgetValueCommit(index, undefined),
+					dragStateChange: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
+				},
 			}),
 		},
 		PopoverButton: {
