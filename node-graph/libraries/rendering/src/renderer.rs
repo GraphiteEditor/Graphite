@@ -330,6 +330,121 @@ fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_p
 	scene.stroke(&outline_stroke, Affine::IDENTITY, outline_color_peniko, None, &outline_path);
 }
 
+/// Returns true if the resolved fill graphic fully and opaquely covers the path interior.
+fn fill_covers_opaquely(fill_graphic: Option<&Graphic>) -> bool {
+	match fill_graphic {
+		Some(Graphic::Color(list)) => list.element(0).is_some_and(|c| c.a() >= 1.0),
+		Some(Graphic::Gradient(list)) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.a() >= 1.0)),
+		_ => false,
+	}
+}
+
+/// Returns the fill attribute for SVG tags corresponding to the given fill_graphic.
+fn compute_svg_fill_attribute(
+	fill_graphic: Option<&Graphic>,
+	defs: &mut String,
+	element_transform: DAffine2,
+	applied_stroke_transform: DAffine2,
+	bounds_matrix: DAffine2,
+	transformed_bounds_matrix: DAffine2,
+	render_params: &RenderParams,
+) -> String {
+	match fill_graphic {
+		Some(Graphic::Color(color_list)) => color_list.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params),
+		Some(Graphic::Gradient(gradient_list)) => {
+			let gradient_id = gradient_list.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params);
+			format!(r##" fill="url('#{gradient_id}')""##)
+		}
+		_ => r#" fill="none""#.to_string(),
+	}
+}
+
+/// Emits an SVG `<path>` element with the resolved fill attribute corresponding to the given fill_graphic.
+#[allow(clippy::too_many_arguments)]
+fn emit_svg_fill_path(
+	render: &mut SvgRender,
+	d: String,
+	element_transform: DAffine2,
+	fill_graphic: Option<&Graphic>,
+	applied_stroke_transform: DAffine2,
+	bounds_matrix: DAffine2,
+	transformed_bounds_matrix: DAffine2,
+	render_params: &RenderParams,
+) {
+	render.leaf_tag("path", |attributes| {
+		attributes.push("d", d);
+		let matrix = format_transform_matrix(element_transform);
+		if !matrix.is_empty() {
+			attributes.push(ATTR_TRANSFORM, matrix);
+		}
+		let defs = &mut attributes.0.svg_defs;
+		let fill_attribute = compute_svg_fill_attribute(fill_graphic, defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params);
+		attributes.push_val(fill_attribute);
+	});
+}
+
+/// Emits an SVG `<g clip-path>` group that renders the fill graphic clipped to the path referenced by `clip_id`.
+fn emit_svg_fill_clip(render: &mut SvgRender, clip_id: &str, fill_graphic_list: &List<Graphic>, item_transform: DAffine2, render_params: &RenderParams) {
+	render.parent_tag(
+		"g",
+		|attributes| {
+			attributes.push("clip-path", format!("url(#{clip_id})"));
+		},
+		|render| {
+			let matrix = format_transform_matrix(item_transform);
+			if matrix.is_empty() {
+				fill_graphic_list.render_svg(render, render_params);
+				return;
+			}
+			render.parent_tag(
+				"g",
+				|attributes| {
+					attributes.push(ATTR_TRANSFORM, matrix);
+				},
+				|render| {
+					fill_graphic_list.render_svg(render, render_params);
+				},
+			);
+		},
+	);
+}
+
+/// Emits the fill element for aligned-stroke paths, dispatching between `<path>` for Color/Gradient and `<g clip-path>` for Vector/Raster/Graphic.
+#[allow(clippy::too_many_arguments)]
+fn emit_aligned_fill_pass(
+	render: &mut SvgRender,
+	d: String,
+	element_transform: DAffine2,
+	item_transform: DAffine2,
+	fill_graphic_list: Option<&List<Graphic>>,
+	clip_id: Option<&str>,
+	applied_stroke_transform: DAffine2,
+	bounds_matrix: DAffine2,
+	transformed_bounds_matrix: DAffine2,
+	render_params: &RenderParams,
+) {
+	let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
+	match fill_graphic {
+		Some(Graphic::Color(_) | Graphic::Gradient(_)) | None => {
+			emit_svg_fill_path(
+				render,
+				d,
+				element_transform,
+				fill_graphic,
+				applied_stroke_transform,
+				bounds_matrix,
+				transformed_bounds_matrix,
+				render_params,
+			);
+		}
+		Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)) => {
+			if let (Some(clip_id), Some(fill_graphic_list)) = (clip_id, fill_graphic_list) {
+				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
+			}
+		}
+	}
+}
+
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
 // This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
 #[derive(Debug, Default, Clone, PartialEq, DynAny)]
@@ -922,7 +1037,7 @@ impl Render for List<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
-			let multiplied_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
@@ -930,9 +1045,9 @@ impl Render for List<Vector> {
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
+			let applied_stroke_transform = set_stroke_transform.unwrap_or(item_transform);
 			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
+			let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
@@ -953,32 +1068,46 @@ impl Render for List<Vector> {
 				MaskType::Mask
 			};
 
+			let fill_graphic_list = self
+				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
+				.filter(|list| !list.is_empty())
+				.cloned()
+				.or_else(|| fill_to_graphic_list(vector.style.fill()));
+			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
+
+			let need_clipping = matches!(fill_graphic, Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)));
+
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
-			let can_use_paint_order = !(vector.style.fill().is_none() || !vector.style.fill().is_opaque() || mask_type == MaskType::Clip);
+			let can_use_paint_order = !(fill_graphic.is_none() || !fill_covers_opaquely(fill_graphic) || mask_type == MaskType::Clip || need_clipping);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+			let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
+			let use_face_fill = vector.use_face_fill();
+
+			// Register the clipPath in <defs> and remember its id for the <g clip-path> below
+			let clip_id = if need_clipping && !use_face_fill {
+				let id = format!("clip-{}", generate_uuid());
+				write!(&mut render.svg_defs, r##"<clipPath id="{id}"><path d="{path}"/></clipPath>"##).unwrap();
+				Some(id)
+			} else {
+				None
+			};
 
 			if needs_separate_alignment_fill && !wants_stroke_below {
-				render.leaf_tag("path", |attributes| {
-					attributes.push("d", path.clone());
-					let matrix = format_transform_matrix(element_transform);
-					if !matrix.is_empty() {
-						attributes.push(ATTR_TRANSFORM, matrix);
-					}
-					let mut style = vector.style.clone();
-					style.clear_stroke();
-					let fill_and_stroke = style.render(
-						&mut attributes.0.svg_defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						render_params,
-					);
-					attributes.push_val(fill_and_stroke);
-				});
+				emit_aligned_fill_pass(
+					render,
+					path.clone(),
+					element_transform,
+					item_transform,
+					fill_graphic_list.as_ref(),
+					clip_id.as_deref(),
+					applied_stroke_transform,
+					bounds_matrix,
+					transformed_bounds_matrix,
+					render_params,
+				);
 			}
 
 			let push_id = needs_separate_alignment_fill.then_some({
@@ -990,36 +1119,49 @@ impl Render for List<Vector> {
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
-				let vector_item = List::new_from_item(Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, multiplied_transform));
+				let vector_item = List::new_from_item(Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, item_transform));
 
 				(id, mask_type, vector_item)
 			});
 
-			let use_face_fill = vector.use_face_fill();
 			if use_face_fill {
 				for mut face_path in vector.construct_faces().filter(|face| face.area() >= 0.) {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-
 					let face_d = face_path.to_svg();
-					render.leaf_tag("path", |attributes| {
-						attributes.push("d", face_d.clone());
-						let matrix = format_transform_matrix(element_transform);
-						if !matrix.is_empty() {
-							attributes.push(ATTR_TRANSFORM, matrix);
+
+					match fill_graphic {
+						Some(Graphic::Color(_) | Graphic::Gradient(_)) | None => {
+							emit_svg_fill_path(
+								render,
+								face_d,
+								element_transform,
+								fill_graphic,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								render_params,
+							);
 						}
-						let mut style = vector.style.clone();
-						style.clear_stroke();
-						let fill_only = style.render(
-							&mut attributes.0.svg_defs,
-							element_transform,
-							applied_stroke_transform,
-							bounds_matrix,
-							transformed_bounds_matrix,
-							render_params,
-						);
-						attributes.push_val(fill_only);
-					});
+
+						Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)) => {
+							if let Some(fill_graphic_list) = fill_graphic_list.as_ref() {
+								let face_clip_id = format!("clip-{}", generate_uuid());
+								write!(&mut render.svg_defs, r##"<clipPath id="{face_clip_id}"><path d="{face_d}"/></clipPath>"##).unwrap();
+								emit_svg_fill_clip(render, &face_clip_id, fill_graphic_list, item_transform, render_params);
+							}
+						}
+					}
 				}
+			}
+
+			// Clipping-based fill should be drawn before the stroke path (default paint order)
+			if !needs_separate_alignment_fill
+				&& !use_face_fill
+				&& !wants_stroke_below
+				&& !override_paint_order
+				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_ref())
+			{
+				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
 			}
 
 			render.leaf_tag("path", |attributes| {
@@ -1058,20 +1200,34 @@ impl Render for List<Vector> {
 
 				let mut render_params = render_params.clone();
 				render_params.aligned_strokes = can_draw_aligned_stroke;
-				render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
+				render_params.override_paint_order = override_paint_order;
 
-				let mut style = vector.style.clone();
-				if needs_separate_alignment_fill || use_face_fill {
-					style.clear_fill();
-				}
+				let stroke_attribute = vector
+					.style
+					.stroke()
+					.map(|stroke| stroke.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params))
+					.unwrap_or_default();
 
-				let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
+				let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
+					r#" fill="none""#.to_string()
+				} else {
+					compute_svg_fill_attribute(
+						fill_graphic,
+						defs,
+						element_transform,
+						applied_stroke_transform,
+						bounds_matrix,
+						transformed_bounds_matrix,
+						&render_params,
+					)
+				};
 
 				if let Some((id, mask_type, _)) = push_id {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
-				attributes.push_val(fill_and_stroke);
+				attributes.push_val(fill_attribute);
+				attributes.push_val(stroke_attribute);
 
 				if vector.is_branching() && !use_face_fill {
 					attributes.push("fill-rule", "evenodd");
@@ -1087,26 +1243,29 @@ impl Render for List<Vector> {
 				}
 			});
 
+			// Clipping-based fill should be drawn after the stroke path
+			if !needs_separate_alignment_fill
+				&& !use_face_fill
+				&& (wants_stroke_below || override_paint_order)
+				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_ref())
+			{
+				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
+			}
+
 			// When splitting passes and stroke is below, draw the fill after the stroke.
 			if needs_separate_alignment_fill && wants_stroke_below {
-				render.leaf_tag("path", |attributes| {
-					attributes.push("d", path);
-					let matrix = format_transform_matrix(element_transform);
-					if !matrix.is_empty() {
-						attributes.push(ATTR_TRANSFORM, matrix);
-					}
-					let mut style = vector.style.clone();
-					style.clear_stroke();
-					let fill_and_stroke = style.render(
-						&mut attributes.0.svg_defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						render_params,
-					);
-					attributes.push_val(fill_and_stroke);
-				});
+				emit_aligned_fill_pass(
+					render,
+					path,
+					element_transform,
+					item_transform,
+					fill_graphic_list.as_ref(),
+					clip_id.as_deref(),
+					applied_stroke_transform,
+					bounds_matrix,
+					transformed_bounds_matrix,
+					render_params,
+				);
 			}
 		}
 	}
@@ -2117,5 +2276,86 @@ impl SvgRenderAttrs<'_> {
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
+	}
+}
+
+#[cfg(test)]
+mod svg_fill_helper_tests {
+	use vector_types::GradientStop;
+
+	use super::*;
+
+	fn color_graphic(alpha: f64) -> Graphic {
+		let color = Color::from_rgbaf32(1.0, 0.0, 0.0, alpha as f32).unwrap();
+		Graphic::Color(List::new_from_element(color))
+	}
+
+	fn gradient_graphic(gradient: GradientStops) -> Graphic {
+		let mut gradient_list = List::new_from_element(gradient);
+		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
+		Graphic::Gradient(gradient_list)
+	}
+
+	#[test]
+	fn opaquely_none_is_false() {
+		assert!(!fill_covers_opaquely(None));
+	}
+
+	#[test]
+	fn opaquely_opaque_color_is_true() {
+		let g = color_graphic(1.0);
+		assert!(fill_covers_opaquely(Some(&g)));
+	}
+
+	#[test]
+	fn opaquely_transparent_color_is_false() {
+		let g = color_graphic(0.5);
+		assert!(!fill_covers_opaquely(Some(&g)));
+	}
+
+	#[test]
+	fn opaquely_vector_is_false() {
+		let g = Graphic::Vector(List::default());
+		assert!(!fill_covers_opaquely(Some(&g)));
+	}
+
+	#[test]
+	fn opaquely_gradient_all_opaque_is_true() {
+		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let gradient = GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: color_1,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: color_2,
+			},
+		]);
+		let g = gradient_graphic(gradient);
+		assert!(fill_covers_opaquely(Some(&g)));
+	}
+
+	#[test]
+	fn opaquely_transparent_gradient_is_false() {
+		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 0.5).unwrap();
+		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let gradient = GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: color_1,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: color_2,
+			},
+		]);
+		let g = gradient_graphic(gradient);
+		assert!(!fill_covers_opaquely(Some(&g)));
 	}
 }
