@@ -55,7 +55,8 @@ where
 {
 	// Miter limit only matters when the join is `Miter`; mixed (`None`) keeps the row visible so the user can still edit the value.
 	let show_miter_limit = drawing.stroke_join != Some(StrokeJoin::Bevel) && drawing.stroke_join != Some(StrokeJoin::Round);
-	let has_dash = !drawing.effective_dash_lengths().is_empty();
+	// Mixed dash patterns (`None`) keep the offset row visible so the user can still edit the offset when at least some selected layers have dashes.
+	let has_dash = drawing.dash_lengths.as_deref().is_none_or(|lengths| !lengths.is_empty());
 
 	let mut rows = vec![
 		LayoutGroup::row(vec![TextLabel::new("Stroke").bold(true).widget_instance()]),

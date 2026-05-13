@@ -506,37 +506,39 @@ pub struct StrokeOptionsState {
 }
 
 /// Reads the non-color stroke option inputs from a layer's Stroke proto node. Returns `None` when the layer has no Stroke node.
+/// Inputs that aren't a static value (e.g. wired to another node) fall back to per-field defaults so the layer still participates in the sync.
 pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<StrokeOptionsState> {
 	let stroke = &DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
 	let layer_view = NodeGraphLayer::new(layer, network_interface);
+	layer_view.upstream_node_id_from_name(stroke)?;
 	let read = |index: usize| layer_view.find_input(stroke, index);
 
-	let align = match read(graphene_std::vector::stroke::AlignInput::INDEX)? {
-		TaggedValue::StrokeAlign(value) => *value,
+	let align = match read(graphene_std::vector::stroke::AlignInput::INDEX) {
+		Some(TaggedValue::StrokeAlign(value)) => *value,
 		_ => StrokeAlign::default(),
 	};
-	let cap = match read(graphene_std::vector::stroke::CapInput::INDEX)? {
-		TaggedValue::StrokeCap(value) => *value,
+	let cap = match read(graphene_std::vector::stroke::CapInput::INDEX) {
+		Some(TaggedValue::StrokeCap(value)) => *value,
 		_ => StrokeCap::default(),
 	};
-	let join = match read(graphene_std::vector::stroke::JoinInput::INDEX)? {
-		TaggedValue::StrokeJoin(value) => *value,
+	let join = match read(graphene_std::vector::stroke::JoinInput::INDEX) {
+		Some(TaggedValue::StrokeJoin(value)) => *value,
 		_ => StrokeJoin::default(),
 	};
-	let miter_limit = match read(graphene_std::vector::stroke::MiterLimitInput::INDEX)? {
-		TaggedValue::F64(value) => *value,
+	let miter_limit = match read(graphene_std::vector::stroke::MiterLimitInput::INDEX) {
+		Some(TaggedValue::F64(value)) => *value,
 		_ => 4.,
 	};
-	let paint_order = match read(graphene_std::vector::stroke::PaintOrderInput::INDEX)? {
-		TaggedValue::PaintOrder(value) => *value,
+	let paint_order = match read(graphene_std::vector::stroke::PaintOrderInput::INDEX) {
+		Some(TaggedValue::PaintOrder(value)) => *value,
 		_ => PaintOrder::default(),
 	};
-	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::<List<f64>>::INDEX)? {
-		TaggedValue::F64Array(value) => value.clone(),
+	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::<List<f64>>::INDEX) {
+		Some(TaggedValue::F64Array(value)) => value.clone(),
 		_ => Vec::new(),
 	};
-	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX)? {
-		TaggedValue::F64(value) => *value,
+	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX) {
+		Some(TaggedValue::F64(value)) => *value,
 		_ => 0.,
 	};
 

@@ -226,7 +226,6 @@ impl ToolTransition for FreehandTool {
 struct FreehandToolData {
 	end_point: Option<(DVec2, PointId)>,
 	dragged: bool,
-	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	/// Viewport-space start position for newly created layers, used to compute local-space
 	/// positions before the deferred TransformSet has been reflected in metadata.
@@ -265,7 +264,6 @@ impl Fsm for FreehandToolFsmState {
 
 				tool_data.dragged = false;
 				tool_data.end_point = None;
-				tool_data.weight = tool_options.drawing.effective_line_weight();
 				tool_data.new_layer_viewport_start = None;
 
 				// Extend an endpoint of the selected path

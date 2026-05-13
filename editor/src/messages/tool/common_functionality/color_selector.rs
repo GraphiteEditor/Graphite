@@ -325,7 +325,7 @@ fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessag
 	let new_join = unanimous(strokes.iter().map(|s| s.join));
 	let new_miter = unanimous(strokes.iter().map(|s| s.miter_limit));
 	let new_paint_order = unanimous(strokes.iter().map(|s| s.paint_order));
-	let new_dash_lengths = unanimous(strokes.iter().map(|s| s.dash_lengths.clone()));
+	let new_dash_lengths = unanimous(strokes.iter().map(|s| &s.dash_lengths)).cloned();
 	let new_dash_offset = unanimous(strokes.iter().map(|s| s.dash_offset));
 
 	let mut changed = false;
