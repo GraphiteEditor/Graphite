@@ -5,10 +5,11 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_endp
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{
-	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_line_weight, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation,
-	swap_fill_and_stroke, sync_drawing_state,
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation, swap_fill_and_stroke,
+	sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
 use graph_craft::document::NodeId;
@@ -58,7 +59,7 @@ pub enum FreehandToolMessage {
 pub enum FreehandOptionsUpdate {
 	FillColor(FillChoice),
 	FillEnabled(bool),
-	LineWeight(f64),
+	StrokeOption(StrokeOptionsUpdate),
 	StrokeColor(Option<Color>),
 	StrokeEnabled(bool),
 	SwapFillAndStroke,
@@ -82,29 +83,6 @@ impl ToolMetadata for FreehandTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Freehand
 	}
-}
-
-fn create_weight_widget(line_weight: Option<f64>, disabled: bool) -> WidgetInstance {
-	NumberInput::new(line_weight)
-		.unit(" px")
-		.label("Weight")
-		.min(1.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.min_width(100)
-		.narrow(true)
-		.disabled(disabled)
-		.on_update(|number_input: &NumberInput| {
-			if let Some(value) = number_input.value {
-				FreehandToolMessage::UpdateOptions {
-					options: FreehandOptionsUpdate::LineWeight(value),
-				}
-				.into()
-			} else {
-				Message::NoOp
-			}
-		})
-		.on_commit(|_| DocumentMessage::StartTransaction.into())
-		.widget_instance()
 }
 
 impl LayoutHolder for FreehandTool {
@@ -154,9 +132,13 @@ impl LayoutHolder for FreehandTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
-		widgets.push(create_weight_widget(self.options.drawing.line_weight, weight_disabled));
+		widgets.push(create_stroke_options_popover_widget(&self.options.drawing, weight_disabled, |update| {
+			FreehandToolMessage::UpdateOptions {
+				options: FreehandOptionsUpdate::StrokeOption(update),
+			}
+			.into()
+		}));
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -193,8 +175,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 			FreehandOptionsUpdate::FillEnabled(enabled) => {
 				apply_fill_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
 			}
-			FreehandOptionsUpdate::LineWeight(line_weight) => {
-				apply_line_weight(&mut self.options.drawing, line_weight, context.document, responses);
+			FreehandOptionsUpdate::StrokeOption(update) => {
+				apply_stroke_option(&mut self.options.drawing, update, context.document, responses);
 			}
 			FreehandOptionsUpdate::StrokeColor(color) => {
 				apply_stroke_color_pick(&mut self.options.drawing, color, context.document, responses);
@@ -244,7 +226,6 @@ impl ToolTransition for FreehandTool {
 struct FreehandToolData {
 	end_point: Option<(DVec2, PointId)>,
 	dragged: bool,
-	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	/// Viewport-space start position for newly created layers, used to compute local-space
 	/// positions before the deferred TransformSet has been reflected in metadata.
@@ -283,7 +264,6 @@ impl Fsm for FreehandToolFsmState {
 
 				tool_data.dragged = false;
 				tool_data.end_point = None;
-				tool_data.weight = tool_options.drawing.effective_line_weight();
 				tool_data.new_layer_viewport_start = None;
 
 				// Extend an endpoint of the selected path
@@ -322,7 +302,7 @@ impl Fsm for FreehandToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
 				tool_options.drawing.fill.apply_fill(layer, responses);
 				tool_data.layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(input.mouse.position);
@@ -452,6 +432,7 @@ mod test_freehand {
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
+	use crate::messages::tool::common_functionality::stroke_options::StrokeOptionsUpdate;
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
@@ -776,7 +757,7 @@ mod test_freehand {
 		let custom_line_weight = 5.;
 		editor
 			.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions {
-				options: FreehandOptionsUpdate::LineWeight(custom_line_weight),
+				options: FreehandOptionsUpdate::StrokeOption(StrokeOptionsUpdate::LineWeight(custom_line_weight)),
 			}))
 			.await;
 

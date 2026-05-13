@@ -294,9 +294,10 @@ impl ClickTarget {
 					return true;
 				}
 
-				// Selection point inside compound fill (non-zero rule)
-				let combined: BezPath = subpaths.iter().flat_map(|subpath| subpath.to_bezpath()).collect();
-				if bezier_iter().next().is_some_and(|bezier| combined.contains(bezier.start())) {
+				// Selection point inside compound fill (non-zero rule).
+				// Only closed subpaths contribute to the fill region; open segments would otherwise produce spurious winding on one side of the segment.
+				let combined: BezPath = subpaths.iter().filter(|subpath| subpath.closed()).flat_map(|subpath| subpath.to_bezpath()).collect();
+				if !combined.is_empty() && bezier_iter().next().is_some_and(|bezier| combined.contains(bezier.start())) {
 					return true;
 				}
 

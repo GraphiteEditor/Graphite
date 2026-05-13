@@ -23,6 +23,7 @@
 	export let tableAlign = false;
 	// Sizing
 	export let minWidth = 0;
+	export let maxWidth = 0;
 	export let minWidthCharacters = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
@@ -77,7 +78,8 @@
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth || undefined}
+	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth > 0 ? `${minWidth}px` : undefined}
+	style:max-width={maxWidth > 0 ? `${maxWidth}px` : undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}

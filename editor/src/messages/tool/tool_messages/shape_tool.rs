@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
-	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_line_weight, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_selection, reset_colors_on_deactivation,
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_selection, reset_colors_on_deactivation,
 	swap_fill_and_stroke, sync_color_options, sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
@@ -23,6 +23,7 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
 use crate::messages::tool::utility_types::DocumentToolData;
@@ -93,7 +94,7 @@ impl Default for ShapeToolOptions {
 pub enum ShapeOptionsUpdate {
 	FillColor(FillChoice),
 	FillEnabled(bool),
-	LineWeight(f64),
+	StrokeOption(StrokeOptionsUpdate),
 	StrokeColor(Option<Color>),
 	StrokeEnabled(bool),
 	SwapFillAndStroke,
@@ -237,29 +238,6 @@ fn create_arc_type_widget(arc_type: ArcType) -> WidgetInstance {
 		}),
 	];
 	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_instance()
-}
-
-fn create_weight_widget(line_weight: Option<f64>, disabled: bool) -> WidgetInstance {
-	NumberInput::new(line_weight)
-		.unit(" px")
-		.label("Weight")
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.min_width(100)
-		.narrow(true)
-		.disabled(disabled)
-		.on_update(|number_input: &NumberInput| {
-			if let Some(value) = number_input.value {
-				ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::LineWeight(value),
-				}
-				.into()
-			} else {
-				Message::NoOp
-			}
-		})
-		.on_commit(|_| DocumentMessage::StartTransaction.into())
-		.widget_instance()
 }
 
 fn create_arrow_shaft_width_widget(shaft_width: f64) -> WidgetInstance {
@@ -525,9 +503,13 @@ impl LayoutHolder for ShapeTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
-		widgets.push(create_weight_widget(self.options.drawing.line_weight, weight_disabled));
+		widgets.push(create_stroke_options_popover_widget(&self.options.drawing, weight_disabled, |update| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::StrokeOption(update),
+			}
+			.into()
+		}));
 
 		// Shape-mode dropdown and per-shape parameters
 		if !self.tool_data.hide_shape_option_widget {
@@ -629,8 +611,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				}
 				apply_fill_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
 			}
-			ShapeOptionsUpdate::LineWeight(line_weight) => {
-				apply_line_weight(&mut self.options.drawing, line_weight, context.document, responses);
+			ShapeOptionsUpdate::StrokeOption(update) => {
+				apply_stroke_option(&mut self.options.drawing, update, context.document, responses);
 			}
 			ShapeOptionsUpdate::StrokeColor(color) => {
 				apply_stroke_color_pick(&mut self.options.drawing, color, context.document, responses);
@@ -1176,7 +1158,7 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_options.drawing.stroke.apply_stroke(tool_options.drawing.effective_line_weight(), layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
 						tool_options.drawing.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
@@ -1190,7 +1172,7 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.stroke.apply_stroke(tool_options.drawing.effective_line_weight(), layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
 						tool_options.drawing.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
@@ -1204,7 +1186,7 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.stroke.apply_stroke(tool_options.drawing.effective_line_weight(), layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
 					}
 				}
 
