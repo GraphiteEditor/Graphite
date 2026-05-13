@@ -507,3 +507,240 @@ pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
 		}
 	}
 }
+//TODO: Add styles for inputs and style asserts for outputs once the requirements are defined
+#[cfg(test)]
+mod test {
+	use super::*;
+	use core_types::OwnedContextImpl;
+	use core_types::list::{Item, List};
+	use kurbo::{DEFAULT_ACCURACY, Rect, Shape};
+	use vector_types::Vector;
+
+	fn create_input_shapes(include_third_shape: bool) -> List<Vector> {
+		let square = Vector::from_bezpath(Rect::new(-4., -4., 4., 4.).to_path(DEFAULT_ACCURACY));
+		let rectangle = Vector::from_bezpath(Rect::new(2., -2., 8., 2.).to_path(DEFAULT_ACCURACY));
+		let mut shapes = List::new_from_element(square);
+		shapes.push(Item::new_from_element(rectangle));
+
+		if include_third_shape {
+			let rectangle = Vector::from_bezpath(Rect::new(-2., -6., 5., 0.).to_path(DEFAULT_ACCURACY));
+			shapes.push(Item::new_from_element(rectangle));
+		}
+
+		shapes
+	}
+
+	fn create_no_overlap_input_shapes() -> List<Vector> {
+		let square = Vector::from_bezpath(Rect::new(-4., -4., 4., 4.).to_path(DEFAULT_ACCURACY));
+		let rectangle = Vector::from_bezpath(Rect::new(5., -2., 5., 2.).to_path(DEFAULT_ACCURACY));
+		let mut shapes = List::new_from_element(square);
+		shapes.push(Item::new_from_element(rectangle));
+
+		shapes
+	}
+
+	fn assert_anchor_positions(vector: &Vector, expected_anchors: &[DVec2]) {
+		const EPSILON: f64 = 1e-5;
+		let anchors = vector.point_domain.positions();
+
+		assert_eq!(anchors.len(), expected_anchors.len(), "Anchor count mismatch");
+
+		for (i, expected) in expected_anchors.iter().enumerate() {
+			let actual = anchors[i];
+			let distance = (actual - *expected).length();
+
+			assert!(distance < EPSILON, "Anchor {i} mismatch: expected {expected:?}, got {actual:?}, distance {distance}");
+		}
+	}
+
+	fn assert_shapes_geometry(generated: &List<Vector>, expected_anchors: Vec<Vec<DVec2>>) {
+		assert_eq!(generated.len(), expected_anchors.len(), "Shape count mismatch");
+
+		for (i, expected) in expected_anchors.iter().enumerate() {
+			let result_shape = generated.element(i).unwrap();
+
+			assert_anchor_positions(result_shape, &expected);
+
+			assert_eq!(result_shape.segment_domain.ids().len(), expected.len(), "Segment count mismatch");
+			assert_eq!(result_shape.segment_domain.end_point().last(), Some(&0), "The result shape is not closed");
+		}
+	}
+
+	#[tokio::test]
+	async fn union() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Union).await;
+
+		let expected_anchors = vec![vec![
+			DVec2::new(-4., -4.),
+			DVec2::new(4., -4.),
+			DVec2::new(4., -2.),
+			DVec2::new(8., -2.),
+			DVec2::new(8., 2.),
+			DVec2::new(4., 2.),
+			DVec2::new(4., 4.),
+			DVec2::new(-4., 4.),
+		]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn subtract_front() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::SubtractFront).await;
+
+		let expected_anchors = vec![vec![
+			DVec2::new(-4., -4.),
+			DVec2::new(4., -4.),
+			DVec2::new(4., -2.),
+			DVec2::new(2., -2.),
+			DVec2::new(2., 2.),
+			DVec2::new(4., 2.),
+			DVec2::new(4., 4.),
+			DVec2::new(-4., 4.),
+		]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn subtract_back() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::SubtractBack).await;
+
+		let expected_anchors = vec![vec![DVec2::new(4., -2.), DVec2::new(8., -2.), DVec2::new(8., 2.), DVec2::new(4., 2.)]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn intersect() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Intersect).await;
+
+		let expected_anchors = vec![vec![DVec2::new(2., -2.), DVec2::new(4., -2.), DVec2::new(4., 2.), DVec2::new(2., 2.)]];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn intersect_no_overlap() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_no_overlap_input_shapes();
+		let generated = boolean_operation(context, shapes, BooleanOperation::Intersect).await;
+
+		assert_eq!(generated.len(), 0);
+	}
+
+	#[tokio::test]
+	async fn exclude() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(false);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Exclude).await;
+
+		let expected_anchors = [
+			DVec2::new(-4., -4.),
+			DVec2::new(4., -4.),
+			DVec2::new(4., -2.),
+			DVec2::new(2., -2.),
+			DVec2::new(2., 2.),
+			DVec2::new(4., 2.),
+			DVec2::new(4., 4.),
+			DVec2::new(-4., 4.),
+			DVec2::new(8., -2.),
+			DVec2::new(8., 2.),
+		];
+
+		assert_eq!(generated.len(), 1);
+		let result_shape = generated.element(0).unwrap();
+
+		assert_anchor_positions(result_shape, &expected_anchors);
+
+		assert_eq!(result_shape.segment_domain.ids().len(), 12);
+		assert_eq!(result_shape.region_domain.ids().len(), 2);
+		assert_eq!(result_shape.region_domain.segment_range().len(), 2);
+	}
+
+	#[tokio::test]
+	async fn trim() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(true);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Trim).await;
+
+		let expected_anchors = vec![
+			vec![
+				DVec2::new(-4., -4.),
+				DVec2::new(-2., -4.),
+				DVec2::new(-2., 0.),
+				DVec2::new(2., 0.),
+				DVec2::new(2., 2.),
+				DVec2::new(4., 2.),
+				DVec2::new(4., 4.),
+				DVec2::new(-4., 4.),
+			],
+			vec![
+				DVec2::new(5., -2.),
+				DVec2::new(8., -2.),
+				DVec2::new(8., 2.),
+				DVec2::new(4., 2.),
+				DVec2::new(2., 2.),
+				DVec2::new(2., 0.),
+				DVec2::new(4., 0.),
+				DVec2::new(5., 0.),
+			],
+			vec![
+				DVec2::new(-2., -6.),
+				DVec2::new(5., -6.),
+				DVec2::new(5., -2.),
+				DVec2::new(5., 0.),
+				DVec2::new(4., 0.),
+				DVec2::new(2., 0.),
+				DVec2::new(-2., 0.),
+				DVec2::new(-2., -4.),
+			],
+		];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn crop() {
+		let context = OwnedContextImpl::default().into_context();
+		let shapes = create_input_shapes(true);
+		let generated = boolean_operation(context, shapes, BooleanOperation::Crop).await;
+
+		let expected_anchors = vec![
+			vec![
+				DVec2::new(-2., -4.),
+				DVec2::new(4., -4.),
+				DVec2::new(4., -2.),
+				DVec2::new(2., -2.),
+				DVec2::new(2., 0.),
+				DVec2::new(-2., 0.),
+			],
+			vec![
+				DVec2::new(2., -2.),
+				DVec2::new(4., -2.),
+				DVec2::new(5., -2.),
+				DVec2::new(5., 0.),
+				DVec2::new(4., 0.),
+				DVec2::new(2., 0.),
+			],
+			vec![
+				DVec2::new(-2., -6.),
+				DVec2::new(5., -6.),
+				DVec2::new(5., -2.),
+				DVec2::new(4., -2.),
+				DVec2::new(4., -4.),
+				DVec2::new(-2., -4.),
+			],
+		];
+
+		assert_shapes_geometry(&generated, expected_anchors);
+	}
+}
