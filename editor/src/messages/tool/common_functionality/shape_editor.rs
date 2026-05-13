@@ -4,7 +4,7 @@ use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angl
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments_for_layer;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -134,6 +134,18 @@ impl SelectedLayerState {
 			self.selected_points.extend(self.ignored_handle_points.iter().copied());
 			self.ignored_handle_points.clear();
 		}
+	}
+
+	/// Returns selected points plus the anchor endpoints of any selected segments.
+	pub fn selected_and_segment_anchor_points(&self, vector: &Vector) -> HashSet<ManipulatorPointId> {
+		let mut affected_points = self.selected_points.clone();
+		for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+			if self.selected_segments.contains(&segment_id) {
+				affected_points.insert(ManipulatorPointId::Anchor(start));
+				affected_points.insert(ManipulatorPointId::Anchor(end));
+			}
+		}
+		affected_points
 	}
 
 	pub fn ignore_anchors(&mut self, status: bool) {
@@ -1448,6 +1460,156 @@ impl ShapeState {
 			return None;
 		};
 		Some([(handles[0], start), (handles[1], end)])
+	}
+
+	/// Calculate the delta for a point in document space
+	fn calculate_alignment_delta_in_document_space(viewport_pos: DVec2, aggregated: DVec2, axis_vec: DVec2, transform_to_viewport: DAffine2) -> DVec2 {
+		let translation_viewport = (aggregated - viewport_pos) * axis_vec;
+		let transform_to_document = transform_to_viewport.inverse();
+		transform_to_document.transform_vector2(translation_viewport)
+	}
+
+	/// Process handle alignment and generate the modification message
+	fn process_handle_alignment(
+		layer: LayerNodeIdentifier,
+		point: ManipulatorPointId,
+		original_viewport_pos: DVec2,
+		aggregated: DVec2,
+		axis_vec: DVec2,
+		anchor_deltas: &std::collections::HashMap<(LayerNodeIdentifier, PointId), DVec2>,
+		vector: &Vector,
+		transform_to_viewport: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
+		// Get the handle's segment and anchor info
+		let (segment_id, is_primary) = match point {
+			ManipulatorPointId::PrimaryHandle(seg_id) => (seg_id, true),
+			ManipulatorPointId::EndHandle(seg_id) => (seg_id, false),
+			_ => return,
+		};
+
+		// Find the anchor this handle is attached to
+		let Some((_, _, start_point, end_point)) = vector.segment_bezier_iter().find(|(id, _, _, _)| *id == segment_id) else {
+			return;
+		};
+		let anchor_id = if is_primary { start_point } else { end_point };
+
+		// Get the anchor's ORIGINAL position (before movements)
+		let Some(anchor_position_original) = ManipulatorPointId::Anchor(anchor_id).get_position(vector) else {
+			return;
+		};
+
+		// Calculate the anchor's NEW position by applying the delta we calculated earlier
+		let anchor_delta = anchor_deltas.get(&(layer, anchor_id)).copied().unwrap_or(DVec2::ZERO);
+		let anchor_position_new = anchor_position_original + anchor_delta;
+
+		// Calculate the target position for the handle
+		let transform_to_document = transform_to_viewport.inverse();
+
+		// The handle should move to the aggregated target, just like anchors do
+		// Calculate target position in viewport space (only moving along the axis)
+		let target_viewport = DVec2::new(
+			if axis_vec.x > 0.5 { aggregated.x } else { original_viewport_pos.x },
+			if axis_vec.y > 0.5 { aggregated.y } else { original_viewport_pos.y },
+		);
+
+		// Convert target to document space
+		let target_document = transform_to_document.transform_point2(target_viewport);
+
+		// Calculate handle position RELATIVE to its anchor's NEW position
+		let relative_position = target_document - anchor_position_new;
+
+		// Set the handle to the calculated position
+		let modification_type = if is_primary {
+			VectorModificationType::SetPrimaryHandle {
+				segment: segment_id,
+				relative_position,
+			}
+		} else {
+			VectorModificationType::SetEndHandle {
+				segment: segment_id,
+				relative_position,
+			}
+		};
+
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	}
+
+	/// Align the selected points based on axis and aggregate.
+	pub fn align_selected_points(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, axis: AlignAxis, aggregate: AlignAggregate) {
+		// Convert axis to direction vector
+		let axis_vec = match axis {
+			AlignAxis::X => DVec2::X,
+			AlignAxis::Y => DVec2::Y,
+		};
+
+		// Collect all selected points with their positions in viewport space
+		let mut point_positions = Vec::new();
+
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+
+			// Include points from selected segments
+			let affected_points = state.selected_and_segment_anchor_points(&vector);
+
+			// Collect positions
+			for &point in affected_points.iter() {
+				if let Some(position) = point.get_position(&vector) {
+					let viewport_pos = transform_to_viewport.transform_point2(position);
+					point_positions.push((layer, point, viewport_pos));
+				}
+			}
+		}
+
+		// Calculate bounding box and alignment target
+		let Some(combined_box) = graphene_std::renderer::Rect::point_iter(point_positions.iter().map(|(_, _, pos)| *pos)) else {
+			return;
+		};
+		let aggregated = aggregate.target_position(combined_box.0);
+
+		// Separate anchor and handle movements
+		// We apply anchor movements first, then handle movements matches the behavior of Scale (S shortcut) when scaling to 0
+		let mut anchor_movements = Vec::new();
+		let mut anchor_deltas = std::collections::HashMap::new();
+		let mut handle_movements = Vec::new();
+
+		for (layer, point, viewport_pos) in point_positions {
+			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+			let delta = Self::calculate_alignment_delta_in_document_space(viewport_pos, aggregated, axis_vec, transform_to_viewport);
+
+			match point {
+				ManipulatorPointId::Anchor(point_id) => {
+					anchor_movements.push((layer, VectorModificationType::ApplyPointDelta { point: point_id, delta }));
+					anchor_deltas.insert((layer, point_id), delta);
+				}
+				ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+					handle_movements.push((layer, point, viewport_pos));
+				}
+			}
+		}
+
+		// Apply anchor movements first
+		for (layer, modification_type) in anchor_movements {
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		// TODO: figure out this Special case: When exactly 2 anchors are selected, skip handle transformations
+		let selected_anchor_count = anchor_deltas.len();
+		if selected_anchor_count == 2 {
+			return;
+		}
+
+		// Process handle movements
+		// We need to manually calculate the anchor's NEW position (original + delta)
+		// because compute_modified_vector() hasn't applied the anchor movements yet
+		// This matches the behavior of Scale (S) when scaling to 0
+		for (layer, point, original_viewport_pos) in handle_movements {
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+
+			Self::process_handle_alignment(layer, point, original_viewport_pos, aggregated, axis_vec, &anchor_deltas, &vector, transform_to_viewport, responses);
+		}
 	}
 
 	/// Dissolve the selected points.
