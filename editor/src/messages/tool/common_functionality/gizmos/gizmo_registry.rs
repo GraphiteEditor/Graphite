@@ -321,7 +321,9 @@ mod tests {
 		let identifiers = [
 			graphene_std::vector::generator_nodes::star::IDENTIFIER,
 			graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER,
+			graphene_std::vector::generator_nodes::arc::IDENTIFIER,
 			graphene_std::vector::generator_nodes::circle::IDENTIFIER,
+			graphene_std::vector::generator_nodes::spiral::IDENTIFIER,
 		];
 		for id in &identifiers {
 			let info = get_gizmo_info(&def_id(&*id)).unwrap();
