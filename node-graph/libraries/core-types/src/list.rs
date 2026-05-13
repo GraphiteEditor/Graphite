@@ -77,7 +77,7 @@ pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
-/// Table<Graphic> data for fill.
+/// List<Graphic> data for fill.
 pub const ATTR_FILL_GRAPHIC: &str = "fill_graphic";
 
 // ===========================

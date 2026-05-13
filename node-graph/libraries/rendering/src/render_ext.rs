@@ -4,10 +4,8 @@ use core_types::color::SRGBA8;
 use core_types::uuid::generate_uuid;
 use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
-use graphic_types::Graphic;
-use graphic_types::graphic::fill_to_graphic_list;
 use graphic_types::vector_types::gradient::GradientType;
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::GradientStops;
 use vector_types::gradient::GradientSpreadMethod;
@@ -113,27 +111,6 @@ impl RenderExt for List<GradientStops> {
 	}
 }
 
-impl RenderExt for Fill {
-	type Output = String;
-
-	/// Renders the fill, adding necessary defs through mutating the first argument.
-	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output {
-		let Some(paint_list) = fill_to_graphic_list(self) else { return r#" fill="none""#.to_string() };
-		let Some(paint) = paint_list.element(0) else { return String::new() };
-
-		match paint {
-			Graphic::Color(color_list) => color_list.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params),
-			Graphic::Gradient(stops_list) => {
-				let gradient_id = stops_list.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				format!(r##" fill="url('#{gradient_id}')""##)
-			}
-			_ => {
-				todo!()
-			}
-		}
-	}
-}
-
 impl RenderExt for Stroke {
 	type Output = String;
 
@@ -195,21 +172,5 @@ impl RenderExt for Stroke {
 			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
 		}
 		attributes
-	}
-}
-
-impl RenderExt for PathStyle {
-	type Output = String;
-
-	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
-	#[allow(clippy::too_many_arguments)]
-	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> String {
-		let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-		let stroke_attribute = self
-			.stroke
-			.as_ref()
-			.map(|stroke| stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params))
-			.unwrap_or_default();
-		format!("{fill_attribute}{stroke_attribute}")
 	}
 }
