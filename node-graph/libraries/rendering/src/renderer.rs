@@ -2571,10 +2571,27 @@ impl Render for List<String> {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
+			let Some(text) = self.element(index) else { continue };
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			// TODO: temporary stepping stone until the Data Trees (Issue #3779) refactor is complete
-			let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(font_size * 6., font_size));
+
+			// Falls back to a single-em square if fonts are not yet registered.
+			let (width, height) = FONT_CTX
+				.with(|ctx| {
+					let Ok(mut ctx) = ctx.try_borrow_mut() else { return None };
+					let (font_ctx, layout_ctx) = &mut *ctx;
+					ensure_fonts_registered(font_ctx);
+					let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
+					builder.push_default(StyleProperty::FontSize(font_size as f32));
+					builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+					let mut layout = builder.build(text);
+					layout.break_all_lines(None);
+					Some((layout.width() as f64, layout.height() as f64))
+				})
+				.unwrap_or((font_size, font_size));
+
+			let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(width, height));
 			let mut target = ClickTarget::new_with_subpath(subpath, 0.);
 			target.apply_transform(transform);
 			click_targets.push(target);
