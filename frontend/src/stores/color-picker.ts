@@ -35,7 +35,8 @@ const { subscribe, update } = store;
 export type ColorPickerStore = {
 	subscribe: typeof subscribe;
 	setCallbacks: (callbacks: ColorPickerCallbacks) => void;
-	clearCallbacks: () => void;
+	// Identity-checked so a hover-transfer race where another picker's `setCallbacks` already replaced these doesn't clobber the new picker's callbacks
+	clearCallbacks: (expected: ColorPickerCallbacks) => void;
 	setDragging: (dragging: boolean) => void;
 };
 
@@ -88,10 +89,12 @@ export function createColorPickerStore(subscriptions: SubscriptionsRouter): Colo
 				return state;
 			});
 		},
-		clearCallbacks: () => {
+		clearCallbacks: (expected: ColorPickerCallbacks) => {
 			update((state) => {
-				state.callbacks = {};
-				state.isDragging = false;
+				if (state.callbacks === expected) {
+					state.callbacks = {};
+					state.isDragging = false;
+				}
 				return state;
 			});
 		},
