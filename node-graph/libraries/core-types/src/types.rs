@@ -380,8 +380,14 @@ fn rewrite_list_as_array_brackets(input: &str) -> String {
 				continue;
 			}
 		}
-		result.push(bytes[i] as char);
-		i += 1;
+		if bytes[i].is_ascii() {
+			result.push(bytes[i] as char);
+			i += 1;
+		} else {
+			let ch = input[i..].chars().next().unwrap();
+			result.push(ch);
+			i += ch.len_utf8();
+		}
 	}
 
 	result
