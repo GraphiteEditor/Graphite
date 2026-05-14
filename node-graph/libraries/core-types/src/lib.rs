@@ -1,5 +1,6 @@
 extern crate log;
 
+pub mod animation;
 pub mod bounds;
 pub mod consts;
 pub mod context;
