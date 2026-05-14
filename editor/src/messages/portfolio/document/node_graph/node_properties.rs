@@ -276,7 +276,7 @@ pub(crate) fn property_from_type(
 								widgets.extend_from_slice(&[
 									Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 									TextLabel::new("-")
-										.tooltip_label(format!("Data Type: {concrete_type}"))
+										.tooltip_label(concrete_type.to_string())
 										.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
 										.widget_instance(),
 								]);
