@@ -65,14 +65,6 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.allow_none = allow_none;
 				self.disabled = disabled;
 
-				// Each `<ColorPicker>` Svelte instance maintains its own local layout state, but the Rust `LayoutMessageHandler` keeps a single shared layout per target. When a new picker instance opens after a previous one closed, the new instance's layout starts empty and a diff from the previously-shared state would not apply. Destroying the stored layouts here forces the next `SendLayout` to send the full layout instead of a diff.
-				responses.add(LayoutMessage::DestroyLayout {
-					layout_target: LayoutTarget::ColorPickerPickersAndGradient,
-				});
-				responses.add(LayoutMessage::DestroyLayout {
-					layout_target: LayoutTarget::ColorPickerDetails,
-				});
-
 				match initial_value {
 					FillChoice::None => {
 						self.set_new_hsva(0., 0., 0., 1., true);
@@ -99,10 +91,6 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.send_layouts(responses);
 			}
 			ColorPickerMessage::Close => {
-				self.gradient = None;
-				self.active_marker_index = None;
-				self.active_marker_is_midpoint = false;
-
 				responses.add(DocumentMessage::EndTransaction);
 			}
 			ColorPickerMessage::VisualUpdate { update } => {
