@@ -1,5 +1,5 @@
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use graphene_std::{NodeInputDecleration, ProtoNodeIdentifier};
+use graphene_std::ProtoNodeIdentifier;
 
 /// Describes how a gizmo handle should be positioned relative to the shape.
 #[derive(Clone, Debug, PartialEq)]
