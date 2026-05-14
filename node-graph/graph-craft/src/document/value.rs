@@ -6,6 +6,7 @@ use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
+use core_types::animation::AnimationCurve;
 use core_types::transform::Footprint;
 use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
 use dyn_any::DynAny;
@@ -544,6 +545,7 @@ tagged_value! {
 	LegacyOptionalDAffine2(Option<DAffine2>),
 	#[serde(alias = "FillGradient")]
 	LegacyGradient(graphic_types::migrations::legacy::LegacyGradient),
+	AnimationCurve(AnimationCurve),
 	// ==========
 	// ENUM TYPES
 	// ==========
