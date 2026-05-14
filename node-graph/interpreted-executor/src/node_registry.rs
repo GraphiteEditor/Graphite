@@ -1,3 +1,4 @@
+use core_types::animation::AnimationCurve;
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::PlatformEditorApi;
@@ -371,6 +372,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				InterpolationDistribution,
 				RowsOrColumns,
 				Resource,
+				AnimationCurve,
 			)
 		};
 	}

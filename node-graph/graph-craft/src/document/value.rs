@@ -3,6 +3,7 @@ use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::{BrushCache, Stroke};
+use core_types::animation::AnimationCurve;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
@@ -540,6 +541,7 @@ tagged_value! {
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(ResourceId),
+	AnimationCurve(AnimationCurve),
 	// Legacy
 	#[serde(alias = "OptionalDAffine2")]
 	LegacyOptionalDAffine2(Option<DAffine2>),
