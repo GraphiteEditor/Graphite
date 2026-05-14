@@ -3,6 +3,7 @@ use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
+use core_types::animation::AnimationCurve;
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::transform::Footprint;
@@ -408,6 +409,7 @@ tagged_value! {
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(graphene_application_io::resource::ResourceId),
+	AnimationCurve(AnimationCurve),
 	// ==========
 	// ENUM TYPES
 	// ==========

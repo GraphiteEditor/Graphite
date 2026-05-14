@@ -1,4 +1,5 @@
 use core::f64;
+use core_types::animation::AnimationCurve;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
 use core_types::list::{AttributeDyn, AttributeValueDyn, List, ListDyn};
 use core_types::transform::Footprint;
@@ -40,6 +41,7 @@ async fn context_modification<T>(
 		Context -> AttributeDyn,
 		Context -> AttributeValueDyn,
 		Context -> ListDyn,
+		Context -> AnimationCurve,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.

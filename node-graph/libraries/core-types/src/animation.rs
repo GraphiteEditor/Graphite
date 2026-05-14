@@ -1,25 +1,56 @@
 //! Animation Curve implementation based off of Blender's fcurves.
 //!
 
+use dyn_any::DynAny;
+
+use glam::DVec2;
+use graphene_hash::CacheHash;
 use kurbo::{CubicBez, ParamCurve, Point};
 
 // Every keyframe defines a left handle point for any bezier easings to the left,
 // and info defining the behavior to the right hand side of the keyframe
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Keyframe {
 	/// If None, defaults to knot in the case of a bezier keyframe to the left.
-	pub left_handle: Option<Point>,
-	pub knot: Point,
+	pub left_handle: Option<DVec2>,
+	pub knot: DVec2,
 	pub interp_behavior: InterpolationBehavior,
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl Keyframe {
+	pub fn new_linear(knot: DVec2, left_handle: Option<DVec2>) -> Self {
+		Self {
+			left_handle,
+			knot,
+			interp_behavior: InterpolationBehavior::Linear,
+		}
+	}
+	pub fn new_constant(knot: DVec2, left_handle: Option<DVec2>) -> Self {
+		Self {
+			left_handle,
+			knot,
+			interp_behavior: InterpolationBehavior::Constant,
+		}
+	}
+	pub fn new_bezier(knot: DVec2, left_handle: Option<DVec2>, right_handle: DVec2) -> Self {
+		Self {
+			left_handle,
+			knot,
+			interp_behavior: InterpolationBehavior::Bezier { right_handle },
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InterpolationBehavior {
-	Bezier { right_handle: Point },
+	Bezier { right_handle: DVec2 },
 	Constant,
 	Linear,
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, DynAny, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AnimationCurve {
 	keyframes: Vec<Keyframe>, // not public to maintain sorted order
 }
@@ -56,7 +87,14 @@ impl AnimationCurve {
 
 		match segment_start.interp_behavior {
 			InterpolationBehavior::Bezier { right_handle } => {
-				let curve = CubicBez::new(segment_start.knot, right_handle, segment_end.left_handle.unwrap_or_else(|| segment_end.knot), segment_end.knot);
+				let to_point = |vec: DVec2| Point::new(vec.x, vec.y);
+
+				let curve = CubicBez::new(
+					to_point(segment_start.knot),
+					to_point(right_handle),
+					segment_end.left_handle.map(|end| to_point(end)).unwrap_or_else(|| to_point(segment_end.knot)),
+					to_point(segment_end.knot),
+				);
 
 				// Find the value of t where curve.x == time to find the value
 				//TODO: find proper values for epsilon and k1. The docs suggest 0.2 for k1 but epsilon should be tested with several values
@@ -102,7 +140,7 @@ mod tests {
 		let mut single_kf = AnimationCurve::new();
 		single_kf.push_keyframe(Keyframe {
 			left_handle: None,
-			knot: Point::new(1.0, 10.0),
+			knot: DVec2::new(1.0, 10.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
 		assert_eq!(single_kf.evaluate(0.0), 0.0);
@@ -114,12 +152,12 @@ mod tests {
 		let mut anim_curve = AnimationCurve::new();
 		anim_curve.push_keyframe(Keyframe {
 			left_handle: None,
-			knot: Point::new(0.0, 0.0),
-			interp_behavior: InterpolationBehavior::Bezier { right_handle: Point::new(0.5, 0.0) },
+			knot: DVec2::new(0.0, 0.0),
+			interp_behavior: InterpolationBehavior::Bezier { right_handle: DVec2::new(0.5, 0.0) },
 		});
 		anim_curve.push_keyframe(Keyframe {
-			left_handle: Some(Point::new(0.5, 1.0)),
-			knot: Point::new(1.0, 1.0),
+			left_handle: Some(DVec2::new(0.5, 1.0)),
+			knot: DVec2::new(1.0, 1.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
 
@@ -133,22 +171,22 @@ mod tests {
 		let mut anim_curve = AnimationCurve::new();
 		anim_curve.push_keyframe(Keyframe {
 			left_handle: None,
-			knot: Point::new(0.0, 0.0),
+			knot: DVec2::new(0.0, 0.0),
 			interp_behavior: InterpolationBehavior::Linear,
 		});
 		anim_curve.push_keyframe(Keyframe {
 			left_handle: None,
-			knot: Point::new(1.0, 1.0),
+			knot: DVec2::new(1.0, 1.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
 		anim_curve.push_keyframe(Keyframe {
 			left_handle: None,
-			knot: Point::new(2.0, 0.0),
+			knot: DVec2::new(2.0, 0.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
 		anim_curve.push_keyframe(Keyframe {
 			left_handle: None,
-			knot: Point::new(3.0, 1.0),
+			knot: DVec2::new(3.0, 1.0),
 			interp_behavior: InterpolationBehavior::Constant,
 		});
 
