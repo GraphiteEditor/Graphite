@@ -91,9 +91,9 @@ export function createColorPickerStore(subscriptions: SubscriptionsRouter): Colo
 		},
 		clearCallbacks: (expected: ColorPickerCallbacks) => {
 			update((state) => {
+				state.isDragging = false;
 				if (state.callbacks === expected) {
 					state.callbacks = {};
-					state.isDragging = false;
 				}
 				return state;
 			});
