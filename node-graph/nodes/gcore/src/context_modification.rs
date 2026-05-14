@@ -1,4 +1,5 @@
 use core::f64;
+use core_types::animation::AnimationCurve;
 use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
@@ -31,6 +32,7 @@ async fn context_modification<T>(
 		Context -> Item<Gradient>,
 		Context -> Item<NodeIdPath>,
 		Context -> Item<AttributeValueDyn>,
+		Context -> Item<AnimationCurve>,
 		Context -> List<String>,
 		Context -> List<f64>,
 		Context -> List<DVec2>,
@@ -41,6 +43,7 @@ async fn context_modification<T>(
 		Context -> List<Color>,
 		Context -> List<Artboard>,
 		Context -> List<Gradient>,
+		Context -> List<AnimationCurve>,
 		Context -> ListDyn,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
