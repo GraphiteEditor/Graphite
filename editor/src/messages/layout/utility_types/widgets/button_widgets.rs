@@ -190,7 +190,7 @@ pub struct ColorInput {
 	#[widget_builder(constructor)]
 	pub value: FillChoiceUI,
 	/// CSS `linear-gradient(...)` (or solid-color stand-in) for the swatch's `background-image`. Auto-populated from `value` at layout-send time.
-	/// `None` when `value` is `FillChoice::None`, in which case the frontend uses its "none" fallback styling.
+	/// `None` when `value` is `FillChoiceUI::None`, in which case the frontend uses its "none" fallback styling.
 	#[serde(rename = "chosenGradient")]
 	#[widget_builder(skip)]
 	pub chosen_gradient: Option<String>,

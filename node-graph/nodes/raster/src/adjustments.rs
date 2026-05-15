@@ -555,9 +555,12 @@ fn vibrance<T: Adjust<Color>>(
 		let mut alt_g = srgb_to_linear(g_raw * scale - channel_reduction);
 		let mut alt_b = srgb_to_linear(b_raw * scale - channel_reduction);
 		let luminance = 0.2126 * alt_r + 0.7152 * alt_g + 0.0722 * alt_b;
-		alt_r *= luminance_initial / luminance;
-		alt_g *= luminance_initial / luminance;
-		alt_b *= luminance_initial / luminance;
+		// Skip the luminance-preservation scaling when the result is black (e.g. black input pixel), avoiding division by zero.
+		if luminance > 0. {
+			alt_r *= luminance_initial / luminance;
+			alt_g *= luminance_initial / luminance;
+			alt_b *= luminance_initial / luminance;
+		}
 
 		let channel_max = alt_r.max(alt_g).max(alt_b);
 		if linear_to_srgb(channel_max) > 1. {
@@ -575,7 +578,9 @@ fn vibrance<T: Adjust<Color>>(
 			Color::from_rgbaf32_unchecked(alt_r, alt_g, alt_b, alpha_in)
 		} else {
 			// TODO: The result ends up a bit darker than it should be, further investigation is needed.
-			let luminance = color.luminance_rec_601();
+			// Mix in gamma space (matching `alt_*`), so the luminance is computed from gamma channels too.
+			let [gr, gg, gb, _] = color.to_gamma_srgb_channels();
+			let luminance = 0.299 * gr + 0.587 * gg + 0.114 * gb;
 			let factor = -slowed_vibrance;
 			Color::from_rgbaf32_unchecked(
 				alt_r * (1. - factor) + luminance * factor,
@@ -996,7 +1001,8 @@ fn posterize<T: Adjust<Color>>(
 	levels: u32,
 ) -> T {
 	input.adjust(|color| {
-		let levels = levels as f32;
+		// `hard_min(2)` constrains the widget but doesn't bind the data-flow input (a saved doc or upstream node could still feed 0 or 1, producing inf/NaN below).
+		let levels = (levels as f32).max(2.);
 		let number_of_areas = levels.recip();
 		let size_of_areas = (levels - 1.).recip();
 		color.map_gamma_rgb(|c| (c / number_of_areas).floor() * size_of_areas)
