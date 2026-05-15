@@ -27,6 +27,7 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::Deref;
@@ -1071,8 +1072,8 @@ impl Render for List<Vector> {
 			let fill_graphic_list = self
 				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
 				.filter(|list| !list.is_empty())
-				.cloned()
-				.or_else(|| fill_to_graphic_list(vector.style.fill()));
+				.map(Cow::Borrowed)
+				.or_else(|| fill_to_graphic_list(vector.style.fill()).map(Cow::Owned));
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
 			let need_clipping = matches!(fill_graphic, Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)));
@@ -1101,7 +1102,7 @@ impl Render for List<Vector> {
 					path.clone(),
 					element_transform,
 					item_transform,
-					fill_graphic_list.as_ref(),
+					fill_graphic_list.as_deref(),
 					clip_id.as_deref(),
 					applied_stroke_transform,
 					bounds_matrix,
@@ -1259,7 +1260,7 @@ impl Render for List<Vector> {
 					path,
 					element_transform,
 					item_transform,
-					fill_graphic_list.as_ref(),
+					fill_graphic_list.as_deref(),
 					clip_id.as_deref(),
 					applied_stroke_transform,
 					bounds_matrix,
@@ -1347,8 +1348,8 @@ impl Render for List<Vector> {
 				let Some(fill_graphic) = self
 					.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
 					.filter(|t| !t.is_empty())
-					.cloned()
-					.or_else(|| fill_to_graphic_list(element.style.fill()))
+					.map(Cow::Borrowed)
+					.or_else(|| fill_to_graphic_list(element.style.fill()).map(Cow::Owned))
 				else {
 					return;
 				};
