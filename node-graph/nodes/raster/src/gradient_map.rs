@@ -24,9 +24,9 @@ async fn gradient_map<T: Adjust<Color>>(
 	let Some(gradient) = gradient.element(0) else { return image };
 
 	image.adjust(|color| {
-		let intensity = color.luminance_srgb();
+		let intensity = color.luminance_rec_709();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64).to_linear_srgb()
+		gradient.evaluate(intensity as f64)
 	});
 
 	image

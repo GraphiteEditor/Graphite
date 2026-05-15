@@ -4,12 +4,12 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { Color } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ swap: undefined }>();
 
-	export let newColor: Color | undefined;
-	export let oldColor: Color | undefined;
+	export let newColor: SRGBA8 | undefined;
+	export let oldColor: SRGBA8 | undefined;
 	export let newColorCSS: string;
 	export let newColorContrasting: string;
 	export let oldColorCSS: string;
@@ -21,7 +21,7 @@
 	export let outlineAmount: number;
 
 	$: outlined = outlineAmount > 0.0001;
-	$: transparency = (newColor?.alpha ?? 1) < 1 || (oldColor?.alpha ?? 1) < 1;
+	$: transparency = (newColor?.alpha ?? 255) < 255 || (oldColor?.alpha ?? 255) < 255;
 </script>
 
 <LayoutRow

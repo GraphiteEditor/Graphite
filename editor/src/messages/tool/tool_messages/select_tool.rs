@@ -248,7 +248,7 @@ impl LayoutHolder for SelectTool {
 				},
 				|color: &ColorInput| {
 					SelectToolMessage::SelectOptions {
-						options: SelectOptionsUpdate::FillColor(color.value.clone()),
+						options: SelectOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 					}
 					.into()
 				},
@@ -278,7 +278,7 @@ impl LayoutHolder for SelectTool {
 				},
 				|color: &ColorInput| {
 					SelectToolMessage::SelectOptions {
-						options: SelectOptionsUpdate::StrokeColor(color.value.as_solid()),
+						options: SelectOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 					}
 					.into()
 				},

@@ -329,10 +329,10 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let &TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
-	Some(color.to_linear_srgb())
+	Some(color)
 }
 
 /// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.

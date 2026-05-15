@@ -26,7 +26,7 @@
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { ColorPickerStore } from "/src/stores/color-picker";
-	import { parseFillChoice } from "/src/utility-functions/colors";
+	import { parseFillChoiceUI } from "/src/utility-functions/colors";
 	import type { EditorWrapper, LayoutTarget, Widget, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Extract the discriminant key names from the Widget tagged enum union (e.g. "TextButton" | "CheckboxInput" | ...)
@@ -134,7 +134,7 @@
 			component: ColorInput,
 			getProps: (props, index) => ({
 				...props,
-				value: parseFillChoice(props.value),
+				value: parseFillChoiceUI(props.value),
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
@@ -146,7 +146,7 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					// The widget dispatches `"None"` or a bare `Color`, wrap the color in `{ Solid: ... }` so the payload matches Rust's `FillChoice` shape (which the `Preset` variant expects).
+					// The widget dispatches `"None"` or a bare `SRGBA8`, wrap the color in `{ Solid: ... }` so the payload matches Rust's `FillChoiceUI` shape (which the `Preset` variant expects).
 					preset: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { Preset: e.detail === "None" ? "None" : { Solid: e.detail } }, true),
 					eyedropperColorCode: (e: CustomEvent) => widgetValueCommitAndUpdate(index, { EyedropperColorCode: e.detail }, true),
 				},

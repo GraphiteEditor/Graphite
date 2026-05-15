@@ -30,7 +30,7 @@ use graphene_std::text_nodes::StringCapitalization;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
-use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientStops, GradientStopsUI, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -1164,19 +1164,19 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	match &**tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_button
-				.value(match color {
+				.value(FillChoiceUI::from(&match color {
 					Some(color) => FillChoice::Solid(*color),
 					None => FillChoice::None,
-				})
-				.on_update(update_value(|input: &ColorInput| TaggedValue::Color(input.value.as_solid()), node_id, index))
+				}))
+				.on_update(update_value(|input: &ColorInput| TaggedValue::Color(input.value.as_solid().map(Color::from)), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
 		TaggedValue::Gradient(stops) => widgets.push(
 			color_button
-				.value(FillChoice::Gradient(stops.clone()))
+				.value(FillChoiceUI::from(&FillChoice::Gradient(stops.clone())))
 				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().cloned().unwrap_or_default()),
+					|input: &ColorInput| TaggedValue::Gradient(input.value.as_gradient().map(GradientStops::from).unwrap_or_default()),
 					node_id,
 					index,
 				))
@@ -1417,7 +1417,7 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 
 	// Build the shared spectrum widget (placed on the first non-exposed row)
 	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(bw_track())
+		SpectrumInput::new(GradientStopsUI::from(&bw_track()))
 			.markers(spectrum_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
@@ -1591,7 +1591,7 @@ fn spectrum_slider_row(
 
 		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
-			SpectrumInput::new(track)
+			SpectrumInput::new(GradientStopsUI::from(&track))
 				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
 				.show_midpoints(false)
 				.allow_insert(false)
@@ -2482,7 +2482,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
 		ColorInput::default()
-			.value(fill.clone().into())
+			.value(FillChoiceUI::from(&FillChoice::from(fill.clone())))
 			.on_update(move |x: &ColorInput| Message::Batched {
 				messages: Box::new([
 					match &fill2 {
@@ -2508,7 +2508,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: FillInput::<Color>::INDEX,
-						value: TaggedValue::Fill(x.value.to_fill(fill2.as_gradient())),
+						value: TaggedValue::Fill(FillChoice::from(&x.value).to_fill(fill2.as_gradient())),
 					}
 					.into(),
 				]),

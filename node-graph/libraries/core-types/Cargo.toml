@@ -20,6 +20,7 @@ no-std-types = { workspace = true, features = ["std"] }
 graphene-hash = { workspace = true, features = ["derive"] }
 
 # Workspace dependencies
+color = { workspace = true }
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
 node-macro = { workspace = true }

@@ -12,12 +12,12 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
-	import { fillChoiceColor, createColor } from "/src/utility-functions/colors";
+	import { fillChoiceUIColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
-	import type { Color, EditorWrapper, MenuDirection, MouseCursorIcon } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
@@ -70,7 +70,7 @@
 	let cursorEyedropperPreviewColorSecondary = "";
 
 	// Gradient stop color picker
-	let gradientStopPickerColor: Color | undefined = undefined;
+	let gradientStopPickerColor: SRGBA8 | undefined = undefined;
 	let gradientStopPickerPosition: { x: number; y: number } | undefined = undefined;
 
 	// Canvas dimensions
@@ -223,7 +223,7 @@
 		mousePosition: [number, number] | undefined,
 		colorPrimary: string,
 		colorSecondary: string,
-	): Promise<[number, number, number] | undefined> {
+	): Promise<SRGBA8 | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
@@ -275,14 +275,14 @@
 			};
 		})();
 		const hex = [centerPixel.r, centerPixel.g, centerPixel.b].map((x) => x.toString(16).padStart(2, "0")).join("");
-		const rgb: [number, number, number] = [centerPixel.r / 255, centerPixel.g / 255, centerPixel.b / 255];
+		const sRgba8: SRGBA8 = { red: centerPixel.r, green: centerPixel.g, blue: centerPixel.b, alpha: 255 };
 
 		cursorEyedropperPreviewColorChoice = "#" + hex;
 		cursorEyedropperPreviewColorPrimary = colorPrimary;
 		cursorEyedropperPreviewColorSecondary = colorSecondary;
 		cursorEyedropperPreviewImageData = preview;
 
-		return rgb;
+		return sRgba8;
 	}
 
 	// Update scrollbars and rulers
@@ -477,11 +477,11 @@
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
 			const imageData = image !== undefined ? new ImageData(new Uint8ClampedArray(image.data), image.width, image.height) : undefined;
-			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
+			const sRgba8 = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
-			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.updateSecondaryColor(...rgb, 1);
+			if (setColorChoice && sRgba8) {
+				if (setColorChoice === "Primary") editor.updatePrimaryColor(sRgba8);
+				if (setColorChoice === "Secondary") editor.updateSecondaryColor(sRgba8);
 			}
 		});
 
@@ -668,10 +668,10 @@
 									gradientStopPickerColor = undefined;
 								}
 							}}
-							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
+							colorOrGradient={{ Solid: gradientStopPickerColor || createSRgba8(0, 0, 0, 255) }}
 							on:colorOrGradient={({ detail }) => {
-								const color = fillChoiceColor(detail);
-								if (color) editor.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
+								const color = fillChoiceUIColor(detail);
+								if (color) editor.updateGradientStopColor(color);
 							}}
 							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}
 							on:commitHistoryTransaction={() => editor.commitGradientStopColorTransaction()}

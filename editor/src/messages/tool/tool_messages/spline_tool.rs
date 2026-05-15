@@ -105,7 +105,7 @@ impl LayoutHolder for SplineTool {
 			},
 			|color: &ColorInput| {
 				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::FillColor(color.value.clone()),
+					options: SplineOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 				}
 				.into()
 			},
@@ -135,7 +135,7 @@ impl LayoutHolder for SplineTool {
 			},
 			|color: &ColorInput| {
 				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::StrokeColor(color.value.as_solid()),
+					options: SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},

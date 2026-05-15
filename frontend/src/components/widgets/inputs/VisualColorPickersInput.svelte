@@ -3,7 +3,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
-	import { colorContrastingColor, colorOpaque, colorToHexNoAlpha, colorToRgbCSS, createColor, createColorFromHSVA } from "/src/utility-functions/colors";
+	import { sRgba8ContrastingColor, sRgba8Opaque, sRgba8ToHexNoAlpha, sRgba8ToRgbCSS, createSRgba8, createSRgba8FromHsva } from "/src/utility-functions/colors";
 
 	const dispatch = createEventDispatcher<{
 		update: { hue: number; saturation: number; value: number; alpha: number };
@@ -184,20 +184,20 @@
 		removeEvents();
 	});
 
-	$: newColor = isNone ? undefined : createColorFromHSVA(hue, saturation, value, alpha);
-	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
-	$: opaqueColorOnly = newColor ? colorOpaque(newColor) : createColor(0, 0, 0, 1);
+	$: newColor = isNone ? undefined : createSRgba8FromHsva(hue, saturation, value, alpha);
+	$: opaqueHueColor = createSRgba8FromHsva(hue, 1, 1, 1);
+	$: opaqueColorOnly = newColor ? sRgba8Opaque(newColor) : createSRgba8(0, 0, 0, 255);
 </script>
 
 <LayoutRow
 	class="visual-color-pickers-input"
 	classes={{ disabled }}
 	styles={{
-		"--hue-color": colorToRgbCSS(opaqueHueColor),
-		"--hue-color-contrasting": colorContrastingColor(opaqueHueColor),
-		"--opaque-color": colorToHexNoAlpha(opaqueColorOnly),
-		"--opaque-color-contrasting": colorContrastingColor(opaqueColorOnly),
-		"--new-color-contrasting": colorContrastingColor(newColor),
+		"--hue-color": sRgba8ToRgbCSS(opaqueHueColor),
+		"--hue-color-contrasting": sRgba8ContrastingColor(opaqueHueColor),
+		"--opaque-color": sRgba8ToHexNoAlpha(opaqueColorOnly),
+		"--opaque-color-contrasting": sRgba8ContrastingColor(opaqueColorOnly),
+		"--new-color-contrasting": sRgba8ContrastingColor(newColor),
 	}}
 >
 	{@const hueDescription = "The shade along the spectrum of the rainbow."}

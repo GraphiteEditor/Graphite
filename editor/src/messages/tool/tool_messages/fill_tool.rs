@@ -1,9 +1,10 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::tool::common_functionality::color_selector::solid_gamma;
+use crate::messages::tool::common_functionality::color_selector::solid;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::Fill;
+use graphene_std::vector::style::{Fill, FillChoiceUI};
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -43,11 +44,11 @@ impl ToolMetadata for FillTool {
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![
-			ColorInput::new(solid_gamma(self.primary_color))
+			ColorInput::new(FillChoiceUI::from(&solid(self.primary_color)))
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					FillToolMessage::SetColor {
-						color: color.value.as_solid().map(|c| c.to_linear_srgb()),
+						color: color.value.as_solid().map(Color::from),
 					}
 					.into()
 				})
@@ -141,7 +142,7 @@ impl Fsm for FillToolFsmState {
 
 				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input, viewport) {
-					let color_hex = format!("#{}", preview_color.to_rgba_hex_srgb());
+					let color_hex = SRGBA8::from(preview_color).to_css_hex();
 					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &color_hex);
 				}
 
@@ -161,8 +162,8 @@ impl Fsm for FillToolFsmState {
 					return self;
 				}
 				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
+					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
+					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
 					_ => return self,
 				};
 
@@ -201,6 +202,7 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::fill;
 	use graphene_std::vector::style::Fill;
 
@@ -240,7 +242,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+		assert_eq!(SRGBA8::from(fills[0].as_solid().unwrap()), SRGBA8::from(Color::GREEN));
 	}
 
 	#[tokio::test]
@@ -252,6 +254,6 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::YELLOW.to_rgba8_srgb());
+		assert_eq!(SRGBA8::from(fills[0].as_solid().unwrap()), SRGBA8::from(Color::YELLOW));
 	}
 }

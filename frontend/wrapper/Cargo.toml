@@ -25,6 +25,7 @@ editor = { path = "../../editor", package = "graphite-editor", features = ["gpu"
 graphene-std = { workspace = true }
 
 # Workspace dependencies
+bytemuck = { workspace = true }
 graph-craft = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
