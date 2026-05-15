@@ -634,6 +634,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
 				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
 				// queued after AddTransaction (which prepends StartTransaction/CommitTransaction to the queue).
+				// All mutations currently target the root document network, so guard against being invoked from inside a nested network.
+				if !self.selection_network_path.is_empty() {
+					log::error!("Expanding fill/stroke is only supported for the document network");
+					return;
+				}
 				if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_none() {
 					return;
 				}
@@ -2373,6 +2378,9 @@ impl DocumentMessageHandler {
 			return;
 		}
 
+		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
+		let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
+
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
@@ -2393,17 +2401,12 @@ impl DocumentMessageHandler {
 				continue;
 			}
 
-			let solidify_template = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER)
-				.expect("Solidify Stroke node should exist")
-				.default_node_template();
 			let solidify_id = NodeId::new();
-			self.network_interface.insert_node(solidify_id, solidify_template, &[]);
+			self.network_interface.insert_node(solidify_id, solidify_stroke_definition.default_node_template(), &[]);
 			self.network_interface.move_node_to_chain_start(&solidify_id, layer, &[], false);
 
 			if has_fill && has_stroke {
 				let (existing_index, new_index) = (0_f64, 1_f64);
-
-				let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
 
 				let existing_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
 				let existing_index_id = NodeId::new();
