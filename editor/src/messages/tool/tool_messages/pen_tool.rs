@@ -154,7 +154,7 @@ impl LayoutHolder for PenTool {
 			},
 			|color: &ColorInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::FillColor(color.value.clone()),
+					options: PenOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 				}
 				.into()
 			},
@@ -184,7 +184,7 @@ impl LayoutHolder for PenTool {
 			},
 			|color: &ColorInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::StrokeColor(color.value.as_solid()),
+					options: PenOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},

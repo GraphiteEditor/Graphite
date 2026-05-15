@@ -22,7 +22,7 @@ impl core::fmt::Display for WidgetId {
 
 macro_rules! define_layout_target {
 	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
-		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 		#[repr(u8)]
 		pub enum LayoutTarget {

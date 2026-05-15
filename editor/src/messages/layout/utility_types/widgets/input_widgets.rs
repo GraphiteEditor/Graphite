@@ -4,8 +4,9 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use derivative::*;
 use graphene_std::Color;
+use graphene_std::color::SRGBA8;
 use graphene_std::transform::ReferencePoint;
-use graphene_std::vector::style::{FillChoice, GradientStops};
+use graphene_std::vector::style::{FillChoiceUI, GradientStopsUI};
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -349,9 +350,9 @@ pub struct RadioEntryData {
 pub struct WorkingColorsInput {
 	// Content
 	#[widget_builder(constructor)]
-	pub primary: Color,
+	pub primary: SRGBA8,
 	#[widget_builder(constructor)]
-	pub secondary: Color,
+	pub secondary: SRGBA8,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -484,10 +485,10 @@ pub struct ColorComparisonInput {
 	// Content
 	#[widget_builder(constructor)]
 	#[serde(rename = "newColor")]
-	pub new_color: Option<Color>,
+	pub new_color: Option<SRGBA8>,
 	#[widget_builder(constructor)]
 	#[serde(rename = "oldColor")]
-	pub old_color: Option<Color>,
+	pub old_color: Option<SRGBA8>,
 	#[serde(rename = "isNone")]
 	pub is_none: bool,
 	#[serde(rename = "oldIsNone")]
@@ -544,7 +545,7 @@ pub struct ColorPresetsInput {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ColorPresetsInputUpdate {
-	Preset(FillChoice),
+	Preset(FillChoiceUI),
 	EyedropperColorCode(String),
 }
 
@@ -555,7 +556,7 @@ pub struct SpectrumInput {
 	// Content
 	/// The colored gradient drawn behind the markers (display-only, caller-owned).
 	#[widget_builder(constructor)]
-	pub track: GradientStops,
+	pub track: GradientStopsUI,
 	/// CSS `linear-gradient(...)` string for the track strip's `background-image`. Auto-populated from `track` at layout-send time.
 	#[serde(rename = "trackCSS")]
 	#[widget_builder(skip)]
@@ -607,14 +608,14 @@ pub struct SpectrumMarker {
 	position: f64,
 	/// Position (0..1) of the midpoint between this marker and the next, used only if `show_midpoints` is true. The last marker's value is ignored.
 	midpoint: f64,
-	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a [`Color`] (gamma space).
+	/// CSS color string for the marker handle's fill. Set via `SpectrumMarker::new` from a linear [`Color`].
 	#[serde(rename = "handleColorCSS")]
 	handle_color_css: String,
 }
 
 impl SpectrumMarker {
 	pub fn new(position: f64, midpoint: f64, handle_color: Color) -> Self {
-		let handle_color_css = format!("#{}", handle_color.to_rgba_hex_srgb_from_gamma());
+		let handle_color_css = SRGBA8::from(handle_color).to_css_hex();
 		Self { position, midpoint, handle_color_css }
 	}
 }

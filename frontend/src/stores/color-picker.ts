@@ -2,10 +2,10 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { FillChoice, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FillChoiceUI, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type ColorPickerCallbacks = {
-	onColorChanged?: (value: FillChoice) => void;
+	onColorChanged?: (value: FillChoiceUI) => void;
 	onStartTransaction?: () => void;
 	onCommitTransaction?: () => void;
 };
@@ -40,9 +40,9 @@ export type ColorPickerStore = {
 	setDragging: (dragging: boolean) => void;
 };
 
-// The Rust handler keeps a single shared layout per target, but multiple `<ColorPicker>` Svelte instances may be mounted across
+// The Rust handler keeps a single shared layout per target, but multiple `<ColorPicker />` Svelte instances may be mounted across
 // the app (one per `ColorInput`/`WorkingColorsInput`/etc.). Subscribing to the layout target from each instance is destructive,
-// only the last-registered callback wins. So we maintain a single global subscription here and let each `<ColorPicker>` instance
+// only the last-registered callback wins. So we maintain a single global subscription here and let each `<ColorPicker />` instance
 // read from the resulting store and register its own per-open callbacks for color/transaction events.
 export function createColorPickerStore(subscriptions: SubscriptionsRouter): ColorPickerStore {
 	destroyColorPickerStore();

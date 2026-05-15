@@ -144,7 +144,14 @@ impl<P: Pixel> Image<P> {
 impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
-		let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8_srgb(v[0], v[1], v[2], v[3])).collect();
+		let data = image_data
+			.chunks_exact(4)
+			.map(|v| {
+				// `Image<Color>` pixels are stored linear-light with premultiplied alpha
+				let srgba = SRGBA8::new(v[0], v[1], v[2], v[3]);
+				Color::from(srgba).apply_opacity(v[3] as f32 / 255.)
+			})
+			.collect();
 		Image {
 			width,
 			height,
@@ -260,30 +267,6 @@ impl<P: Copy + Pixel> Image<P> {
 impl<P: Pixel> AsRef<Image<P>> for Image<P> {
 	fn as_ref(&self) -> &Image<P> {
 		self
-	}
-}
-
-impl From<Image<Color>> for Image<SRGBA8> {
-	fn from(image: Image<Color>) -> Self {
-		let data = image.data.into_iter().map(|x| x.into()).collect();
-		Self {
-			data,
-			width: image.width,
-			height: image.height,
-			base64_string: None,
-		}
-	}
-}
-
-impl From<Image<SRGBA8>> for Image<Color> {
-	fn from(image: Image<SRGBA8>) -> Self {
-		let data = image.data.into_iter().map(|x| x.into()).collect();
-		Self {
-			data,
-			width: image.width,
-			height: image.height,
-			base64_string: None,
-		}
 	}
 }
 

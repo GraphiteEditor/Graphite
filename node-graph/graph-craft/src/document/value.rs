@@ -2,6 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
+use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
@@ -464,7 +465,7 @@ impl TaggedValue {
 			// String syntax (e.g. "000000ff")
 			if input.starts_with('"') && input.ends_with('"') {
 				let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
-				let color = Color::from_hex_str(hex);
+				let color = SRGBA8::from_hex_str(hex).map(Color::from);
 				if color.is_none() {
 					log::error!("Invalid default value color string: {input}");
 				}

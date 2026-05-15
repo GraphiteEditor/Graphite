@@ -3,9 +3,9 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
 use glam::DVec2;
-use graphene_std::raster::color::Color;
+use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::FillChoiceUI;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
@@ -274,12 +274,12 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 	]);
 	color_widgets.push(
-		ColorInput::new(FillChoice::Solid(Color::from_hex_str(&grid.color).unwrap_or(Color::BLACK)))
+		ColorInput::new(FillChoiceUI::Solid(SRGBA8::from_hex_str(&grid.color).unwrap_or(SRGBA8::BLACK)))
 			.tooltip_label("Grid Display Color")
 			.allow_none(false)
 			.on_update(update_val::<ColorInput, _>(grid, |grid, color| {
-				if let Some(color) = color.value.as_solid() {
-					grid.color = format!("#{}", color.to_rgba_hex_srgb_from_gamma());
+				if let Some(srgba) = color.value.as_solid() {
+					grid.color = srgba.to_css_hex();
 				}
 			}))
 			.widget_instance(),

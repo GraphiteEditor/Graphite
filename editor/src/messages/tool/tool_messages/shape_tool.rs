@@ -467,7 +467,7 @@ impl LayoutHolder for ShapeTool {
 				},
 				|color: &ColorInput| {
 					ShapeToolMessage::UpdateOptions {
-						options: ShapeOptionsUpdate::FillColor(color.value.clone()),
+						options: ShapeOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 					}
 					.into()
 				},
@@ -498,7 +498,7 @@ impl LayoutHolder for ShapeTool {
 			},
 			|color: &ColorInput| {
 				ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::StrokeColor(color.value.as_solid()),
+					options: ShapeOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},

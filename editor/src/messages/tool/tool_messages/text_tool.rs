@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::portfolio::utility_types::{CachedData, FontCatalog, FontCatalogStyle};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
-	ToolColorOptions, apply_fill_only_color_pick, apply_fill_only_enabled, refresh_slot_working_color, selection_changed_since_last_sync, solid_gamma, sync_fill_only,
+	ToolColorOptions, apply_fill_only_color_pick, apply_fill_only_enabled, refresh_slot_working_color, selection_changed_since_last_sync, solid, sync_fill_only,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -20,9 +20,10 @@ use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::choice_type::ChoiceTypeStatic;
+use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::{Fill, FillChoice};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
@@ -269,12 +270,12 @@ impl TextTool {
 
 	fn layout(&self, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Layout {
 		let mut widgets = vec![
-			ColorInput::new(self.options.fill.fill_choice.clone().unwrap_or(graphene_std::vector::style::FillChoice::None))
+			ColorInput::new(FillChoiceUI::from(self.options.fill.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.fill.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					TextToolMessage::UpdateOptions {
-						options: TextOptionsUpdate::FillColor(color.value.clone()),
+						options: TextOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 					}
 					.into()
 				})
@@ -295,7 +296,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 		// reset the displayed fill color so the next activation starts fresh from the current working color.
 		// Guarded on `Ready` so Esc-mid-editing (which also fires Abort) doesn't wipe the user's customized fill option.
 		if matches!(&message, ToolMessage::Text(TextToolMessage::Abort)) && self.fsm_state == TextToolFsmState::Ready {
-			self.options.fill.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
+			self.options.fill.fill_choice = Some(solid(context.global_tool_data.primary_color));
 		}
 
 		let options = match message {
@@ -319,7 +320,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if can_edit_selected(context.document).is_some() {
 					sync_fill_only(&mut self.options.fill, true, context.global_tool_data.primary_color, context.document, selection_changed);
 				} else if selection_changed {
-					self.options.fill.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
+					self.options.fill.fill_choice = Some(solid(context.global_tool_data.primary_color));
 					self.options.fill.tracks_working_color = true;
 				}
 				// Text tool has no fill checkbox; keep enabled so new text never starts with `None`
@@ -497,7 +498,7 @@ impl TextToolData {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
-				color: editing_text.color.map_or("#000000".to_string(), |color| format!("#{}", color.to_rgba_hex_srgb())),
+				color: editing_text.color.map_or("#000000".to_string(), |color| SRGBA8::from(color).to_css_hex()),
 				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default().into(),
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
@@ -574,7 +575,7 @@ impl TextToolData {
 		});
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
-			fill: if let Some(color) = editing_text.color { Fill::Solid(color.to_gamma_srgb()) } else { Fill::None },
+			fill: if let Some(color) = editing_text.color { Fill::Solid(color) } else { Fill::None },
 		});
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);

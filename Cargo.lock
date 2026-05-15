@@ -887,6 +887,7 @@ dependencies = [
  "base64",
  "bitflags 2.11.0",
  "bytemuck",
+ "color",
  "ctor",
  "dyn-any",
  "glam",
@@ -2216,6 +2217,7 @@ dependencies = [
 name = "graphite-wasm-wrapper"
 version = "0.0.0"
 dependencies = [
+ "bytemuck",
  "graph-craft",
  "graphene-std",
  "graphite-editor",

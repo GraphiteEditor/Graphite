@@ -11,8 +11,9 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientType};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -49,7 +50,7 @@ pub enum GradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
-	UpdateStops { stops: GradientStops },
+	UpdateStops { stops: GradientStopsUI },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
@@ -120,7 +121,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 			}
 			ToolMessage::Gradient(GradientToolMessage::UpdateStops { stops }) => {
-				apply_stops_update(&mut self.data, context, responses, stops);
+				apply_stops_update(&mut self.data, context, responses, GradientStops::from(&stops));
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -243,7 +244,7 @@ impl LayoutHolder for GradientTool {
 					},
 				]))
 			});
-		let stops_widget = ColorInput::new(stops_value)
+		let stops_widget = ColorInput::new(FillChoiceUI::from(&stops_value))
 			.allow_none(false)
 			.narrow(true)
 			.tooltip_label("Gradient Stops")
@@ -856,7 +857,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
 
 					fn color_to_hex(color: graphene_std::Color) -> String {
-						format!("#{}", color.to_rgb_hex_srgb_from_gamma())
+						SRGBA8::from(color).to_css_hex()
 					}
 
 					let start_hex = stops.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
@@ -1024,10 +1025,10 @@ impl Fsm for GradientToolFsmState {
 					let transform = gradient_space_transform(layer, document);
 					let gradient = &selected_gradient.gradient;
 					if stop_index < gradient.stops.position.len() {
-						let color = gradient.stops.color[stop_index].to_gamma_srgb();
+						let color = gradient.stops.color[stop_index];
 						let position = gradient.stops.position[stop_index];
 						let position = transform.transform_point2(gradient.start.lerp(gradient.end, position)).into();
-						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, position });
+						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: color.into(), position });
 					}
 				}
 
@@ -1081,9 +1082,9 @@ impl Fsm for GradientToolFsmState {
 									.transform
 									.transform_point2(selected_gradient.gradient.start.lerp(selected_gradient.gradient.end, stop_pos));
 								let position = viewport_pos.into();
-								let color = selected_gradient.gradient.stops.color[stop_index].to_gamma_srgb();
+								let color = selected_gradient.gradient.stops.color[stop_index];
 								tool_data.color_picker_editing_color_stop = Some(stop_index);
-								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, position });
+								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: color.into(), position });
 							}
 						}
 						_ => {}
@@ -1910,6 +1911,7 @@ mod test_gradient {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::style::{Fill, Gradient};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
@@ -2022,8 +2024,8 @@ mod test_gradient {
 		let (gradient, transform) = get_gradient(&mut editor).await;
 
 		// Gradient goes from primary color to secondary color
-		let stops = gradient.stops.iter().map(|stop| (stop.position, stop.color.to_rgba8_srgb())).collect::<Vec<_>>();
-		assert_eq!(stops, vec![(0., Color::GREEN.to_rgba8_srgb()), (1., Color::BLUE.to_rgba8_srgb())]);
+		let stops = gradient.stops.iter().map(|stop| (stop.position, SRGBA8::from(stop.color))).collect::<Vec<_>>();
+		assert_eq!(stops, vec![(0., SRGBA8::from(Color::GREEN)), (1., SRGBA8::from(Color::BLUE))]);
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
@@ -2215,7 +2217,7 @@ mod test_gradient {
 		let positions: Vec<f64> = stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&positions, &[0., 0.25, 1.], 0.1);
 
-		let middle_color = stops.color[1].to_rgba8_srgb();
+		let middle_color = SRGBA8::from(stops.color[1]);
 
 		// Simulate dragging the middle stop to position 0.8
 		let click_position = DVec2::new(25., 0.);
@@ -2256,9 +2258,9 @@ mod test_gradient {
 		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
-		assert_eq!(updated_stops.color[0].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
-		assert_eq!(updated_stops.color[1].to_rgba8_srgb(), middle_color);
-		assert_eq!(updated_stops.color[2].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
+		assert_eq!(SRGBA8::from(updated_stops.color[0]), SRGBA8::from(Color::GREEN));
+		assert_eq!(SRGBA8::from(updated_stops.color[1]), middle_color);
+		assert_eq!(SRGBA8::from(updated_stops.color[2]), SRGBA8::from(Color::BLUE));
 	}
 
 	#[tokio::test]
@@ -2495,8 +2497,8 @@ mod test_gradient {
 
 		assert_eq!(updated.stops.len(), 3, "Stop count should be preserved");
 		assert_stops_at_positions(&updated.stops.position, &[0., 0.5, 1.], 1e-10);
-		assert_eq!(updated.stops.color[0].to_rgba8_srgb(), Color::RED.to_rgba8_srgb(), "First stop color should be preserved");
-		assert_eq!(updated.stops.color[1].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb(), "Middle stop color should be preserved");
-		assert_eq!(updated.stops.color[2].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb(), "Last stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color[0]), SRGBA8::from(Color::RED), "First stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color[1]), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color[2]), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
 	}
 }

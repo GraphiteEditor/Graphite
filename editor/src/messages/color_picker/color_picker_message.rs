@@ -21,7 +21,7 @@ pub enum HsvChannel {
 #[impl_message(Message, ColorPicker)]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ColorPickerMessage {
-	/// Initialize the picker state from an external color/gradient and announce its options. Called by the frontend when a `<ColorPicker>` opens.
+	/// Initialize the picker state from an external color/gradient and announce its options. Called by the frontend when a `<ColorPicker />` opens.
 	Open { initial_value: FillChoice, allow_none: bool, disabled: bool },
 	/// Clear the picker state. Called by the frontend when the popover closes.
 	Close,

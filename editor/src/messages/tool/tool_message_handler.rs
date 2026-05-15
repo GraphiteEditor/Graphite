@@ -9,6 +9,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::node_graph_executor::NodeGraphExecutor;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays { context }.into();
@@ -280,7 +281,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				let r = (random_number >> 16) as u8;
 				let g = (random_number >> 8) as u8;
 				let b = random_number as u8;
-				let random_color = Color::from_rgba8_srgb(r, g, b, 255);
+				let random_color = Color::from(SRGBA8::new(r, g, b, 255));
 
 				if primary {
 					document_data.primary_color = random_color;

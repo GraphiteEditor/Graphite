@@ -97,7 +97,7 @@ impl LayoutHolder for FreehandTool {
 			},
 			|color: &ColorInput| {
 				FreehandToolMessage::UpdateOptions {
-					options: FreehandOptionsUpdate::FillColor(color.value.clone()),
+					options: FreehandOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 				}
 				.into()
 			},
@@ -127,7 +127,7 @@ impl LayoutHolder for FreehandTool {
 			},
 			|color: &ColorInput| {
 				FreehandToolMessage::UpdateOptions {
-					options: FreehandOptionsUpdate::StrokeColor(color.value.as_solid()),
+					options: FreehandOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},

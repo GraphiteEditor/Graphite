@@ -6,6 +6,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::FontCache;
@@ -398,7 +399,21 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Send to frontend
+				// Convert each linear-light `Image<Color>` into the JS-boundary `Image<SRGBA8>` form (gamma byte channels) before dispatching.
+				let image_data = image_data
+					.into_iter()
+					.map(|(id, image)| {
+						(
+							id,
+							graphene_std::raster::Image {
+								width: image.width,
+								height: image.height,
+								data: image.data.iter().map(|&c| SRGBA8::from(c)).collect(),
+								base64_string: image.base64_string,
+							},
+						)
+					})
+					.collect();
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
