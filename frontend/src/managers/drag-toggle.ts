@@ -9,7 +9,9 @@
 // clicks still toggle as usual. When engaged, the source is clicked once (toggling it) and any sibling
 // the pointer enters whose state still matches the source's recorded starting state is also clicked.
 
-let onActiveGroupChange: ((activeGroup: string | undefined) => void) | undefined = undefined;
+type ActiveGroupListener = (activeGroup: string | undefined) => void;
+
+const listeners = new Set<ActiveGroupListener>();
 let activeGroup: string | undefined = undefined;
 let source: HTMLElement | undefined = undefined;
 let startingState: string | undefined = undefined;
@@ -17,32 +19,42 @@ let visited = new WeakSet<Element>();
 let engaged = false;
 let suppressNextClickFromSource: HTMLElement | undefined = undefined;
 
-export function createDragToggleManager(activeGroupListener?: typeof onActiveGroupChange) {
-	destroyDragToggleManager();
+export function createDragToggleManager(activeGroupListener?: ActiveGroupListener) {
+	if (activeGroupListener) listeners.add(activeGroupListener);
 
-	onActiveGroupChange = activeGroupListener;
-
-	// Capture phase on pointerdown preempts sibling drag handlers on ancestors so they don't also engage
-	window.addEventListener("pointerdown", onPointerDown, true);
-	window.addEventListener("pointermove", onPointerMove);
-	window.addEventListener("pointerup", onPointerUp);
-	// Capture phase on click suppresses the natural source-click before the button's handler runs
-	window.addEventListener("click", onClickCapture, true);
+	// Install the window event listeners only when the first consumer subscribes
+	if (listeners.size === 1) {
+		// Capture phase on pointerdown preempts sibling drag handlers on ancestors so they don't also engage
+		window.addEventListener("pointerdown", onPointerDown, true);
+		window.addEventListener("pointermove", onPointerMove);
+		window.addEventListener("pointerup", onPointerUp);
+		// Capture phase on click suppresses the natural source-click before the button's handler runs
+		window.addEventListener("click", onClickCapture, true);
+	}
 }
 
-export function destroyDragToggleManager() {
-	window.removeEventListener("pointerdown", onPointerDown, true);
-	window.removeEventListener("pointermove", onPointerMove);
-	window.removeEventListener("pointerup", onPointerUp);
-	window.removeEventListener("click", onClickCapture, true);
+export function destroyDragToggleManager(activeGroupListener?: ActiveGroupListener) {
+	if (activeGroupListener) listeners.delete(activeGroupListener);
 
-	onActiveGroupChange = undefined;
-	activeGroup = undefined;
-	source = undefined;
-	startingState = undefined;
-	visited = new WeakSet();
-	engaged = false;
-	suppressNextClickFromSource = undefined;
+	// Uninstall the window event listeners only once the last consumer leaves
+	if (listeners.size === 0) {
+		window.removeEventListener("pointerdown", onPointerDown, true);
+		window.removeEventListener("pointermove", onPointerMove);
+		window.removeEventListener("pointerup", onPointerUp);
+		window.removeEventListener("click", onClickCapture, true);
+
+		activeGroup = undefined;
+		source = undefined;
+		startingState = undefined;
+		visited = new WeakSet();
+		engaged = false;
+		suppressNextClickFromSource = undefined;
+	}
+}
+
+function notifyActiveGroupChange(group: string | undefined) {
+	activeGroup = group;
+	listeners.forEach((listener) => listener(group));
 }
 
 function findMember(target: EventTarget | undefined): HTMLElement | undefined {
@@ -61,13 +73,12 @@ function onPointerDown(e: PointerEvent) {
 	// Stop the event so sibling drag/select handlers on ancestors don't also engage
 	e.stopPropagation();
 
-	activeGroup = found.getAttribute("data-drag-toggle-group") || undefined;
 	source = found;
 	startingState = found.getAttribute("data-drag-toggle-state") || undefined;
 	visited = new WeakSet();
 	engaged = false;
 
-	onActiveGroupChange?.(activeGroup);
+	notifyActiveGroupChange(found.getAttribute("data-drag-toggle-group") || undefined);
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -99,13 +110,12 @@ function onPointerUp() {
 	// If a drag engaged, the source was already clicked programmatically; suppress its natural click so it isn't re-toggled
 	if (engaged && source) suppressNextClickFromSource = source;
 
-	activeGroup = undefined;
 	source = undefined;
 	startingState = undefined;
 	visited = new WeakSet();
 	engaged = false;
 
-	onActiveGroupChange?.(undefined);
+	notifyActiveGroupChange(undefined);
 }
 
 function onClickCapture(e: Event) {
@@ -118,5 +128,7 @@ function onClickCapture(e: Event) {
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code
 import.meta.hot?.accept((newModule) => {
-	if (onActiveGroupChange) newModule?.createDragToggleManager(onActiveGroupChange);
+	const carried = Array.from(listeners);
+	carried.forEach((listener) => destroyDragToggleManager(listener));
+	carried.forEach((listener) => newModule?.createDragToggleManager(listener));
 });

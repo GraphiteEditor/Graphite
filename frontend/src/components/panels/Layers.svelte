@@ -75,7 +75,7 @@
 	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
 
 	onMount(() => {
-		createDragToggleManager((group) => (activeDragToggleGroup = group));
+		createDragToggleManager(dragToggleListener);
 
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
@@ -89,7 +89,7 @@
 	});
 
 	onDestroy(() => {
-		destroyDragToggleManager();
+		destroyDragToggleManager(dragToggleListener);
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
@@ -101,6 +101,10 @@
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
 	});
+
+	function dragToggleListener(group: string | undefined) {
+		activeDragToggleGroup = group;
+	}
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
 		editor.toggleNodeVisibilityLayerPanel(id);
