@@ -62,6 +62,19 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
 			}
+			LayoutMessage::WidgetValueDragDrop { layout_target, widget_id } => {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+					warn!("WidgetValueDragDrop referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+					warn!("WidgetValueDragDrop referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				if let Widget::IconButton(icon_button) = &mut *widget_instance.widget {
+					responses.add((icon_button.on_drag_drop.callback)(icon_button));
+				}
+			}
 		}
 	}
 

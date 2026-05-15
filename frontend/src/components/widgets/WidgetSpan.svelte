@@ -65,6 +65,10 @@
 		editor.widgetValueCommitAndUpdate(layoutTarget, widgets[widgetIndex].widgetId, value, resendWidget);
 	}
 
+	function widgetValueDragDrop(widgetIndex: number) {
+		editor.widgetValueDragDrop(layoutTarget, widgets[widgetIndex].widgetId);
+	}
+
 	// Extracts the kind and props from a Widget tagged enum, validated against the widget registry.
 	// The overload declares the precise correlated return type while the implementation uses broader types.
 	function unwrapWidget(widgetInstance: WidgetInstance): UnwrappedWidget | undefined;
@@ -175,6 +179,7 @@
 			getProps: (props, index) => ({
 				...props,
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
+				actionDragDrop: () => widgetValueDragDrop(index),
 			}),
 		},
 		IconLabel: {
