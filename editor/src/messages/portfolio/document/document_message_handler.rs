@@ -11,7 +11,7 @@ use crate::consts::{
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -20,7 +20,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::{CachedData, PanelType};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -40,7 +40,7 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::style::{Fill, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -630,6 +630,24 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::MorphSelectedLayers => {
 				self.handle_group_selected_layers(GroupFolderType::Morph, responses);
+			}
+			DocumentMessage::ExpandFillStrokeOnSelectedLayers => {
+				// Snapshot must be taken before the mutations, so the actual work runs as a separate message
+				// queued after AddTransaction (which prepends StartTransaction/CommitTransaction to the queue).
+				// All mutations currently target the root document network, so guard against being invoked from inside a nested network.
+				if !self.selection_network_path.is_empty() {
+					log::error!("Expanding fill/stroke is only supported for the document network");
+					return;
+				}
+				if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_none() {
+					return;
+				}
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction);
+			}
+			DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction => {
+				// Mutates the network directly, so it must be queued to run after `AddTransaction` has snapshotted the document
+				self.handle_expand_fill_stroke_on_selected_layers(responses);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.handle_group_selected_layers(group_folder_type, responses);
@@ -2348,6 +2366,86 @@ impl DocumentMessageHandler {
 
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 		}
+	}
+
+	/// For each selected layer, splits its fill and stroke into two stacked layers connected
+	/// to a shared `Solidify Stroke` node via two `Index Elements` nodes (indices 0 and 1).
+	/// Layers with only a stroke get just a `Solidify Stroke` added.
+	/// Layers with only a fill, or neither, are left untouched.
+	fn handle_expand_fill_stroke_on_selected_layers(&mut self, responses: &mut VecDeque<Message>) {
+		let selected_layers: Vec<LayerNodeIdentifier> = self.network_interface.selected_nodes().selected_layers(self.metadata()).collect();
+		if selected_layers.is_empty() {
+			return;
+		}
+
+		let solidify_stroke_definition = document_node_definitions::resolve_proto_node_type(graphene_std::vector::solidify_stroke::IDENTIFIER).expect("Solidify Stroke node should exist");
+		let index_elements_definition = document_node_definitions::resolve_proto_node_type(graphene_std::graphic::index_elements::IDENTIFIER).expect("Index Elements node should exist");
+
+		let mut resulting_layers: Vec<NodeId> = Vec::new();
+
+		for layer in selected_layers {
+			let style = self.network_interface.document_metadata().layer_vector_data.get(&layer).map(|arc| arc.style.clone());
+			let Some(style) = style else {
+				resulting_layers.push(layer.to_node());
+				continue;
+			};
+
+			let has_fill = !matches!(style.fill, Fill::None);
+			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
+			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
+			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke());
+
+			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
+			if !has_stroke {
+				resulting_layers.push(layer.to_node());
+				continue;
+			}
+
+			let solidify_id = NodeId::new();
+			self.network_interface.insert_node(solidify_id, solidify_stroke_definition.default_node_template(), &[]);
+			self.network_interface.move_node_to_chain_start(&solidify_id, layer, &[], false);
+
+			if has_fill && has_stroke {
+				let (existing_index, new_index) = (0_f64, 1_f64);
+
+				let existing_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_id = NodeId::new();
+				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
+				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
+
+				let parent = layer.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+				let insert_index = parent.children(self.metadata()).position(|c| c == layer).unwrap_or(0);
+
+				let new_layer_id = NodeId::new();
+				let new_layer = ModifyInputsContext::new(&mut self.network_interface, responses).create_layer(new_layer_id);
+				self.network_interface.move_layer_to_stack(new_layer, parent, insert_index, &[]);
+
+				// Copy the original layer's stored name so the new layer shares it
+				let original_name = self
+					.network_interface
+					.node_metadata(&layer.to_node(), &[])
+					.map(|m| m.persistent_metadata.display_name.clone())
+					.unwrap_or_default();
+				if !original_name.is_empty() {
+					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
+				}
+
+				let new_index_template = index_elements_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_id = NodeId::new();
+				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
+				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
+
+				self.network_interface.create_wire(&OutputConnector::node(solidify_id, 0), &InputConnector::node(new_index_id, 0), &[]);
+
+				resulting_layers.push(layer.to_node());
+				resulting_layers.push(new_layer.to_node());
+			} else {
+				resulting_layers.push(layer.to_node());
+			}
+		}
+
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: resulting_layers });
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	/// Helper method for MoveSelectedLayersTo message.
