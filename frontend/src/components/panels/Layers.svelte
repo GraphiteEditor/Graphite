@@ -64,6 +64,7 @@
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
+	let dragDropTarget: HTMLElement | undefined = undefined;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
@@ -258,7 +259,7 @@
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
-		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+		if (layerPanel && treeChildren && treeOffset !== undefined) {
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
@@ -358,6 +359,18 @@
 
 		// Perform drag calculations if a drag is occurring
 		if (internalDragState.active) {
+			// Check if the cursor is over any element flagged as a drag drop target
+			// (e.g. a bottom-bar action button whose backend widget has an `on_drag_drop` callback set)
+			const droppable = (e.target instanceof Element && e.target.closest("[data-drag-droppable]")) || undefined;
+			dragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
+
+			// Hide the move-in-tree insert indicator whenever the cursor enters the bottom bar
+			const overBottomBar = ((e.target instanceof Element && e.target.closest("[data-layer-bottom-bar]")) || undefined) !== undefined;
+			if (dragDropTarget || overBottomBar) {
+				draggingData = undefined;
+				return;
+			}
+
 			const select = () => {
 				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
 					selectLayer(internalDragState.listing, false, false);
@@ -369,7 +382,15 @@
 	}
 
 	function draggingPointerUp() {
-		if (internalDragState?.active && draggingData) {
+		if (internalDragState?.active && dragDropTarget) {
+			// Ensure the dragged layer is part of the selection, matching the move-in-tree behavior
+			if (!$nodeGraph.selected.includes(internalDragState.layerId)) selectLayer(internalDragState.listing, false, false);
+
+			// Hand off to the button's backend `on_drag_drop` callback via the custom event
+			dragDropTarget.dispatchEvent(new CustomEvent("dragdrop"));
+
+			justFinishedDrag = true;
+		} else if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			// Commit the move
@@ -394,6 +415,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		dragDropTarget = undefined;
 	}
 
 	function draggingMouseDown(e: MouseEvent) {
@@ -658,7 +680,7 @@
 			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="bottom-bar" scrollableX={true}>
+	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active) }} scrollableX={true} data-layer-bottom-bar>
 		<WidgetLayout layout={$layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
@@ -697,6 +719,26 @@
 
 			&:not(:has(*)) {
 				display: none;
+			}
+
+			&.layer-drag-active .icon-button,
+			&.layer-drag-active .popover-button {
+				&.drag-droppable:hover {
+					background: var(--color-e-nearwhite);
+
+					svg {
+						fill: var(--color-2-mildblack);
+					}
+				}
+
+				&:not(.drag-droppable) {
+					pointer-events: none;
+					background: none;
+
+					svg {
+						fill: var(--color-8-uppergray);
+					}
+				}
 			}
 		}
 

@@ -39,6 +39,9 @@ pub struct IconButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_drag_drop: WidgetCallback<IconButton>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

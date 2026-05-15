@@ -343,6 +343,13 @@ impl EditorWrapper {
 		Ok(())
 	}
 
+	/// Fire a widget's drag-drop action (e.g. when a draggable item is dropped on a button)
+	#[wasm_bindgen(js_name = widgetValueDragDrop)]
+	pub fn widget_value_drag_drop(&self, layout_target: LayoutTarget, widget_id: u64) {
+		let widget_id = WidgetId(widget_id);
+		self.dispatch(LayoutMessage::WidgetValueDragDrop { layout_target, widget_id });
+	}
+
 	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
 	#[wasm_bindgen(js_name = endTransaction)]
 	pub fn end_transaction(&self) {
