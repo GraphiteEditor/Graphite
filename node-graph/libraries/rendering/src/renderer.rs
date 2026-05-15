@@ -1145,7 +1145,7 @@ impl Render for List<Vector> {
 						}
 
 						Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)) => {
-							if let Some(fill_graphic_list) = fill_graphic_list.as_ref() {
+							if let Some(fill_graphic_list) = fill_graphic_list.as_deref() {
 								let face_clip_id = format!("clip-{}", generate_uuid());
 								write!(&mut render.svg_defs, r##"<clipPath id="{face_clip_id}"><path d="{face_d}"/></clipPath>"##).unwrap();
 								emit_svg_fill_clip(render, &face_clip_id, fill_graphic_list, item_transform, render_params);
@@ -1160,7 +1160,7 @@ impl Render for List<Vector> {
 				&& !use_face_fill
 				&& !wants_stroke_below
 				&& !override_paint_order
-				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_ref())
+				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_deref())
 			{
 				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
 			}
@@ -1248,7 +1248,7 @@ impl Render for List<Vector> {
 			if !needs_separate_alignment_fill
 				&& !use_face_fill
 				&& (wants_stroke_below || override_paint_order)
-				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_ref())
+				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_deref())
 			{
 				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
 			}
@@ -1342,17 +1342,16 @@ impl Render for List<Vector> {
 			let use_layer = can_draw_aligned_stroke;
 			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
+			// Try to use ATTR_FILL_GRAPHIC attribute, which is set by `fill_graphic` debug node, then fall back to Fill enum.
+			// TODO: Drop the Fill fall back once the Fill node becomes ready to store corresponding Graphic list directly.
+			let fill_graphic_list: Option<Cow<List<Graphic>>> = self
+				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
+				.filter(|t| !t.is_empty())
+				.map(Cow::Borrowed)
+				.or_else(|| fill_to_graphic_list(element.style.fill()).map(Cow::Owned));
+
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
-				// Try to use ATTR_FILL_GRAPHIC attribute, which is set by `fill_graphic` debug node, then fall back to Fill enum.
-				// TODO: Drop the Fill fall back once the Fill node becomes ready to store corresponding Graphic list directly.
-				let Some(fill_graphic) = self
-					.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
-					.filter(|t| !t.is_empty())
-					.map(Cow::Borrowed)
-					.or_else(|| fill_to_graphic_list(element.style.fill()).map(Cow::Owned))
-				else {
-					return;
-				};
+				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
 
 				for paint_idx in 0..fill_graphic.len() {
 					let Some(paint) = fill_graphic.element(paint_idx) else { continue };
