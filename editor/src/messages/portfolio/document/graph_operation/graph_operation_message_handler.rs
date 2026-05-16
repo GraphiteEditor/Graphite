@@ -48,7 +48,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				transform,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform, None, None);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -604,35 +604,12 @@ fn parse_stop_offset(s: &str) -> f64 {
 
 fn parse_stop_color(value: &str, opacity: f32) -> Option<Color> {
 	let value = value.trim();
-	if let Some(hex) = value.strip_prefix('#') {
-		return parse_hex_color(hex, opacity);
+	if value.to_ascii_lowercase() == "transparent" {
+		return Some(Color::from_rgbaf32_unchecked(0., 0., 0., 0.));
 	}
-	named_css_color(value).map(|(r, g, b, alpha)| Color::from_rgbaf32_unchecked(r as f32 / 255., g as f32 / 255., b as f32 / 255., alpha.unwrap_or(opacity)))
-}
-
-fn parse_hex_color(hex: &str, opacity: f32) -> Option<Color> {
-	let (r, g, b) = match hex.len() {
-		6 => (
-			u8::from_str_radix(&hex[0..2], 16).ok()?,
-			u8::from_str_radix(&hex[2..4], 16).ok()?,
-			u8::from_str_radix(&hex[4..6], 16).ok()?,
-		),
-		3 => {
-			let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
-			let g = u8::from_str_radix(&hex[1..2], 16).ok()?;
-			let b = u8::from_str_radix(&hex[2..3], 16).ok()?;
-			(r * 17, g * 17, b * 17)
-		}
-		_ => return None,
-	};
-	Some(Color::from_rgbaf32_unchecked(r as f32 / 255., g as f32 / 255., b as f32 / 255., opacity))
-}
-
-fn named_css_color(name: &str) -> Option<(u8, u8, u8, Option<f32>)> {
-	if name.to_ascii_lowercase() == "transparent" {
-		return Some((0, 0, 0, Some(0.)));
-	}
-	svgtypes::Color::from_str(name).ok().map(|c| (c.red, c.green, c.blue, None))
+	svgtypes::Color::from_str(value).ok().map(|c| {
+		Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., (c.alpha as f32 / 255.) * opacity)
+	})
 }
 
 /// Import a usvg node as the root of an SVG import operation.
@@ -893,7 +870,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				}
 			};
 			let spread_method = convert_spread_method(linear.spread_method());
-			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform, DVec2::ZERO, 0.);
+			modify_inputs.fill_gradient_set(gradient, gradient_type, spread_method, transform, Some(DVec2::ZERO), Some(0.));
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -924,7 +901,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			};
 			let spread_method = convert_spread_method(radial.spread_method());
 
-			modify_inputs.fill_gradient_set(gradient, GradientType::Radial, spread_method, transform, focal_center, focal_radius);
+			modify_inputs.fill_gradient_set(gradient, GradientType::Radial, spread_method, transform, Some(focal_center), Some(focal_radius));
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

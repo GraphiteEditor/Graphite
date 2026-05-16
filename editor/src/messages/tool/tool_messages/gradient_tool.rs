@@ -472,6 +472,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		transform: composed_transform,
 		gradient_type: gradient_type.unwrap_or_default(),
 		spread_method: spread_method.unwrap_or_default(),
+		..Default::default()
 	}
 }
 
@@ -1516,6 +1517,7 @@ impl Fsm for GradientToolFsmState {
 									transform: DAffine2::IDENTITY,
 									gradient_type: tool_options.gradient_type,
 									spread_method: tool_options.spread_method,
+									..Default::default()
 								},
 								GradientSource::Direct,
 							),
