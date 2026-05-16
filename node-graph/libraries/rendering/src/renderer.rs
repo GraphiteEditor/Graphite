@@ -37,6 +37,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
@@ -44,7 +45,7 @@ use vello::*;
 
 // Thread local storage for font bytes
 thread_local! {
-	static RENDER_FONTS: RefCell<Arc<[(String, Arc<[u8]>)]>> = RefCell::new(Arc::from([]));
+	static RENDER_FONTS: RefCell<Arc<[(String, u64, Arc<[u8]>)]>> = RefCell::new(Arc::from([]));
 }
 
 // Thread-local parley font shaping context
@@ -54,12 +55,20 @@ thread_local! {
 
 // Tracks which font bytes have already been registered into FONT_CTX
 thread_local! {
-	static REGISTERED_FONTS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+	static REGISTERED_FONTS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
 // Set the font bytes available to the renderer for the current execution.
 pub fn set_render_fonts(fonts: impl IntoIterator<Item = (String, Arc<[u8]>)>) {
-	let slice: Arc<[(String, Arc<[u8]>)]> = fonts.into_iter().collect::<Vec<_>>().into();
+	let slice: Arc<[(String, u64, Arc<[u8]>)]> = fonts
+		.into_iter()
+		.map(|(name, bytes)| {
+			let mut hasher = std::collections::hash_map::DefaultHasher::new();
+			bytes.hash(&mut hasher);
+			(name, hasher.finish(), bytes)
+		})
+		.collect::<Vec<_>>()
+		.into();
 	RENDER_FONTS.with(|f| *f.borrow_mut() = slice);
 }
 
@@ -2361,9 +2370,8 @@ fn ensure_fonts_registered(font_ctx: &mut parley::FontContext) {
 	REGISTERED_FONTS.with(|reg| {
 		let mut reg = reg.borrow_mut();
 		RENDER_FONTS.with(|rf| {
-			for (_, bytes) in rf.borrow().iter() {
-				let key = bytes.as_ptr() as usize;
-				if reg.insert(key) {
+			for (_, hash, bytes) in rf.borrow().iter() {
+				if reg.insert(*hash) {
 					struct ArcBytes(std::sync::Arc<[u8]>);
 					impl AsRef<[u8]> for ArcBytes {
 						fn as_ref(&self) -> &[u8] {
@@ -2498,13 +2506,6 @@ impl Render for List<String> {
 
 			let affine = Affine::new((transform * item_transform).to_cols_array());
 
-			let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
-			if needs_layer {
-				let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
-				let inf_rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(f64::INFINITY, f64::INFINITY));
-				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &inf_rect);
-			}
-
 			FONT_CTX.with(|ctx| {
 				let Ok(mut ctx) = ctx.try_borrow_mut() else { return };
 				let (font_ctx, layout_ctx) = &mut *ctx;
@@ -2516,6 +2517,15 @@ impl Render for List<String> {
 				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 				let mut layout = builder.build(text);
 				layout.break_all_lines(None);
+
+				let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
+				if needs_layer {
+					let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
+					let padding = font_size;
+					let bounds = kurbo::Rect::new(-padding, -padding, layout.full_width() as f64 + padding, layout.height() as f64 + padding);
+					let transformed_bounds = affine.transform_rect_bbox(bounds);
+					scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds);
+				}
 
 				for line in layout.lines() {
 					for item in line.items() {
@@ -2554,11 +2564,11 @@ impl Render for List<String> {
 						}
 					}
 				}
-			});
 
-			if needs_layer {
-				scene.pop_layer();
-			}
+				if needs_layer {
+					scene.pop_layer();
+				}
+			});
 		}
 	}
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {

@@ -83,7 +83,7 @@ pub const ATTR_FILL: &str = "fill";
 /// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
 
-/// Text item's font family (`String`, implicit default `"sans-serif"`).
+/// Text item's font family (`String`, implicit default `"Lato"`).
 pub const ATTR_FONT_FAMILY: &str = "font_family";
 
 /// Text item's font size in document-space units (`f64`, implicit default `16.`).
