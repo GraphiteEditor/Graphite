@@ -550,12 +550,14 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						| "ExtractRealTime"
 						| "ExtractAnimationTime"
 						| "ExtractPointerPosition"
+						| "ExtractPosition"
 						| "ExtractIndex"
 						| "ExtractVarArgs"
 						| "InjectFootprint"
 						| "InjectRealTime"
 						| "InjectAnimationTime"
 						| "InjectPointerPosition"
+						| "InjectPosition"
 						| "InjectIndex"
 						| "InjectVarArgs" => {
 							features.push(segment.ident.clone());
