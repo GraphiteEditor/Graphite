@@ -262,13 +262,10 @@ impl RenderState {
 			self.render_overlays(scene);
 		}
 
-		let output = match self.surface.get_current_texture() {
-			wgpu::CurrentSurfaceTexture::Success(t) => t,
-			wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
-				// wgpu reports the swapchain no longer matches the underlying surface; present this frame but reconfigure so the next one matches
-				self.surface.configure(&self.context.device, &self.config);
-				t
-			}
+		let (output, suboptimal) = match self.surface.get_current_texture() {
+			wgpu::CurrentSurfaceTexture::Success(t) => (t, false),
+			// wgpu reports the swapchain no longer matches the underlying surface; present this frame and reconfigure after present, since `Surface::configure` panics while an acquired `SurfaceTexture` is still alive
+			wgpu::CurrentSurfaceTexture::Suboptimal(t) => (t, true),
 			// Window is minimized or behind another window: skip the frame silently and try again once it becomes visible
 			wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
 			wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
@@ -320,6 +317,10 @@ impl RenderState {
 		self.context.queue.submit(std::iter::once(encoder.finish()));
 		window.pre_present_notify();
 		output.present();
+
+		if suboptimal {
+			self.surface.configure(&self.context.device, &self.config);
+		}
 
 		if ui_scale.is_some() {
 			return Err(RenderError::OutdatedUITextureError);
