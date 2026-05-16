@@ -120,7 +120,7 @@ impl RenderState {
 
 		let render_pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Render Pipeline Layout"),
-			bind_group_layouts: &[&texture_bind_group_layout],
+			bind_group_layouts: &[Some(&texture_bind_group_layout)],
 			immediate_size: size_of::<Immediates>() as u32,
 		});
 
@@ -262,7 +262,14 @@ impl RenderState {
 			self.render_overlays(scene);
 		}
 
-		let output = self.surface.get_current_texture().map_err(RenderError::SurfaceError)?;
+		let output = match self.surface.get_current_texture() {
+			wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+			wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
+			wgpu::CurrentSurfaceTexture::Outdated => return Err(RenderError::SurfaceOutdated),
+			wgpu::CurrentSurfaceTexture::Timeout => return Err(RenderError::SurfaceTimeout),
+			wgpu::CurrentSurfaceTexture::Occluded => return Err(RenderError::SurfaceOccluded),
+			wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
+		};
 
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -349,9 +356,14 @@ impl RenderState {
 	}
 }
 
+#[derive(Debug)]
 pub(crate) enum RenderError {
 	OutdatedUITextureError,
-	SurfaceError(wgpu::SurfaceError),
+	SurfaceLost,
+	SurfaceOutdated,
+	SurfaceTimeout,
+	SurfaceOccluded,
+	SurfaceValidation,
 }
 
 #[repr(C)]

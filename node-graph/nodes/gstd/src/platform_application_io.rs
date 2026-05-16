@@ -245,7 +245,7 @@ where
 		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
 		.unwrap();
 
-	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
+	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	List::new_from_item(

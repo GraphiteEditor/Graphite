@@ -113,7 +113,10 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			},
 		);
 
-		let surface_texture = surface.get_current_texture().expect("Failed to get surface texture");
+		let surface_texture = match surface.get_current_texture() {
+			wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+			other => panic!("Failed to get surface texture: {other:?}"),
+		};
 
 		encoder.copy_texture_to_texture(
 			wgpu::TexelCopyTextureInfoBase {
