@@ -1,4 +1,6 @@
-use core_types::{Color, render_complexity::RenderComplexity};
+use core_types::Color;
+use core_types::color::SRGBA8;
+use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
@@ -13,9 +15,9 @@ pub enum GradientType {
 }
 
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
-// TODO: Use linear not gamma colors
-/// A list of colors associated with positions (in the range 0 to 1) along a gradient.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+/// A list of colors (linear, unassociated alpha) associated with positions (in the range 0 to 1) along a gradient.
+///
+/// Not exposed via Tsify; use [`GradientStopsUI`] at the JS boundary.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GradientStops {
@@ -25,6 +27,59 @@ pub struct GradientStops {
 	pub midpoint: Vec<f64>,
 	/// The color at this stop.
 	pub color: Vec<Color>,
+}
+
+/// JS-boundary version of [`GradientStops`] where stop colors are [`SRGBA8`] byte triples instead of linear-light [`Color`].
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[derive(Debug, Clone, PartialEq, Default, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GradientStopsUI {
+	pub position: Vec<f64>,
+	pub midpoint: Vec<f64>,
+	pub color: Vec<SRGBA8>,
+}
+
+impl From<&GradientStops> for GradientStopsUI {
+	fn from(s: &GradientStops) -> Self {
+		Self {
+			position: s.position.clone(),
+			midpoint: s.midpoint.clone(),
+			color: s.color.iter().map(|c| SRGBA8::from(*c)).collect(),
+		}
+	}
+}
+
+impl From<&GradientStopsUI> for GradientStops {
+	fn from(s: &GradientStopsUI) -> Self {
+		Self {
+			position: s.position.clone(),
+			midpoint: s.midpoint.clone(),
+			color: s.color.iter().map(|c| Color::from(*c)).collect(),
+		}
+	}
+}
+
+impl GradientStopsUI {
+	/// CSS `linear-gradient(...)` string. Stops are emitted as `#rrggbbaa` hex (already gamma-encoded bytes).
+	pub fn to_css_linear_gradient(&self) -> String {
+		if self.position.len() <= 1 {
+			let hex = self.color.first().map(|c| c.to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
+			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
+		}
+		// Sample via the midpoint-aware subdivision used for SVG/Vello stops so browser interpolation matches
+		let stops: GradientStops = self.into();
+		let pieces = stops
+			.interpolated_samples()
+			.into_iter()
+			.map(|(position, color, _)| {
+				let percent = ((position * 100.) * 1e2).round() / 1e2;
+				let hex = SRGBA8::from(color).to_rgba_hex();
+				format!("#{hex} {percent}%")
+			})
+			.collect::<Vec<_>>()
+			.join(", ");
+		format!("linear-gradient(to right, {pieces})")
+	}
 }
 
 // TODO: Eventually remove this migration document upgrade code
@@ -294,7 +349,7 @@ impl GradientStops {
 	/// Build a CSS `linear-gradient(...)` string suitable for use as a `background-image`. Samples the midpoint curves so the rendered gradient matches Graphite's interpolation rather than browser defaults.
 	pub fn to_css_linear_gradient(&self) -> String {
 		if self.position.len() <= 1 {
-			let hex = self.color.first().map(|c| c.to_rgba_hex_srgb_from_gamma()).unwrap_or_else(|| "000000ff".to_string());
+			let hex = self.color.first().map(|c| SRGBA8::from(*c).to_rgba_hex()).unwrap_or_else(|| "000000ff".to_string());
 			return format!("linear-gradient(to right, #{hex} 0%, #{hex} 100%)");
 		}
 		let pieces = self
@@ -302,7 +357,7 @@ impl GradientStops {
 			.into_iter()
 			.map(|(position, color, _)| {
 				let percent = ((position * 100.) * 1e2).round() / 1e2;
-				format!("#{} {percent}%", color.to_rgba_hex_srgb_from_gamma())
+				format!("#{} {percent}%", SRGBA8::from(color).to_rgba_hex())
 			})
 			.collect::<Vec<_>>()
 			.join(", ");
@@ -313,13 +368,17 @@ impl GradientStops {
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
 	/// midpoint for actual gradient stops, and `None` for interpolated samples added to approximate midpoint curves.
+	///
+	/// Interpolation is performed in sRGB gamma space (then lifted back to linear-light for output) because the downstream SVG/CSS
+	/// renderer interpolates between adjacent `<stop>` colors in gamma space; doing the subdivision math in the same space ensures
+	/// the chosen samples actually match the curve the browser will draw.
 	pub fn interpolated_samples(&self) -> Vec<(f64, Color, Option<f64>)> {
 		/// Controls accuracy vs. number of samples tradeoff.
 		/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve with this midpoint bias.
 		const THRESHOLD: f64 = 2. / 255.;
 
 		#[allow(clippy::too_many_arguments)]
-		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a: Color, color_b: Color, result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
+		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a_gamma: [f32; 4], color_b_gamma: [f32; 4], result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
 			const MAX_DEPTH: u32 = 20;
 			if depth >= MAX_DEPTH {
 				return;
@@ -333,13 +392,18 @@ impl GradientStops {
 			let y_linear = (y_left + y_right) / 2.;
 
 			if (y_actual - y_linear).abs() > THRESHOLD {
-				subdivide(left, mid, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
+				subdivide(left, mid, midpoint, pos_a, pos_b, color_a_gamma, color_b_gamma, result, depth + 1);
 
 				let global_pos = pos_a + mid * (pos_b - pos_a);
-				let color = color_a.lerp(&color_b, y_actual as f32);
+				let t = y_actual as f32;
+				let r = color_a_gamma[0] + (color_b_gamma[0] - color_a_gamma[0]) * t;
+				let g = color_a_gamma[1] + (color_b_gamma[1] - color_a_gamma[1]) * t;
+				let b = color_a_gamma[2] + (color_b_gamma[2] - color_a_gamma[2]) * t;
+				let a = color_a_gamma[3] + (color_b_gamma[3] - color_a_gamma[3]) * t;
+				let color = Color::from_gamma_srgb_channels(r, g, b, a);
 				result.push((global_pos, color, None));
 
-				subdivide(mid, right, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
+				subdivide(mid, right, midpoint, pos_a, pos_b, color_a_gamma, color_b_gamma, result, depth + 1);
 			}
 		}
 
@@ -368,7 +432,7 @@ impl GradientStops {
 
 			// Only subdivide if midpoint deviates from linear (0.5)
 			if (midpoint - 0.5).abs() >= 1e-6 {
-				subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, &mut result, 0);
+				subdivide(0., 1., midpoint, pos_a, pos_b, color_a.to_gamma_srgb_channels(), color_b.to_gamma_srgb_channels(), &mut result, 0);
 			}
 
 			// Add the end stop
@@ -440,7 +504,7 @@ impl std::fmt::Display for Gradient {
 		let stops = self
 			.stops
 			.iter()
-			.map(|stop| format!("[{}%: #{}]", round(stop.position * 100.), stop.color.to_rgba_hex_srgb()))
+			.map(|stop| format!("[{}%: #{}]", round(stop.position * 100.), SRGBA8::from(stop.color).to_rgba_hex()))
 			.collect::<Vec<_>>()
 			.join(", ");
 		write!(f, "{} Gradient: {stops}", self.gradient_type)
@@ -454,12 +518,12 @@ impl Gradient {
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
-				color: start_color.to_gamma_srgb(),
+				color: start_color,
 			},
 			GradientStop {
 				position: 1.,
 				midpoint: 0.5,
-				color: end_color.to_gamma_srgb(),
+				color: end_color,
 			},
 		]);
 
@@ -526,20 +590,25 @@ impl Gradient {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<core_types::table::Table<GradientStops>, D::Error> {
-	use core_types::table::Table;
+pub fn migrate_to_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GradientStops, D::Error> {
 	use serde::Deserialize;
+
+	#[derive(serde::Deserialize)]
+	struct LegacyTable {
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<GradientStops>,
+	}
 
 	#[derive(serde::Deserialize)]
 	#[cfg_attr(feature = "serde", serde(untagged))]
 	enum GradientStopsFormat {
-		GradientStops(GradientStops),
-		GradientTable(Table<GradientStops>),
+		Stops(GradientStops),
+		List(LegacyTable),
 	}
 
 	Ok(match GradientStopsFormat::deserialize(deserializer)? {
-		GradientStopsFormat::GradientStops(stops) => Table::new_from_element(stops),
-		GradientStopsFormat::GradientTable(table) => table,
+		GradientStopsFormat::Stops(stops) => stops,
+		GradientStopsFormat::List(list) => list.element.into_iter().next().unwrap_or_default(),
 	})
 }
 

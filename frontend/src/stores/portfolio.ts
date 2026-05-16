@@ -94,8 +94,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
-		const data = await upload(`image/*,.${editor.fileExtension()}`, "data");
-		editor.openFile(data.filename, data.content);
+		const files = await upload(`image/*,.${editor.fileExtension()}`, "data", true);
+		files.forEach((file) => editor.openFile(file.filename, file.content));
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerImport", async () => {

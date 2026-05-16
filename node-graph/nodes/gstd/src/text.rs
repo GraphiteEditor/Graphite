@@ -1,4 +1,5 @@
-use core_types::{Ctx, table::Table};
+use core_types::Ctx;
+use core_types::list::List;
 use graph_craft::application_io::PlatformEditorApi;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -61,7 +62,7 @@ fn text<'i: 'n>(
 	align: TextAlign,
 	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
 	separate_glyphs: bool,
-) -> Table<Vector> {
+) -> List<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size: size,
 		line_height_ratio: line_height,

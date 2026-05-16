@@ -13,6 +13,7 @@ use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
 use anyhow::Result;
 use core_types::Color;
+use core_types::color::SRGBA8;
 use futures::lock::Mutex;
 use glam::{Affine2, UVec2};
 use graphene_application_io::{ApplicationIo, EditorApi};
@@ -55,9 +56,9 @@ impl WgpuExecutor {
 
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		let [r, g, b, a] = background.unwrap_or(Color::TRANSPARENT).to_rgba8();
+		let SRGBA8 { red, green, blue, alpha } = background.unwrap_or(Color::TRANSPARENT).into();
 		let render_params = RenderParams {
-			base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
+			base_color: vello::peniko::Color::from_rgba8(red, green, blue, alpha),
 			width: size.x,
 			height: size.y,
 			antialiasing_method: AaConfig::Msaa16,

@@ -4,7 +4,11 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
+use graphene_std::list::List;
+use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::Vector;
+use graphene_std::{Artboard, Graphic};
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -53,16 +57,21 @@ impl TypeSource {
 		};
 		match self.compiled_nested_type() {
 			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
-				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => {
+				TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => {
 					FrontendGraphDataType::Number
 				}
-				TaggedValue::Artboard(_) => FrontendGraphDataType::Artboard,
-				TaggedValue::Graphic(_) => FrontendGraphDataType::Graphic,
-				TaggedValue::Raster(_) => FrontendGraphDataType::Raster,
-				TaggedValue::Vector(_) => FrontendGraphDataType::Vector,
 				TaggedValue::Color(_) => FrontendGraphDataType::Color,
-				TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => FrontendGraphDataType::Gradient,
+				TaggedValue::FillGradient(_) | TaggedValue::Gradient(_) => FrontendGraphDataType::Gradient,
 				TaggedValue::String(_) => FrontendGraphDataType::Typography,
+				// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
+				TaggedValue::TypeDefault(td) => match td.name.as_ref() {
+					n if n == std::any::type_name::<List<Graphic>>() => FrontendGraphDataType::Graphic,
+					n if n == std::any::type_name::<List<Artboard>>() => FrontendGraphDataType::Artboard,
+					n if n == std::any::type_name::<List<Raster<CPU>>>() => FrontendGraphDataType::Raster,
+					n if n == std::any::type_name::<List<Vector>>() => FrontendGraphDataType::Vector,
+					n if n == std::any::type_name::<List<String>>() => FrontendGraphDataType::Typography,
+					_ => FrontendGraphDataType::General,
+				},
 				_ => FrontendGraphDataType::General,
 			},
 			None => FrontendGraphDataType::General,
@@ -85,8 +94,8 @@ impl TypeSource {
 	/// The type to display in the tooltip label.
 	pub fn resolved_type_tooltip_string(&self) -> String {
 		match self {
-			TypeSource::Compiled(compiled_type) => format!("Data Type: {}", compiled_type.nested_type()),
-			TypeSource::TaggedValue(value_type) => format!("Data Type: {}", value_type.nested_type()),
+			TypeSource::Compiled(compiled_type) => compiled_type.nested_type().to_string(),
+			TypeSource::TaggedValue(value_type) => value_type.nested_type().to_string(),
 			TypeSource::Unknown => "Unknown Data Type".to_string(),
 			TypeSource::Invalid => "Invalid Type Combination".to_string(),
 			TypeSource::Error(_) => "Error Getting Data Type".to_string(),
@@ -244,8 +253,8 @@ impl NodeNetworkInterface {
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
 				implementations
-					.iter()
-					.filter_map(|(node_io, _)| {
+					.keys()
+					.filter_map(|node_io| {
 						// Check if this NodeIOTypes implementation is valid for the other inputs
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
@@ -284,8 +293,8 @@ impl NodeNetworkInterface {
 						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
 
 						implementations
-							.iter()
-							.filter_map(|(node_io, _)| {
+							.keys()
+							.filter_map(|node_io| {
 								if !valid_output_types.iter().any(|output_type| output_type.nested_type() == node_io.return_value.nested_type()) {
 									return None;
 								}

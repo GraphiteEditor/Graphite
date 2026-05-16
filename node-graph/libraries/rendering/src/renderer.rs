@@ -1,13 +1,14 @@
 use crate::render_ext::RenderExt;
-use crate::to_peniko::BlendModeExt;
+use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
+use core_types::color::SRGBA8;
+use core_types::list::{Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
@@ -273,19 +274,20 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 
 	let alpha = bg.a();
 
-	// Un-premultiply, then convert to gamma sRGB
-	let srgb = if alpha > f32::EPSILON {
-		Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb()
+	// Un-premultiply, then encode to gamma sRGB to do the composite in display space.
+	let (gamma_r, gamma_g, gamma_b) = if alpha > f32::EPSILON {
+		let [r, g, b, _] = Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb_channels();
+		(r, g, b)
 	} else {
-		Color::TRANSPARENT
+		(0., 0., 0.)
 	};
 
-	// Composite over black in sRGB space, then convert back to linear for luminance
-	let composited = Color::from_rgbaf32_unchecked(srgb.r() * alpha, srgb.g() * alpha, srgb.b() * alpha, 1.).to_linear_srgb();
+	// Composite over black in sRGB space (premultiplied by alpha), then decode to linear for the luminance test.
+	let composited = Color::from_gamma_srgb_channels(gamma_r * alpha, gamma_g * alpha, gamma_b * alpha, 1.);
 
 	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
 
-	if composited.luminance_srgb() > threshold { Color::BLACK } else { Color::WHITE }
+	if composited.luminance_rec_709() > threshold { Color::BLACK } else { Color::WHITE }
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -311,7 +313,7 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 	};
 
 	let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-	let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+	let outline_color_peniko = SRGBA8::from(outline_color).to_peniko_color();
 
 	(outline_stroke, outline_color_peniko)
 }
@@ -402,7 +404,7 @@ pub trait Render: BoundingBox + RenderComplexity {
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 
-	/// Like `add_upstream_click_targets` but for visual outlines. `Table<Vector>` overrides this to ignore `editor:click_target` so outlines reflect the actual geometry.
+	/// Like `add_upstream_click_targets` but for visual outlines. `List<Vector>` overrides this to ignore `editor:click_target` so outlines reflect the actual geometry.
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
 		self.add_upstream_click_targets(outlines);
 	}
@@ -423,23 +425,23 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_svg(render, render_params),
-			Graphic::Vector(table) => table.render_svg(render, render_params),
-			Graphic::RasterCPU(table) => table.render_svg(render, render_params),
+			Graphic::Graphic(list) => list.render_svg(render, render_params),
+			Graphic::Vector(list) => list.render_svg(render, render_params),
+			Graphic::RasterCPU(list) => list.render_svg(render, render_params),
 			Graphic::RasterGPU(_) => (),
-			Graphic::Color(table) => table.render_svg(render, render_params),
-			Graphic::Gradient(table) => table.render_svg(render, render_params),
+			Graphic::Color(list) => list.render_svg(render, render_params),
+			Graphic::Gradient(list) => list.render_svg(render, render_params),
 		}
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterCPU(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPU(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Color(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
+			Graphic::Graphic(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Vector(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterCPU(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::RasterGPU(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Color(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::Gradient(list) => list.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -449,100 +451,100 @@ impl Render for Graphic {
 				Graphic::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::Vector(table) => {
+				Graphic::Vector(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						let layer_path: Table<NodeId> = table.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+					if !list.is_empty() {
+						let layer_path: List<NodeId> = list.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
 						let layer = layer_path.iter_element_values().next_back().copied();
-						let transform: DAffine2 = table.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+						let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 
 						metadata.first_element_source_id.insert(element_id, layer);
 						metadata.local_transforms.insert(element_id, transform);
 					}
 				}
-				Graphic::RasterCPU(table) => {
+				Graphic::RasterCPU(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::RasterGPU(table) => {
+				Graphic::RasterGPU(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Color(table) => {
+				Graphic::Color(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
-				Graphic::Gradient(table) => {
+				Graphic::Gradient(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
-					if !table.is_empty() {
-						metadata.local_transforms.insert(element_id, table.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
 					}
 				}
 			}
 		}
 
 		match self {
-			Graphic::Graphic(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Vector(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterCPU(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterGPU(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Color(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Gradient(table) => table.collect_metadata(metadata, footprint, element_id),
+			Graphic::Graphic(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Vector(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterCPU(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::RasterGPU(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Color(list) => list.collect_metadata(metadata, footprint, element_id),
+			Graphic::Gradient(list) => list.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			Graphic::Graphic(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Vector(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::RasterCPU(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::RasterGPU(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Color(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Gradient(table) => table.add_upstream_click_targets(click_targets),
+			Graphic::Graphic(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Vector(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::RasterCPU(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::RasterGPU(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Color(list) => list.add_upstream_click_targets(click_targets),
+			Graphic::Gradient(list) => list.add_upstream_click_targets(click_targets),
 		}
 	}
 
 	fn add_upstream_outline_targets(&self, outlines: &mut Vec<ClickTarget>) {
 		match self {
-			Graphic::Graphic(table) => table.add_upstream_outline_targets(outlines),
-			Graphic::Vector(table) => table.add_upstream_outline_targets(outlines),
-			Graphic::RasterCPU(table) => table.add_upstream_outline_targets(outlines),
-			Graphic::RasterGPU(table) => table.add_upstream_outline_targets(outlines),
-			Graphic::Color(table) => table.add_upstream_outline_targets(outlines),
-			Graphic::Gradient(table) => table.add_upstream_outline_targets(outlines),
+			Graphic::Graphic(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Vector(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::RasterCPU(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::RasterGPU(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Color(list) => list.add_upstream_outline_targets(outlines),
+			Graphic::Gradient(list) => list.add_upstream_outline_targets(outlines),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::Graphic(table) => table.contains_artboard(),
-			Graphic::Vector(table) => table.contains_artboard(),
-			Graphic::RasterCPU(table) => table.contains_artboard(),
-			Graphic::RasterGPU(table) => table.contains_artboard(),
-			Graphic::Color(table) => table.contains_artboard(),
-			Graphic::Gradient(table) => table.contains_artboard(),
+			Graphic::Graphic(list) => list.contains_artboard(),
+			Graphic::Vector(list) => list.contains_artboard(),
+			Graphic::RasterCPU(list) => list.contains_artboard(),
+			Graphic::RasterGPU(list) => list.contains_artboard(),
+			Graphic::Color(list) => list.contains_artboard(),
+			Graphic::Gradient(list) => list.contains_artboard(),
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::Graphic(table) => table.new_ids_from_hash(reference),
-			Graphic::Vector(table) => table.new_ids_from_hash(reference),
+			Graphic::Graphic(list) => list.new_ids_from_hash(reference),
+			Graphic::Vector(list) => list.new_ids_from_hash(reference),
 			Graphic::RasterCPU(_) => (),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(_) => (),
@@ -551,19 +553,19 @@ impl Render for Graphic {
 	}
 }
 
-/// Reads the artboard metadata for the item at `index` from a `Table<Artboard>`.
-fn read_artboard_attributes(table: &Table<Artboard>, index: usize) -> (DVec2, DVec2, Color, bool) {
-	let location: DVec2 = table.attribute_cloned_or_default(ATTR_LOCATION, index);
-	let dimensions: DVec2 = table.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
-	let background: Color = table.attribute_cloned_or_default(ATTR_BACKGROUND, index);
-	let clip: bool = table.attribute_cloned_or_default(ATTR_CLIP, index);
+/// Reads the artboard metadata for the item at `index` from a `List<Artboard>`.
+fn read_artboard_attributes(list: &List<Artboard>, index: usize) -> (DVec2, DVec2, Color, bool) {
+	let location: DVec2 = list.attribute_cloned_or_default(ATTR_LOCATION, index);
+	let dimensions: DVec2 = list.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
+	let background: Color = list.attribute_cloned_or_default(ATTR_BACKGROUND, index);
+	let clip: bool = list.attribute_cloned_or_default(ATTR_CLIP, index);
 	(location, dimensions, background, clip)
 }
 
-impl Render for Table<Artboard> {
+impl Render for List<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
-			let Some(content) = self.element(index).map(Artboard::as_graphic_table) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
 			let x = location.x.min(location.x + dimensions.x);
@@ -573,7 +575,7 @@ impl Render for Table<Artboard> {
 
 			// Background
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", background.to_rgb_hex_srgb_from_gamma()));
+				attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
 				if background.a() < 1. {
 					attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -621,7 +623,7 @@ impl Render for Table<Artboard> {
 		use vello::peniko;
 
 		for index in 0..self.len() {
-			let Some(content) = self.element(index).map(Artboard::as_graphic_table) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
 
 			let [a, b] = [location, location + dimensions];
@@ -629,7 +631,7 @@ impl Render for Table<Artboard> {
 
 			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
 
-			let color = peniko::Color::new([background.r(), background.g(), background.b(), background.a()]);
+			let color = SRGBA8::from(background).to_peniko_color();
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
 			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
 			scene.pop_layer();
@@ -651,10 +653,10 @@ impl Render for Table<Artboard> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
 		for index in 0..self.len() {
-			let Some(content) = self.element(index).map(Artboard::as_graphic_table) else { continue };
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, _background, clip) = read_artboard_attributes(self, index);
 
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let element_id = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = element_id {
@@ -688,7 +690,7 @@ impl Render for Table<Artboard> {
 	}
 }
 
-impl Render for Table<Graphic> {
+impl Render for List<Graphic> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut mask_state = None;
 
@@ -826,7 +828,7 @@ impl Render for Table<Graphic> {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for index in 0..self.len() {
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 			let element = self.element(index).unwrap();
 
@@ -908,14 +910,14 @@ impl Render for Table<Graphic> {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		let (elements, layers) = self.element_and_attribute_slices_mut::<Table<NodeId>>(ATTR_EDITOR_LAYER_PATH);
+		let (elements, layers) = self.element_and_attribute_slices_mut::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH);
 		for (element, layer) in elements.iter_mut().zip(layers.iter()) {
 			element.new_ids_from_hash(layer.iter_element_values().next_back().copied());
 		}
 	}
 }
 
-impl Render for Table<Vector> {
+impl Render for List<Vector> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(vector) = self.element(index) else { continue };
@@ -987,7 +989,7 @@ impl Render for Table<Vector> {
 
 				// The mask must draw at full alpha so the SVG `<mask>`/`<clipPath>` fully zeroes the path interior.
 				// The wrapping SVG group (above) handles the user-set opacity.
-				let vector_item = Table::new_from_row(TableRow::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, multiplied_transform));
+				let vector_item = List::new_from_item(Item::new_from_element(cloned_vector).with_attribute(ATTR_TRANSFORM, multiplied_transform));
 
 				(id, mask_type, vector_item)
 			});
@@ -1182,7 +1184,7 @@ impl Render for Table<Vector> {
 			// Closures to avoid duplicated fill/stroke drawing logic
 			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match element.style.fill() {
 				Fill::Solid(color) => {
-					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
+					let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 				}
 				Fill::Gradient(gradient) => {
@@ -1190,7 +1192,7 @@ impl Render for Table<Vector> {
 					for (position, color, _) in gradient.stops.interpolated_samples() {
 						stops.push(peniko::ColorStop {
 							offset: position as f32,
-							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+							color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
 						});
 					}
 
@@ -1267,7 +1269,7 @@ impl Render for Table<Vector> {
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
 				if let Some(stroke) = element.style.stroke() {
 					let color = match stroke.color {
-						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
+						Some(color) => SRGBA8::from(color).to_peniko_color(),
 						None => peniko::Color::TRANSPARENT,
 					};
 					let cap = match stroke.cap {
@@ -1312,7 +1314,7 @@ impl Render for Table<Vector> {
 
 						// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
 						// The outer opacity/blend layer (above) handles the user-set opacity.
-						let vector_table = Table::new_from_row(TableRow::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
+						let vector_list = List::new_from_item(Item::new_from_element(cloned_element).with_attribute(ATTR_TRANSFORM, item_transform));
 
 						let bounds = element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
 						// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
@@ -1330,7 +1332,7 @@ impl Render for Table<Vector> {
 
 						if wants_stroke_below {
 							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+							vector_list.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
@@ -1344,7 +1346,7 @@ impl Render for Table<Vector> {
 							do_fill(scene);
 
 							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+							vector_list.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
@@ -1382,7 +1384,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
-		// Aggregate all items' targets per element_id so multi-item tables (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
+		// Aggregate all items' targets per element_id so multi-item lists (e.g. 'Text' node with "Separate Glyphs" active) produce hit areas for every glyph.
 		// Targets are baked relative to item 0's transform since `Graphic::collect_metadata` records that as `local_transforms[element_id]`.
 		let item_zero_transform: DAffine2 = if !self.is_empty() {
 			self.attribute_cloned_or_default(ATTR_TRANSFORM, 0)
@@ -1401,7 +1403,7 @@ impl Render for Table<Vector> {
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let layer_path: Table<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
+			let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, index);
 			let layer = layer_path.iter_element_values().next_back().copied();
 
 			if let Some(element_id) = caller_element_id.or(layer) {
@@ -1440,7 +1442,7 @@ impl Render for Table<Vector> {
 			// If this item carries a snapshot of upstream graphic content (e.g. it was produced by Boolean Operation,
 			// Flatten Path, Morph, or any other destructive merge), recurse into that snapshot so the editor can
 			// surface the original child layers' click targets.
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, index);
 			if !upstream_nested_layers.is_empty() {
 				let mut upstream_footprint = footprint;
 				upstream_footprint.transform *= transform;
@@ -1524,7 +1526,7 @@ fn extend_free_point_targets(vector: &Vector, transform: DAffine2) -> impl Itera
 	})
 }
 
-impl Render for Table<Raster<CPU>> {
+impl Render for List<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(image) = self.element(index) else { continue };
@@ -1673,7 +1675,7 @@ impl Render for Table<Raster<CPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
+		// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 		if !self.is_empty() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 			metadata.local_transforms.insert(element_id, transform);
@@ -1684,7 +1686,7 @@ impl Render for Table<Raster<CPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1699,7 +1701,7 @@ impl Render for Table<Raster<CPU>> {
 
 static LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
-impl Render for Table<Raster<GPU>> {
+impl Render for List<Raster<GPU>> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}
@@ -1768,7 +1770,7 @@ impl Render for Table<Raster<GPU>> {
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		// TODO: Find a way to handle more than one item of the `Table<Raster<...>>`
+		// TODO: Find a way to handle more than one item of the `List<Raster<...>>`
 		if !self.is_empty() {
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 			metadata.local_transforms.insert(element_id, transform);
@@ -1779,7 +1781,7 @@ impl Render for Table<Raster<GPU>> {
 			// The snapshot was captured before Rasterize shifted its input transforms to align with the rasterization
 			// area, so the children are already in the coordinate space matching `footprint` here — we must NOT
 			// multiply in `transform` (which is the rasterization area, not a layer-stack transform).
-			let upstream_nested_layers = self.attribute_cloned_or_default::<Table<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
+			let upstream_nested_layers = self.attribute_cloned_or_default::<List<Graphic>>(ATTR_EDITOR_MERGED_LAYERS, 0);
 			if !upstream_nested_layers.is_empty() {
 				upstream_nested_layers.collect_metadata(metadata, footprint, None);
 			}
@@ -1798,7 +1800,7 @@ impl Render for Table<Raster<GPU>> {
 // For SVG, this is is achived by creating a truly giant rectangle.
 // For Vello, we create a layer with a placeholder transform which we
 // later replace with the current viewport transform before each render.
-impl Render for Table<Color> {
+impl Render for List<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for (index, color) in self.iter_element_values().enumerate() {
 			let blend_mode: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
@@ -1811,7 +1813,7 @@ impl Render for Table<Color> {
 				const MAX: f64 = 1e7;
 				attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 
-				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+				attributes.push("fill", format!("#{}", SRGBA8::from(*color).to_rgb_hex()));
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -1838,7 +1840,7 @@ impl Render for Table<Color> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+			let vello_color = SRGBA8::from(*color).to_peniko_color();
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
@@ -1858,7 +1860,7 @@ impl Render for Table<Color> {
 	}
 }
 
-impl Render for Table<GradientStops> {
+impl Render for List<GradientStops> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		// For thumbnails the gradient fills a finite rect at the footprint's document space bounds, with a 1-unit margin to cover the `as u32` truncation of `Footprint::resolution`.
 		// The viewBox crops the overshoot. Canvas rendering keeps the polyline path since Chrome rejects rects larger than ~20 million.
@@ -1895,7 +1897,7 @@ impl Render for Table<GradientStops> {
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in gradient.interpolated_samples() {
-					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
+					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, SRGBA8::from(color).to_rgb_hex());
 					if color.a() < 1. {
 						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
 					}
@@ -1977,7 +1979,7 @@ impl Render for Table<GradientStops> {
 			for (position, color, _) in gradient.interpolated_samples() {
 				stops.push(peniko::ColorStop {
 					offset: position as f32,
-					color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+					color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
 				})
 			}
 
@@ -2017,7 +2019,7 @@ impl Render for Table<GradientStops> {
 			let mut layer = false;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				// See implementation in `Table<Color>` for more detail
+				// See implementation in `List<Color>` for more detail
 				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}

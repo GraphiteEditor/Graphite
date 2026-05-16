@@ -120,7 +120,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 63" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Table-based graphical data format</span>
+			<span>List-based graphical data format</span>
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 67" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -148,7 +148,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Custom attributes for table data</span>
+			<span>Custom attributes for list data</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />

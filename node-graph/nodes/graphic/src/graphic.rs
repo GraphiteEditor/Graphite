@@ -1,10 +1,10 @@
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
-use core_types::table::{AttributeColumnDyn, AttributeValueDyn, Table, TableDyn, TableRow};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::graphic::{Graphic, IntoGraphicTable};
+use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::gradient::{GradientSpreadMethod, GradientType};
@@ -17,17 +17,17 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<String>,
-		Table<f64>,
-		Table<u8>,
-		Table<NodeId>,
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<String>,
+		List<f64>,
+		List<u8>,
+		List<NodeId>,
 	)]
 	list: T,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -48,14 +48,14 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
-		Table<String>,
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<String>,
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	list: T,
 	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
@@ -70,30 +70,30 @@ pub fn omit_element<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	}
 }
 
-/// Returns the bare element (without the item's attributes) at the specified index in a `Table`.
-/// Use this when downstream nodes want just the inner value rather than a `Table` containing a single item.
+/// Returns the bare element (without the item's attributes) at the specified index in a `List`.
+/// Use this when downstream nodes want just the inner value rather than a `List` containing a single item.
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"))]
 pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
-	/// The `Table` of data to extract from.
+	/// The `List` of data to extract from.
 	#[implementations(
-		Table<String>,
-		Table<f64>,
-		Table<u8>,
-		Table<NodeId>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Graphic>,
-		Table<Artboard>,
+		List<String>,
+		List<f64>,
+		List<u8>,
+		List<NodeId>,
+		List<Color>,
+		List<GradientStops>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Graphic>,
+		List<Artboard>,
 	)]
-	table: Table<T>,
+	list: List<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
 	index: SignedInteger,
 ) -> T {
-	let len = table.len();
+	let len = list.len();
 	let index = index as i32;
 	let resolved = if index < 0 {
 		let from_end = index.unsigned_abs() as usize;
@@ -104,37 +104,37 @@ pub fn extract_element<T: Clone + Default + Send + Sync + 'static>(
 	} else {
 		index as usize
 	};
-	table.element(resolved).cloned().unwrap_or_default()
+	list.element(resolved).cloned().unwrap_or_default()
 }
 
 #[node_macro::node(category("General"))]
 async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	content: Table<Item>,
+	content: List<Item>,
 	#[implementations(
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
 	)]
-	mapped: impl Node<Context<'static>, Output = Table<Item>>,
-) -> Table<Item> {
-	let mut rows = Table::new();
+	mapped: impl Node<Context<'static>, Output = List<Item>>,
+) -> List<Item> {
+	let mut rows = List::new();
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
-		let table = mapped.eval(owned_ctx.into_context()).await;
+		let owned_ctx = owned_ctx.with_vararg(Box::new(List::new_from_item(row))).with_index(i);
+		let list = mapped.eval(owned_ctx.into_context()).await;
 
-		rows.extend(table);
+		rows.extend(list);
 	}
 
 	rows
@@ -144,20 +144,20 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 async fn mirror<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	content: Table<T>,
+	content: List<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> Table<T>
+) -> List<T>
 where
-	Table<T>: BoundingBox,
+	List<T>: BoundingBox,
 {
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
@@ -186,12 +186,12 @@ where
 		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
 	};
 
-	let mut result_table = Table::new();
+	let mut result_list = List::new();
 
 	// Add original items depending on the keep_original flag
 	if keep_original {
 		for item in content.clone().into_iter() {
-			result_table.push(item);
+			result_list.push(item);
 		}
 	}
 
@@ -199,10 +199,10 @@ where
 	for mut row in content.into_iter() {
 		let current_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
 		row.set_attribute(ATTR_TRANSFORM, reflected_transform * current_transform);
-		result_table.push(row);
+		result_list.push(row);
 	}
 
-	result_table
+	result_list
 }
 
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
@@ -212,13 +212,13 @@ where
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
-pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> {
+pub fn path_of_subgraph(_: impl Ctx, node_path: List<NodeId>) -> List<NodeId> {
 	let len = node_path.len();
 	node_path.into_iter().take(len.saturating_sub(1)).collect()
 }
 
-/// Sets a named attribute on the input `Table`, computing one value per item via the value-producing input. That input
-/// is evaluated once per item, with the item's index and the item itself (as a `Table` containing only that item,
+/// Sets a named attribute on the input `List`, computing one value per item via the value-producing input. That input
+/// is evaluated once per item, with the item's index and the item itself (as a `List` containing only that item,
 /// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
 /// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
 /// The value is type-erased into an `AttributeValueDyn` by an auto-inserted convert node, so this node only
@@ -226,98 +226,98 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Table<NodeId>) -> Table<NodeId> 
 #[node_macro::node(category("Attributes: Write"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
-	/// The `Table` to set the named attribute on (one value per item).
+	/// The `List` to set the named attribute on (one value per item).
 	#[implementations(
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<f64>,
-		Table<bool>,
-		Table<String>,
-		Table<DAffine2>,
-		Table<BlendMode>,
-		Table<GradientType>,
-		Table<GradientSpreadMethod>,
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<f64>,
+		List<bool>,
+		List<String>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
-	mut content: Table<T>,
+	mut content: List<T>,
 	/// The attribute name (key) to write or replace.
 	name: String,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
 	#[implementations(Context -> AttributeValueDyn)]
 	value: impl Node<'n, Context<'static>, Output = AttributeValueDyn>,
-) -> Table<T> {
+) -> List<T> {
 	for index in 0..content.len() {
-		let row = content.clone_row(index).expect("index is within bounds");
-		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(Table::new_from_row(row))).with_index(index);
+		let row = content.clone_item(index).expect("index is within bounds");
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(List::new_from_item(row))).with_index(index);
 		let v = value.eval(owned_ctx.into_context()).await;
-		content.set_attribute_dyn(&name, index, v);
+		content.set_attribute_value_dyn(&name, index, v);
 	}
 	content
 }
 
-/// Sets a named attribute on the primary table, with each value taken from the corresponding item's element in the source table (paired by index, wrapping if the source has fewer items).
-/// The source is type-erased into an `AttributeColumnDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
+/// Sets a named attribute on the primary list, with each value taken from the corresponding item's element in the source list (paired by index, wrapping if the source has fewer items).
+/// The source is type-erased into an `AttributeDyn` by an auto-inserted convert node, so this node only monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
 fn attach_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	_: impl Ctx,
-	/// The `Table` to attach the new attribute to.
+	/// The `List` to attach the new attribute to.
 	#[implementations(
-		Table<Artboard>,
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-		Table<f64>,
-		Table<bool>,
-		Table<String>,
-		Table<DAffine2>,
-		Table<BlendMode>,
-		Table<GradientType>,
-		Table<GradientSpreadMethod>,
+		List<Artboard>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
+		List<f64>,
+		List<bool>,
+		List<String>,
+		List<DAffine2>,
+		List<BlendMode>,
+		List<GradientType>,
+		List<GradientSpreadMethod>,
 	)]
-	mut content: Table<T>,
-	/// The source values to attach. Any `Table<U>` wired here is type-erased via an auto-inserted convert.
+	mut content: List<T>,
+	/// The source values to attach. Any `List<U>` wired here is type-erased via an auto-inserted convert.
 	#[expose]
-	source: AttributeColumnDyn,
+	source: AttributeDyn,
 	/// The name to assign to the new destination attribute.
 	name: String,
-) -> Table<T> {
+) -> List<T> {
 	if source.is_empty() {
 		return content;
 	}
-	content.set_column_dyn(name, source);
+	content.set_attribute_dyn(name, source);
 	content
 }
 
-/// Reads a named `Vector` attribute from the input table, outputting each value as an element of a new `Table<Vector>`.
+/// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `List<Vector>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_vector(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<Vector> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<Vector> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
 
-/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input table, outputting each value as an element of a new `Table<f64>`. Integer values are converted to `f64`.
+/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `List<f64>`. Integer values are converted to `f64`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_number(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<f64> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<f64> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let value = content
 			.attribute::<f64>(&name, index)
@@ -325,183 +325,183 @@ fn read_attribute_number(
 			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
 			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
-		result.push(TableRow::new_from_element(value));
+		result.push(Item::new_from_element(value));
 	}
 	result
 }
 
-/// Reads a named `bool` attribute from the input table, outputting each value as an element of a new `Table<bool>`.
+/// Reads a named `bool` attribute from the input list, outputting each value as an element of a new `List<bool>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_bool(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<bool> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<bool> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `String` attribute from the input table, outputting each value as an element of a new `Table<String>`.
+/// Reads a named `String` attribute from the input list, outputting each value as an element of a new `List<String>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_string(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<String> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<String> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<String>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
 
-/// Reads a named `DAffine2` transform attribute from the input table, outputting each value as an element of a new `Table<DAffine2>`.
+/// Reads a named `DAffine2` transform attribute from the input list, outputting each value as an element of a new `List<DAffine2>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_transform(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<DAffine2> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<DAffine2> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `Color` attribute from the input table, outputting each value as an element of a new `Table<Color>`.
+/// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `List<Color>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_color(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<Color> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<Color> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `BlendMode` attribute from the input table, outputting each value as an element of a new `Table<BlendMode>`.
+/// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `List<BlendMode>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_blend_mode(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<BlendMode> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<BlendMode> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `GradientType` attribute from the input table, outputting each value as an element of a new `Table<GradientType>`.
+/// Reads a named `GradientType` attribute from the input list, outputting each value as an element of a new `List<GradientType>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_gradient_type(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<GradientType> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<GradientType> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientType>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `GradientSpreadMethod` attribute from the input table, outputting each value as an element of a new `Table<GradientSpreadMethod>`.
+/// Reads a named `GradientSpreadMethod` attribute from the input list, outputting each value as an element of a new `List<GradientSpreadMethod>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_spread_method(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<GradientSpreadMethod> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<GradientSpreadMethod> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientSpreadMethod>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(*value));
+		result.push(Item::new_from_element(*value));
 	}
 	result
 }
 
-/// Reads a named `GradientStops` attribute from the input table, outputting each value as an element of a new `Table<GradientStops>`.
+/// Reads a named `GradientStops` attribute from the input list, outputting each value as an element of a new `List<GradientStops>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_gradient_stops(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<GradientStops> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<GradientStops> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<GradientStops>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
 
-/// Reads a named `Artboard` attribute from the input table, outputting each value as an element of a new `Table<Artboard>`.
+/// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `List<Artboard>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_artboard(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<Artboard> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<Artboard> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
 
-/// Reads a named `Raster<CPU>` attribute from the input table, outputting each value as an element of a new `Table<Raster<CPU>>`.
+/// Reads a named `Raster<CPU>` attribute from the input list, outputting each value as an element of a new `List<Raster<CPU>>`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_raster(
 	_: impl Ctx,
-	content: TableDyn,
+	content: ListDyn,
 	/// The attribute name (key) to read.
 	name: String,
-) -> Table<Raster<CPU>> {
-	let mut result = Table::with_capacity(content.len());
+) -> List<Raster<CPU>> {
+	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
 		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(TableRow::new_from_element(value.clone()));
+		result.push(Item::new_from_element(value.clone()));
 	}
 	result
 }
 
-/// Joins two `Table`s of the same type, extending the base `Table` with the items from the new `Table`.
+/// Joins two `List`s of the same type, extending the base `List` with the items from the new `List`.
 #[node_macro::node(category("General"))]
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	/// The `Table` whose items will appear at the start of the extended `Table`.
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
-	base: Table<T>,
-	/// The `Table` whose items will appear at the end of the extended `Table`.
+	/// The `List` whose items will appear at the start of the extended `List`.
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	base: List<T>,
+	/// The `List` whose items will appear at the end of the extended `List`.
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
-	new: Table<T>,
-) -> Table<T> {
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	new: List<T>,
+) -> List<T> {
 	let mut base = base;
 	base.extend(new);
 
@@ -514,12 +514,12 @@ pub async fn extend<T: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] base: Table<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
 	#[expose]
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
-	new: Table<T>,
-	nested_node_path: Table<NodeId>,
-) -> Table<T> {
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	new: List<T>,
+	nested_node_path: List<NodeId>,
+) -> List<T> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
 	let layer = {
@@ -542,46 +542,46 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Graphic>,
-	 	Table<Vector>,
-		Table<Raster<CPU>>,
-	 	Table<Raster<GPU>>,
-	 	Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+	 	List<Vector>,
+		List<Raster<CPU>>,
+	 	List<Raster<GPU>>,
+	 	List<Color>,
+		List<GradientStops>,
 		DAffine2,
 	)]
 	content: T,
-) -> Table<Graphic> {
-	Table::new_from_element(content.into())
+) -> List<Graphic> {
+	List::new_from_element(content.into())
 }
 
-/// Converts a `Table` of graphical content into a `Table<Graphic>` by placing it into an element of a new wrapper `Table<Graphic>`.
-/// If it is already a `Table<Graphic>`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
+/// Converts a `List` of graphical content into a `List<Graphic>` by placing it into an element of a new wrapper `List<Graphic>`.
+/// If it is already a `List<Graphic>`, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
 #[node_macro::node(category("General"))]
-pub async fn to_graphic<T: IntoGraphicTable + 'n>(
+pub async fn to_graphic<T: IntoGraphicList + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	content: T,
-) -> Table<Graphic> {
-	content.into_graphic_table()
+) -> List<Graphic> {
+	content.into_graphic_list()
 }
 
-/// Removes a level of nesting from a `Table<Graphic>`, or all nesting if "Fully Flatten" is enabled.
+/// Removes a level of nesting from a `List<Graphic>`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
-pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
-	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
-	fn flatten_table(output_graphic_table: &mut Table<Graphic>, current_graphic_table: Table<Graphic>, fully_flatten: bool, recursion_depth: usize) {
-		for index in 0..current_graphic_table.len() {
-			let Some(current_element) = current_graphic_table.element(index) else { continue };
+pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: bool) -> List<Graphic> {
+	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
+	fn flatten_list(output_graphic_list: &mut List<Graphic>, current_graphic_list: List<Graphic>, fully_flatten: bool, recursion_depth: usize) {
+		for index in 0..current_graphic_list.len() {
+			let Some(current_element) = current_graphic_list.element(index) else { continue };
 			let current_element = current_element.clone();
-			let current_transform: DAffine2 = current_graphic_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let current_transform: DAffine2 = current_graphic_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let recurse = fully_flatten || recursion_depth == 0;
 
@@ -593,82 +593,82 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 						*graphic_transform = current_transform * *graphic_transform;
 					}
 
-					flatten_table(output_graphic_table, current_element, fully_flatten, recursion_depth + 1);
+					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
 				}
 				// Push any leaf elements we encounter: either `Graphic::Graphic(...)` values beyond the recursion depth, or non-`Graphic::Graphic` variants (e.g. `Graphic::Vector`, `Graphic::Raster*`, `Graphic::Color`, `Graphic::Gradient`)
 				_ => {
-					let attributes = current_graphic_table.clone_row_attributes(index);
-					output_graphic_table.push(TableRow::from_parts(current_element, attributes));
+					let attributes = current_graphic_list.clone_item_attributes(index);
+					output_graphic_list.push(Item::from_parts(current_element, attributes));
 				}
 			}
 		}
 	}
 
-	let mut output = Table::new();
-	flatten_table(&mut output, content, fully_flatten, 0);
+	let mut output = List::new();
+	flatten_list(&mut output, content, fully_flatten, 0);
 
 	output
 }
 
-/// Converts a `Table<Graphic>` into a `Table<Vector>` by deeply flattening any vector content it contains, and discarding any non-vector content.
+/// Converts a `List<Graphic>` into a `List<Vector>` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
-	let graphic_table = content.into_graphic_table();
-	let mut output: Table<Vector> = graphic_table.clone().into_flattened_table();
+pub async fn flatten_vector<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
+	let graphic_list = content.into_graphic_list();
+	let mut output: List<Vector> = graphic_list.clone().into_flattened_list();
 
 	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
-	// TODO: Flattening here erases the upstream `Table<Graphic>` hierarchy that editor metadata collection walks
+	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
 	// TODO: to populate `upstream_footprints` / `local_transforms` / `click_targets` per child layer. As a workaround
-	// TODO: we stash the pre-flattened table on the output so `Table<Vector>::collect_metadata` can recurse into it,
+	// TODO: we stash the pre-flattened list on the output so `List<Vector>::collect_metadata` can recurse into it,
 	// TODO: which conflates render output with editor metadata and forces the pre-compensation dance below.
-	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, Table<Graphic>)`,
+	// TODO: The cleaner fix is to drive each layer's metadata from its own Monitor's captured `(Context, List<Graphic>)`,
 	// TODO: at which point this attribute (and the equivalents in Boolean Operation, Solidify Stroke, Flatten Path,
 	// TODO: Morph, Rasterize) become unnecessary.
 	if !output.is_empty() {
 		// Item 0 carries a composed transform inherited from the flattened input, but the merged_layers
 		// already holds the original transforms; pre-compensate by item 0's inverse so the renderer's
 		// `upstream_footprint *= item_0_transform` recursion cancels out and leaves the originals intact.
-		let mut graphic_table = graphic_table;
+		let mut graphic_list = graphic_list;
 		let item_0_transform: DAffine2 = output.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		if item_0_transform.matrix2.determinant().abs() > f64::EPSILON {
 			let inverse = item_0_transform.inverse();
-			for transform in graphic_table.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+			for transform in graphic_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 				*transform = inverse * *transform;
 			}
 		}
 
-		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_table);
+		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, graphic_list);
 	}
 
 	output
 }
 
-/// Converts a `Table<Graphic>` into a `Table<Raster>` by deeply flattening any raster content it contains, and discarding any non-raster content.
+/// Converts a `List<Graphic>` into a `List<Raster>` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
-pub async fn flatten_raster<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Raster<CPU>>)] content: T) -> Table<Raster<CPU>> {
-	content.into_flattened_table()
+pub async fn flatten_raster<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Raster<CPU>>)] content: T) -> List<Raster<CPU>> {
+	content.into_flattened_list()
 }
 
-/// Converts a `Table<Graphic>` into a `Table<Color>` by deeply flattening any color content it contains, and discarding any non-color content.
+/// Converts a `List<Graphic>` into a `List<Color>` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_color<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] content: T) -> Table<Color> {
-	content.into_flattened_table()
+pub async fn flatten_color<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] content: T) -> List<Color> {
+	content.into_flattened_list()
 }
 
-/// Converts a `Table<Graphic>` into a `Table<GradientStops>` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
+/// Converts a `List<Graphic>` into a `List<GradientStops>` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<GradientStops>)] content: T) -> Table<GradientStops> {
-	content.into_flattened_table()
+pub async fn flatten_gradient<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<GradientStops>)] content: T) -> List<GradientStops> {
+	content.into_flattened_list()
 }
 
-/// Constructs a gradient from a `Table<Color>`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
+/// Constructs a gradient from a `List<Color>`, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
-fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> Table<GradientStops> {
-	let colors = colors.into_flattened_table::<Color>();
+fn colors_to_gradient<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Color>)] colors: T) -> List<GradientStops> {
+	let colors = colors.into_flattened_list::<Color>();
 	let total_colors = colors.len();
 
 	if total_colors == 0 {
-		return Table::new_from_element(GradientStops::new(vec![
+		return List::new_from_element(GradientStops::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -683,7 +683,7 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 	}
 
 	if let (1, Some(&single_color)) = (total_colors, colors.element(0)) {
-		return Table::new_from_element(GradientStops::new(vec![
+		return List::new_from_element(GradientStops::new(vec![
 			GradientStop {
 				position: 0.,
 				midpoint: 0.5,
@@ -702,5 +702,5 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 		midpoint: 0.5,
 		color: row.into_element(),
 	});
-	Table::new_from_element(GradientStops::new(colors))
+	List::new_from_element(GradientStops::new(colors))
 }

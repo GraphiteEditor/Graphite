@@ -1,6 +1,10 @@
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
+use graphene_std::list::List;
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::vector::Vector;
+use graphene_std::{Artboard, Graphic};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
@@ -21,14 +25,19 @@ pub enum FrontendGraphDataType {
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Table(_) | TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Artboard(_) => Self::Artboard,
-			TaggedValue::Graphic(_) => Self::Graphic,
-			TaggedValue::Raster(_) => Self::Raster,
-			TaggedValue::Vector(_) => Self::Vector,
+			TaggedValue::U32(_) | TaggedValue::U64(_) | TaggedValue::F32(_) | TaggedValue::F64(_) | TaggedValue::DVec2(_) | TaggedValue::F64Array(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::Gradient(_) | TaggedValue::GradientTable(_) => Self::Gradient,
-			TaggedValue::String(_) | TaggedValue::StringTable(_) => Self::Typography,
+			TaggedValue::FillGradient(_) | TaggedValue::Gradient(_) => Self::Gradient,
+			TaggedValue::String(_) => Self::Typography,
+			// Types whose `TaggedValue` variant has been removed are routed through `TypeDefault` and identified by the descriptor's type name.
+			TaggedValue::TypeDefault(td) => match td.name.as_ref() {
+				n if n == std::any::type_name::<List<Graphic>>() => Self::Graphic,
+				n if n == std::any::type_name::<List<Artboard>>() => Self::Artboard,
+				n if n == std::any::type_name::<List<Raster<CPU>>>() => Self::Raster,
+				n if n == std::any::type_name::<List<Vector>>() => Self::Vector,
+				n if n == std::any::type_name::<List<String>>() => Self::Typography,
+				_ => Self::General,
+			},
 			_ => Self::General,
 		}
 	}

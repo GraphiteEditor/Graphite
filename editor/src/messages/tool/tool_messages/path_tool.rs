@@ -214,7 +214,7 @@ impl LayoutHolder for PathTool {
 		let x_location = NumberInput::new(x)
 			.unit(" px")
 			.label("X")
-			.min_width(120)
+			.min_width(80)
 			.disabled(x.is_none())
 			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
@@ -230,7 +230,7 @@ impl LayoutHolder for PathTool {
 		let y_location = NumberInput::new(y)
 			.unit(" px")
 			.label("Y")
-			.min_width(120)
+			.min_width(80)
 			.disabled(y.is_none())
 			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
@@ -2850,13 +2850,10 @@ impl Fsm for PathToolFsmState {
 							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
 							// Defaults chosen because the pasted geometry has no inherent associated style
-							let stroke_color = Color::BLACK;
-							let fill_color = Color::WHITE;
-
-							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+							let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
 							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 
-							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+							let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
 							responses.add(GraphOperationMessage::FillSet { layer, fill });
 
 							new_layers.push(layer);

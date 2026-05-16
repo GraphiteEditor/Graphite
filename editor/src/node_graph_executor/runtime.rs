@@ -9,13 +9,13 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
+use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::table::Table;
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
@@ -432,8 +432,8 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Graphic table: thumbnail
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
+			// Graphic list: thumbnail
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
 				if update_thumbnails {
 					let bounds = io.output.thumbnail_bounding_box(DAffine2::IDENTITY, true);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
@@ -441,14 +441,14 @@ impl NodeRuntime {
 			}
 			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
 			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
 				if update_thumbnails {
 					let bounds = artboard_clip_bounds(&io.output);
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
-			// Vector table: vector modifications
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
+			// Vector list: vector modifications
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
 				// Insert the vector modify
 				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
@@ -522,7 +522,7 @@ impl NodeRuntime {
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
 /// framing matches what's actually visible after clipping rather than the unclipped content extents.
-fn artboard_clip_bounds(artboards: &Table<Artboard>) -> RenderBoundingBox {
+fn artboard_clip_bounds(artboards: &List<Artboard>) -> RenderBoundingBox {
 	let mut combined: Option<[DVec2; 2]> = None;
 	for index in 0..artboards.len() {
 		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);

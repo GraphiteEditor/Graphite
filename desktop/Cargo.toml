@@ -48,6 +48,7 @@ lzma-rust2 = { workspace = true }
 serde = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 clap = { workspace = true, features = ["derive"] }
+interprocess = "2.4.2"
 fd-lock = "4.0.4"
 ctrlc = "3.5.1"
 window_clipboard = "0.5"

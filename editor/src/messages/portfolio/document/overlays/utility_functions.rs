@@ -241,7 +241,7 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 		max_width: None,
 		max_height: None,
 		tilt: 0.0,
-		align: TextAlign::Left,
+		align: TextAlign::AlignLeft,
 	};
 
 	// Load Source Sans Pro font data

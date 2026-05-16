@@ -819,6 +819,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Load the document into the portfolio so it opens in the editor
 				self.load_document(document, document_id, responses);
+
+				responses.add(AppWindowMessage::Focus);
 			}
 			PortfolioMessage::OpenImage { name, image } => {
 				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
@@ -997,13 +999,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						});
 
 						// Add default fill and stroke to the layer
-						let fill_color = Color::WHITE;
-						let stroke_color = Color::BLACK;
-
-						let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+						let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
 						responses.add(GraphOperationMessage::FillSet { layer, fill });
 
-						let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+						let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
 						responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 
 						// Create new point ids and add those into the existing Vector path

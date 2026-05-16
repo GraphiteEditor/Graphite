@@ -3,20 +3,20 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
-	import { createColor } from "/src/utility-functions/colors";
-	import type { Color } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { createSRgba8 } from "/src/utility-functions/colors";
+	import type { SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type PresetColor = "Black" | "White" | "Red" | "Yellow" | "Green" | "Cyan" | "Blue" | "Magenta";
 
 	const PURE_COLORS: Record<PresetColor, [number, number, number]> = {
 		Black: [0, 0, 0],
-		White: [1, 1, 1],
-		Red: [1, 0, 0],
-		Yellow: [1, 1, 0],
-		Green: [0, 1, 0],
-		Cyan: [0, 1, 1],
-		Blue: [0, 0, 1],
-		Magenta: [1, 0, 1],
+		White: [255, 255, 255],
+		Red: [255, 0, 0],
+		Yellow: [255, 255, 0],
+		Green: [0, 255, 0],
+		Cyan: [0, 255, 255],
+		Blue: [0, 0, 255],
+		Magenta: [255, 0, 255],
 	};
 	const PURE_COLORS_GRAYABLE: [PresetColor, string, string][] = [
 		["Red", "#ff0000", "#4c4c4c"],
@@ -28,7 +28,7 @@
 	];
 
 	const dispatch = createEventDispatcher<{
-		preset: Color | "None";
+		preset: SRGBA8 | "None";
 		eyedropperColorCode: string;
 	}>();
 
@@ -37,7 +37,7 @@
 
 	function pickPreset(preset: PresetColor | "None") {
 		if (disabled) return;
-		dispatch("preset", preset === "None" ? "None" : createColor(...PURE_COLORS[preset], 1));
+		dispatch("preset", preset === "None" ? "None" : createSRgba8(...PURE_COLORS[preset], 255));
 	}
 
 	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool

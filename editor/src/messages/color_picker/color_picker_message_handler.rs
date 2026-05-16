@@ -2,9 +2,10 @@ use crate::messages::color_picker::color_picker_message::{HsvChannel, RgbChannel
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::layout::utility_types::widgets::input_widgets::{ColorPresetsInputUpdate, SpectrumInputUpdate, SpectrumMarker, VisualColorPickersInputUpdate};
 use crate::messages::prelude::*;
-use color::{AlphaColor, Srgb};
 use graphene_std::Color;
-use graphene_std::vector::style::{FillChoice, GradientStops};
+use graphene_std::color::SRGBA8;
+use graphene_std::core_types::misc::parse_css_color;
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, GradientStops, GradientStopsUI};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;
@@ -65,14 +66,6 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.allow_none = allow_none;
 				self.disabled = disabled;
 
-				// Each `<ColorPicker>` Svelte instance maintains its own local layout state, but the Rust `LayoutMessageHandler` keeps a single shared layout per target. When a new picker instance opens after a previous one closed, the new instance's layout starts empty and a diff from the previously-shared state would not apply. Destroying the stored layouts here forces the next `SendLayout` to send the full layout instead of a diff.
-				responses.add(LayoutMessage::DestroyLayout {
-					layout_target: LayoutTarget::ColorPickerPickersAndGradient,
-				});
-				responses.add(LayoutMessage::DestroyLayout {
-					layout_target: LayoutTarget::ColorPickerDetails,
-				});
-
 				match initial_value {
 					FillChoice::None => {
 						self.set_new_hsva(0., 0., 0., 1., true);
@@ -99,9 +92,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.send_layouts(responses);
 			}
 			ColorPickerMessage::Close => {
-				self.gradient = None;
-				self.active_marker_index = None;
-				self.active_marker_is_midpoint = false;
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			ColorPickerMessage::VisualUpdate { update } => {
 				self.hue = update.hue;
@@ -115,10 +106,13 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 			ColorPickerMessage::SetChannelRgb { channel, value } => {
 				let Some(strength) = value else { return };
 				let Some(current) = self.current_color() else { return };
+				// The RGB inputs are 0..255 sRGB display values; substitute the new channel into the gamma triple and lift back to linear for storage.
+				let new_gamma_channel = (strength / 255.) as f32;
+				let [cur_r, cur_g, cur_b, cur_a] = current.to_gamma_srgb_channels();
 				let updated = match channel {
-					RgbChannel::Red => Color::from_rgbaf32_unchecked((strength / 255.) as f32, current.g(), current.b(), current.a()),
-					RgbChannel::Green => Color::from_rgbaf32_unchecked(current.r(), (strength / 255.) as f32, current.b(), current.a()),
-					RgbChannel::Blue => Color::from_rgbaf32_unchecked(current.r(), current.g(), (strength / 255.) as f32, current.a()),
+					RgbChannel::Red => Color::from_gamma_srgb_channels(new_gamma_channel, cur_g, cur_b, cur_a),
+					RgbChannel::Green => Color::from_gamma_srgb_channels(cur_r, new_gamma_channel, cur_b, cur_a),
+					RgbChannel::Blue => Color::from_gamma_srgb_channels(cur_r, cur_g, new_gamma_channel, cur_a),
 				};
 				self.adopt_color(updated);
 				self.emit_color(responses);
@@ -160,7 +154,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				match preset {
 					FillChoice::None => {
 						self.set_new_hsva(0., 0., 0., 1., true);
-						responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::None });
+						responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoiceUI::None });
 					}
 					FillChoice::Solid(color) => {
 						self.adopt_color(color);
@@ -185,7 +179,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 				self.set_old_hsva(temp.0, temp.1, temp.2, temp.3, temp.4);
 
 				if self.is_none {
-					responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::None });
+					responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoiceUI::None });
 				} else {
 					self.emit_color(responses);
 				}
@@ -207,6 +201,7 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 }
 
 impl ColorPickerMessageHandler {
+	// The picker's internal HSV state is HSV of sRGB display values
 	fn current_color(&self) -> Option<Color> {
 		if self.is_none {
 			None
@@ -249,7 +244,8 @@ impl ColorPickerMessageHandler {
 
 	/// Set HSV state from a Color, preserving hue and saturation in degenerate cases.
 	fn adopt_color(&mut self, color: Color) {
-		let [target_h, target_s, target_v] = rgb_to_hsv(color.r() as f64, color.g() as f64, color.b() as f64);
+		let [target_h, target_s, target_v, target_a] = color.to_hsva();
+		let (target_h, target_s, target_v, target_a) = (target_h as f64, target_s as f64, target_v as f64, target_a as f64);
 
 		// Preserve hue: avoid jumping from 360° (top) to 0° (bottom) and don't reset hue when the color is desaturated or fully dark.
 		if !(target_h == 0. && self.hue == 1.) && target_s > 0. && target_v > 0. {
@@ -260,7 +256,7 @@ impl ColorPickerMessageHandler {
 			self.saturation = target_s;
 		}
 		self.value = target_v;
-		self.alpha = color.a() as f64;
+		self.alpha = target_a;
 		self.is_none = false;
 	}
 
@@ -274,9 +270,15 @@ impl ColorPickerMessageHandler {
 		{
 			*stop_color = color;
 			let stops = gradient.clone();
-			responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::Gradient(stops) });
+			let fill_choice = FillChoice::Gradient(stops);
+			responses.add(FrontendMessage::ColorPickerColorChanged {
+				value: FillChoiceUI::from(&fill_choice),
+			});
 		} else {
-			responses.add(FrontendMessage::ColorPickerColorChanged { value: FillChoice::Solid(color) });
+			let fill_choice = FillChoice::Solid(color);
+			responses.add(FrontendMessage::ColorPickerColorChanged {
+				value: FillChoiceUI::from(&fill_choice),
+			});
 		}
 	}
 
@@ -374,8 +376,9 @@ impl ColorPickerMessageHandler {
 		}
 
 		self.gradient = Some(gradient.clone());
+		let fill_choice = FillChoice::Gradient(gradient);
 		responses.add(FrontendMessage::ColorPickerColorChanged {
-			value: FillChoice::Gradient(gradient),
+			value: FillChoiceUI::from(&fill_choice),
 		});
 		self.send_layouts(responses);
 	}
@@ -402,7 +405,7 @@ impl ColorPickerMessageHandler {
 			// For gradient editing, the markers' handle colors mirror their gradient stop colors
 			let markers = gradient.iter().map(|stop| SpectrumMarker::new(stop.position, stop.midpoint, stop.color)).collect();
 			let mut row_widgets = vec![
-				SpectrumInput::new(gradient.clone())
+				SpectrumInput::new(GradientStopsUI::from(gradient))
 					.markers(markers)
 					.active_marker_index(self.active_marker_index)
 					.active_marker_is_midpoint(self.active_marker_is_midpoint)
@@ -463,7 +466,11 @@ impl ColorPickerMessageHandler {
 		let old_color = self.old_color();
 
 		let hex_value = new_color.map(|c| color_to_hex_optional_alpha(&c)).unwrap_or_else(|| "-".to_string());
-		let rgb_255 = new_color.map(|c| (c.r() as f64 * 255., c.g() as f64 * 255., c.b() as f64 * 255.));
+		// RGB readouts display sRGB byte values to the user, so we convert from linear-light to gamma here before quantizing.
+		let rgb_255 = new_color.map(|c| {
+			let [r, g, b, _] = c.to_gamma_srgb_channels();
+			(r as f64 * 255., g as f64 * 255., b as f64 * 255.)
+		});
 
 		// Epsilon comparison since the picker round-trips through HSV
 		let differs = match (new_color, old_color) {
@@ -480,7 +487,7 @@ impl ColorPickerMessageHandler {
 
 		// New/old comparison swatch with swap button
 		groups.push(LayoutGroup::row(vec![
-			ColorComparisonInput::new(new_color, old_color)
+			ColorComparisonInput::new(new_color.map(SRGBA8::from), old_color.map(SRGBA8::from))
 				.is_none(self.is_none)
 				.old_is_none(self.old_is_none)
 				.disabled(self.disabled)
@@ -576,7 +583,10 @@ impl ColorPickerMessageHandler {
 				.disabled(self.disabled)
 				.show_none_option(self.allow_none && self.gradient.is_none())
 				.on_update(|update: &ColorPresetsInputUpdate| match update {
-					ColorPresetsInputUpdate::Preset(fill_choice) => ColorPickerMessage::PickPreset { preset: fill_choice.clone() }.into(),
+					ColorPresetsInputUpdate::Preset(fill_choice) => ColorPickerMessage::PickPreset {
+						preset: FillChoice::from(fill_choice),
+					}
+					.into(),
 					ColorPresetsInputUpdate::EyedropperColorCode(code) => ColorPickerMessage::EyedropperColorCode { code: code.clone() }.into(),
 				})
 				.widget_instance(),
@@ -621,33 +631,10 @@ const SATURATION_DESCRIPTION: &str = "The vividness from grayscale to full color
 const VALUE_DESCRIPTION: &str = "The brightness from black to full color.";
 const ALPHA_DESCRIPTION: &str = "The level of translucency, from transparent (0%) to opaque (100%).";
 
-/// Convert an `rgb(0..1)` triple to `hsv(0..1)`. Mirrors the legacy frontend `colorToHSV`.
-fn rgb_to_hsv(red: f64, green: f64, blue: f64) -> [f64; 3] {
-	let max = red.max(green).max(blue);
-	let min = red.min(green).min(blue);
-	let delta = max - min;
-
-	let mut hue = if delta == 0. {
-		0.
-	} else if max == red {
-		((green - blue) / delta).rem_euclid(6.)
-	} else if max == green {
-		(blue - red) / delta + 2.
-	} else {
-		(red - green) / delta + 4.
-	};
-	hue = (hue * 60. + 360.).rem_euclid(360.) / 360.;
-
-	let saturation = if max == 0. { 0. } else { delta / max };
-	let value = max;
-
-	[hue, saturation, value]
-}
-
-/// The popover's background color (the `--color-2-mildblack` design token, `#222`). Used by the comparison swatch's
-/// outline computation to brighten the inset border for colors close to this background.
-const POPOVER_BACKGROUND: Color = Color::from_rgbaf32_unchecked(0x22 as f32 / 255., 0x22 as f32 / 255., 0x22 as f32 / 255., 1.);
-/// The luminance window (in linear-light) within which a color is considered close enough to the popover background
+/// The popover's background color as sRGB gamma-encoded channels (the `--color-2-mildblack` design token, `#222`).
+/// Used by the comparison swatch's outline computation to brighten the inset border for colors close to this background.
+const POPOVER_BACKGROUND_GAMMA_CHANNELS: [f32; 4] = [0x22 as f32 / 255., 0x22 as f32 / 255., 0x22 as f32 / 255., 1.];
+/// The luminance window within which a color is considered close enough to the popover background
 /// to warrant an outline. Mirrors the `proximityRange` argument the legacy frontend passed to `contrastingOutlineFactor`.
 const OUTLINE_PROXIMITY_RANGE: f64 = 0.01;
 
@@ -656,61 +643,22 @@ const OUTLINE_PROXIMITY_RANGE: f64 = 0.01;
 fn contrasting_outline_factor(color: Option<Color>) -> f64 {
 	let Some(color) = color else { return 0. };
 
-	// WCAG-style relative luminance, with alpha composited over white in gamma space
-	let luminance = |color: Color| {
-		// TODO: Remove the `.to_linear_srgb()` once we move to correctly treating `Color` as linear.
-		Color::WHITE
-			.alpha_blend(Color::from_unassociated_alpha(color.r(), color.g(), color.b(), color.a()))
-			.to_linear_srgb()
-			.luminance_srgb() as f64
+	// WCAG-style relative luminance, with alpha composited over white in sRGB gamma space (matching the perceptual intent of `SRGBA8::contrasting_text_color`).
+	let luminance_from_gamma_channels = |[r, g, b, a]: [f32; 4]| -> f64 {
+		let inv_a = 1. - a;
+		Color::from_gamma_srgb_channels(inv_a + r * a, inv_a + g * a, inv_a + b * a, 1.).luminance_rec_709() as f64
 	};
 
-	let distance = (luminance(POPOVER_BACKGROUND) - luminance(color)).abs().max(0.);
+	let color_gamma_channels = color.to_gamma_srgb_channels();
+	let distance = (luminance_from_gamma_channels(POPOVER_BACKGROUND_GAMMA_CHANNELS) - luminance_from_gamma_channels(color_gamma_channels))
+		.abs()
+		.max(0.);
 	let proximity = 1. - (distance / OUTLINE_PROXIMITY_RANGE).min(1.);
-	let [_, saturation, _] = rgb_to_hsv(color.r() as f64, color.g() as f64, color.b() as f64);
-	proximity * (1. - saturation)
+	let [_, saturation, _, _] = color.to_hsva();
+	proximity * (1. - saturation as f64)
 }
 
-/// Format a Color as a `#`-prefixed hex string, including the alpha component only if it's not fully opaque.
+/// Format a linear `Color` as a `#`-prefixed hex string, including the alpha component only if it's not fully opaque.
 fn color_to_hex_optional_alpha(color: &Color) -> String {
-	format!(
-		"#{}",
-		if color.a() >= 1. {
-			color.to_rgb_hex_srgb_from_gamma()
-		} else {
-			color.to_rgba_hex_srgb_from_gamma()
-		}
-	)
-}
-
-/// Parse a CSS color string (named color, hex, `rgb(...)`, etc.) into a `Color` using the `color` crate's CSS Color 4 parser.
-/// Tries the input as-is first (catches CSS named colors like `red`, `rgb(...)`, and well-formed hex like `#abcdef`), then falls back to treating the input as bare hex with length-based expansion to a CSS-parseable form:
-/// - 1 char `f` → `#fff` (CSS 3-char shorthand)
-/// - 2 char `ab` → `#ababab` (repeated to 6 chars)
-/// - 4 char `abcd` → `#00abcd` (left-padded with `00`)
-/// - 5 char `abcde` → `#0abcde` (left-padded with `0`)
-/// - 3, 6, 8 char inputs are passed through with a `#` prefix.
-fn parse_css_color(input: &str) -> Option<Color> {
-	let trimmed = input.trim();
-
-	let parsed = color::parse_color(trimmed).ok().or_else(|| {
-		let bare = trimmed.strip_prefix('#').unwrap_or(trimmed);
-		if bare.is_empty() || !bare.chars().all(|c| c.is_ascii_hexdigit()) {
-			return None;
-		}
-		let expanded = match bare.len() {
-			1 => bare.repeat(3),
-			2 => bare.repeat(3),
-			4 => format!("00{bare}"),
-			5 => format!("0{bare}"),
-			_ => bare.to_string(),
-		};
-		let candidate = format!("#{expanded}");
-		// Avoid retrying the exact same string we just failed to parse.
-		(candidate != trimmed).then(|| color::parse_color(&candidate).ok()).flatten()
-	})?;
-
-	let srgb: AlphaColor<Srgb> = parsed.to_alpha_color();
-	let [red, green, blue, alpha] = srgb.components;
-	Color::from_rgbaf32(red, green, blue, alpha)
+	SRGBA8::from(*color).to_css_hex()
 }

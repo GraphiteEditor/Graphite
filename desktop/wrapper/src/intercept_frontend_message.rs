@@ -14,6 +14,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Open Document".to_string(),
 				filters: vec![],
+				multiple: true,
 				context: OpenFileDialogContext::Open,
 			});
 		}
@@ -21,6 +22,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
 				title: "Import File".to_string(),
 				filters: vec![],
+				multiple: false,
 				context: OpenFileDialogContext::Import,
 			});
 		}
@@ -136,6 +138,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::WindowDrag => {
 			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
+		}
+		FrontendMessage::WindowFocus => {
+			dispatcher.respond(DesktopFrontendMessage::WindowFocus);
 		}
 		FrontendMessage::WindowHide => {
 			dispatcher.respond(DesktopFrontendMessage::WindowHide);

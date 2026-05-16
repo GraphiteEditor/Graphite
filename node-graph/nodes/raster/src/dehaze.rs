@@ -1,6 +1,6 @@
 use core_types::context::Ctx;
+use core_types::list::List;
 use core_types::registry::types::Percentage;
-use core_types::table::Table;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use raster_types::Image;
@@ -8,7 +8,7 @@ use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze(_: impl Ctx, image_frame: Table<Raster<CPU>>, strength: Percentage) -> Table<Raster<CPU>> {
+async fn dehaze(_: impl Ctx, image_frame: List<Raster<CPU>>, strength: Percentage) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {
