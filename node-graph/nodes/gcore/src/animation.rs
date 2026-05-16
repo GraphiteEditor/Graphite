@@ -31,18 +31,14 @@ pub enum AnimationTimeMode {
 
 /// Evaluate the value of an animation curve with the given time
 #[node_macro::node(category("Animation"))]
-fn eval_curve(_: impl Ctx, curve: AnimationCurve, time: f64) -> f64 {
-	curve.evaluate(time)
-}
+fn animation_curve(ctx: impl Ctx + ExtractAnimationTime, curve_id: u64) -> f64 {
+	let time = ctx.try_animation_time().unwrap_or_default();
 
-/// Contstructs a new AnimationCurves value with default curve
-#[node_macro::node(category("Value"))]
-fn animation_curve_value(_: impl Ctx, _primary: ()) -> AnimationCurve {
 	let mut curve = AnimationCurve::new();
 	curve.push_keyframe(Keyframe::new_linear(DVec2::new(0.0, 0.0), None));
-	curve.push_keyframe(Keyframe::new_constant(DVec2::new(1.0, 360.0), None));
+	curve.push_keyframe(Keyframe::new_constant(DVec2::new(1.0, 1.0), None));
 
-	curve
+	curve.evaluate(time)
 }
 
 /// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.

@@ -163,6 +163,7 @@ impl NodeNetworkInterface {
 			}
 
 			NodeInput::Value { tagged_value, .. } => TypeSource::TaggedValue(tagged_value.ty()),
+			NodeInput::Timeline { .. } => TypeSource::TaggedValue(concrete!(f64)),
 			NodeInput::Import { import_index, .. } => {
 				// Get the input type of the encapsulating node input
 				let Some((encapsulating_node, encapsulating_path)) = network_path.split_last() else {

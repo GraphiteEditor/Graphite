@@ -683,7 +683,7 @@ impl NodeNetworkInterface {
 		let layer_output = NodeInput::node(layer.to_node(), 0);
 
 		match post_node_input {
-			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+			NodeInput::Value { .. } | NodeInput::Timeline { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 				// First child in the stack: wire layer output to the post_node input
 				self.set_input_for_import(&post_node, layer_output, network_path);
 			}
@@ -855,7 +855,7 @@ impl NodeNetworkInterface {
 		if !inserting_into_stack {
 			match post_node_input {
 				// Create a new stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Timeline { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP);
@@ -881,7 +881,7 @@ impl NodeNetworkInterface {
 		} else {
 			match post_node_input {
 				// Move to the bottom of the stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Timeline { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
