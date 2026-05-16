@@ -263,11 +263,17 @@ impl RenderState {
 		}
 
 		let output = match self.surface.get_current_texture() {
-			wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+			wgpu::CurrentSurfaceTexture::Success(t) => t,
+			wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
+				// wgpu reports the swapchain no longer matches the underlying surface; present this frame but reconfigure so the next one matches
+				self.surface.configure(&self.context.device, &self.config);
+				t
+			}
+			// Window is minimized or behind another window: skip the frame silently and try again once it becomes visible
+			wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
 			wgpu::CurrentSurfaceTexture::Lost => return Err(RenderError::SurfaceLost),
 			wgpu::CurrentSurfaceTexture::Outdated => return Err(RenderError::SurfaceOutdated),
 			wgpu::CurrentSurfaceTexture::Timeout => return Err(RenderError::SurfaceTimeout),
-			wgpu::CurrentSurfaceTexture::Occluded => return Err(RenderError::SurfaceOccluded),
 			wgpu::CurrentSurfaceTexture::Validation => return Err(RenderError::SurfaceValidation),
 		};
 
@@ -362,7 +368,6 @@ pub(crate) enum RenderError {
 	SurfaceLost,
 	SurfaceOutdated,
 	SurfaceTimeout,
-	SurfaceOccluded,
 	SurfaceValidation,
 }
 
