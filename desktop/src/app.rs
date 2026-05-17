@@ -582,14 +582,10 @@ impl ApplicationHandler for App {
 						Err(RenderError::OutdatedUITextureError) => {
 							self.cef_context.notify_view_info_changed();
 						}
-						Err(RenderError::SurfaceError(wgpu::SurfaceError::Lost)) => {
+						Err(RenderError::SurfaceLost) => {
 							tracing::warn!("lost surface");
 						}
-						Err(RenderError::SurfaceError(wgpu::SurfaceError::OutOfMemory)) => {
-							tracing::error!("GPU out of memory");
-							self.exit(None);
-						}
-						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
+						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
 					let _ = self.start_render_sender.try_send(());
 				}

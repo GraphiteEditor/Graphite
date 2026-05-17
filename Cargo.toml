@@ -120,17 +120,17 @@ quote = "1.0"
 chrono = "0.4"
 ron = "0.12"
 fastnoise-lite = "1.1"
-wgpu = { version = "28.0", features = [
+wgpu = { version = "29.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-wasm-bindgen = "=0.2.100" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/project-setup/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.121" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned across CI workflows, devcontainer, Nix, and the `cargo-run` tool. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
-js-sys = "=0.3.77"
-web-sys = { version = "=0.3.77", features = [
+js-sys = "=0.3.98"
+web-sys = { version = "=0.3.98", features = [
 	"Document",
 	"DomRect",
 	"Element",
@@ -154,12 +154,12 @@ url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.13", features = ["serde"] }
-vello = "0.8"
-vello_encoding = "0.8"
+vello = "0.9"
+vello_encoding = "0.9"
 resvg = "0.47"
 usvg = "0.47"
-parley = "0.6"
-skrifa = "0.40"
+parley = { version = "0.9", default-features = false, features = ["std"] }
+skrifa = "0.42"
 polycool = "0.4"
 color = "0.3"
 # Linebender ecosystem (END)
@@ -203,8 +203,8 @@ gungraun = { version = "0.18" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "147"
-cef-dll-sys = "147"
+cef = "148"
+cef-dll-sys = "148"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -245,3 +245,5 @@ debug = true
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
+cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
+cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
