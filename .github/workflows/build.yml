@@ -283,7 +283,7 @@ jobs:
       pull-requests: write
 
     env:
-      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+      WASM_BINDGEN_CLI_VERSION: "0.2.121"
 
     steps:
       - name: 📥 Clone repository
@@ -474,7 +474,7 @@ jobs:
       pull-requests: write
 
     env:
-      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+      WASM_BINDGEN_CLI_VERSION: "0.2.121"
 
     steps:
       - name: 📥 Clone repository

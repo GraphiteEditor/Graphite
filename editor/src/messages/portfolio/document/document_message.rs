@@ -86,6 +86,8 @@ pub enum DocumentMessage {
 	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
+	ExpandFillStrokeOnSelectedLayers,
+	ExpandFillStrokeOnSelectedLayersNoTransaction,
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},

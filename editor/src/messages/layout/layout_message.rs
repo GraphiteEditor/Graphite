@@ -26,4 +26,8 @@ pub enum LayoutMessage {
 		widget_id: WidgetId,
 		value: serde_json::Value,
 	},
+	WidgetValueDragDrop {
+		layout_target: LayoutTarget,
+		widget_id: WidgetId,
+	},
 }

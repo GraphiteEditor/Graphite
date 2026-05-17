@@ -5,14 +5,20 @@ use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
 use glam::DVec2;
 use kurbo::{BezPath, PathEl, Point};
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::hash::BuildHasher;
+use std::hash::Hash;
 
 /// Represents a procedural change to the [`PointDomain`] in [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PointModification {
 	add: Vec<PointId>,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove: HashSet<PointId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	delta: HashMap<PointId, DVec2>,
@@ -79,6 +85,7 @@ impl PointModification {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove: HashSet<SegmentId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	start_point: HashMap<SegmentId, PointId>,
@@ -250,6 +257,7 @@ impl SegmentModification {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RegionModification {
 	add: Vec<RegionId>,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove: HashSet<RegionId>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap"))]
 	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
@@ -297,7 +305,9 @@ pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
 	regions: RegionModification,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	add_g1_continuous: HashSet<[HandleId; 2]>,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove_g1_continuous: HashSet<[HandleId; 2]>,
 }
 
@@ -520,23 +530,61 @@ impl graphene_hash::CacheHash for VectorModification {
 	}
 }
 
-// Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
+// TODO: Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
 // TODO: Eventually remove this document upgrade code
-use serde::de::{SeqAccess, Visitor};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
-use std::hash::Hash;
+/// Serializes as sorted `[[key, value], ...]` (sequence of pairs)
 pub fn serialize_hashmap<K, V, S, H>(hashmap: &HashMap<K, V, H>, serializer: S) -> Result<S::Ok, S::Error>
 where
-	K: Serialize + Eq + Hash,
+	K: Serialize + Eq + Hash + Ord,
 	V: Serialize,
 	S: Serializer,
 	H: BuildHasher,
 {
-	let mut seq = serializer.serialize_seq(Some(hashmap.len()))?;
-	for (key, value) in hashmap {
+	// Sort entries by key so the serialized output is deterministic across runs (HashMap iteration order is randomized).
+	// Removes a major source of churn in saved-document diffs without affecting load behavior.
+	let mut entries: Vec<_> = hashmap.iter().collect();
+	entries.sort_by(|a, b| a.0.cmp(b.0));
+
+	let mut seq = serializer.serialize_seq(Some(entries.len()))?;
+	for (key, value) in entries {
 		seq.serialize_element(&(key, value))?;
+	}
+	seq.end()
+}
+
+/// Serializes as sorted `{"key": value, ...}` (JSON object)
+pub fn serialize_hashmap_as_sorted_object<K, V, S, H>(hashmap: &HashMap<K, V, H>, serializer: S) -> Result<S::Ok, S::Error>
+where
+	K: Serialize + Eq + Hash + Ord,
+	V: Serialize,
+	S: Serializer,
+	H: BuildHasher,
+{
+	use serde::ser::SerializeMap;
+
+	let mut entries: Vec<_> = hashmap.iter().collect();
+	entries.sort_by(|a, b| a.0.cmp(b.0));
+
+	let mut map = serializer.serialize_map(Some(entries.len()))?;
+	for (key, value) in entries {
+		map.serialize_entry(key, value)?;
+	}
+	map.end()
+}
+
+/// Serializes as sorted `[value, ...]` (JSON array)
+pub fn serialize_hashset<T, S, H>(set: &HashSet<T, H>, serializer: S) -> Result<S::Ok, S::Error>
+where
+	T: Serialize + Eq + Hash + Ord,
+	S: Serializer,
+	H: BuildHasher,
+{
+	let mut entries: Vec<_> = set.iter().collect();
+	entries.sort();
+
+	let mut seq = serializer.serialize_seq(Some(entries.len()))?;
+	for value in entries {
+		seq.serialize_element(value)?;
 	}
 	seq.end()
 }

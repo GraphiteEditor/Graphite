@@ -66,6 +66,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
 			state.documents = data.openDocuments;
+			if (state.documents.length === 0) state.activeDocumentIndex = 0;
 			return state;
 		});
 	});
@@ -93,8 +94,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
-		const data = await upload(`image/*,.${editor.fileExtension()}`, "data");
-		editor.openFile(data.filename, data.content);
+		const files = await upload(`image/*,.${editor.fileExtension()}`, "data", true);
+		files.forEach((file) => editor.openFile(file.filename, file.content));
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerImport", async () => {

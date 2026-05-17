@@ -6,6 +6,7 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { layersPanelControlBarLeftLayout, layersPanelControlBarRightLayout, layersPanelBottomBarLayout } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
@@ -63,14 +64,20 @@
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
+	let dragDropTarget: HTMLElement | undefined = undefined;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
 
+	// Drag-toggle: tracked here so the template can render the invisible lock placeholder during a `layer-lock` gesture
+	let activeDragToggleGroup: string | undefined = undefined;
+
 	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
 
 	onMount(() => {
+		createDragToggleManager(dragToggleListener);
+
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("mousedown", draggingMouseDown);
@@ -83,6 +90,8 @@
 	});
 
 	onDestroy(() => {
+		destroyDragToggleManager(dragToggleListener);
+
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("mousedown", draggingMouseDown);
@@ -93,6 +102,10 @@
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
 	});
+
+	function dragToggleListener(group: string | undefined) {
+		activeDragToggleGroup = group;
+	}
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
 		editor.toggleNodeVisibilityLayerPanel(id);
@@ -246,7 +259,7 @@
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
-		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+		if (layerPanel && treeChildren && treeOffset !== undefined) {
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
@@ -346,6 +359,18 @@
 
 		// Perform drag calculations if a drag is occurring
 		if (internalDragState.active) {
+			// Check if the cursor is over any element flagged as a drag drop target
+			// (e.g. a bottom-bar action button whose backend widget has an `on_drag_drop` callback set)
+			const droppable = (e.target instanceof Element && e.target.closest("[data-drag-droppable]")) || undefined;
+			dragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
+
+			// Hide the move-in-tree insert indicator whenever the cursor enters the bottom bar
+			const overBottomBar = ((e.target instanceof Element && e.target.closest("[data-layer-bottom-bar]")) || undefined) !== undefined;
+			if (dragDropTarget || overBottomBar) {
+				draggingData = undefined;
+				return;
+			}
+
 			const select = () => {
 				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
 					selectLayer(internalDragState.listing, false, false);
@@ -357,7 +382,15 @@
 	}
 
 	function draggingPointerUp() {
-		if (internalDragState?.active && draggingData) {
+		if (internalDragState?.active && dragDropTarget) {
+			// Ensure the dragged layer is part of the selection, matching the move-in-tree behavior
+			if (!$nodeGraph.selected.includes(internalDragState.layerId)) selectLayer(internalDragState.listing, false, false);
+
+			// Hand off to the button's backend `on_drag_drop` callback via the custom event
+			dragDropTarget.dispatchEvent(new CustomEvent("dragdrop"));
+
+			justFinishedDrag = true;
+		} else if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			// Commit the move
@@ -382,6 +415,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		dragDropTarget = undefined;
 	}
 
 	function draggingMouseDown(e: MouseEvent) {
@@ -614,6 +648,17 @@
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
 							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
 							tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+							data-drag-toggle-group="layer-lock"
+							data-drag-toggle-state={listing.entry.unlocked ? "unlocked" : "locked"}
+						/>
+					{:else if activeDragToggleGroup === "layer-lock"}
+						<IconButton
+							class="status-toggle drag-toggle-placeholder"
+							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							size={24}
+							icon="PadlockUnlocked"
+							data-drag-toggle-group="layer-lock"
+							data-drag-toggle-state="unlocked"
 						/>
 					{/if}
 					<IconButton
@@ -625,6 +670,8 @@
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
 						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
 						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						data-drag-toggle-group="layer-visibility"
+						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
 					/>
 				</LayoutRow>
 			{/each}
@@ -633,7 +680,7 @@
 			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="bottom-bar" scrollableX={true}>
+	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active) }} scrollableX={true} data-layer-bottom-bar>
 		<WidgetLayout layout={$layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
@@ -672,6 +719,26 @@
 
 			&:not(:has(*)) {
 				display: none;
+			}
+
+			&.layer-drag-active .icon-button,
+			&.layer-drag-active .popover-button {
+				&.drag-droppable:hover {
+					background: var(--color-e-nearwhite);
+
+					svg {
+						fill: var(--color-2-mildblack);
+					}
+				}
+
+				&:not(.drag-droppable) {
+					pointer-events: none;
+					background: none;
+
+					svg {
+						fill: var(--color-8-uppergray);
+					}
+				}
 			}
 		}
 
@@ -842,6 +909,17 @@
 
 					&.inherited {
 						background-image: var(--inheritance-stripes-background);
+					}
+
+					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted.
+					// Overlaid with absolute positioning so it doesn't shift the layer name's width.
+					&.drag-toggle-placeholder {
+						position: absolute;
+						width: 24px;
+						right: 24px;
+						top: 0;
+						bottom: 0;
+						opacity: 0; // Not `visibility: hidden`, which would exclude it from hit-testing
 					}
 
 					.icon-button {

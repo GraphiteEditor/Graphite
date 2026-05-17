@@ -214,7 +214,7 @@ impl LayoutHolder for PathTool {
 		let x_location = NumberInput::new(x)
 			.unit(" px")
 			.label("X")
-			.min_width(120)
+			.min_width(80)
 			.disabled(x.is_none())
 			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
@@ -230,7 +230,7 @@ impl LayoutHolder for PathTool {
 		let y_location = NumberInput::new(y)
 			.unit(" px")
 			.label("Y")
-			.min_width(120)
+			.min_width(80)
 			.disabled(y.is_none())
 			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
@@ -609,7 +609,10 @@ struct PathToolData {
 	drill_through_cycle_index: usize,
 	drill_through_cycle_count: usize,
 	hovered_layers: Vec<LayerNodeIdentifier>,
-	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
+	/// Snapshot of each selected layer's outline geometry at drag start, drawn in gray as a "before" reference.
+	/// The `bool` flags whether the snapshot came from `path_aware_outline_targets`, in which case the draw
+	/// site uses `transform_to_viewport_if_feeds` to match the Path tool's coordinate space.
+	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier, bool)>,
 	make_path_editable_is_allowed: bool,
 }
 
@@ -708,10 +711,15 @@ impl PathToolData {
 	fn set_ghost_outline(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
 		self.ghost_outline.clear();
 		for &layer in shape_editor.selected_shape_state.keys() {
-			// We probably need to collect here
-			let outline: Vec<ClickTargetType> = document.metadata().layer_with_free_points_outline(layer).cloned().collect();
+			// Mirror the Path tool's view (e.g. pre-solidified centerline) when an upstream Path node exists,
+			// otherwise fall back to the layer's recorded outline geometry
+			let (outline, path_aware) = if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
+				(targets, true)
+			} else {
+				(document.metadata().layer_with_free_points_outline(layer).cloned().collect(), false)
+			};
 
-			self.ghost_outline.push((outline, layer));
+			self.ghost_outline.push((outline, layer, path_aware));
 		}
 	}
 
@@ -1712,8 +1720,12 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Overlays { context: mut overlay_context }) => {
 				// Set this to show ghost line only if drag actually happened
 				if matches!(self, Self::Dragging(_)) && tool_data.drag_start_pos.distance(input.pointer.position) > DRAG_THRESHOLD {
-					for (outline, layer) in &tool_data.ghost_outline {
-						let transform = document.metadata().transform_to_viewport(*layer);
+					for (outline, layer, path_aware) in &tool_data.ghost_outline {
+						let transform = if *path_aware {
+							document.metadata().transform_to_viewport_if_feeds(*layer, &document.network_interface)
+						} else {
+							document.metadata().transform_to_viewport(*layer)
+						};
 						overlay_context.outline(outline.iter(), transform, Some(COLOR_OVERLAY_GRAY));
 					}
 				}
@@ -1877,9 +1889,6 @@ impl Fsm for PathToolFsmState {
 								continue;
 							}
 
-							let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
-							let outline = document.metadata().layer_with_free_points_outline(hovered_layer);
-
 							// Determine highlight color based on drill-through state
 							let color = match (index, mouse_has_moved) {
 								// If the layer is the next selected one and mouse has not moved, highlight it blue
@@ -1891,7 +1900,14 @@ impl Fsm for PathToolFsmState {
 							};
 
 							// TODO: Make this draw underneath all other overlays
-							overlay_context.outline(outline, layer_to_viewport, Some(color));
+							// Mirror the Path tool's view (e.g. pre-solidified centerline) when an upstream Path node exists
+							if let Some(targets) = document.network_interface.path_aware_outline_targets(hovered_layer) {
+								let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(hovered_layer, &document.network_interface);
+								overlay_context.outline(targets.iter(), layer_to_viewport, Some(color));
+							} else {
+								let layer_to_viewport = document.metadata().transform_to_viewport(hovered_layer);
+								overlay_context.outline(document.metadata().layer_with_free_points_outline(hovered_layer), layer_to_viewport, Some(color));
+							}
 						}
 					}
 					Self::Drawing { selection_shape } => {
@@ -2834,13 +2850,10 @@ impl Fsm for PathToolFsmState {
 							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
 							// Defaults chosen because the pasted geometry has no inherent associated style
-							let stroke_color = Color::BLACK;
-							let fill_color = Color::WHITE;
-
-							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
+							let stroke = graphene_std::vector::style::Stroke::new(Some(Color::BLACK), DEFAULT_STROKE_WIDTH);
 							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 
-							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+							let fill = graphene_std::vector::style::Fill::solid(Color::WHITE);
 							responses.add(GraphOperationMessage::FillSet { layer, fill });
 
 							new_layers.push(layer);

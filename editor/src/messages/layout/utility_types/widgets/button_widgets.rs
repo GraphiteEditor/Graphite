@@ -4,7 +4,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::tool_messages::tool_prelude::WidgetCallback;
 use derivative::*;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::FillChoiceUI;
 use graphite_proc_macros::WidgetBuilder;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -39,6 +39,9 @@ pub struct IconButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_drag_drop: WidgetCallback<IconButton>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -187,11 +190,10 @@ pub struct ImageButton {
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
 	// Content
-	/// WARNING: The colors are gamma, not linear!
 	#[widget_builder(constructor)]
-	pub value: FillChoice,
+	pub value: FillChoiceUI,
 	/// CSS `linear-gradient(...)` (or solid-color stand-in) for the swatch's `background-image`. Auto-populated from `value` at layout-send time.
-	/// `None` when `value` is `FillChoice::None`, in which case the frontend uses its "none" fallback styling.
+	/// `None` when `value` is `FillChoiceUI::None`, in which case the frontend uses its "none" fallback styling.
 	#[serde(rename = "chosenGradient")]
 	#[widget_builder(skip)]
 	pub chosen_gradient: Option<String>,
@@ -202,6 +204,13 @@ pub struct ColorInput {
 	#[serde(rename = "menuDirection")]
 	pub menu_direction: Option<MenuDirection>,
 	pub disabled: bool,
+	pub mixed: bool,
+
+	// Sizing
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 
 	// Styling
 	pub narrow: bool,

@@ -8,11 +8,12 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_table};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient, GradientSpreadMethod, GradientStops, GradientType};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -35,6 +36,7 @@ pub enum GradientToolMessage {
 	Abort,
 	Overlays { context: OverlayContext },
 	SelectionChanged,
+	WorkingColorChanged,
 
 	// Tool-specific messages
 	DeleteStop,
@@ -48,7 +50,7 @@ pub enum GradientToolMessage {
 	CommitTransactionForColorStop,
 	CloseStopColorPicker,
 	UpdateStopColor { color: Color },
-	UpdateStops { stops: GradientStops },
+	UpdateStops { stops: GradientStopsUI },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
@@ -119,7 +121,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 			}
 			ToolMessage::Gradient(GradientToolMessage::UpdateStops { stops }) => {
-				apply_stops_update(&mut self.data, context, responses, stops);
+				apply_stops_update(&mut self.data, context, responses, GradientStops::from(&stops));
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -127,6 +129,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 					self.data.color_picker_transaction_open = false;
 				}
 				self.data.color_picker_editing_color_stop = None;
+			}
+			ToolMessage::Gradient(GradientToolMessage::WorkingColorChanged) => {
+				let primary = context.global_tool_data.primary_color;
+				let secondary = context.global_tool_data.secondary_color;
+
+				if self.data.primary_color != primary || self.data.secondary_color != secondary {
+					self.data.primary_color = primary;
+					self.data.secondary_color = secondary;
+
+					if !self.data.has_selected_gradient {
+						responses.add(ToolMessage::RefreshToolOptions);
+					}
+				}
 			}
 			_ => {
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
@@ -208,15 +223,30 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
+		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
 		let stops_value = self
 			.data
 			.current_gradient_stops
 			.clone()
+			.or_else(|| self.data.default_gradient_stops.clone())
 			.map(FillChoice::Gradient)
-			.unwrap_or(FillChoice::Gradient(GradientStops::default()));
-		let stops_widget = ColorInput::new(stops_value)
+			.unwrap_or_else(|| {
+				FillChoice::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: self.data.primary_color,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: self.data.secondary_color,
+					},
+				]))
+			});
+		let stops_widget = ColorInput::new(FillChoiceUI::from(&stops_value))
 			.allow_none(false)
-			.disabled(!self.data.has_selected_gradient)
+			.narrow(true)
 			.tooltip_label("Gradient Stops")
 			.tooltip_description("Edit the gradient's color stops.")
 			.on_update(|input: &ColorInput| {
@@ -314,10 +344,9 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 	graph_modification_utils::gradient_space_transform(layer, &document.network_interface)
 }
 
-// TODO: Remove this whole function once all gradients are `Table<GradientStops>`
+// TODO: Remove this whole function once all gradients are stored via the modern `Gradient(GradientStops)` slot
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
-	if let Some(stops_table) = get_gradient_table(layer, network_interface) {
-		let stops = stops_table.element(0).cloned().unwrap_or_default();
+	if let Some(stops) = get_gradient_stops(layer, network_interface) {
 		let GradientChainState {
 			transform,
 			gradient_type,
@@ -438,8 +467,8 @@ struct SelectedGradient {
 	gradient: Gradient,
 	dragging: GradientDragTarget,
 	initial_gradient: Gradient,
-	// TODO: Remove (and the matching branches in `render_gradient` / pointer-up) once `Table<GradientStops>` replaces legacy `Fill::Gradient`
-	is_gradient_table: bool,
+	// TODO: Remove (and the matching branches in `render_gradient` / pointer-up) once `List<GradientStops>` replaces legacy `Fill::Gradient`
+	is_gradient_list: bool,
 }
 
 fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: DVec2) -> Option<f64> {
@@ -483,14 +512,14 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 impl SelectedGradient {
 	pub fn new(gradient: Gradient, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
 		let transform = gradient_space_transform(layer, document);
-		let is_gradient_table = get_gradient_table(layer, &document.network_interface).is_some();
+		let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
 		Self {
 			layer: Some(layer),
 			transform,
 			gradient: gradient.clone(),
 			dragging: GradientDragTarget::End,
 			initial_gradient: gradient,
-			is_gradient_table,
+			is_gradient_list,
 		}
 	}
 
@@ -706,8 +735,8 @@ impl SelectedGradient {
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(layer) = self.layer {
-			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
-			if self.is_gradient_table {
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `List<GradientStops>`
+			if self.is_gradient_list {
 				dispatch_gradient_writes(layer, &self.gradient, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -749,6 +778,7 @@ impl ToolTransition for GradientTool {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),
 			selection_changed: Some(GradientToolMessage::SelectionChanged.into()),
+			working_color_changed: Some(GradientToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| GradientToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
@@ -764,12 +794,19 @@ struct GradientToolData {
 	auto_pan_shift: DVec2,
 	gradient_angle: f64,
 	has_selected_gradient: bool,
-	/// Cached stops of the currently selected layer's gradient, mirrored into the control-bar widget. Independent of any
-	/// in-progress drag (which uses `selected_gradient`) so it stays current after selection changes too.
+	/// Cached stops of the currently selected layer's gradient, mirrored into the control-bar widget.
+	/// Independent of any in-progress drag (which uses `selected_gradient`) so it stays current after selection changes too.
 	current_gradient_stops: Option<GradientStops>,
+	/// User-customized default gradient stop colors: used when nothing that has a gradient is selected.
+	/// `None` means to follow the working colors.
+	/// Cleared on tool deactivation so each fresh activation starts from the working colors again.
+	default_gradient_stops: Option<GradientStops>,
 	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
 	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
 	gradient_orientation_rightward: bool,
+	/// Cached working colors, mirrored from `DocumentToolData` via the `WorkingColorChanged` event, used as the default gradient colors.
+	primary_color: Color,
+	secondary_color: Color,
 	color_picker_editing_color_stop: Option<usize>,
 	color_picker_transaction_open: bool,
 }
@@ -820,7 +857,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
 
 					fn color_to_hex(color: graphene_std::Color) -> String {
-						format!("#{}", color.to_rgb_hex_srgb_from_gamma())
+						SRGBA8::from(color).to_css_hex()
 					}
 
 					let start_hex = stops.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
@@ -988,10 +1025,10 @@ impl Fsm for GradientToolFsmState {
 					let transform = gradient_space_transform(layer, document);
 					let gradient = &selected_gradient.gradient;
 					if stop_index < gradient.stops.position.len() {
-						let color = gradient.stops.color[stop_index].to_gamma_srgb();
+						let color = gradient.stops.color[stop_index];
 						let position = gradient.stops.position[stop_index];
 						let position = transform.transform_point2(gradient.start.lerp(gradient.end, position)).into();
-						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, position });
+						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: color.into(), position });
 					}
 				}
 
@@ -1045,9 +1082,9 @@ impl Fsm for GradientToolFsmState {
 									.transform
 									.transform_point2(selected_gradient.gradient.start.lerp(selected_gradient.gradient.end, stop_pos));
 								let position = viewport_pos.into();
-								let color = selected_gradient.gradient.stops.color[stop_index].to_gamma_srgb();
+								let color = selected_gradient.gradient.stops.color[stop_index];
 								tool_data.color_picker_editing_color_stop = Some(stop_index);
-								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, position });
+								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color: color.into(), position });
 							}
 						}
 						_ => {}
@@ -1119,9 +1156,9 @@ impl Fsm for GradientToolFsmState {
 				};
 
 				// The gradient has only one point and so should become a fill
-				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `Table<GradientStops>`
+				// TODO: Drop the legacy `Fill::Solid` branch when all gradients become `List<GradientStops>`
 				if selected_gradient.gradient.stops.len() == 1 {
-					if selected_gradient.is_gradient_table {
+					if selected_gradient.is_gradient_list {
 						selected_gradient.render_gradient(responses);
 					} else if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
@@ -1217,7 +1254,7 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
-					let is_gradient_table = get_gradient_table(layer, &document.network_interface).is_some();
+					let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
 
 					// Check for dragging a midpoint diamond
 					if drag_hint.is_none() {
@@ -1245,7 +1282,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									dragging: GradientDragTarget::Midpoint(i),
 									initial_gradient: gradient.clone(),
-									is_gradient_table,
+									is_gradient_list,
 								});
 
 								break;
@@ -1286,7 +1323,7 @@ impl Fsm for GradientToolFsmState {
 								gradient: gradient.clone(),
 								dragging: drag_target,
 								initial_gradient: gradient.clone(),
-								is_gradient_table,
+								is_gradient_list,
 							});
 						}
 					}
@@ -1303,7 +1340,7 @@ impl Fsm for GradientToolFsmState {
 									gradient: gradient.clone(),
 									dragging: dragging_target,
 									initial_gradient: gradient.clone(),
-									is_gradient_table,
+									is_gradient_list,
 								})
 							}
 						}
@@ -1352,14 +1389,14 @@ impl Fsm for GradientToolFsmState {
 					GradientToolFsmState::Drawing { drag_hint: hint }
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-					// Table-based gradients render no geometry, so a click on empty canvas yields no layer. Fall back to a
-					// selected gradient-table layer so the user can drag a fresh gradient line anywhere.
+					// List-based gradients render no geometry, so a click on empty canvas yields no layer.
+					// Fall back to a selected gradient list layer so the user can drag a fresh gradient line anywhere.
 					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()
 							.selected_visible_layers(&document.network_interface)
-							.find(|&layer| get_gradient_table(layer, &document.network_interface).is_some())
+							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some())
 					});
 
 					// Apply the gradient to the selected layer
@@ -1377,16 +1414,17 @@ impl Fsm for GradientToolFsmState {
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 						}
 
-						// Use the already existing gradient if it exists
 						let gradient = if let Some(gradient) = get_gradient(layer, &document.network_interface) {
+							// Use the already existing gradient if it exists
 							gradient.clone()
 						} else {
-							// Generate a new gradient
+							// Generate a new gradient running primary → secondary so the default working colors
+							// (primary = black, secondary = white) produce the expected black-to-white gradient
 							Gradient::new(
 								DVec2::ZERO,
-								global_tool_data.secondary_color,
-								DVec2::ONE,
 								global_tool_data.primary_color,
+								DVec2::ONE,
+								global_tool_data.secondary_color,
 								tool_options.gradient_type,
 								tool_options.spread_method,
 							)
@@ -1519,6 +1557,8 @@ impl Fsm for GradientToolFsmState {
 			}
 			(_, GradientToolMessage::Abort) => {
 				dismiss_color_stop_color_picker(tool_data, responses);
+				// Clear the tool-default gradient override so re-activating the tool starts fresh from the working colors
+				tool_data.default_gradient_stops = None;
 
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
@@ -1721,9 +1761,9 @@ fn apply_gradient_update(
 			}
 			update(&mut gradient);
 
-			// Only check for the gradient table once we know we'll write back, since this is a graph traversal per layer
-			// TODO: Drop the `Fill::Gradient` branch when all gradients become `Table<GradientStops>`
-			if get_gradient_table(layer, &context.document.network_interface).is_some() {
+			// Only check for the gradient list once we know we'll write back, since this is a graph traversal per layer
+			// TODO: Drop the `Fill::Gradient` branch when all gradients become `List<GradientStops>`
+			if get_gradient_stops(layer, &context.document.network_interface).is_some() {
 				dispatch_gradient_writes(layer, &gradient, responses);
 			} else {
 				responses.add(GraphOperationMessage::FillSet {
@@ -1759,27 +1799,38 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 		.selected_visible_layers(&context.document.network_interface)
 		.collect();
 
+	let mut updated_any_layer = false;
 	for layer in selected_layers {
 		if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
 			continue;
 		}
 
-		if get_gradient_table(layer, &context.document.network_interface).is_some() {
+		if get_gradient_stops(layer, &context.document.network_interface).is_some() {
 			responses.add(GraphOperationMessage::GradientStopsSet { layer, stops: stops.clone() });
+			updated_any_layer = true;
 		} else if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
 			gradient.stops = stops.clone();
 			responses.add(GraphOperationMessage::FillSet {
 				layer,
 				fill: Fill::Gradient(gradient),
 			});
+			updated_any_layer = true;
 		}
 	}
 
 	if let Some(selected_gradient) = &mut data.selected_gradient {
-		selected_gradient.gradient.stops = stops;
+		selected_gradient.gradient.stops = stops.clone();
+	}
+
+	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
+	// Save those stops so the widget keeps showing them until the tool is deactivated.
+	if !updated_any_layer {
+		data.default_gradient_stops = Some(stops);
 	}
 
 	responses.add(PropertiesPanelMessage::Refresh);
+	// Refresh the tool options so the swatch's `chosen_gradient` (precomputed CSS string) updates live as the user edits stops in the picker.
+	responses.add(ToolMessage::RefreshToolOptions);
 }
 
 /// Find the first selected visible layer that has a gradient and return both the layer ID and its resolved gradient.
@@ -1860,8 +1911,7 @@ mod test_gradient {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::ATTR_TRANSFORM;
-	use graphene_std::table::{Table, TableRow};
+	use graphene_std::color::SRGBA8;
 	use graphene_std::vector::style::{Fill, Gradient};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
@@ -1908,7 +1958,7 @@ mod test_gradient {
 		}
 	}
 
-	async fn create_gradient_table_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+	async fn create_gradient_list_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		let document = editor.active_document();
 		let layer = document.metadata().all_layers().next().unwrap();
@@ -1926,21 +1976,18 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
-				value: TaggedValue::GradientTable(Table::new_from_row(
-					TableRow::new_from_element(GradientStops::new([
-						GradientStop {
-							position: 0.,
-							midpoint: 0.5,
-							color: Color::RED,
-						},
-						GradientStop {
-							position: 1.,
-							midpoint: 0.5,
-							color: Color::BLUE,
-						},
-					]))
-					.with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY),
-				)),
+				value: TaggedValue::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: Color::RED,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::BLUE,
+					},
+				])),
 			})
 			.await;
 
@@ -1976,9 +2023,9 @@ mod test_gradient {
 
 		let (gradient, transform) = get_gradient(&mut editor).await;
 
-		// Gradient goes from secondary color to primary color
-		let stops = gradient.stops.iter().map(|stop| (stop.position, stop.color.to_rgba8_srgb())).collect::<Vec<_>>();
-		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
+		// Gradient goes from primary color to secondary color
+		let stops = gradient.stops.iter().map(|stop| (stop.position, SRGBA8::from(stop.color))).collect::<Vec<_>>();
+		assert_eq!(stops, vec![(0., SRGBA8::from(Color::GREEN)), (1., SRGBA8::from(Color::BLUE))]);
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
@@ -2171,7 +2218,7 @@ mod test_gradient {
 		let positions: Vec<f64> = stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&positions, &[0., 0.25, 1.], 0.1);
 
-		let middle_color = stops.color[1].to_rgba8_srgb();
+		let middle_color = SRGBA8::from(stops.color[1]);
 
 		// Simulate dragging the middle stop to position 0.8
 		let click_position = DVec2::new(25., 0.);
@@ -2214,9 +2261,9 @@ mod test_gradient {
 		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
-		assert_eq!(updated_stops.color[0].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
-		assert_eq!(updated_stops.color[1].to_rgba8_srgb(), middle_color);
-		assert_eq!(updated_stops.color[2].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+		assert_eq!(SRGBA8::from(updated_stops.color[0]), SRGBA8::from(Color::GREEN));
+		assert_eq!(SRGBA8::from(updated_stops.color[1]), middle_color);
+		assert_eq!(SRGBA8::from(updated_stops.color[2]), SRGBA8::from(Color::BLUE));
 	}
 
 	#[tokio::test]
@@ -2318,10 +2365,10 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	async fn gradient_table_drag_endpoint() {
+	async fn gradient_list_drag_endpoint() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		let layer = create_gradient_table_layer(&mut editor).await;
+		let layer = create_gradient_list_layer(&mut editor).await;
 
 		// Create original transform for the control geometry and apply it
 		let initial_start = DVec2::new(10., 50.);
@@ -2391,10 +2438,10 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	async fn gradient_table_preserves_stops() {
+	async fn gradient_list_preserves_stops() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		let layer = create_gradient_table_layer(&mut editor).await;
+		let layer = create_gradient_list_layer(&mut editor).await;
 
 		// Set up a 3-stop gradient with distinct colors
 		let original_stops = GradientStops::new([
@@ -2456,8 +2503,8 @@ mod test_gradient {
 
 		assert_eq!(updated.stops.len(), 3, "Stop count should be preserved");
 		assert_stops_at_positions(&updated.stops.position, &[0., 0.5, 1.], 1e-10);
-		assert_eq!(updated.stops.color[0].to_rgba8_srgb(), Color::RED.to_rgba8_srgb(), "First stop color should be preserved");
-		assert_eq!(updated.stops.color[1].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb(), "Middle stop color should be preserved");
-		assert_eq!(updated.stops.color[2].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb(), "Last stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color[0]), SRGBA8::from(Color::RED), "First stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color[1]), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
+		assert_eq!(SRGBA8::from(updated.stops.color[2]), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
 	}
 }

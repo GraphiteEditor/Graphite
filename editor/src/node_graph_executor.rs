@@ -6,6 +6,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::FontCache;
@@ -243,10 +244,12 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported (artboard bounds always contribute)
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
+		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
+		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -396,7 +399,21 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Send to frontend
+				// Convert each linear-light `Image<Color>` into the JS-boundary `Image<SRGBA8>` form (gamma byte channels) before dispatching.
+				let image_data = image_data
+					.into_iter()
+					.map(|(id, image)| {
+						(
+							id,
+							graphene_std::raster::Image {
+								width: image.width,
+								height: image.height,
+								data: image.data.iter().map(|&c| SRGBA8::from(c)).collect(),
+								base64_string: image.base64_string,
+							},
+						)
+					})
+					.collect();
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}

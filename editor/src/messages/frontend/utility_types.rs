@@ -14,7 +14,7 @@ pub struct DocumentInfo {
 	pub is_saved: bool,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints, from_wasm_abi))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PersistedState {
 	pub documents: Vec<DocumentInfo>,

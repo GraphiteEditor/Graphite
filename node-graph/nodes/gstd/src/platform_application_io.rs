@@ -2,9 +2,10 @@
 use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
+use core_types::color::SRGBA8;
+use core_types::list::{Item, List};
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
-use core_types::table::{Table, TableRow};
 #[cfg(target_family = "wasm")]
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
@@ -18,7 +19,7 @@ pub use graphene_canvas_utils as canvas_utils;
 #[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
-use graphic_types::IntoGraphicTable;
+use graphic_types::IntoGraphicList;
 #[cfg(target_family = "wasm")]
 use graphic_types::Vector;
 use graphic_types::raster_types::Image;
@@ -85,7 +86,7 @@ async fn post_request(
 	#[name("URL")]
 	url: String,
 	/// The binary data to include in the body of the POST request.
-	body: Table<u8>,
+	body: List<u8>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
@@ -115,15 +116,23 @@ async fn post_request(
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
-fn string_to_bytes(_: impl Ctx, string: String) -> Table<u8> {
-	string.into_bytes().into_iter().map(TableRow::new_from_element).collect()
+fn string_to_bytes(_: impl Ctx, string: String) -> List<u8> {
+	string.into_bytes().into_iter().map(Item::new_from_element).collect()
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Table<u8> {
-	let Some(image) = image.element(0) else { return Table::new() };
-	image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(TableRow::new_from_element).collect()
+fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
+	let Some(image) = image.element(0) else { return List::new() };
+	image
+		.data
+		.iter()
+		.flat_map(|color| {
+			let SRGBA8 { red, green, blue, alpha } = (*color).into();
+			[red, green, blue, alpha]
+		})
+		.map(Item::new_from_element)
+		.collect()
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
@@ -146,22 +155,26 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 ///
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return Table::new();
+		return List::new();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
 		data: image
 			.chunks(4)
-			.map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3]).to_linear_srgb())
+			.map(|pixel| {
+				// Decoded bytes are unassociated gamma sRGB; premultiply in gamma then lift to linear
+				let a = pixel[3];
+				Color::from_gamma_srgb_channels(pixel[0] * a, pixel[1] * a, pixel[2] * a, a)
+			})
 			.collect(),
 		width: image.width(),
 		height: image.height(),
 		..Default::default()
 	};
 
-	Table::new_from_element(Raster::new_cpu(image))
+	List::new_from_element(Raster::new_cpu(image))
 }
 
 #[cfg(target_family = "wasm")]
@@ -176,29 +189,29 @@ async fn create_canvas(_: impl Ctx) -> CanvasHandle {
 async fn rasterize<T: WasmNotSend + Clone + 'n>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Graphic>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Graphic>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	mut data: Table<T>,
+	mut data: List<T>,
 	footprint: Footprint,
 	mut canvas: CanvasHandle,
-) -> Table<Raster<CPU>>
+) -> List<Raster<CPU>>
 where
-	Table<T>: Render + Clone + graphic_types::IntoGraphicTable,
+	List<T>: Render + Clone + graphic_types::IntoGraphicList,
 {
 	use glam::{DAffine2, DVec2};
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return Table::new();
+		return List::new();
 	}
 
-	// Snapshot the input as a Table<Graphic> so the renderer can recurse into the original child layers
+	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
 	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
-	let upstream_graphic_table = data.clone().into_graphic_table();
+	let upstream_graphic_list = data.clone().into_graphic_list();
 
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
@@ -232,12 +245,12 @@ where
 		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
 		.unwrap();
 
-	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
+	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	Table::new_from_row(
-		TableRow::new_from_element(Raster::new_cpu(image))
+	List::new_from_item(
+		Item::new_from_element(Raster::new_cpu(image))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_table),
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
 	)
 }

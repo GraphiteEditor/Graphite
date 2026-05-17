@@ -34,6 +34,7 @@ impl FontCatalog {
 	}
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FontCatalogFamily {
 	/// The font family name.
@@ -55,6 +56,7 @@ impl FontCatalogFamily {
 	}
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FontCatalogStyle {
 	pub weight: u32,
@@ -88,7 +90,7 @@ impl FontCatalogStyle {
 	}
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PanelType {
 	Welcome,
@@ -124,7 +126,7 @@ impl PanelType {
 pub struct PanelGroupId(pub u64);
 
 /// Which edge of a panel group to split on when docking a dragged panel.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DockingSplitDirection {
 	Left,

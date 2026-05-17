@@ -356,7 +356,12 @@ function detectShake(e: PointerEvent | MouseEvent): boolean {
 }
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
-	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
+	if (!(target instanceof HTMLElement)) return false;
+	return (
+		target.isContentEditable ||
+		target instanceof HTMLTextAreaElement ||
+		(target instanceof HTMLInputElement && ["text", "password", "email", "url", "tel", "search", "number", "date", "datetime-local", "month", "time", "week"].includes(target.type))
+	);
 }
 
 function potentiallyRestoreCanvasFocus(e: Event) {

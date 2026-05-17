@@ -26,7 +26,7 @@ use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use kurbo::BezPath;
 use memo_network::MemoNetwork;
@@ -1222,6 +1222,34 @@ impl NodeNetworkInterface {
 		Some(transformed.bounding_box())
 	}
 
+	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
+	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
+	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.document_metadata
+			.all_layers()
+			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| {
+				if !self.is_artboard(&layer.to_node(), &[])
+					&& let Some(artboard_node_identifier) = layer
+						.ancestors(self.document_metadata())
+						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
+					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
+					&& let Some(clip_input) = artboard.inputs.get(5)
+					&& let NodeInput::Value { tagged_value, .. } = clip_input
+					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
+				{
+					return Some(Quad::clip(
+						self.document_metadata.bounding_box_document_with_stroke(layer).unwrap_or_default(),
+						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
+					));
+				}
+				self.document_metadata.bounding_box_document_with_stroke(layer)
+			})
+			// Skip any layer bounds containing NaN to avoid poisoning the combined result
+			.filter(|[min, max]| min.is_finite() && max.is_finite())
+			.reduce(Quad::combine_bounds)
+	}
+
 	/// Calculates the selected layer bounds in document space
 	pub fn selected_bounds_document_space(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
@@ -1232,6 +1260,20 @@ impl NodeNetworkInterface {
 			.selected_layers(&self.document_metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the selected layer bounds in document space, expanding vector layer bounds to include the
+	/// rendered stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
+	pub fn selected_bounds_document_space_with_stroke(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
+			log::error!("Could not get selected nodes in selected_bounds_document_space_with_stroke");
+			return None;
+		};
+		selected_nodes
+			.selected_layers(&self.document_metadata)
+			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
+			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke(layer))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -3149,8 +3191,8 @@ impl NodeNetworkInterface {
 		let nodes = network_metadata
 			.persistent_metadata
 			.node_metadata
-			.iter()
-			.filter_map(|(node_id, _)| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
+			.keys()
+			.filter_map(|node_id| if self.is_layer(node_id, network_path) { Some(*node_id) } else { None })
 			.collect::<Vec<_>>();
 		let layer_widths = nodes
 			.iter()
@@ -3190,6 +3232,39 @@ impl NodeNetworkInterface {
 		}
 
 		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+	}
+
+	/// The vector geometry an upstream Path node would surface for editing.
+	/// This is the result of `compute_modified_vector`, but only if a visible 'Path' node is actually upstream.
+	/// Useful for tool overlays and snap target collection usages that want to match the Path tool's view
+	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer) and otherwise do nothing.
+	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
+		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
+		self.compute_modified_vector(layer)
+	}
+
+	/// Outline targets for the Select tool's hover/selection overlay, mirroring the Path tool's view.
+	/// Returns `Some` when an upstream Path node exists so the outline matches what the Path tool edits
+	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); returns `None` otherwise so the
+	/// caller can fall back to the layer's recorded `outlines`/`click_targets`.
+	pub fn path_aware_outline_targets(&self, layer: LayerNodeIdentifier) -> Option<Vec<ClickTargetType>> {
+		let vector = self.upstream_path_node_vector(layer)?;
+
+		let mut targets = Vec::new();
+		let subpaths: Vec<Subpath<PointId>> = vector.stroke_bezier_paths().collect();
+		if !subpaths.is_empty() {
+			targets.push(ClickTargetType::CompoundPath(subpaths));
+		}
+
+		for &point_id in vector.point_domain.ids() {
+			if !vector.any_connected(point_id) {
+				let position = vector.point_domain.position_from_id(point_id).unwrap_or_default();
+				targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
+			}
+		}
+
+		Some(targets)
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -6367,6 +6442,7 @@ pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
 	/// Each instance of the input node needs to store its own data, since it can lose the reference to its
 	/// node definition if the node signature is modified by the user. For example adding/removing/renaming an import/export of a network node.
+	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap_as_sorted_object")]
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES

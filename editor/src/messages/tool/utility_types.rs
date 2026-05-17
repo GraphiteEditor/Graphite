@@ -14,6 +14,7 @@ use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
@@ -128,9 +129,7 @@ pub struct DocumentToolData {
 impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = Layout(vec![
-			LayoutGroup::row(vec![
-				WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance(),
-			]),
+			LayoutGroup::row(vec![WorkingColorsInput::new(SRGBA8::from(self.primary_color), SRGBA8::from(self.secondary_color)).widget_instance()]),
 			LayoutGroup::row(vec![
 				IconButton::new("SwapVertical", 16)
 					.tooltip_label("Swap Working Colors")

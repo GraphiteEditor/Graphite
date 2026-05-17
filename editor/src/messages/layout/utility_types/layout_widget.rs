@@ -22,7 +22,7 @@ impl core::fmt::Display for WidgetId {
 
 macro_rules! define_layout_target {
 	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
-		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 		#[repr(u8)]
 		pub enum LayoutTarget {
@@ -428,7 +428,6 @@ impl LayoutGroup {
 			let val = match &mut *widget.widget {
 				Widget::CheckboxInput(x) => &mut x.tooltip_description,
 				Widget::ColorInput(x) => &mut x.tooltip_description,
-				Widget::CurveInput(x) => &mut x.tooltip_description,
 				Widget::DropdownInput(x) => &mut x.tooltip_description,
 				Widget::IconButton(x) => &mut x.tooltip_description,
 				Widget::IconLabel(x) => &mut x.tooltip_description,
@@ -669,6 +668,7 @@ impl Diffable for WidgetInstance {
 				&& button1.tooltip_description == button2.tooltip_description
 				&& button1.tooltip_shortcut == button2.tooltip_shortcut
 				&& button1.popover_min_width == button2.popover_min_width
+				&& button1.popover_layout.0.len() == button2.popover_layout.0.len()
 			{
 				// Only the popover layout differs, diff it recursively
 				for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
@@ -769,7 +769,6 @@ pub enum Widget {
 	ColorComparisonInput(ColorComparisonInput),
 	ColorInput(ColorInput),
 	ColorPresetsInput(ColorPresetsInput),
-	CurveInput(CurveInput),
 	DropdownInput(DropdownInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
@@ -838,7 +837,6 @@ impl DiffUpdate {
 				Widget::ShortcutLabel(widget) => widget.shortcut.as_mut(),
 				Widget::IconLabel(_)
 				| Widget::ImageLabel(_)
-				| Widget::CurveInput(_)
 				| Widget::NodeCatalog(_)
 				| Widget::ReferencePointInput(_)
 				| Widget::RadioInput(_)

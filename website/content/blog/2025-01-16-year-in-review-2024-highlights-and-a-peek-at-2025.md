@@ -189,7 +189,7 @@ It is now becoming time to delve into the next phase of making the node graph mo
 
 - Lambdas: treating a node as a piece of data given to another node, so it can be run in a loop with varying parameters in each iteration.
 - Instances: generalizing graphical data, transforms, and groups so that every layer is one or multiple instances, each with a unique transform. This will finally fix the long-lived limitation of layers lacking a proper pivot point.
-- Tables: representing lists of data like vector points and segments in a spreadsheet. Formalizing the tabular data representation lets the node engine benefit from ECS-like performance gains by optimizing CPU cache utilization.
+- Lists: representing lists of data like vector points and segments in a spreadsheet. Formalizing the tabular data representation lets the node engine benefit from ECS-like performance gains by optimizing CPU cache utilization.
 - Attributes: encoding properties (of points, of segments, of instances, of appearance styles, etc.) in columns on the tabular data. This will unlock Graphite to become as powerful as Blender geometry nodes which works based on the same design principle.
 
 ### Raster graphics editing

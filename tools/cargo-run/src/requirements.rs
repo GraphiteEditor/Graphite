@@ -50,8 +50,8 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 			command: "wasm-bindgen",
 			args: &["--version"],
 			name: "wasm-bindgen-cli",
-			version: Some("0.2.100"),
-			install: Some("cargo install -f wasm-bindgen-cli@0.2.100"),
+			version: Some("0.2.121"),
+			install: Some("cargo install -f wasm-bindgen-cli@0.2.121"),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 		},
 		Requirement {
@@ -173,7 +173,11 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		eprintln!("  {}", dep.install.unwrap());
 	}
 	eprintln!();
-	eprint!("Install them now? [Y/n] ");
+	if installable.len() == 1 {
+		eprint!("Install it now? [Y/n] ");
+	} else {
+		eprint!("Install them now? [Y/n] ");
+	}
 
 	let mut input = String::new();
 	std::io::stdin().read_line(&mut input).map_err(|e| Error::Io(e, "Failed to read from stdin".into()))?;

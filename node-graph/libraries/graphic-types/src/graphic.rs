@@ -1,9 +1,8 @@
-use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::ops::TableConvert;
+use core_types::list::List;
+use core_types::ops::ListConvert;
 use core_types::render_complexity::RenderComplexity;
-use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
@@ -16,47 +15,24 @@ pub use vector_types::Vector;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Graphic {
-	Graphic(Table<Graphic>),
-	Vector(Table<Vector>),
-	RasterCPU(Table<Raster<CPU>>),
-	RasterGPU(Table<Raster<GPU>>),
-	Color(Table<Color>),
-	Gradient(Table<GradientStops>),
+	Graphic(List<Graphic>),
+	Vector(List<Vector>),
+	RasterCPU(List<Raster<CPU>>),
+	RasterGPU(List<Raster<GPU>>),
+	Color(List<Color>),
+	Gradient(List<GradientStops>),
 }
 
 impl Default for Graphic {
 	fn default() -> Self {
-		Self::Graphic(Table::new())
+		Self::Graphic(List::new())
 	}
 }
 
-// Explicit `Send`/`Sync` impls. All fields are themselves `Send`/`Sync`, so these would normally
-// be inferred, but the type participates in two mutually recursive cycles through `Table<Graphic>`
-// and `Table<Vector>` (where `Vector = vector_types::Vector<Option<Table<Graphic>>>`). The second
-// path, wrapped in `Option<_>` and a generic type parameter, produces a distinct auto-trait
-// obligation that the solver cannot recognize as the same cycle node, causing
-// `overflow evaluating the requirement` errors at the workspace's `once_cell::sync::Lazy` statics.
-// Providing these impls explicitly anchors the proof and lets the coinductive cache close both cycles.
-//
-// These can be removed (reverting to auto-derived `Send`/`Sync`) once any of the following holds:
-// - We remove the TaggedValue or its variants that contain tables.
-// - The `Vector` alias no longer references `Graphic` through a generic type parameter, breaking
-//   the second cycle so only the direct `Table<Graphic>` self-cycle remains (which the solver
-//   already handles on its own).
-// - `Graphic` stops containing `Table<Graphic>` directly, e.g. by boxing children through a trait
-//   object or opaque handle so the recursion is no longer structural.
-// - A future rustc release improves the auto-trait solver to recognize cycles across generic-
-//   parameter substitutions. Try deleting these impls and running:
-//   `cargo check --tests -p graphite-editor`
-//   If no `overflow evaluating the requirement` errors appear, they're no longer needed).
-unsafe impl Send for Graphic {}
-unsafe impl Sync for Graphic {}
-
 // Graphic
-impl From<Table<Graphic>> for Graphic {
-	fn from(graphic: Table<Graphic>) -> Self {
+impl From<List<Graphic>> for Graphic {
+	fn from(graphic: List<Graphic>) -> Self {
 		Graphic::Graphic(graphic)
 	}
 }
@@ -64,113 +40,113 @@ impl From<Table<Graphic>> for Graphic {
 // Vector
 impl From<Vector> for Graphic {
 	fn from(vector: Vector) -> Self {
-		Graphic::Vector(Table::new_from_element(vector))
+		Graphic::Vector(List::new_from_element(vector))
 	}
 }
-impl From<Table<Vector>> for Graphic {
-	fn from(vector: Table<Vector>) -> Self {
+impl From<List<Vector>> for Graphic {
+	fn from(vector: List<Vector>) -> Self {
 		Graphic::Vector(vector)
 	}
 }
 
-// Note: Table<Vector> -> Table<Graphic> conversion handled by blanket impl in gcore
+// Note: List<Vector> -> List<Graphic> conversion handled by blanket impl in gcore
 
 // Raster<CPU>
 impl From<Raster<CPU>> for Graphic {
 	fn from(raster: Raster<CPU>) -> Self {
-		Graphic::RasterCPU(Table::new_from_element(raster))
+		Graphic::RasterCPU(List::new_from_element(raster))
 	}
 }
-impl From<Table<Raster<CPU>>> for Graphic {
-	fn from(raster: Table<Raster<CPU>>) -> Self {
+impl From<List<Raster<CPU>>> for Graphic {
+	fn from(raster: List<Raster<CPU>>) -> Self {
 		Graphic::RasterCPU(raster)
 	}
 }
-// Note: Table conversions handled by blanket impl in gcore
+// Note: List conversions handled by blanket impl in gcore
 
 // Raster<GPU>
 impl From<Raster<GPU>> for Graphic {
 	fn from(raster: Raster<GPU>) -> Self {
-		Graphic::RasterGPU(Table::new_from_element(raster))
+		Graphic::RasterGPU(List::new_from_element(raster))
 	}
 }
-impl From<Table<Raster<GPU>>> for Graphic {
-	fn from(raster: Table<Raster<GPU>>) -> Self {
+impl From<List<Raster<GPU>>> for Graphic {
+	fn from(raster: List<Raster<GPU>>) -> Self {
 		Graphic::RasterGPU(raster)
 	}
 }
-// Note: Table conversions handled by blanket impl in gcore
+// Note: List conversions handled by blanket impl in gcore
 
 // Color
 impl From<Color> for Graphic {
 	fn from(color: Color) -> Self {
-		Graphic::Color(Table::new_from_element(color))
+		Graphic::Color(List::new_from_element(color))
 	}
 }
-impl From<Table<Color>> for Graphic {
-	fn from(color: Table<Color>) -> Self {
+impl From<List<Color>> for Graphic {
+	fn from(color: List<Color>) -> Self {
 		Graphic::Color(color)
 	}
 }
-// Note: Table conversions handled by blanket impl in gcore
-// Note: Table<Color> -> Option<Color> is in gcore (Color is defined there)
+// Note: List conversions handled by blanket impl in gcore
+// Note: List<Color> -> Option<Color> is in gcore (Color is defined there)
 
 // GradientStops
 impl From<GradientStops> for Graphic {
 	fn from(gradient: GradientStops) -> Self {
-		Graphic::Gradient(Table::new_from_element(gradient))
+		Graphic::Gradient(List::new_from_element(gradient))
 	}
 }
-impl From<Table<GradientStops>> for Graphic {
-	fn from(gradient: Table<GradientStops>) -> Self {
+impl From<List<GradientStops>> for Graphic {
+	fn from(gradient: List<GradientStops>) -> Self {
 		Graphic::Gradient(gradient)
 	}
 }
 
-/// Deeply flattens a `Table<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
-/// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`Table`s composes transforms and opacity.
-fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) -> Table<T> {
-	fn flatten_recursive<T>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
-		for current_graphic_row in current_graphic_table.into_iter() {
-			let layer_path: Table<NodeId> = current_graphic_row.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
+/// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
+/// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-`List`s composes transforms and opacity.
+fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
+	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
+		for current_graphic_row in current_graphic_list.into_iter() {
+			let layer_path: List<NodeId> = current_graphic_row.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let current_opacity: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY, 1.);
 			let current_fill: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 
 			match current_graphic_row.into_element() {
 				// Compose the parent's transform, opacity, and fill onto each child row
-				Graphic::Graphic(mut sub_table) => {
-					// Identity default means a missing column still composes correctly
-					for v in sub_table.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				Graphic::Graphic(mut sub_list) => {
+					// Identity default means a missing attribute still composes correctly
+					for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 						*v = current_transform * *v;
 					}
 
-					// f64 defaults to 0, but opacity/fill default to 1, so missing columns must be set rather than multiplied
-					if let Some(values) = sub_table.iter_attribute_values_mut::<f64>(ATTR_OPACITY) {
+					// f64 defaults to 0, but opacity/fill default to 1, so missing attributes must be set rather than multiplied
+					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY) {
 						for v in values {
 							*v *= current_opacity;
 						}
 					} else {
-						for v in sub_table.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
+						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
 							*v = current_opacity;
 						}
 					}
-					if let Some(values) = sub_table.iter_attribute_values_mut::<f64>(ATTR_OPACITY_FILL) {
+					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY_FILL) {
 						for v in values {
 							*v *= current_fill;
 						}
 					} else {
-						for v in sub_table.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
+						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
 							*v = current_fill;
 						}
 					}
 
-					flatten_recursive(output, sub_table, extract_variant);
+					flatten_recursive(output, sub_list, extract_variant);
 				}
 				// Extract the target variant and push its items with composed transform, opacity, and fill
 				other => {
-					if let Some(typed_table) = extract_variant(other) {
-						for mut item in typed_table.into_iter() {
+					if let Some(typed_list) = extract_variant(other) {
+						for mut item in typed_list.into_iter() {
 							let row_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 							let row_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 							let row_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -188,93 +164,100 @@ fn flatten_graphic_table<T>(content: Table<Graphic>, extract_variant: fn(Graphic
 		}
 	}
 
-	let mut output = Table::new();
+	let mut output = List::new();
 	flatten_recursive(&mut output, content, extract_variant);
 	output
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
-/// enabling type-directed casting of typed `Table`s from a `Graphic` value.
+/// enabling type-directed casting of typed `List`s from a `Graphic` value.
 pub trait TryFromGraphic: Clone + Sized {
-	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>>;
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>>;
 }
 
 impl TryFromGraphic for Vector {
-	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Vector(t) = graphic { Some(t) } else { None }
 	}
 }
 
 impl TryFromGraphic for Raster<CPU> {
-	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::RasterCPU(t) = graphic { Some(t) } else { None }
 	}
 }
 
 impl TryFromGraphic for Color {
-	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Color(t) = graphic { Some(t) } else { None }
 	}
 }
 
 impl TryFromGraphic for GradientStops {
-	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		if let Graphic::Gradient(t) = graphic { Some(t) } else { None }
 	}
 }
 
-// Local trait to convert types to Table<Graphic> (avoids orphan rule issues)
-pub trait IntoGraphicTable {
-	fn into_graphic_table(self) -> Table<Graphic>;
+// Local trait to convert types to List<Graphic> (avoids orphan rule issues)
+pub trait IntoGraphicList {
+	fn into_graphic_list(self) -> List<Graphic>;
 
-	/// Deeply flattens any content of type `T` within a `Table<Graphic>`, discarding all other content, and returning a flat `Table<T>`.
-	fn into_flattened_table<T: TryFromGraphic>(self) -> Table<T>
+	/// Deeply flattens any content of type `T` within a `List<Graphic>`, discarding all other content, and returning a flat `List<T>`.
+	fn into_flattened_list<T: TryFromGraphic>(self) -> List<T>
 	where
 		Self: std::marker::Sized,
 	{
-		flatten_graphic_table(self.into_graphic_table(), T::try_from_graphic)
+		flatten_graphic_list(self.into_graphic_list(), T::try_from_graphic)
 	}
 }
 
-impl IntoGraphicTable for Table<Graphic> {
-	fn into_graphic_table(self) -> Table<Graphic> {
+impl IntoGraphicList for List<Graphic> {
+	fn into_graphic_list(self) -> List<Graphic> {
 		self
 	}
 }
 
-impl IntoGraphicTable for Table<Vector> {
-	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::Vector(self))
+impl IntoGraphicList for List<Vector> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		// Propagate `editor:layer_path` from item 0 onto the wrapper Graphic row so a subsequent
+		// `flatten_graphic_list` doesn't overwrite the inner Vector's stamp with an empty value
+		let layer_path: List<NodeId> = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
+		let mut graphic_list = List::new_from_element(Graphic::Vector(self));
+		if !layer_path.is_empty() {
+			graphic_list.set_attribute(ATTR_EDITOR_LAYER_PATH, 0, layer_path);
+		}
+		graphic_list
 	}
 }
 
-impl IntoGraphicTable for Table<Raster<CPU>> {
-	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::RasterCPU(self))
+impl IntoGraphicList for List<Raster<CPU>> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::RasterCPU(self))
 	}
 }
 
-impl IntoGraphicTable for Table<Raster<GPU>> {
-	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::RasterGPU(self))
+impl IntoGraphicList for List<Raster<GPU>> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::RasterGPU(self))
 	}
 }
 
-impl IntoGraphicTable for Table<Color> {
-	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::Color(self))
+impl IntoGraphicList for List<Color> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::Color(self))
 	}
 }
 
-impl IntoGraphicTable for Table<GradientStops> {
-	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::Gradient(self))
+impl IntoGraphicList for List<GradientStops> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::Gradient(self))
 	}
 }
 
-impl IntoGraphicTable for DAffine2 {
-	fn into_graphic_table(self) -> Table<Graphic> {
-		Table::new_from_element(Graphic::default())
+impl IntoGraphicList for DAffine2 {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::default())
 	}
 }
 
@@ -284,45 +267,45 @@ impl From<DAffine2> for Graphic {
 		Graphic::default()
 	}
 }
-// Note: Table conversions handled by blanket impl in gcore
+// Note: List conversions handled by blanket impl in gcore
 
 impl Graphic {
-	pub fn as_graphic(&self) -> Option<&Table<Graphic>> {
+	pub fn as_graphic(&self) -> Option<&List<Graphic>> {
 		match self {
 			Graphic::Graphic(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
 
-	pub fn as_graphic_mut(&mut self) -> Option<&mut Table<Graphic>> {
+	pub fn as_graphic_mut(&mut self) -> Option<&mut List<Graphic>> {
 		match self {
 			Graphic::Graphic(graphic) => Some(graphic),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector(&self) -> Option<&Table<Vector>> {
+	pub fn as_vector(&self) -> Option<&List<Vector>> {
 		match self {
 			Graphic::Vector(vector) => Some(vector),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_mut(&mut self) -> Option<&mut Table<Vector>> {
+	pub fn as_vector_mut(&mut self) -> Option<&mut List<Vector>> {
 		match self {
 			Graphic::Vector(vector) => Some(vector),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&Table<Raster<CPU>>> {
+	pub fn as_raster(&self) -> Option<&List<Raster<CPU>>> {
 		match self {
 			Graphic::RasterCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut Table<Raster<CPU>>> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut List<Raster<CPU>>> {
 		match self {
 			Graphic::RasterCPU(raster) => Some(raster),
 			_ => None,
@@ -330,17 +313,17 @@ impl Graphic {
 	}
 
 	pub fn had_clip_enabled(&self) -> bool {
-		fn all_clipped<T>(table: &Table<T>) -> bool {
-			table.iter_attribute_values_or_default::<bool>(ATTR_CLIPPING_MASK).all(|clip| clip)
+		fn all_clipped<T>(list: &List<T>) -> bool {
+			list.iter_attribute_values_or_default::<bool>(ATTR_CLIPPING_MASK).all(|clip| clip)
 		}
 
 		match self {
-			Graphic::Vector(table) => all_clipped(table),
-			Graphic::Graphic(table) => all_clipped(table),
-			Graphic::RasterCPU(table) => all_clipped(table),
-			Graphic::RasterGPU(table) => all_clipped(table),
-			Graphic::Color(table) => all_clipped(table),
-			Graphic::Gradient(table) => all_clipped(table),
+			Graphic::Vector(list) => all_clipped(list),
+			Graphic::Graphic(list) => all_clipped(list),
+			Graphic::RasterCPU(list) => all_clipped(list),
+			Graphic::RasterGPU(list) => all_clipped(list),
+			Graphic::Color(list) => all_clipped(list),
+			Graphic::Gradient(list) => all_clipped(list),
 		}
 	}
 
@@ -359,12 +342,12 @@ impl Graphic {
 impl BoundingBox for Graphic {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
-			Graphic::Vector(table) => table.bounding_box(transform, include_stroke),
-			Graphic::RasterCPU(table) => table.bounding_box(transform, include_stroke),
-			Graphic::RasterGPU(table) => table.bounding_box(transform, include_stroke),
-			Graphic::Graphic(table) => table.bounding_box(transform, include_stroke),
-			Graphic::Color(table) => table.bounding_box(transform, include_stroke),
-			Graphic::Gradient(table) => table.bounding_box(transform, include_stroke),
+			Graphic::Vector(list) => list.bounding_box(transform, include_stroke),
+			Graphic::RasterCPU(list) => list.bounding_box(transform, include_stroke),
+			Graphic::RasterGPU(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Graphic(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Color(list) => list.bounding_box(transform, include_stroke),
+			Graphic::Gradient(list) => list.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -380,31 +363,31 @@ impl BoundingBox for Graphic {
 	}
 }
 
-impl TableConvert<Graphic> for Vector {
+impl ListConvert<Graphic> for Vector {
 	fn convert_row(self) -> Graphic {
-		Graphic::Vector(Table::new_from_element(self))
+		Graphic::Vector(List::new_from_element(self))
 	}
 }
-impl TableConvert<Graphic> for Raster<CPU> {
+impl ListConvert<Graphic> for Raster<CPU> {
 	fn convert_row(self) -> Graphic {
-		Graphic::RasterCPU(Table::new_from_element(self))
+		Graphic::RasterCPU(List::new_from_element(self))
 	}
 }
-impl TableConvert<Graphic> for Raster<GPU> {
+impl ListConvert<Graphic> for Raster<GPU> {
 	fn convert_row(self) -> Graphic {
-		Graphic::RasterGPU(Table::new_from_element(self))
+		Graphic::RasterGPU(List::new_from_element(self))
 	}
 }
 
 impl RenderComplexity for Graphic {
 	fn render_complexity(&self) -> usize {
 		match self {
-			Self::Graphic(table) => table.render_complexity(),
-			Self::Vector(table) => table.render_complexity(),
-			Self::RasterCPU(table) => table.render_complexity(),
-			Self::RasterGPU(table) => table.render_complexity(),
-			Self::Color(table) => table.render_complexity(),
-			Self::Gradient(table) => table.render_complexity(),
+			Self::Graphic(list) => list.render_complexity(),
+			Self::Vector(list) => list.render_complexity(),
+			Self::RasterCPU(list) => list.render_complexity(),
+			Self::RasterGPU(list) => list.render_complexity(),
+			Self::Color(list) => list.render_complexity(),
+			Self::Gradient(list) => list.render_complexity(),
 		}
 	}
 }
@@ -427,14 +410,14 @@ impl<T: Clone> AtIndex for Vec<T> {
 		if index == 0 || index > self.len() { None } else { self.get(self.len() - index).cloned() }
 	}
 }
-impl<T: Clone> AtIndex for Table<T> {
-	type Output = Table<T>;
+impl<T: Clone> AtIndex for List<T> {
+	type Output = List<T>;
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
-		self.clone_row(index).map(|row| {
-			let mut result_table = Self::default();
-			result_table.push(row);
-			result_table
+		self.clone_item(index).map(|row| {
+			let mut result_list = Self::default();
+			result_list.push(row);
+			result_list
 		})
 	}
 
@@ -459,12 +442,12 @@ impl<T: Clone> OmitIndex for Vec<T> {
 		self.omit_index(self.len() - index)
 	}
 }
-impl<T: Clone> OmitIndex for Table<T> {
+impl<T: Clone> OmitIndex for List<T> {
 	fn omit_index(&self, index: usize) -> Self {
 		let mut result = Self::default();
 		for i in 0..self.len() {
 			if i != index
-				&& let Some(row) = self.clone_row(i)
+				&& let Some(row) = self.clone_item(i)
 			{
 				result.push(row);
 			}
@@ -478,98 +461,4 @@ impl<T: Clone> OmitIndex for Table<T> {
 		}
 		self.omit_index(self.len() - index)
 	}
-}
-
-// TODO: Eventually remove this migration document upgrade code
-pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Table<Graphic>, D::Error> {
-	use serde::Deserialize;
-
-	/// Mirrors the removed `AlphaBlending` struct for legacy document deserialization.
-	#[derive(Clone, Debug, Default, PartialEq)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(default))]
-	pub struct LegacyAlphaBlending {
-		pub blend_mode: BlendMode,
-		pub opacity: f32,
-		pub fill: f32,
-		pub clip: bool,
-	}
-
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldGraphicGroup {
-		elements: Vec<(Graphic, Option<NodeId>)>,
-		transform: DAffine2,
-		alpha_blending: LegacyAlphaBlending,
-	}
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct GraphicGroup {
-		elements: Vec<(Graphic, Option<NodeId>)>,
-	}
-
-	#[derive(Clone, Debug)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OlderTable<T> {
-		id: Vec<u64>,
-		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
-		element: Vec<T>,
-	}
-
-	#[derive(Clone, Debug)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	pub struct OldTable<T> {
-		id: Vec<u64>,
-		#[cfg_attr(feature = "serde", serde(alias = "instances", alias = "instance"))]
-		element: Vec<T>,
-		transform: Vec<DAffine2>,
-		alpha_blending: Vec<LegacyAlphaBlending>,
-	}
-
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum GraphicFormat {
-		OldGraphicGroup(OldGraphicGroup),
-		OlderTableOldGraphicGroup(OlderTable<OldGraphicGroup>),
-		OldTableOldGraphicGroup(OldTable<OldGraphicGroup>),
-		OldTableGraphicGroup(OldTable<GraphicGroup>),
-		Table(serde_json::Value),
-	}
-
-	// Attributes (transform, alpha_blending, editor:layer_path) are not serialized, so migration only needs
-	// to recover the elements. Per-item attribute values are populated at runtime by the node graph.
-	Ok(match GraphicFormat::deserialize(deserializer)? {
-		GraphicFormat::OldGraphicGroup(old) => old.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)).collect(),
-		GraphicFormat::OlderTableOldGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
-			.collect(),
-		GraphicFormat::OldTableOldGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
-			.collect(),
-		GraphicFormat::OldTableGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| element.elements.into_iter().map(|(graphic, _)| TableRow::new_from_element(graphic)))
-			.collect(),
-		GraphicFormat::Table(value) => {
-			// Try to deserialize as either `Table` format
-			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
-				let mut graphic_table = Table::new();
-				for index in 0..old_table.len() {
-					for (graphic, _) in &old_table.element(index).unwrap().elements {
-						graphic_table.push(TableRow::new_from_element(graphic.clone()));
-					}
-				}
-				graphic_table
-			} else if let Ok(new_table) = serde_json::from_value::<Table<Graphic>>(value) {
-				new_table
-			} else {
-				return Err(serde::de::Error::custom("Failed to deserialize Table<Graphic>"));
-			}
-		}
-	})
 }

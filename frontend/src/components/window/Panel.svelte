@@ -11,7 +11,7 @@
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { panelDrag, startCrossPanelDrag, endCrossPanelDrag, updateCrossPanelHover, updateDockingHover } from "/src/stores/panel-drag";
 	import type { DockingEdge } from "/src/stores/panel-drag";
-	import type { EditorWrapper, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { DockingSplitDirection, EditorWrapper, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const PANEL_COMPONENTS = {
 		Welcome,
@@ -40,7 +40,7 @@
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
 	export let groupDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
-	export let splitDropAction: ((targetPanelId: string, direction: DockingEdge, tabs: PanelType[], activeTabIndex: number) => void) | undefined = undefined;
+	export let splitDropAction: ((targetPanelId: string, direction: DockingSplitDirection, tabs: PanelType[], activeTabIndex: number) => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -222,7 +222,7 @@
 				dropAction?.(panelId, crossPanelState.hoverDockingPanelId, Number.MAX_SAFE_INTEGER);
 			}
 			// Edge docking drop: create a new split adjacent to the target panel
-			else if (crossPanelState.active && crossPanelState.hoverDockingPanelId && crossPanelState.hoverDockingEdge) {
+			else if (crossPanelState.active && crossPanelState.hoverDockingPanelId && crossPanelState.hoverDockingEdge && crossPanelState.hoverDockingEdge !== "Center") {
 				splitDropAction?.(
 					crossPanelState.hoverDockingPanelId,
 					crossPanelState.hoverDockingEdge,

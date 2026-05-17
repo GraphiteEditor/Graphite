@@ -25,7 +25,7 @@ use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum ShapeType {
 	#[default]
 	Polygon = 0,
@@ -41,6 +41,26 @@ pub enum ShapeType {
 }
 
 impl ShapeType {
+	/// Every shape mode, in dropdown order. Used to seed per-mode default maps.
+	pub const ALL: &[ShapeType] = &[
+		ShapeType::Polygon,
+		ShapeType::Star,
+		ShapeType::Circle,
+		ShapeType::Arc,
+		ShapeType::Spiral,
+		ShapeType::Grid,
+		ShapeType::Arrow,
+		ShapeType::Line,      // KEEP THIS AT THE END
+		ShapeType::Rectangle, // KEEP THIS AT THE END
+		ShapeType::Ellipse,   // KEEP THIS AT THE END
+	];
+
+	/// True if this shape mode's fill checkbox is ticked by default when nothing is selected.
+	/// Spiral/Grid/Line are open paths and default to fill-off, the closed shapes default to fill-on.
+	pub fn defaults_to_fill(&self) -> bool {
+		matches!(self, Self::Polygon | Self::Star | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow)
+	}
+
 	pub fn name(&self) -> String {
 		(match self {
 			Self::Polygon => "Polygon",
@@ -50,9 +70,9 @@ impl ShapeType {
 			Self::Spiral => "Spiral",
 			Self::Grid => "Grid",
 			Self::Arrow => "Arrow",
-			Self::Line => "Line",
-			Self::Rectangle => "Rectangle",
-			Self::Ellipse => "Ellipse",
+			Self::Line => "Line",           // KEEP THIS AT THE END
+			Self::Rectangle => "Rectangle", // KEEP THIS AT THE END
+			Self::Ellipse => "Ellipse",     // KEEP THIS AT THE END
 		})
 		.into()
 	}

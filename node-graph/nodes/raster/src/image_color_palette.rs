@@ -1,22 +1,23 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use core_types::table::{Table, TableRow};
+use core_types::list::{Item, List};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: Table<Raster<CPU>>,
+	image: List<Raster<CPU>>,
 	#[default(4)]
 	#[hard_min(1)]
 	count: u32,
-) -> Table<Color> {
+) -> List<Color> {
 	const GRID: f32 = 3.;
 
 	let bins = GRID * GRID * GRID;
 
 	let mut histogram = vec![0; (bins + 1.) as usize];
-	let mut color_bins = vec![Vec::new(); (bins + 1.) as usize];
+	// Each bin stores `(red, green, blue, alpha)` tuples in sRGB gamma space; averaging in gamma space gives perceptually-uniform binning.
+	let mut color_bins: Vec<Vec<[f32; 4]>> = vec![Vec::new(); (bins + 1.) as usize];
 
 	for element in image.iter_element_values() {
 		for pixel in element.data.iter() {
@@ -27,7 +28,7 @@ async fn image_color_palette(
 			let bin = (r * GRID + g * GRID + b * GRID) as usize;
 
 			histogram[bin] += 1;
-			color_bins[bin].push(pixel.to_gamma_srgb());
+			color_bins[bin].push(pixel.to_gamma_srgb_channels());
 		}
 	}
 
@@ -39,24 +40,21 @@ async fn image_color_palette(
 		.flat_map(|&i| {
 			let list = &color_bins[i];
 
-			let mut r = 0.;
-			let mut g = 0.;
-			let mut b = 0.;
-			let mut a = 0.;
+			let [mut r, mut g, mut b, mut a] = [0.; 4];
 
-			for color in list.iter() {
-				r += color.r();
-				g += color.g();
-				b += color.b();
-				a += color.a();
+			for &[cr, cg, cb, ca] in list.iter() {
+				r += cr;
+				g += cg;
+				b += cb;
+				a += ca;
 			}
 
-			r /= list.len() as f32;
-			g /= list.len() as f32;
-			b /= list.len() as f32;
-			a /= list.len() as f32;
+			let len = list.len() as f32;
+			let [r, g, b, a] = [r / len, g / len, b / len, a / len];
 
-			Color::from_rgbaf32(r, g, b, a).map(TableRow::new_from_element).into_iter()
+			// Reject NaN/out-of-range averages, then lift the gamma-space bin centroid to linear-light
+			let in_gamut = a <= 1. && ![r, g, b, a].iter().any(|c| c.is_sign_negative() || !c.is_finite());
+			in_gamut.then(|| Color::from_gamma_srgb_channels(r, g, b, a)).map(Item::new_from_element).into_iter()
 		})
 		.collect()
 }
@@ -71,7 +69,7 @@ mod test {
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			Table::new_from_element(Raster::new_cpu(Image {
+			List::new_from_element(Raster::new_cpu(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
@@ -79,6 +77,6 @@ mod test {
 			})),
 			1,
 		);
-		assert_eq!(futures::executor::block_on(result), Table::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
+		assert_eq!(futures::executor::block_on(result), List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
 	}
 }

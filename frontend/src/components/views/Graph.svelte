@@ -188,10 +188,6 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function dataTypeTooltipLabel(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return `Data Type: ${value.resolvedType}`;
-	}
-
 	function nodeNameTooltipLabel(node: FrontendNode): string {
 		return node.displayName === node.implementationName ? node.displayName : `${node.displayName} (${node.implementationName})`;
 	}
@@ -349,7 +345,7 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="output"
-						data-tooltip-label={dataTypeTooltipLabel(frontendOutput)}
+						data-tooltip-label={frontendOutput.resolvedType}
 						data-tooltip-description={outputConnectedToText(frontendOutput)}
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
@@ -418,7 +414,7 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="input"
-						data-tooltip-label={dataTypeTooltipLabel(frontendInput)}
+						data-tooltip-label={frontendInput.resolvedType}
 						data-tooltip-description={inputConnectedToText(frontendInput)}
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
@@ -556,7 +552,7 @@
 							viewBox="0 0 8 12"
 							class="connector top"
 							data-connector="output"
-							data-tooltip-label={dataTypeTooltipLabel(node.primaryOutput)}
+							data-tooltip-label={node.primaryOutput.resolvedType}
 							data-tooltip-description={outputConnectedToText(node.primaryOutput)}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
@@ -578,7 +574,7 @@
 						viewBox="0 0 8 12"
 						class="connector bottom"
 						data-connector="input"
-						data-tooltip-label={node.primaryInput ? dataTypeTooltipLabel(node.primaryInput) : ""}
+						data-tooltip-label={node.primaryInput ? node.primaryInput.resolvedType : ""}
 						data-tooltip-description={node.primaryInput ? `${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}` : ""}
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
@@ -601,7 +597,7 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector"
-							data-tooltip-label={dataTypeTooltipLabel(stackDataInput)}
+							data-tooltip-label={stackDataInput.resolvedType}
 							data-tooltip-description={`${validTypesText(stackDataInput).trim()}\n\n${inputConnectedToText(stackDataInput)}`}
 							data-connector="input"
 							data-datatype={stackDataInput.dataType}
@@ -755,7 +751,7 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="input"
-							data-tooltip-label={dataTypeTooltipLabel(node.primaryInput)}
+							data-tooltip-label={node.primaryInput.resolvedType}
 							data-tooltip-description={`${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}`}
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
@@ -775,7 +771,7 @@
 								viewBox="0 0 8 8"
 								class="connector"
 								data-connector="input"
-								data-tooltip-label={dataTypeTooltipLabel(secondary)}
+								data-tooltip-label={secondary.resolvedType}
 								data-tooltip-description={`${validTypesText(secondary).trim()}\n\n${inputConnectedToText(secondary)}`}
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
@@ -798,7 +794,7 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="output"
-							data-tooltip-label={dataTypeTooltipLabel(node.primaryOutput)}
+							data-tooltip-label={node.primaryOutput.resolvedType}
 							data-tooltip-description={`${outputConnectedToText(node.primaryOutput)}`}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
@@ -817,7 +813,7 @@
 							viewBox="0 0 8 8"
 							class="connector"
 							data-connector="output"
-							data-tooltip-label={dataTypeTooltipLabel(secondary)}
+							data-tooltip-label={secondary.resolvedType}
 							data-tooltip-description={`${outputConnectedToText(secondary)}`}
 							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}

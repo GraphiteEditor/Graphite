@@ -11,9 +11,9 @@ use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::ATTR_TRANSFORM;
+use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
-use graphene_std::table::Table;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
@@ -1112,7 +1112,7 @@ impl OverlayContextInternal {
 			max_width: None,
 			max_height: None,
 			tilt: 0.,
-			align: TextAlign::Left, // We'll handle alignment manually via pivot
+			align: TextAlign::AlignLeft,
 		};
 
 		// Load Source Sans Pro font data
@@ -1129,7 +1129,7 @@ impl OverlayContextInternal {
 		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
 
 		// Convert text to vector paths for rendering
-		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		let text_list = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
@@ -1161,20 +1161,20 @@ impl OverlayContextInternal {
 		}
 
 		// Render the actual text paths
-		self.render_text_paths(&text_table, font_color, vello_transform);
+		self.render_text_paths(&text_list, font_color, vello_transform);
 	}
 
 	// Render text paths to the vello scene using existing infrastructure
-	fn render_text_paths(&mut self, text_table: &Table<Vector>, font_color: &str, base_transform: kurbo::Affine) {
+	fn render_text_paths(&mut self, text_list: &List<Vector>, font_color: &str, base_transform: kurbo::Affine) {
 		let color = Self::parse_color(font_color);
 
-		for index in 0..text_table.len() {
+		for index in 0..text_list.len() {
 			// Use the existing bezier_to_path infrastructure to convert Vector to BezPath
 			let mut path = BezPath::new();
 			let mut last_point = None;
-			let transform: DAffine2 = text_table.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+			let transform: DAffine2 = text_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
-			let Some(element) = text_table.element(index) else { continue };
+			let Some(element) = text_list.element(index) else { continue };
 			for (_, bezier, start_id, end_id) in element.segment_iter() {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);

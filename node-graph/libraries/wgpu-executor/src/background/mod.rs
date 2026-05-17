@@ -33,13 +33,13 @@ impl BackgroundCompositor {
 
 		let checker_rect_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("background_checker_rect_pipeline_layout"),
-			bind_group_layouts: &[&checker_bind_group_layout],
+			bind_group_layouts: &[Some(&checker_bind_group_layout)],
 			immediate_size: 0,
 		});
 
 		let checker_viewport_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("background_checker_viewport_pipeline_layout"),
-			bind_group_layouts: &[&checker_bind_group_layout],
+			bind_group_layouts: &[Some(&checker_bind_group_layout)],
 			immediate_size: 0,
 		});
 
@@ -67,7 +67,7 @@ impl BackgroundCompositor {
 
 		let fullscreen_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("background_fullscreen_pipeline_layout"),
-			bind_group_layouts: &[&fullscreen_bind_group_layout],
+			bind_group_layouts: &[Some(&fullscreen_bind_group_layout)],
 			immediate_size: 0,
 		});
 
