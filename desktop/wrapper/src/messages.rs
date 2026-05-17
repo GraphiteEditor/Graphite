@@ -111,8 +111,19 @@ pub enum OpenFileDialogContext {
 }
 
 pub enum SaveFileDialogContext {
-	Document { document_id: DocumentId, content: Vec<u8> },
-	File { content: Vec<u8> },
+	Document {
+		document_id: DocumentId,
+		content: Vec<u8>,
+	},
+	File {
+		content: Vec<u8>,
+	},
+	/// Multiple files written into a folder whose path is the user-chosen path with any extension stripped
+	/// (e.g. picking `MyAnim.png` yields a `MyAnim/` folder). Each `(filename, content)` entry is written
+	/// inside that folder, which is created if it doesn't exist.
+	MultipleFiles {
+		files: Vec<(String, Vec<u8>)>,
+	},
 }
 
 pub enum MenuItem {

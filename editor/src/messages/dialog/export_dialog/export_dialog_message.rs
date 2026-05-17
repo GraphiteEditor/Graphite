@@ -7,6 +7,10 @@ pub enum ExportDialogMessage {
 	FileType { file_type: FileType },
 	ScaleFactor { factor: f64 },
 	ExportBounds { bounds: ExportBounds },
+	Animated { animated: bool },
+	Fps { fps: f64 },
+	StartSeconds { start: f64 },
+	EndSeconds { end: f64 },
 
 	Submit,
 }

@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{ExportAnimationFrame, ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::EditorPreferences;
@@ -13,6 +13,8 @@ use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
+use std::path::PathBuf;
+use std::time::Duration;
 
 mod runtime_io;
 pub use runtime_io::NodeRuntimeIO;
@@ -59,6 +61,23 @@ pub struct NodeGraphExecutor {
 	/// so the runtime can splice its monitor node alongside the target rather than only at the top level.
 	/// Tracking the previously-sent value lets `update_node_graph` re-send the network when the inspection target changes.
 	previous_node_to_inspect: Vec<NodeId>,
+	/// Per-export accumulator for in-progress animation exports. Each frame execution pushes its rendered output here into the matching u64 export ID slot.
+	/// Once `frames_received == total_frames`, the accumulator is drained into a single `TriggerExportAnimation` message.
+	pending_animation_exports: HashMap<u64, AnimationExportAccumulator>,
+	next_animation_export_id: u64,
+}
+
+#[derive(Debug)]
+struct AnimationExportAccumulator {
+	name: String,
+	file_type: FileType,
+	size: UVec2,
+	folder: Option<PathBuf>,
+	artboard_name: Option<String>,
+	artboard_count: usize,
+	frames: Vec<Option<ExportAnimationFrame>>,
+	frames_received: u32,
+	total_frames: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +100,8 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
+			pending_animation_exports: HashMap::new(),
+			next_animation_export_id: 0,
 		};
 		(node_runtime, node_executor)
 	}
@@ -264,7 +285,7 @@ impl NodeGraphExecutor {
 			..Default::default()
 		};
 
-		let render_config = RenderConfig {
+		let base_render_config = RenderConfig {
 			viewport,
 			scale: export_config.scale_factor,
 			time: Default::default(),
@@ -276,18 +297,65 @@ impl NodeGraphExecutor {
 		};
 		export_config.size = resolution;
 
-		// Execute the node graph
+		// Send the network update once; the runtime keeps it for all subsequent executions.
 		self.runtime_io
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
 			.map_err(|e| e.to_string())?;
-		let execution_id = self.queue_execution(render_config);
-		self.futures.push_back((
-			execution_id,
-			ExecutionContext {
-				export_config: Some(export_config),
-				document_id,
-			},
-		));
+
+		if let Some(animation) = export_config.animation {
+			// Allocate an export ID and accumulator, then queue one execution per frame
+			let export_id = self.next_animation_export_id;
+			self.next_animation_export_id = self.next_animation_export_id.wrapping_add(1);
+
+			let folder = document.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
+			self.pending_animation_exports.insert(
+				export_id,
+				AnimationExportAccumulator {
+					name: export_config.name.clone(),
+					file_type: export_config.file_type,
+					size: resolution,
+					folder,
+					artboard_name: export_config.artboard_name.clone(),
+					artboard_count: export_config.artboard_count,
+					frames: (0..animation.total_frames).map(|_| None).collect(),
+					frames_received: 0,
+					total_frames: animation.total_frames,
+				},
+			);
+
+			for frame_index in 0..animation.total_frames {
+				let frame_seconds = animation.frame_time_seconds(frame_index);
+				let animation_time = Duration::from_secs_f64(frame_seconds.max(0.));
+				let timing = TimingInformation { time: frame_seconds, animation_time };
+
+				let frame_render_config = RenderConfig { time: timing, ..base_render_config };
+
+				let mut frame_export_config = export_config.clone();
+				frame_export_config.animation_frame = Some(AnimationExportFrame {
+					export_id,
+					frame_index,
+					total_frames: animation.total_frames,
+				});
+
+				let execution_id = self.queue_execution(frame_render_config);
+				self.futures.push_back((
+					execution_id,
+					ExecutionContext {
+						export_config: Some(frame_export_config),
+						document_id,
+					},
+				));
+			}
+		} else {
+			let execution_id = self.queue_execution(base_render_config);
+			self.futures.push_back((
+				execution_id,
+				ExecutionContext {
+					export_config: Some(export_config),
+					document_id,
+				},
+			));
+		}
 
 		Ok(())
 	}
@@ -459,7 +527,12 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_export(&mut self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		// Route animation frames into the per-export accumulator. The final message is emitted when all frames arrive.
+		if let Some(animation_frame) = export_config.animation_frame {
+			return self.process_animation_frame(node_graph_output, &export_config, animation_frame, responses);
+		}
+
 		let ExportConfig {
 			file_type,
 			name,
@@ -503,43 +576,7 @@ impl NodeGraphExecutor {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
 			}) if file_type != FileType::Svg => {
-				use image::buffer::ConvertBuffer;
-				use image::{ImageFormat, RgbImage, RgbaImage};
-
-				let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
-					return Err("Failed to create image buffer for export".to_string());
-				};
-
-				let mut encoded = Vec::new();
-				let mut cursor = std::io::Cursor::new(&mut encoded);
-
-				match file_type {
-					FileType::Png => {
-						let result = image.write_to(&mut cursor, ImageFormat::Png);
-						if let Err(err) = result {
-							return Err(format!("Failed to encode PNG: {err}"));
-						}
-					}
-					FileType::Jpg => {
-						// Composite onto a white background since JPG doesn't support transparency
-						for pixel in image.pixels_mut() {
-							let [r, g, b, a] = pixel.0;
-							let alpha = a as f32 / 255.;
-							let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
-							*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
-						}
-
-						let image: RgbImage = image.convert();
-						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
-						if let Err(err) = result {
-							return Err(format!("Failed to encode JPG: {err}"));
-						}
-					}
-					FileType::Svg => {
-						return Err("SVG cannot be exported from an image buffer".to_string());
-					}
-				}
-
+				let encoded = encode_raster_buffer(file_type, data, width, height)?;
 				responses.add(FrontendMessage::TriggerSaveFile {
 					name,
 					folder,
@@ -553,6 +590,105 @@ impl NodeGraphExecutor {
 
 		Ok(())
 	}
+
+	fn process_animation_frame(
+		&mut self,
+		node_graph_output: TaggedValue,
+		export_config: &ExportConfig,
+		animation_frame: AnimationExportFrame,
+		responses: &mut VecDeque<Message>,
+	) -> Result<(), String> {
+		let file_type = export_config.file_type;
+
+		let frame_data = match node_graph_output {
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) => ExportAnimationFrame::Svg(svg),
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) if file_type != FileType::Svg => {
+				let encoded = encode_raster_buffer(file_type, data, width, height)?;
+				ExportAnimationFrame::Bytes(serde_bytes::ByteBuf::from(encoded))
+			}
+			other => return Err(format!("Incorrect render type for animation frame ({file_type:?}, {other})")),
+		};
+
+		let Some(accumulator) = self.pending_animation_exports.get_mut(&animation_frame.export_id) else {
+			// Export was cancelled or already finalized, drop it quietly
+			return Ok(());
+		};
+
+		let index = animation_frame.frame_index as usize;
+		if let Some(slot) = accumulator.frames.get_mut(index)
+			&& slot.is_none()
+		{
+			*slot = Some(frame_data);
+			accumulator.frames_received += 1;
+		}
+
+		if accumulator.frames_received < accumulator.total_frames {
+			return Ok(());
+		}
+
+		// All frames received: drain the accumulator and emit a single message
+		let accumulator = self.pending_animation_exports.remove(&animation_frame.export_id).expect("Accumulator was present");
+		let base_name = match (accumulator.artboard_name, accumulator.artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{} - {}", accumulator.name, artboard_name),
+			_ => accumulator.name,
+		};
+		let frames: Vec<_> = accumulator
+			.frames
+			.into_iter()
+			.enumerate()
+			.map(|(i, f)| f.ok_or_else(|| format!("Missing animation frame {i}")))
+			.collect::<Result<Vec<_>, _>>()?;
+
+		responses.add(FrontendMessage::TriggerExportAnimation {
+			name: base_name,
+			extension: accumulator.file_type.to_extension().to_string(),
+			mime: accumulator.file_type.to_mime().to_string(),
+			size: accumulator.size.as_dvec2().into(),
+			folder: accumulator.folder,
+			frames,
+		});
+
+		Ok(())
+	}
+}
+
+#[cfg(feature = "gpu")]
+fn encode_raster_buffer(file_type: FileType, data: Vec<u8>, width: u32, height: u32) -> Result<Vec<u8>, String> {
+	use image::buffer::ConvertBuffer;
+	use image::{ImageFormat, RgbImage, RgbaImage};
+
+	let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
+		return Err("Failed to create image buffer for export".to_string());
+	};
+
+	let mut encoded = Vec::new();
+	let mut cursor = std::io::Cursor::new(&mut encoded);
+
+	match file_type {
+		FileType::Png => image.write_to(&mut cursor, ImageFormat::Png).map_err(|err| format!("Failed to encode PNG: {err}"))?,
+		FileType::Jpg => {
+			// Composite onto a white background since JPG doesn't support transparency
+			for pixel in image.pixels_mut() {
+				let [r, g, b, a] = pixel.0;
+				let alpha = a as f32 / 255.;
+				let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
+				*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
+			}
+
+			let image: RgbImage = image.convert();
+			image.write_to(&mut cursor, ImageFormat::Jpeg).map_err(|err| format!("Failed to encode JPG: {err}"))?;
+		}
+		FileType::Svg => return Err("SVG cannot be exported from an image buffer".to_string()),
+	}
+
+	Ok(encoded)
 }
 
 // Re-export for usage by tests in other modules

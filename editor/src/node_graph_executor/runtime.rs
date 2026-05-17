@@ -1,5 +1,5 @@
 use super::*;
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{AnimationExport, ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
@@ -91,6 +91,17 @@ pub struct ExportConfig {
 	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
+	/// Set when this export is part of a multi-frame animation export. `None` means a normal single-frame export.
+	pub animation: Option<AnimationExport>,
+	/// Set on each per-frame `ExportConfig` to identify which animation export it belongs to and which frame index it represents.
+	pub animation_frame: Option<AnimationExportFrame>,
+}
+
+#[derive(Default, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct AnimationExportFrame {
+	pub export_id: u64,
+	pub frame_index: u32,
+	pub total_frames: u32,
 }
 
 #[derive(Clone)]

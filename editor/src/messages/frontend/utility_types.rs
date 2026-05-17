@@ -59,6 +59,14 @@ impl FileType {
 			FileType::Svg => "image/svg+xml",
 		}
 	}
+
+	pub fn to_extension(self) -> &'static str {
+		match self {
+			FileType::Png => "png",
+			FileType::Jpg => "jpg",
+			FileType::Svg => "svg",
+		}
+	}
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -68,6 +76,39 @@ pub enum ExportBounds {
 	AllArtwork,
 	Selection,
 	Artboard(LayerNodeIdentifier),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AnimationExport {
+	pub fps: f64,
+	pub start_seconds: f64,
+	pub total_frames: u32,
+}
+
+impl Default for AnimationExport {
+	fn default() -> Self {
+		Self {
+			fps: 30.,
+			start_seconds: 0.,
+			total_frames: 30,
+		}
+	}
+}
+
+impl AnimationExport {
+	pub fn frame_time_seconds(&self, frame_index: u32) -> f64 {
+		self.start_seconds + frame_index as f64 / self.fps
+	}
+}
+
+/// One frame of a multi-frame animation export, in playback order.
+/// `Svg` is text that the frontend can save directly (for SVG export) or rasterize via canvas (for PNG/JPG export).
+/// `Bytes` is already-encoded image bytes from the GPU export path, ready to write directly.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ExportAnimationFrame {
+	Svg(String),
+	Bytes(serde_bytes::ByteBuf),
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]

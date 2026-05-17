@@ -31,6 +31,15 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			SaveFileDialogContext::File { content } => {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
+			SaveFileDialogContext::MultipleFiles { files } => {
+				// Treat the chosen path as the folder name; strip any extension the user typed (e.g. "MyAnim.png" → "MyAnim").
+				// The `WriteFile` handler creates parent directories if they don't exist, so the folder is materialized on first write.
+				let folder = path.with_extension("");
+				for (filename, content) in files {
+					let file_path = folder.join(&filename);
+					dispatcher.respond(DesktopFrontendMessage::WriteFile { path: file_path, content });
+				}
+			}
 		},
 		DesktopWrapperMessage::OpenFile { path, content } => {
 			let message = PortfolioMessage::OpenFile { path, content };
