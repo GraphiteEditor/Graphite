@@ -55,6 +55,18 @@ pub struct PortfolioMessageContext<'a> {
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	unloaded_documents: HashMap<DocumentId, DocumentInfo>,
+	/// Autosaved documents that could not be deserialized. The DocumentInfo identifies them in the
+	/// persisted state (so their autosave file is not garbage-collected) and the String holds the raw
+	/// serialized content that can be downloaded by the user as a recovery action.
+	failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
+	/// Number of autosaved-document loads still in-flight from the initial startup batch (includes
+	/// both the active doc and the background eager loads). Decremented on each completion;
+	/// when it reaches 0 while `failed_to_load_documents` is non-empty, the batched dialog is shown.
+	pending_initial_autosave_loads: usize,
+	/// Doc IDs being eagerly loaded in the background (not the user-selected active doc). When such
+	/// a load completes, `LoadDocumentContent` skips its trailing `SelectDocument` so that focus
+	/// doesn't bounce around as background loads finish.
+	pending_eager_loads: HashSet<DocumentId>,
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
@@ -493,11 +505,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					workspace_layout: _,
 				} = state;
 
+				let mut newly_unloaded_ids = Vec::new();
 				for info in documents {
 					if !self.document_ids.contains(&info.id) {
 						self.document_ids.push_back(info.id);
 					}
-					if !self.documents.contains_key(&info.id) {
+					if !self.documents.contains_key(&info.id) && !self.unloaded_documents.contains_key(&info.id) {
+						newly_unloaded_ids.push(info.id);
 						self.unloaded_documents.insert(info.id, info);
 					}
 				}
@@ -505,8 +519,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 				let select_document_id = current_document.filter(|id| self.document_ids.contains(id)).or_else(|| self.document_ids.front().copied());
+
+				// Eagerly request the content of every autosaved document so any deserialization failures are
+				// detected up front and can be reported together as a single batched dialog at the end.
+				// The active document's `ReadDocument` is left for `SelectDocument` (issued below) to dispatch,
+				// to avoid a duplicate read, but it's still counted in `pending_initial_autosave_loads`.
+				self.pending_initial_autosave_loads = self.pending_initial_autosave_loads.saturating_add(newly_unloaded_ids.len());
+				for document_id in &newly_unloaded_ids {
+					if Some(*document_id) != select_document_id {
+						self.pending_eager_loads.insert(*document_id);
+						responses.add(PersistentStateMessage::ReadDocument { document_id: *document_id });
+					}
+				}
+
 				if let Some(document_id) = select_document_id {
 					responses.add(PortfolioMessage::SelectDocument { document_id });
+				} else if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+					// No active document to trigger the final dialog via load completion (show it now)
+					responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
 				}
 			}
 			PortfolioMessage::LoadDocumentContent {
@@ -526,7 +556,100 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_is_saved: info.is_saved,
 					document_serialized_content,
 				});
-				responses.add(PortfolioMessage::SelectDocument { document_id });
+				// Skip the auto-select for background eager loads kicked off at startup so focus stays on the
+				// user's intended active document while the others stream in.
+				if !self.pending_eager_loads.remove(&document_id) {
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
+			}
+			PortfolioMessage::ShowFailedToLoadDocumentsDialog => {
+				if self.failed_to_load_documents.is_empty() {
+					return;
+				}
+				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| info.name.clone()).collect();
+				let dialog = simple_dialogs::FailedToLoadDocumentsDialog { failed_document_names };
+				dialog.send_dialog_to_frontend(responses);
+			}
+			PortfolioMessage::DiscardFailedToLoadDocuments => {
+				let failed = std::mem::take(&mut self.failed_to_load_documents);
+				for document_id in failed.keys() {
+					// Remove from the tab list (we kept it there so the autosave file wasn't garbage-collected) and
+					// then ask the persistence layer to delete its on-disk content.
+					self.document_ids.retain(|id| id != document_id);
+					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
+				}
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(PersistentStateMessage::WriteState);
+			}
+			PortfolioMessage::DownloadFailedToLoadDocuments => {
+				if self.failed_to_load_documents.is_empty() {
+					return;
+				}
+
+				// Build deduplicated `(filename, bytes)` entries shared by both targets.
+				let mut used_names: HashMap<String, u32> = HashMap::new();
+				let files: Vec<(String, Vec<u8>)> = self
+					.failed_to_load_documents
+					.values()
+					.map(|(info, content)| {
+						let stem = if info.name.trim().is_empty() { format!("document-{:x}", info.id.0) } else { info.name.clone() };
+						let base = format!("{stem}.{FILE_EXTENSION}");
+						let unique = match used_names.get(&base).copied() {
+							None => {
+								used_names.insert(base.clone(), 1);
+								base
+							}
+							Some(n) => {
+								used_names.insert(base.clone(), n + 1);
+								format!("{stem} ({n}).{FILE_EXTENSION}")
+							}
+						};
+						(unique, content.as_bytes().to_vec())
+					})
+					.collect();
+
+				const FOLDER_NAME: &str = "Graphite Recovered Documents";
+
+				// Web: build the archive here (in Rust) and deliver it via the existing single-file
+				// `TriggerSaveFile` plumbing. Web APIs can't deliver a multi-file save.
+				#[cfg(target_family = "wasm")]
+				{
+					if files.len() == 1 {
+						let (filename, content) = files.into_iter().next().expect("just checked there's one entry");
+						responses.add(FrontendMessage::TriggerSaveFile {
+							name: filename,
+							folder: None,
+							content: serde_bytes::ByteBuf::from(content),
+						});
+					} else {
+						match build_recovery_zip(&files) {
+							Ok(zip_bytes) => responses.add(FrontendMessage::TriggerSaveFile {
+								name: format!("{FOLDER_NAME}.zip"),
+								folder: None,
+								content: serde_bytes::ByteBuf::from(zip_bytes),
+							}),
+							Err(e) => {
+								log::error!("Failed to build recovery zip: {e}");
+								responses.add(DialogMessage::DisplayDialogError {
+									title: "Failed to download".to_string(),
+									description: format!("Could not bundle the failed documents for download.\n\n{e}"),
+								});
+							}
+						}
+					}
+				}
+
+				// Desktop: the wrapper intercepts this and writes each file into a user-chosen folder
+				// (the native file picker can't return a multi-file destination directly, so the
+				// chosen path is used as the folder name).
+				#[cfg(not(target_family = "wasm"))]
+				{
+					let files = files.into_iter().map(|(name, bytes)| (name, serde_bytes::ByteBuf::from(bytes))).collect();
+					responses.add(FrontendMessage::TriggerSaveRecoveredDocumentsFolder {
+						folder_name: FOLDER_NAME.to_string(),
+						files,
+					});
+				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
@@ -769,11 +892,46 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut document = match document {
 					Ok(document) => document,
 					Err(e) => {
-						if !document_is_auto_saved {
-							responses.add(DialogMessage::DisplayDialogError {
-								title: "Failed to open document".to_string(),
-								description: e.to_string(),
-							});
+						if document_is_auto_saved {
+							// Accumulate this failure to report alongside any others via a single batched dialog.
+							// Hold onto the raw serialized content so the user can download it (and so the file
+							// remains in `state.documents` via `persisted_state_snapshot` and isn't garbage-collected
+							// from the autosave directory). Remove the failed doc from `document_ids` so it doesn't
+							// appear as a broken tab. The persisted state still references it via the snapshot's
+							// added entries for `failed_to_load_documents`.
+							let name = document_name.unwrap_or_default();
+							let info = DocumentInfo {
+								id: document_id,
+								name,
+								// The document didn't deserialize, so we can't enumerate its resources; the
+								// `serde(default)` on the field handles older persisted-state entries the same way.
+								resources: None,
+								path: document_path,
+								is_saved: document_is_saved,
+							};
+							self.document_ids.retain(|id| id != &document_id);
+							self.failed_to_load_documents.insert(document_id, (info, document_serialized_content));
+
+							// If this was the doc the user was trying to focus, fall back to whatever's still openable.
+							if self.active_document_id == Some(document_id) {
+								self.active_document_id = None;
+								if let Some(next_id) = self.document_ids.front().copied() {
+									responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
+								}
+							}
+
+							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+							self.tick_autosave_load_progress(responses, true);
+						} else {
+							log::error!("{e}");
+							// Prefer the explicit `document_name`; otherwise derive a display name from the file
+							// path's stem so the dialog header isn't generic when we have a usable label.
+							let name = document_name
+								.filter(|n| !n.trim().is_empty())
+								.or_else(|| document_path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()))
+								.unwrap_or_default();
+							let dialog = simple_dialogs::FailedToOpenDocumentDialog { document_name: name };
+							dialog.send_dialog_to_frontend(responses);
 						}
 
 						return;
@@ -856,6 +1014,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.load_document(document, document_id, responses);
 
 				responses.add(AppWindowMessage::Focus);
+
+				if document_is_auto_saved {
+					self.tick_autosave_load_progress(responses, false);
+				}
 			}
 			PortfolioMessage::OpenImage { name, image } => {
 				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
@@ -1765,7 +1927,13 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn persisted_state_snapshot(&self) -> PersistedState {
-		let documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+		let mut documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+		// Also persist entries for failed-to-load documents so their autosave files survive the next
+		// `garbage_collect_document_files` pass (which deletes anything not in `state.documents`),
+		// but we don't include them in `document_ids`, so they don't appear as broken tabs in the UI.
+		for (info, _) in self.failed_to_load_documents.values() {
+			documents.push(info.clone());
+		}
 
 		PersistedState {
 			documents,
@@ -1806,6 +1974,21 @@ impl PortfolioMessageHandler {
 		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
 			_ => format!("{DEFAULT_DOCUMENT_NAME} {new_doc_title_num}"),
+		}
+	}
+
+	/// Decrement the count of in-flight initial autosave loads and, if this completion finishes
+	/// the initial startup batch with at least one failure, dispatch the batched dialog.
+	/// Lazy-load failures (those arriving after the initial batch finishes) also dispatch the
+	/// dialog so the user gets a chance to recover the data.
+	fn tick_autosave_load_progress(&mut self, responses: &mut VecDeque<Message>, failed: bool) {
+		if self.pending_initial_autosave_loads > 0 {
+			self.pending_initial_autosave_loads -= 1;
+			if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+				responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
+			}
+		} else if failed {
+			responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
 		}
 	}
 
@@ -2017,4 +2200,29 @@ impl PortfolioMessageHandler {
 			}
 		}
 	}
+}
+
+/// Bundle the given `(filename, bytes)` entries into a single uncompressed (Stored) zip archive.
+/// Web-only: web APIs can't deliver a multi-file save, so the recovered-documents flow packs
+/// everything here and ships it through `TriggerSaveFile`. On desktop the wrapper writes the same
+/// entries to a user-chosen folder instead, so this helper isn't used.
+#[cfg(target_family = "wasm")]
+fn build_recovery_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+	use std::io::{Cursor, Write};
+	use zip::write::{SimpleFileOptions, ZipWriter};
+
+	let mut buffer = Cursor::new(Vec::<u8>::new());
+	let mut writer = ZipWriter::new(&mut buffer);
+
+	// Store mode (no compression) keeps the dependency surface small (no compression backends needed)
+	// and is fine for these payloads: recovery downloads are rare and the user can re-compress later.
+	let options: SimpleFileOptions = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).unix_permissions(0o644);
+
+	for (filename, content) in entries {
+		writer.start_file(filename, options).map_err(|e| format!("start_file: {e}"))?;
+		writer.write_all(content).map_err(|e| format!("write_all: {e}"))?;
+	}
+
+	writer.finish().map_err(|e| format!("finish: {e}"))?;
+	Ok(buffer.into_inner())
 }

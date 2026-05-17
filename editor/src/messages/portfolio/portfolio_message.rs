@@ -72,6 +72,9 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		document_serialized_content: String,
 	},
+	ShowFailedToLoadDocumentsDialog,
+	DiscardFailedToLoadDocuments,
+	DownloadFailedToLoadDocuments,
 	MoveAllPanelTabs {
 		source_group: PanelGroupId,
 		target_group: PanelGroupId,

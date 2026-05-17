@@ -31,6 +31,15 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			SaveFileDialogContext::File { content } => {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
+			SaveFileDialogContext::RecoveredDocuments { files } => {
+				// Strip any extension the user might have typed (e.g. picking `MyRecovery.zip` yields `MyRecovery/`).
+				// `WriteFile`'s handler creates parent directories on demand, so the folder is materialized lazily.
+				let folder = path.with_extension("");
+				for (filename, content) in files {
+					let file_path = folder.join(&filename);
+					dispatcher.respond(DesktopFrontendMessage::WriteFile { path: file_path, content });
+				}
+			}
 		},
 		DesktopWrapperMessage::OpenFile { path, content } => {
 			let message = PortfolioMessage::OpenFile { path, content };

@@ -111,8 +111,19 @@ pub enum OpenFileDialogContext {
 }
 
 pub enum SaveFileDialogContext {
-	Document { document_id: DocumentId, content: Vec<u8> },
-	File { content: Vec<u8> },
+	Document {
+		document_id: DocumentId,
+		content: Vec<u8>,
+	},
+	File {
+		content: Vec<u8>,
+	},
+	/// Bundle of recovered (failed-to-deserialize) autosaved documents to be written into a single folder.
+	/// The chosen `path` returned by the save dialog has its extension stripped to become the folder name.
+	/// The parent directories are created on first write.
+	RecoveredDocuments {
+		files: Vec<(String, Vec<u8>)>,
+	},
 }
 
 pub enum MenuItem {

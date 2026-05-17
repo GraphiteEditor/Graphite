@@ -108,6 +108,16 @@ pub enum FrontendMessage {
 		folder: Option<PathBuf>,
 		content: serde_bytes::ByteBuf,
 	},
+	/// Save a bundle of recovered (failed-to-deserialize) autosaved documents to disk on desktop.
+	/// The desktop wrapper intercepts this, prompts the user for a location via the native save
+	/// dialog, and writes each entry as a separate file into a folder named after `folderName`.
+	/// The web build bundles them as a single `.zip` and delivers it through `TriggerSaveFile`,
+	/// so this message is only ever dispatched on desktop and never reaches the web frontend.
+	TriggerSaveRecoveredDocumentsFolder {
+		#[serde(rename = "folderName")]
+		folder_name: String,
+		files: Vec<(String, serde_bytes::ByteBuf)>,
+	},
 	TriggerExportImage {
 		svg: String,
 		name: String,

@@ -47,6 +47,7 @@ base64 = { workspace = true }
 spin = { workspace = true }
 image = { workspace = true }
 color = { workspace = true }
+zip = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

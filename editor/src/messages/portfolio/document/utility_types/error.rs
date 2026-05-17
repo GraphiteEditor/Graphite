@@ -16,13 +16,9 @@ pub enum EditorError {
 	#[error("The operation caused a document error:\n{0:?}")]
 	Document(String),
 
-	#[error(
-		"This document was created in an older version of the editor.\n\
-		\n\
-		Full backwards compatibility is not guaranteed in the current alpha release.\n\
-		\n\
-		If this document is critical, ask for support in Graphite's Discord community."
-	)]
+	// User-facing presentation now lives in `FailedToOpenDocumentDialog` /
+	// `FailedToLoadDocumentsDialog`; this Display string is for logs only.
+	#[error("Failed to deserialize document: {0}")]
 	DocumentDeserialization(String),
 
 	#[error("{0}")]
