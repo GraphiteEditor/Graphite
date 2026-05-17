@@ -31,10 +31,15 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			SaveFileDialogContext::File { content } => {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
-			SaveFileDialogContext::MultipleFiles { files } => {
-				// Treat the chosen path as the folder name; strip any extension the user typed (e.g. "MyAnim.png" → "MyAnim").
+			SaveFileDialogContext::MultipleFiles { files, expected_extension } => {
+				// Treat the chosen path as the folder name. Strip only the export's expected extension (e.g. ".png" for a
+				// PNG animation export) so that arbitrary dotted folder names like `v1.0` are preserved as-is, while a user
+				// who typed `MyAnim.png` still gets a `MyAnim/` folder rather than a `MyAnim.png/` folder.
 				// The `WriteFile` handler creates parent directories if they don't exist, so the folder is materialized on first write.
-				let folder = path.with_extension("");
+				let folder = match path.extension().and_then(|e| e.to_str()) {
+					Some(ext) if ext.eq_ignore_ascii_case(&expected_extension) => path.with_extension(""),
+					_ => path,
+				};
 				for (filename, content) in files {
 					let file_path = folder.join(&filename);
 					dispatcher.respond(DesktopFrontendMessage::WriteFile { path: file_path, content });

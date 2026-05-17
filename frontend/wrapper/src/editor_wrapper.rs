@@ -996,10 +996,13 @@ pub fn create_zip_from_files(entries: js_sys::Array) -> Result<Vec<u8>, JsValue>
 			.ok_or_else(|| JsValue::from_str("createZipFromFiles: each entry must be a [filename, bytes] array"))?;
 
 		let filename = pair.get(0).as_string().ok_or_else(|| JsValue::from_str("createZipFromFiles: filename must be a string"))?;
+		// Defense in depth: callers should already sanitize, but if a stray path separator leaks through,
+		// replace it here so the entry can't become a nested path inside the archive.
+		let safe_filename: String = filename.chars().map(|c| if c == '/' || c == '\\' { '_' } else { c }).collect();
 		let bytes = js_sys::Uint8Array::new(&pair.get(1)).to_vec();
 
 		writer
-			.start_file(filename, options)
+			.start_file(safe_filename, options)
 			.map_err(|e| JsValue::from_str(&format!("createZipFromFiles: start_file failed: {e}")))?;
 		writer.write_all(&bytes).map_err(|e| JsValue::from_str(&format!("createZipFromFiles: write_all failed: {e}")))?;
 	}

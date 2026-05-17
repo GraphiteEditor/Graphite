@@ -38,10 +38,21 @@ impl Default for ExportDialogMessageHandler {
 	}
 }
 
+/// Upper bound on how many frames a single animation export will queue. Each frame is rendered then held
+/// in memory until the whole batch ships to the frontend, so we cap to avoid pathological allocations from
+/// large time ranges. Tuned for typical animation lengths (10k frames is ~5.5 min at 30 fps, ~2.8 min at 60 fps).
+pub const ANIMATION_EXPORT_MAX_FRAMES: u32 = 10_000;
+
 impl ExportDialogMessageHandler {
 	fn total_frames(&self) -> u32 {
+		// Sanitize against non-finite values that could otherwise propagate into `Duration::from_secs_f64` and panic.
+		if !self.fps.is_finite() || self.fps <= 0. || !self.start_seconds.is_finite() || !self.end_seconds.is_finite() {
+			return 1;
+		}
 		let duration = (self.end_seconds - self.start_seconds).max(0.);
-		((duration * self.fps).round() as i64).max(1) as u32
+		// `ceil` so a duration slightly longer than a frame multiple still gets the trailing frame.
+		let raw = (duration * self.fps).ceil() as i64;
+		raw.clamp(1, ANIMATION_EXPORT_MAX_FRAMES as i64) as u32
 	}
 }
 
@@ -55,14 +66,19 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 			ExportDialogMessage::Animated { animated } => self.animated = animated,
-			ExportDialogMessage::Fps { fps } => self.fps = fps.max(0.001),
+			ExportDialogMessage::Fps { fps } => {
+				// Reject non-finite/non-positive values so we never feed NaN or infinity into duration math downstream.
+				self.fps = if fps.is_finite() && fps > 0. { fps } else { 0.001 };
+			}
 			ExportDialogMessage::StartSeconds { start } => {
-				self.start_seconds = start.max(0.);
+				self.start_seconds = if start.is_finite() { start.max(0.) } else { 0. };
 				if self.end_seconds < self.start_seconds {
 					self.end_seconds = self.start_seconds;
 				}
 			}
-			ExportDialogMessage::EndSeconds { end } => self.end_seconds = end.max(self.start_seconds),
+			ExportDialogMessage::EndSeconds { end } => {
+				self.end_seconds = if end.is_finite() { end.max(self.start_seconds) } else { self.start_seconds };
+			}
 
 			ExportDialogMessage::Submit => {
 				// Fall back to "All Artwork" if "Selection" was chosen but nothing is currently selected

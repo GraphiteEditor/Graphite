@@ -118,11 +118,13 @@ pub enum SaveFileDialogContext {
 	File {
 		content: Vec<u8>,
 	},
-	/// Multiple files written into a folder whose path is the user-chosen path with any extension stripped
-	/// (e.g. picking `MyAnim.png` yields a `MyAnim/` folder). Each `(filename, content)` entry is written
+	/// Multiple files written into a folder whose path is the user-chosen path with the matching `expected_extension`
+	/// stripped (e.g. for a PNG animation export, picking `MyAnim.png` yields a `MyAnim/` folder, while picking `v1.0`
+	/// is preserved as `v1.0/` because `.0` isn't the expected extension). Each `(filename, content)` entry is written
 	/// inside that folder, which is created if it doesn't exist.
 	MultipleFiles {
 		files: Vec<(String, Vec<u8>)>,
+		expected_extension: String,
 	},
 }
 

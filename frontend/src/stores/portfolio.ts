@@ -140,28 +140,29 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
 		const padWidth = Math.max(4, String(frames.length).length);
 
-		// Materialize each frame to bytes, rasterizing SVG via canvas when the destination format is raster
+		// Materialize each frame to bytes, rasterizing SVG via canvas when the destination format is raster.
+		// Any per-frame failure aborts the export rather than silently dropping frames, so the user never gets
+		// a zip with mismatched indices vs. the requested playback range.
 		const entries: [string, Uint8Array][] = [];
-		for (let i = 0; i < frames.length; i++) {
-			const frame = frames[i];
-			const filename = `${name}_${String(i + 1).padStart(padWidth, "0")}.${extension}`;
+		try {
+			for (let i = 0; i < frames.length; i++) {
+				const frame = frames[i];
+				const filename = `${name}_${String(i + 1).padStart(padWidth, "0")}.${extension}`;
 
-			let bytes: Uint8Array;
-			if ("Bytes" in frame) {
-				bytes = frame.Bytes;
-			} else if (isRaster) {
-				let blob: Blob;
-				try {
-					blob = await rasterizeSVG(frame.Svg, size[0], size[1], mime, backgroundColor);
-				} catch {
-					// Skip frames that fail to rasterize (e.g. zero-sized) rather than aborting the whole export
-					continue;
+				let bytes: Uint8Array;
+				if ("Bytes" in frame) {
+					bytes = frame.Bytes;
+				} else if (isRaster) {
+					const blob = await rasterizeSVG(frame.Svg, size[0], size[1], mime, backgroundColor);
+					bytes = new Uint8Array(await blob.arrayBuffer());
+				} else {
+					bytes = new TextEncoder().encode(frame.Svg);
 				}
-				bytes = new Uint8Array(await blob.arrayBuffer());
-			} else {
-				bytes = new TextEncoder().encode(frame.Svg);
+				entries.push([filename, bytes]);
 			}
-			entries.push([filename, bytes]);
+		} catch (error) {
+			editor.errorDialog("Animation export failed", error instanceof Error ? error.message : String(error));
+			return;
 		}
 
 		if (entries.length === 0) return;

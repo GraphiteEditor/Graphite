@@ -303,7 +303,17 @@ impl NodeGraphExecutor {
 			.map_err(|e| e.to_string())?;
 
 		if let Some(animation) = export_config.animation {
-			// Allocate an export ID and accumulator, then queue one execution per frame
+			// Defense-in-depth: the dialog already validates these, but reject non-finite/non-positive values here
+			// too so a corrupt message can't reach `Duration::from_secs_f64` (which panics on NaN/negative/huge).
+			if !animation.fps.is_finite() || animation.fps <= 0. || !animation.start_seconds.is_finite() {
+				return Err("Animation export rejected: fps and start time must be finite, with fps > 0".to_string());
+			}
+
+			// Allocate an export ID and accumulator, then queue one execution per frame.
+			// TODO: All encoded frames are held in `pending_animation_exports` until the last frame arrives, so peak
+			// memory grows with `total_frames * encoded_frame_size`. For long/high-resolution animations, this could
+			// exhaust memory. A bounded cap is enforced upstream in the export dialog (ANIMATION_EXPORT_MAX_FRAMES),
+			// but a true fix would stream frames out incrementally instead of accumulating.
 			let export_id = self.next_animation_export_id;
 			self.next_animation_export_id = self.next_animation_export_id.wrapping_add(1);
 
@@ -325,7 +335,10 @@ impl NodeGraphExecutor {
 
 			for frame_index in 0..animation.total_frames {
 				let frame_seconds = animation.frame_time_seconds(frame_index);
-				let animation_time = Duration::from_secs_f64(frame_seconds.max(0.));
+				// `Duration::from_secs_f64` panics on negative/NaN/huge values; clamp defensively (we've already
+				// validated `fps`/`start_seconds` above, but a far-future `start_seconds` could still overflow).
+				let safe_seconds = if frame_seconds.is_finite() { frame_seconds.clamp(0., 1e9) } else { 0. };
+				let animation_time = Duration::from_secs_f64(safe_seconds);
 				let timing = TimingInformation { time: frame_seconds, animation_time };
 
 				let frame_render_config = RenderConfig { time: timing, ..base_render_config };
@@ -382,6 +395,24 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
+
+							// If this failure belongs to an animation export, drop its accumulator so the partially
+							// rendered frames don't stay pinned in memory. Subsequent failed frames for the same
+							// export are then silently ignored by `process_animation_frame`.
+							// TODO: An export can also leak if it's interrupted by something *outside* this error
+							// path — e.g. the document is closed mid-export. A proper fix would route a
+							// cancellation through `pending_animation_exports`. Tracked separately.
+							let leaked_export_id = self
+								.futures
+								.iter()
+								.find(|(fid, _)| *fid == execution_id)
+								.and_then(|(_, ctx)| ctx.export_config.as_ref())
+								.and_then(|cfg| cfg.animation_frame)
+								.map(|af| af.export_id);
+							if let Some(export_id) = leaked_export_id {
+								self.pending_animation_exports.remove(&export_id);
+							}
+
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 					};
@@ -609,11 +640,19 @@ impl NodeGraphExecutor {
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
-			}) if file_type != FileType::Svg => {
-				let encoded = encode_raster_buffer(file_type, data, width, height)?;
-				ExportAnimationFrame::Bytes(serde_bytes::ByteBuf::from(encoded))
+			}) if file_type != FileType::Svg => match encode_raster_buffer(file_type, data, width, height) {
+				Ok(encoded) => ExportAnimationFrame::Bytes(serde_bytes::ByteBuf::from(encoded)),
+				Err(err) => {
+					// Drop the partial accumulator so its already-received frames don't leak.
+					self.pending_animation_exports.remove(&animation_frame.export_id);
+					return Err(err);
+				}
+			},
+			other => {
+				// Drop the partial accumulator so its already-received frames don't leak.
+				self.pending_animation_exports.remove(&animation_frame.export_id);
+				return Err(format!("Incorrect render type for animation frame ({file_type:?}, {other})"));
 			}
-			other => return Err(format!("Incorrect render type for animation frame ({file_type:?}, {other})")),
 		};
 
 		let Some(accumulator) = self.pending_animation_exports.get_mut(&animation_frame.export_id) else {
@@ -635,9 +674,11 @@ impl NodeGraphExecutor {
 
 		// All frames received: drain the accumulator and emit a single message
 		let accumulator = self.pending_animation_exports.remove(&animation_frame.export_id).expect("Accumulator was present");
-		let base_name = match (accumulator.artboard_name, accumulator.artboard_count) {
-			(Some(artboard_name), count) if count > 1 => format!("{} - {}", accumulator.name, artboard_name),
-			_ => accumulator.name,
+		// Sanitize before the name reaches filesystem joins or zip entry names downstream.
+		let safe_doc_name = crate::messages::frontend::utility_types::sanitize_filename_component(&accumulator.name);
+		let base_name = match (accumulator.artboard_name.as_deref(), accumulator.artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{safe_doc_name} - {}", crate::messages::frontend::utility_types::sanitize_filename_component(artboard_name)),
+			_ => safe_doc_name,
 		};
 		let frames: Vec<_> = accumulator
 			.frames

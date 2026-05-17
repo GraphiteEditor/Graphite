@@ -111,6 +111,23 @@ pub enum ExportAnimationFrame {
 	Bytes(serde_bytes::ByteBuf),
 }
 
+/// Replace characters that have special meaning in filesystem paths (or are otherwise unsafe in filenames) with `_`.
+/// Used to neutralize user-controlled strings — document names, artboard names — before they become export filenames,
+/// so a name like `..\evil` or `foo/bar` can't escape the export folder or create nested zip entries.
+pub fn sanitize_filename_component(name: &str) -> String {
+	let cleaned: String = name
+		.chars()
+		.map(|c| match c {
+			'/' | '\\' | ':' | '*' | '?' | '<' | '>' | '|' | '"' | '\0' => '_',
+			c if c.is_control() => '_',
+			c => c,
+		})
+		.collect();
+	// Strip leading/trailing dots and whitespace; Windows treats trailing `.` / ` ` as hidden and `..` is the parent dir.
+	let trimmed = cleaned.trim().trim_matches('.').trim();
+	if trimmed.is_empty() { "Untitled".to_string() } else { trimmed.to_string() }
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EyedropperPreviewImage {
