@@ -113,7 +113,7 @@ impl Grid {
 		};
 
 		let start = shape_tool_data.data.viewport_drag_start(document);
-		let end = ipp.mouse.position;
+		let end = ipp.pointer.position;
 
 		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
 

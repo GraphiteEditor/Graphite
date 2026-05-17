@@ -248,11 +248,11 @@ pub fn derive_hint(input_item: TokenStream) -> TokenStream {
 /// # Example
 /// ```ignore
 /// match (example_tool_state, event) {
-///     (ToolState::Ready, Event::PointerDown(mouse_state)) if *mouse_state == MouseState::Left => {
+///     (ToolState::Ready, Event::PointerDown(pointer_state)) if *pointer_state == PointerState::Left => {
 ///         #[edge("LMB Down")]
 ///         ToolState::Pending
 ///     }
-///     (SelectToolState::Pending, Event::PointerUp(mouse_state)) if *mouse_state == MouseState::Left => {
+///     (SelectToolState::Pending, Event::PointerUp(pointer_state)) if *pointer_state == PointerState::Left => {
 ///         #[edge("LMB Up: Select Object")]
 ///         SelectToolState::Ready
 ///     }
@@ -264,7 +264,7 @@ pub fn derive_hint(input_item: TokenStream) -> TokenStream {
 ///         #[edge("Mouse Move")]
 ///         SelectToolState::TransformSelected
 ///     }
-///     (SelectToolState::TransformSelected, Event::PointerUp(mouse_state)) if *mouse_state == MouseState::Left => {
+///     (SelectToolState::TransformSelected, Event::PointerUp(pointer_state)) if *pointer_state == PointerState::Left => {
 ///         #[edge("LMB Up")]
 ///         SelectToolState::Ready
 ///     }

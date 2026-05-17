@@ -132,7 +132,7 @@ impl Fsm for EyedropperToolFsmState {
 			}
 			// Sampling -> Sampling
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
-				let mouse_position = viewport.logical(input.mouse.position);
+				let mouse_position = viewport.logical(input.pointer.position);
 				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
 					update_cursor_preview(responses, tool_data, input, global_tool_data, None, render_mode);
 				} else {
@@ -233,7 +233,7 @@ fn update_cursor_preview_common(
 ) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
 		image,
-		mouse_position: Some(input.mouse.position.into()),
+		mouse_position: Some(input.pointer.position.into()),
 		primary_color: SRGBA8::from(global_tool_data.primary_color).to_css_hex(),
 		secondary_color: SRGBA8::from(global_tool_data.secondary_color).to_css_hex(),
 		set_color_choice,

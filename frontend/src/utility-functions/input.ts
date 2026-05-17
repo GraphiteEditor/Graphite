@@ -122,8 +122,13 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-	editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+	if (e.pointerType == "pen" && e.isPrimary) {
+		// "Shake" is not an ergonomic gesture for pen input, so we don't attempt to detect it.
+		editor.onPointerMove(e.clientX, e.clientY, e.pressure, e.tangentialPressure, e.azimuthAngle, e.altitudeAngle, e.twist, e.buttons, modifiers);
+	} else {
+		if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+	}
 }
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
@@ -152,7 +157,11 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+		if (e.pointerType == "pen" && e.isPrimary) {
+			editor.onPointerDown(e.clientX, e.clientY, e.pressure, e.tangentialPressure, e.azimuthAngle, e.altitudeAngle, e.twist, e.buttons, modifiers);
+		} else {
+			editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+		}
 	}
 }
 
@@ -170,7 +179,11 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	if (textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+	if (e.pointerType == "pen" && e.isPrimary) {
+		editor.onPointerUp(e.clientX, e.clientY, e.pressure, e.tangentialPressure, e.azimuthAngle, e.altitudeAngle, e.twist, e.buttons, modifiers);
+	} else {
+		editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+	}
 }
 
 // Mouse events

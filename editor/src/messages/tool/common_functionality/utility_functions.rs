@@ -264,7 +264,7 @@ pub fn resize_bounds(
 			points: snap_candidates,
 			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
 		});
-		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
+		let (position, size) = movement.new_size(input.pointer.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 		let pivot_transform = DAffine2::from_translation(pivot);
@@ -371,7 +371,7 @@ pub fn transforming_transform_cage(
 	center_of_transformation: Option<DVec2>,
 ) -> (bool, bool, bool) {
 	let dragging_bounds = bounding_box_manager.as_mut().and_then(|bounding_box| {
-		let edges = bounding_box.check_selected_edges(input.mouse.position);
+		let edges = bounding_box.check_selected_edges(input.pointer.position);
 
 		bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
 			let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
@@ -382,7 +382,7 @@ pub fn transforming_transform_cage(
 		edges
 	});
 
-	let rotating_bounds = bounding_box_manager.as_ref().map(|bounding_box| bounding_box.check_rotate(input.mouse.position)).unwrap_or_default();
+	let rotating_bounds = bounding_box_manager.as_ref().map(|bounding_box| bounding_box.check_rotate(input.pointer.position)).unwrap_or_default();
 
 	let selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 
@@ -413,10 +413,10 @@ pub fn transforming_transform_cage(
 			});
 
 			// Check if we're hovering over a skew triangle
-			let edges = bounds.check_selected_edges(input.mouse.position);
+			let edges = bounds.check_selected_edges(input.pointer.position);
 			if let Some(edges) = edges {
-				let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
-				if bounds.check_skew_handle(input.mouse.position, closest_edge) {
+				let closest_edge = bounds.get_closest_edge(edges, input.pointer.position);
+				if bounds.check_skew_handle(input.pointer.position, closest_edge) {
 					// No resize or rotate, just skew
 					return (false, false, true);
 				}

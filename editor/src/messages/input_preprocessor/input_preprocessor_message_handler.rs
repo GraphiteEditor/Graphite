@@ -1,6 +1,6 @@
 use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, ModifierKeys};
-use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState};
+use crate::messages::input_mapper::utility_types::input_pointer::{MouseButton, MouseKeys, PointerState};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
 use crate::messages::prelude::*;
 use std::time::Duration;
@@ -15,7 +15,7 @@ pub struct InputPreprocessorMessageHandler {
 	pub frame_time: FrameTimeInfo,
 	pub time: u64,
 	pub keyboard: KeyStates,
-	pub mouse: MouseState,
+	pub pointer: PointerState,
 }
 
 #[message_handler_data]
@@ -24,13 +24,14 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 		let InputPreprocessorMessageContext { viewport } = context;
 
 		match message {
-			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::DoubleClick { editor_pointer_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
-				self.mouse.position = mouse_state.position;
+				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
+				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
-				for key in mouse_state.mouse_keys {
+				for key in pointer_state.mouse_keys {
 					responses.add(InputMapperMessage::DoubleClick(match key {
 						MouseKeys::LEFT => MouseButton::Left,
 						MouseKeys::RIGHT => MouseButton::Right,
@@ -57,38 +58,42 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				}
 				responses.add(InputMapperMessage::KeyUp(key));
 			}
-			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
-				self.mouse.position = mouse_state.position;
+				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
+				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
-				self.translate_mouse_event(mouse_state, true, responses);
+				self.translate_mouse_event(pointer_state, true, responses);
 			}
-			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::PointerMove { editor_pointer_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
-				self.mouse.position = mouse_state.position;
+				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
+				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
 				responses.add(InputMapperMessage::PointerMove);
 
 				// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events
-				self.translate_mouse_event(mouse_state, false, responses);
+				self.translate_mouse_event(pointer_state, false, responses);
 			}
-			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::PointerUp { editor_pointer_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
-				self.mouse.position = mouse_state.position;
+				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
+				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
-				self.translate_mouse_event(mouse_state, false, responses);
+				self.translate_mouse_event(pointer_state, false, responses);
 			}
-			InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::PointerShake { editor_pointer_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
-				self.mouse.position = mouse_state.position;
+				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
+				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
 
 				responses.add(InputMapperMessage::PointerShake);
 			}
@@ -97,12 +102,13 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.time = timestamp;
 				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
-			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
+			InputPreprocessorMessage::WheelScroll { editor_pointer_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
-				self.mouse.position = mouse_state.position;
-				self.mouse.scroll_delta = mouse_state.scroll_delta;
+				let pointer_state = editor_pointer_state.to_pointer_state(viewport);
+				self.pointer.position = pointer_state.position;
+				self.pointer.pressure = pointer_state.pressure;
+				self.pointer.scroll_delta = pointer_state.scroll_delta;
 
 				responses.add(InputMapperMessage::WheelScroll);
 			}
@@ -116,7 +122,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
-	fn translate_mouse_event(&mut self, mut new_state: MouseState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
+	fn translate_mouse_event(&mut self, mut new_state: PointerState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		let click_mappings = [
 			(MouseKeys::LEFT, Key::MouseLeft),
 			(MouseKeys::RIGHT, Key::MouseRight),
@@ -127,10 +133,10 @@ impl InputPreprocessorMessageHandler {
 
 		for (bit_flag, key) in click_mappings {
 			// Calculate the intersection between the two key states
-			let old_down = self.mouse.mouse_keys & bit_flag == bit_flag;
+			let old_down = self.pointer.mouse_keys & bit_flag == bit_flag;
 			let new_down = new_state.mouse_keys & bit_flag == bit_flag;
 			if !old_down && new_down {
-				if allow_first_button_down || self.mouse.mouse_keys != MouseKeys::empty() {
+				if allow_first_button_down || self.pointer.mouse_keys != MouseKeys::empty() {
 					self.keyboard.set(key as usize);
 					responses.add(InputMapperMessage::KeyDown(key));
 				} else {
@@ -144,7 +150,7 @@ impl InputPreprocessorMessageHandler {
 			}
 		}
 
-		self.mouse = new_state;
+		self.pointer = new_state;
 	}
 
 	fn update_states_of_modifier_keys(&mut self, pressed_modifier_keys: ModifierKeys, responses: &mut VecDeque<Message>) {
@@ -186,20 +192,21 @@ impl InputPreprocessorMessageHandler {
 #[cfg(test)]
 mod test {
 	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
-	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+	use crate::messages::input_mapper::utility_types::input_pointer::{EditorPointerState, MouseKeys, ScrollDelta};
 	use crate::messages::prelude::*;
 
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 
-		let editor_mouse_state = EditorMouseState {
+		let editor_pointer_state = EditorPointerState {
 			editor_position: (4., 809.).into(),
 			mouse_keys: MouseKeys::default(),
 			scroll_delta: ScrollDelta::default(),
+			pressure: 1f64,
 		};
 		let modifier_keys = ModifierKeys::ALT;
-		let message = InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerMove { editor_pointer_state, modifier_keys };
 
 		let mut responses = VecDeque::new();
 
@@ -216,9 +223,9 @@ mod test {
 	fn process_action_mouse_down_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 
-		let editor_mouse_state = EditorMouseState::default();
+		let editor_pointer_state = EditorPointerState::default();
 		let modifier_keys = ModifierKeys::CONTROL;
-		let message = InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerDown { editor_pointer_state, modifier_keys };
 
 		let mut responses = VecDeque::new();
 
@@ -235,9 +242,9 @@ mod test {
 	fn process_action_mouse_up_handle_modifier_keys() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 
-		let editor_mouse_state = EditorMouseState::default();
+		let editor_pointer_state = EditorPointerState::default();
 		let modifier_keys = ModifierKeys::SHIFT;
-		let message = InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys };
+		let message = InputPreprocessorMessage::PointerUp { editor_pointer_state, modifier_keys };
 
 		let mut responses = VecDeque::new();
 

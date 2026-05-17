@@ -102,7 +102,7 @@ impl Fsm for NavigateToolFsmState {
 			NavigateToolMessage::PointerUp { zoom_in } => {
 				if self == NavigateToolFsmState::ZoomOrClickZooming {
 					// Mouse has not moved from pointerdown to pointerup
-					if tool_data.drag_start == Some(input.mouse.position) {
+					if tool_data.drag_start == Some(input.pointer.position) {
 						responses.add_front(if zoom_in {
 							NavigationMessage::CanvasZoomIncrease { center_on_mouse: true }
 						} else {
@@ -131,7 +131,7 @@ impl Fsm for NavigateToolFsmState {
 			}
 			NavigateToolMessage::ZoomCanvasBegin => {
 				// Wait to decide between zooming and click zooming based on whether the next event is a PointerMove or PointerUp
-				tool_data.drag_start = Some(input.mouse.position);
+				tool_data.drag_start = Some(input.pointer.position);
 				NavigateToolFsmState::ZoomOrClickZooming
 			}
 			NavigateToolMessage::End => {

@@ -579,9 +579,9 @@ impl ShapeState {
 			.document_metadata()
 			.document_to_viewport
 			.inverse()
-			.transform_vector2(input.mouse.position - previous_mouse);
+			.transform_vector2(input.pointer.position - previous_mouse);
 		let mut offset = mouse_delta;
-		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata().document_to_viewport.inverse().transform_point2(input.pointer.position));
 		for (layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { continue };
 

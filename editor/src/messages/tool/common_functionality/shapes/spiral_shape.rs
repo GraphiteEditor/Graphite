@@ -130,7 +130,7 @@ impl Spiral {
 		let ignore = vec![layer];
 		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let config = SnapTypeConfiguration::default();
-		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.pointer.position);
 		let snapped = shape_tool_data.data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
 		let snapped_viewport_point = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 		shape_tool_data.data.snap_manager.update_indicator(snapped);

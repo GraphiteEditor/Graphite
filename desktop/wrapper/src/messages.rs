@@ -5,7 +5,7 @@ pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
 pub use graphite_editor::messages::frontend::utility_types::{DocumentInfo, PersistedState};
 pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
-pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
+pub use graphite_editor::messages::input_mapper::utility_types::input_pointer::{EditorPointerState as PointerState, EditorPosition as Position, MouseKeys};
 pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;

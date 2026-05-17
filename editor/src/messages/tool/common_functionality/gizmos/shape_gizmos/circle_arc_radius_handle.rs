@@ -157,12 +157,12 @@ impl RadiusHandle {
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 		let center = viewport_transform.transform_point2(DVec2::ZERO);
 
-		let delta_vector = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(self.previous_mouse_position);
+		let delta_vector = viewport_transform.inverse().transform_point2(input.pointer.position) - viewport_transform.inverse().transform_point2(self.previous_mouse_position);
 		let radius = drag_start - center;
 		let sign = radius.dot(delta_vector).signum();
 
 		let net_delta = delta_vector.length() * sign * self.initial_radius.signum();
-		self.previous_mouse_position = input.mouse.position;
+		self.previous_mouse_position = input.pointer.position;
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),

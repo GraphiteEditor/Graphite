@@ -426,7 +426,7 @@ impl PointRadiusHandle {
 
 		let original_radius = self.initial_radius;
 
-		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(drag_start);
+		let delta = viewport_transform.inverse().transform_point2(input.pointer.position) - viewport_transform.inverse().transform_point2(drag_start);
 		let radius = drag_start - center;
 		let projection = delta.project_onto(radius);
 		let sign = radius.dot(delta).signum();

@@ -103,7 +103,7 @@ impl RowColumnGizmo {
 			return;
 		};
 		let direction = self.gizmo_type.direction(viewport);
-		let delta_vector = input.mouse.position - self.initial_mouse_start.unwrap_or(drag_start);
+		let delta_vector = input.pointer.position - self.initial_mouse_start.unwrap_or(drag_start);
 
 		let projection = delta_vector.project_onto(self.gizmo_type.direction(viewport));
 		let delta = viewport.inverse().transform_vector2(projection).length() * delta_vector.dot(direction).signum();
@@ -137,7 +137,7 @@ impl RowColumnGizmo {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 
 		if self.initial_dimension() as i32 + dimensions_to_add < 1 {
-			self.initial_mouse_start = Some(input.mouse.position);
+			self.initial_mouse_start = Some(input.pointer.position);
 			self.gizmo_type = self.gizmo_type.opposite_gizmo_type();
 			self.initial_rows = 1;
 			self.initial_columns = 1;

@@ -5,7 +5,7 @@ use crate::consts::{
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_pointer::ViewportPosition;
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -79,7 +79,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
 
-				self.mouse_position = ipp.mouse.position;
+				self.mouse_position = ipp.pointer.position;
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
 				};
@@ -106,7 +106,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						snap: false,
 					};
 
-					self.mouse_position = ipp.mouse.position;
+					self.mouse_position = ipp.pointer.position;
 					self.finish_operation_with_click = was_dispatched_from_menu;
 				}
 			}
@@ -127,7 +127,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					zoom_original_for_abort: ptz.zoom(),
 					snap: false,
 				};
-				self.mouse_position = ipp.mouse.position;
+				self.mouse_position = ipp.pointer.position;
 			}
 			NavigationMessage::CanvasPan { delta } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -177,9 +177,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
 				// On Mac, the OS already converts Shift+scroll into horizontal scrolling
 				let delta = if use_y_as_x && !Editor::environment().is_mac() {
-					(ipp.mouse.scroll_delta.y, 0.).into()
+					(ipp.pointer.scroll_delta.y, 0.).into()
 				} else {
-					ipp.mouse.scroll_delta.as_dvec2()
+					ipp.pointer.scroll_delta.as_dvec2()
 				} * -VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 			}
@@ -216,7 +216,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.pointer.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -227,14 +227,14 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.pointer.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
 			NavigationMessage::CanvasZoomMouseWheel => {
-				let scroll = ipp.mouse.scroll_delta.scroll_delta();
+				let scroll = ipp.pointer.scroll_delta.scroll_delta();
 				let mut zoom_factor = 1. + scroll.abs() * preferences.viewport_zoom_wheel_rate;
-				if ipp.mouse.scroll_delta.y > 0. {
+				if ipp.pointer.scroll_delta.y > 0. {
 					zoom_factor = 1. / zoom_factor
 				}
 				let document_bounds = if !graph_view_overlay_open {
@@ -249,7 +249,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				zoom_factor *= Self::clamp_zoom(ptz.zoom() * zoom_factor, document_bounds, old_zoom, viewport);
 
-				responses.add(self.center_zoom(viewport.size().into(), zoom_factor, ipp.mouse.position));
+				responses.add(self.center_zoom(viewport.size().into(), zoom_factor, ipp.pointer.position));
 				responses.add(NavigationMessage::CanvasZoomSet {
 					zoom_factor: ptz.zoom() * zoom_factor,
 				});
@@ -408,7 +408,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				match self.navigation_operation {
 					NavigationOperation::None => {}
 					NavigationOperation::Pan { .. } => {
-						let delta = ipp.mouse.position - self.mouse_position;
+						let delta = ipp.pointer.position - self.mouse_position;
 						responses.add(NavigationMessage::CanvasPan { delta });
 					}
 					NavigationOperation::Tilt {
@@ -421,7 +421,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
 							let half_viewport = viewport.center_in_viewport_space().into_dvec2();
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
-							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
+							let end_offset = viewport_to_document.transform_vector2(ipp.pointer.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
 
 							tilt_raw_not_snapped + angle
@@ -448,7 +448,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						..
 					} => {
 						let zoom_raw_not_snapped = {
-							let vertical_delta = self.mouse_position.y - ipp.mouse.position.y;
+							let vertical_delta = self.mouse_position.y - ipp.pointer.position.y;
 							let amount = vertical_delta * VIEWPORT_ZOOM_MOUSE_RATE;
 							let updated_zoom = zoom_raw_not_snapped * (1. + amount);
 
@@ -479,7 +479,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					}
 				}
 
-				self.mouse_position = ipp.mouse.position;
+				self.mouse_position = ipp.pointer.position;
 			}
 		}
 	}

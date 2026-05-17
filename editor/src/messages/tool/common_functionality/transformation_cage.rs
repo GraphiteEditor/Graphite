@@ -326,7 +326,7 @@ pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVe
 
 /// Snaps a dragging event from the artboard or select tool
 pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, axis: Axis, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
-	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.mouse.position, start);
+	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.pointer.position, start);
 	let document = snap_data.document;
 	let total_mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - start);
 	let mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - current);
@@ -765,13 +765,13 @@ impl BoundingBoxManager {
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool, dragging_bounds: bool, skew_edge: Option<EdgeBool>) -> MouseCursorIcon {
-		let edges = self.check_selected_edges(input.mouse.position);
+		let edges = self.check_selected_edges(input.pointer.position);
 
-		let is_near_square = edges.is_some_and(|hover_edge| self.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+		let is_near_square = edges.is_some_and(|hover_edge| self.over_extended_edge_midpoint(input.pointer.position, hover_edge));
 		if dragging_bounds
 			&& is_near_square
 			&& let Some(skew_edge) = skew_edge
-			&& self.check_skew_handle(input.mouse.position, skew_edge)
+			&& self.check_skew_handle(input.pointer.position, skew_edge)
 		{
 			if skew_edge.0 || skew_edge.1 {
 				return MouseCursorIcon::EWResize;
@@ -788,7 +788,7 @@ impl BoundingBoxManager {
 				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
 			},
-			_ if rotate && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
+			_ if rotate && self.check_rotate(input.pointer.position) => MouseCursorIcon::Rotate,
 			_ => MouseCursorIcon::Default,
 		}
 	}
