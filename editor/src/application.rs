@@ -1,5 +1,6 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
+use graph_craft::application_io::{PlatformApplicationIo, ResourceStorage};
 pub use graphene_std::uuid::*;
 use std::sync::OnceLock;
 
@@ -8,11 +9,13 @@ pub struct Editor {
 }
 
 impl Editor {
-	pub fn new(environment: Environment, uuid_random_seed: u64) -> Self {
+	pub fn new(environment: Environment, uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>) -> Self {
 		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
-		Self { dispatcher: Dispatcher::new() }
+		Self {
+			dispatcher: Dispatcher::new(resource_storage),
+		}
 	}
 
 	#[cfg(test)]
@@ -20,10 +23,14 @@ impl Editor {
 		let _ = ENVIRONMENT.set(*Editor::environment());
 		graphene_std::uuid::set_uuid_seed(0);
 
-		let (runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
+		let (mut runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
 		let editor = Self {
 			dispatcher: Dispatcher::with_executor(executor),
 		};
+
+		let mut application_io = PlatformApplicationIo::default();
+		application_io.inject_resources(editor.dispatcher.message_handlers.resource_message_handler.resources());
+		runtime.replace_application_io(application_io);
 
 		(editor, runtime)
 	}
@@ -36,6 +43,11 @@ impl Editor {
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.dispatcher.poll_node_graph_evaluation(responses)
+	}
+
+	pub async fn replace_application_io(&mut self, mut application_io: PlatformApplicationIo) {
+		application_io.inject_resources(self.dispatcher.message_handlers.resource_message_handler.resources());
+		crate::node_graph_executor::replace_application_io(application_io).await;
 	}
 }
 

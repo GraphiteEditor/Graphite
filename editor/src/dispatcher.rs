@@ -6,6 +6,7 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
+use graph_craft::application_io::ResourceStorage;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
@@ -31,16 +32,22 @@ pub struct DispatcherMessageHandlers {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
+	pub(crate) resource_message_handler: ResourceMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
+	pub fn with_resource_storage(resource_storage: Box<dyn ResourceStorage>) -> Self {
+		let mut s = Self::default();
+		s.resource_message_handler = ResourceMessageHandler::new(resource_storage);
+		s
+	}
+
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self {
-			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
-			..Default::default()
-		}
+		let mut s = Self::default();
+		s.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
+		s
 	}
 }
 
@@ -78,15 +85,16 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new() -> Self {
-		Self::default()
+	pub fn new(resource_storage: Box<dyn ResourceStorage>) -> Self {
+		let mut s = Self::default();
+		s.message_handlers.resource_message_handler = ResourceMessageHandler::new(resource_storage);
+		s
 	}
 
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self {
-			message_handlers: DispatcherMessageHandlers::with_executor(executor),
-			..Default::default()
-		}
+		let mut s = Self::default();
+		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
+		s
 	}
 
 	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
@@ -218,6 +226,9 @@ impl Dispatcher {
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
+				Message::Resource(message) => {
+					self.message_handlers.resource_message_handler.process_message(message, &mut queue, ResourceMessageContext {});
+				}
 				Message::Portfolio(message) => {
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -230,6 +241,7 @@ impl Dispatcher {
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
 							viewport: &self.message_handlers.viewport_message_handler,
+							resources: &self.message_handlers.resource_message_handler,
 						},
 					);
 				}

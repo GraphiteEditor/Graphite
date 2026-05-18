@@ -1,14 +1,93 @@
 use dyn_any::StaticType;
+#[cfg(feature = "wgpu")]
+use wgpu_executor::WgpuExecutor;
 
-#[cfg(not(target_family = "wasm"))]
-mod native;
-#[cfg(target_family = "wasm")]
-mod wasm;
+pub mod resource;
 
-#[cfg(not(target_family = "wasm"))]
-pub type PlatformApplicationIo = native::NativeApplicationIo;
+pub use graphene_application_io::{ApplicationIo, Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
+pub use resource::HashMapResourceStorage;
 #[cfg(target_family = "wasm")]
-pub type PlatformApplicationIo = wasm::WasmApplicationIo;
+pub use resource::indexed_db::IndexedDbResourceStorage;
+#[cfg(not(target_family = "wasm"))]
+pub use resource::mmap::MmapResourceStorage;
+
+pub struct PlatformApplicationIo {
+	#[cfg(feature = "wgpu")]
+	pub(crate) gpu_executor: Option<WgpuExecutor>,
+	resources: Option<Box<dyn Resources>>,
+}
+
+impl PlatformApplicationIo {
+	pub async fn new() -> Self {
+		#[cfg(feature = "wgpu")]
+		let executor = WgpuExecutor::new().await;
+
+		#[cfg(not(feature = "wgpu"))]
+		let wgpu_available = false;
+		#[cfg(feature = "wgpu")]
+		let wgpu_available = executor.is_some();
+		set_wgpu_available(wgpu_available);
+
+		Self {
+			#[cfg(feature = "wgpu")]
+			gpu_executor: executor,
+			resources: None,
+		}
+	}
+
+	#[cfg(feature = "wgpu")]
+	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
+		let executor = WgpuExecutor::with_context(context);
+
+		let wgpu_available = executor.is_some();
+		set_wgpu_available(wgpu_available);
+
+		Self {
+			gpu_executor: executor,
+			resources: None,
+		}
+	}
+
+	pub fn inject_resources(&mut self, resources: Box<dyn Resources>) {
+		self.resources = Some(resources);
+	}
+}
+
+impl ApplicationIo for PlatformApplicationIo {
+	#[cfg(feature = "wgpu")]
+	type Executor = WgpuExecutor;
+	#[cfg(not(feature = "wgpu"))]
+	type Executor = ();
+
+	#[cfg(feature = "wgpu")]
+	fn gpu_executor(&self) -> Option<&Self::Executor> {
+		self.gpu_executor.as_ref()
+	}
+
+	fn load_resource(&self, hash: ResourceHash) -> graphene_application_io::ResourceFuture {
+		self.resources.as_ref().expect("Resource storage not initialized").load(hash)
+	}
+}
+
+impl Default for PlatformApplicationIo {
+	fn default() -> Self {
+		Self {
+			#[cfg(feature = "wgpu")]
+			gpu_executor: None,
+			resources: None,
+		}
+	}
+}
+
+impl std::fmt::Debug for PlatformApplicationIo {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("PlatformApplicationIo").finish_non_exhaustive()
+	}
+}
+
+unsafe impl StaticType for PlatformApplicationIo {
+	type Static = PlatformApplicationIo;
+}
 
 pub type PlatformEditorApi = graphene_application_io::EditorApi<PlatformApplicationIo>;
 

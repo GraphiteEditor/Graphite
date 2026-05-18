@@ -3,7 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use graphene_std::render_node::{EditorPreferences, wgpu_available};
+use graph_craft::application_io::EditorPreferences;
 
 #[derive(ExtractField)]
 pub struct PreferencesDialogMessageContext<'a> {
@@ -307,7 +307,7 @@ impl PreferencesDialogMessageHandler {
 		// COMPATIBILITY
 		// =============
 		{
-			let wgpu_available = wgpu_available().unwrap_or(false);
+			let wgpu_available = graph_craft::application_io::wgpu_available().unwrap_or(false);
 			let is_desktop = cfg!(not(target_family = "wasm"));
 			if wgpu_available || is_desktop {
 				let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];

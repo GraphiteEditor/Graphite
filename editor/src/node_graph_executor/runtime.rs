@@ -97,7 +97,7 @@ pub struct ExportConfig {
 struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
 
 impl InternalNodeGraphUpdateSender {
-	fn send_generation_response(&self, response: CompilationResponse) {
+	fn send_compilation_response(&self, response: CompilationResponse) {
 		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
 	}
 
@@ -134,7 +134,11 @@ impl NodeRuntime {
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
+				#[cfg(not(test))]
 				application_io: None,
+
+				#[cfg(test)]
+				application_io: Some(PlatformApplicationIo::default().into()),
 			}
 			.into(),
 
@@ -154,19 +158,6 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) -> Option<ImageTexture> {
-		if self.editor_api.application_io.is_none() {
-			self.editor_api = PlatformEditorApi {
-				#[cfg(all(not(test), target_family = "wasm"))]
-				application_io: Some(PlatformApplicationIo::new().await.into()),
-				#[cfg(any(test, not(target_family = "wasm")))]
-				application_io: Some(PlatformApplicationIo::new().await.into()),
-				font_cache: self.editor_api.font_cache.clone(),
-				node_graph_message_sender: Box::new(self.sender.clone()),
-				editor_preferences: Box::new(self.editor_preferences.clone()),
-			}
-			.into();
-		}
-
 		let mut font = None;
 		let mut preferences = None;
 		let mut graph = None;
@@ -247,7 +238,7 @@ impl NodeRuntime {
 
 					self.update_thumbnails = true;
 
-					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
+					self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
 					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
@@ -575,14 +566,20 @@ pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
 }
-pub async fn replace_application_io(application_io: PlatformApplicationIo) {
+pub(crate) async fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.editor_api = PlatformEditorApi {
-			font_cache: node_runtime.editor_api.font_cache.clone(),
+		node_runtime.replace_application_io(application_io);
+	}
+}
+
+impl NodeRuntime {
+	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
+		self.editor_api = PlatformEditorApi {
+			font_cache: self.editor_api.font_cache.clone(),
 			application_io: Some(application_io.into()),
-			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
-			editor_preferences: Box::new(node_runtime.editor_preferences.clone()),
+			node_graph_message_sender: Box::new(self.sender.clone()),
+			editor_preferences: Box::new(self.editor_preferences.clone()),
 		}
 		.into();
 	}

@@ -288,11 +288,6 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List
 	result_list
 }
 
-#[node_macro::node(category(""))]
-pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> List<Raster<CPU>> {
-	List::new_from_element(Raster::new_cpu(image))
-}
-
 /// Generates customizable procedural noise patterns.
 #[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]

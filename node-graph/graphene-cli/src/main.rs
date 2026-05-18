@@ -121,11 +121,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
 
 	log::info!("Creating GPU context");
-	let mut application_io = block_on(PlatformApplicationIo::new());
-
-	if let Command::Export { image: Some(ref image_path), .. } = app.command {
-		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
-	}
+	let application_io = block_on(PlatformApplicationIo::new());
 
 	// Convert application_io to Arc first
 	let application_io_arc = Arc::new(application_io);

@@ -17,5 +17,6 @@ pub mod message;
 pub mod portfolio;
 pub mod preferences;
 pub mod prelude;
+pub mod resource;
 pub mod tool;
 pub mod viewport;

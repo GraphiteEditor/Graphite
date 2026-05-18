@@ -20,6 +20,7 @@ use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
+use graph_craft::application_io::ResourceHash;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::ContextDependencies;
@@ -508,6 +509,10 @@ impl NodeNetworkInterface {
 				position
 			}
 		})
+	}
+
+	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceHash>) {
+		collect_network_resources(self.document_network(), target);
 	}
 
 	pub fn frontend_imports(&mut self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
@@ -6767,6 +6772,21 @@ pub enum TransactionStatus {
 	Modified,
 	#[default]
 	Finished,
+}
+
+fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceHash>) {
+	for node in network.nodes.values() {
+		for input in &node.inputs {
+			if let NodeInput::Value { tagged_value, .. } = input {
+				if let TaggedValue::Resource(hash) = &**tagged_value {
+					out.insert(*hash);
+				}
+			}
+		}
+		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+			collect_network_resources(nested, out);
+		}
+	}
 }
 
 #[cfg(test)]

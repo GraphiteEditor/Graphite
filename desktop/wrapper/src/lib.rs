@@ -1,9 +1,10 @@
-use graph_craft::application_io::PlatformApplicationIo;
+use graph_craft::application_io::{PlatformApplicationIo, ResourceStorage};
 use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
+pub use graph_craft::application_io::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
@@ -22,7 +23,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -32,13 +33,13 @@ impl DesktopWrapper {
 		let env = Environment { platform: Platform::Desktop, host };
 
 		Self {
-			editor: Editor::new(env, uuid_random_seed),
+			editor: Editor::new(env, uuid_random_seed, resource_storage),
 		}
 	}
 
-	pub fn init(&self, wgpu_context: WgpuContext) {
+	pub fn init(&mut self, wgpu_context: WgpuContext) {
 		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
-		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
+		futures::executor::block_on(self.editor.replace_application_io(application_io));
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
