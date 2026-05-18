@@ -220,6 +220,8 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+	// Are we rendering for a pattern content
+	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: f64,
@@ -235,8 +237,12 @@ impl RenderParams {
 		Self { alignment_parent_transform, ..*self }
 	}
 
+	pub fn for_pattern(&self) -> Self {
+		Self { inside_pattern: true, ..*self }
+	}
+
 	pub fn to_canvas(&self) -> bool {
-		!self.for_export && !self.thumbnail && !self.for_mask
+		!self.for_export && !self.thumbnail && !self.for_mask && !self.inside_pattern
 	}
 }
 
@@ -340,23 +346,73 @@ fn fill_covers_opaquely(fill_graphic: Option<&Graphic>) -> bool {
 	}
 }
 
+/// Emits a SVG `<pattern>` paint server element that renders any graphic element into def and returns the id.
+/// Currently this function uses `<pattern>` as a clip-based paint server, which means the content is rendered once without tiling.
+fn render_svg_fill_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, path_bbox: [DVec2; 2], item_transform: DAffine2, render_params: &RenderParams) -> Option<String> {
+	let [min, max] = path_bbox;
+	let size = max - min;
+	if size.x <= 0. || size.y <= 0. {
+		return None;
+	}
+
+	// Render the pattern content recursively
+	let mut content = SvgRender::new();
+	fill_graphic_list.render_svg(&mut content, &render_params.for_pattern());
+
+	// Unwrap the inner def element
+	write!(svg_defs, "{}", content.svg_defs).unwrap();
+
+	let pattern_transform = item_transform * DAffine2::from_translation(min);
+	let transform_str = format_transform_matrix(pattern_transform);
+	let transform_attr = if transform_str.is_empty() {
+		String::new()
+	} else {
+		format!(r#" patternTransform="{transform_str}""#)
+	};
+
+	let pattern_id = format!("pattern-{}", generate_uuid());
+	write!(
+		svg_defs,
+		r##"<pattern id="{pattern_id}" patternUnits="userSpaceOnUse" x="0" y="0" width="{}" height="{}"{transform_attr}>"##,
+		size.x, size.y,
+	)
+	.unwrap();
+
+	let content_shift = format_transform_matrix(DAffine2::from_translation(-min));
+	write!(svg_defs, r##"<g transform="{content_shift}">{}</g></pattern>"##, content.svg.to_svg_string()).unwrap();
+
+	Some(pattern_id)
+}
+
 /// Returns the fill attribute for SVG tags corresponding to the given fill_graphic.
+#[allow(clippy::too_many_arguments)]
 fn compute_svg_fill_attribute(
-	fill_graphic: Option<&Graphic>,
+	fill_graphic_list: Option<&List<Graphic>>,
 	defs: &mut String,
 	element_transform: DAffine2,
 	applied_stroke_transform: DAffine2,
 	bounds_matrix: DAffine2,
 	transformed_bounds_matrix: DAffine2,
+	item_transform: DAffine2,
 	render_params: &RenderParams,
 ) -> String {
+	let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
+
 	match fill_graphic {
 		Some(Graphic::Color(color_list)) => color_list.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params),
 		Some(Graphic::Gradient(gradient_list)) => {
 			let gradient_id = gradient_list.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params);
-			format!(r##" fill="url('#{gradient_id}')""##)
+			format!(r##" fill="url(#{gradient_id})""##)
 		}
-		_ => r#" fill="none""#.to_string(),
+		Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
+			let list = fill_graphic_list.unwrap();
+			let min = bounds_matrix.transform_point2(DVec2::ZERO);
+			let max = bounds_matrix.transform_point2(DVec2::ONE);
+			render_svg_fill_pattern(defs, list, [min, max], item_transform, render_params)
+				.map(|id| format!(r##" fill="url(#{id})""##))
+				.unwrap_or_else(|| r#" fill="none""#.to_string())
+		}
+		None => r#" fill="none""#.to_string(),
 	}
 }
 
@@ -366,10 +422,11 @@ fn emit_svg_fill_path(
 	render: &mut SvgRender,
 	d: String,
 	element_transform: DAffine2,
-	fill_graphic: Option<&Graphic>,
+	fill_graphic_list: Option<&List<Graphic>>,
 	applied_stroke_transform: DAffine2,
 	bounds_matrix: DAffine2,
 	transformed_bounds_matrix: DAffine2,
+	item_transform: DAffine2,
 	render_params: &RenderParams,
 ) {
 	render.leaf_tag("path", |attributes| {
@@ -379,71 +436,18 @@ fn emit_svg_fill_path(
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
 		let defs = &mut attributes.0.svg_defs;
-		let fill_attribute = compute_svg_fill_attribute(fill_graphic, defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params);
+		let fill_attribute = compute_svg_fill_attribute(
+			fill_graphic_list,
+			defs,
+			element_transform,
+			applied_stroke_transform,
+			bounds_matrix,
+			transformed_bounds_matrix,
+			item_transform,
+			render_params,
+		);
 		attributes.push_val(fill_attribute);
 	});
-}
-
-/// Emits an SVG `<g clip-path>` group that renders the fill graphic clipped to the path referenced by `clip_id`.
-fn emit_svg_fill_clip(render: &mut SvgRender, clip_id: &str, fill_graphic_list: &List<Graphic>, item_transform: DAffine2, render_params: &RenderParams) {
-	render.parent_tag(
-		"g",
-		|attributes| {
-			attributes.push("clip-path", format!("url(#{clip_id})"));
-		},
-		|render| {
-			let matrix = format_transform_matrix(item_transform);
-			if matrix.is_empty() {
-				fill_graphic_list.render_svg(render, render_params);
-				return;
-			}
-			render.parent_tag(
-				"g",
-				|attributes| {
-					attributes.push(ATTR_TRANSFORM, matrix);
-				},
-				|render| {
-					fill_graphic_list.render_svg(render, render_params);
-				},
-			);
-		},
-	);
-}
-
-/// Emits the fill element for aligned-stroke paths, dispatching between `<path>` for Color/Gradient and `<g clip-path>` for Vector/Raster/Graphic.
-#[allow(clippy::too_many_arguments)]
-fn emit_aligned_fill_pass(
-	render: &mut SvgRender,
-	d: String,
-	element_transform: DAffine2,
-	item_transform: DAffine2,
-	fill_graphic_list: Option<&List<Graphic>>,
-	clip_id: Option<&str>,
-	applied_stroke_transform: DAffine2,
-	bounds_matrix: DAffine2,
-	transformed_bounds_matrix: DAffine2,
-	render_params: &RenderParams,
-) {
-	let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
-	match fill_graphic {
-		Some(Graphic::Color(_) | Graphic::Gradient(_)) | None => {
-			emit_svg_fill_path(
-				render,
-				d,
-				element_transform,
-				fill_graphic,
-				applied_stroke_transform,
-				bounds_matrix,
-				transformed_bounds_matrix,
-				render_params,
-			);
-		}
-		Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)) => {
-			if let (Some(clip_id), Some(fill_graphic_list)) = (clip_id, fill_graphic_list) {
-				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
-			}
-		}
-	}
 }
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
@@ -1076,37 +1080,25 @@ impl Render for List<Vector> {
 				.or_else(|| fill_to_graphic_list(vector.style.fill()).map(Cow::Owned));
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
-			let need_clipping = matches!(fill_graphic, Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)));
-
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
-			let can_use_paint_order = !(fill_graphic.is_none() || !fill_covers_opaquely(fill_graphic) || mask_type == MaskType::Clip || need_clipping);
+			let can_use_paint_order = !(fill_graphic.is_none() || !fill_covers_opaquely(fill_graphic) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 			let override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 			let use_face_fill = vector.use_face_fill();
 
-			// Register the clipPath in <defs> and remember its id for the <g clip-path> below
-			let clip_id = if need_clipping && !use_face_fill {
-				let id = format!("clip-{}", generate_uuid());
-				write!(&mut render.svg_defs, r##"<clipPath id="{id}"><path d="{path}"/></clipPath>"##).unwrap();
-				Some(id)
-			} else {
-				None
-			};
-
 			if needs_separate_alignment_fill && !wants_stroke_below {
-				emit_aligned_fill_pass(
+				emit_svg_fill_path(
 					render,
 					path.clone(),
 					element_transform,
-					item_transform,
 					fill_graphic_list.as_deref(),
-					clip_id.as_deref(),
 					applied_stroke_transform,
 					bounds_matrix,
 					transformed_bounds_matrix,
+					item_transform,
 					render_params,
 				);
 			}
@@ -1130,39 +1122,18 @@ impl Render for List<Vector> {
 					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 					let face_d = face_path.to_svg();
 
-					match fill_graphic {
-						Some(Graphic::Color(_) | Graphic::Gradient(_)) | None => {
-							emit_svg_fill_path(
-								render,
-								face_d,
-								element_transform,
-								fill_graphic,
-								applied_stroke_transform,
-								bounds_matrix,
-								transformed_bounds_matrix,
-								render_params,
-							);
-						}
-
-						Some(Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_)) => {
-							if let Some(fill_graphic_list) = fill_graphic_list.as_deref() {
-								let face_clip_id = format!("clip-{}", generate_uuid());
-								write!(&mut render.svg_defs, r##"<clipPath id="{face_clip_id}"><path d="{face_d}"/></clipPath>"##).unwrap();
-								emit_svg_fill_clip(render, &face_clip_id, fill_graphic_list, item_transform, render_params);
-							}
-						}
-					}
+					emit_svg_fill_path(
+						render,
+						face_d,
+						element_transform,
+						fill_graphic_list.as_deref(),
+						applied_stroke_transform,
+						bounds_matrix,
+						transformed_bounds_matrix,
+						item_transform,
+						render_params,
+					);
 				}
-			}
-
-			// Clipping-based fill should be drawn before the stroke path (default paint order)
-			if !needs_separate_alignment_fill
-				&& !use_face_fill
-				&& !wants_stroke_below
-				&& !override_paint_order
-				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_deref())
-			{
-				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
 			}
 
 			render.leaf_tag("path", |attributes| {
@@ -1213,12 +1184,13 @@ impl Render for List<Vector> {
 					r#" fill="none""#.to_string()
 				} else {
 					compute_svg_fill_attribute(
-						fill_graphic,
+						fill_graphic_list.as_deref(),
 						defs,
 						element_transform,
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
+						item_transform,
 						&render_params,
 					)
 				};
@@ -1244,27 +1216,17 @@ impl Render for List<Vector> {
 				}
 			});
 
-			// Clipping-based fill should be drawn after the stroke path
-			if !needs_separate_alignment_fill
-				&& !use_face_fill
-				&& (wants_stroke_below || override_paint_order)
-				&& let (Some(clip_id), Some(fill_graphic_list)) = (clip_id.as_ref(), fill_graphic_list.as_deref())
-			{
-				emit_svg_fill_clip(render, clip_id, fill_graphic_list, item_transform, render_params);
-			}
-
 			// When splitting passes and stroke is below, draw the fill after the stroke.
 			if needs_separate_alignment_fill && wants_stroke_below {
-				emit_aligned_fill_pass(
+				emit_svg_fill_path(
 					render,
-					path,
+					path.clone(),
 					element_transform,
-					item_transform,
 					fill_graphic_list.as_deref(),
-					clip_id.as_deref(),
 					applied_stroke_transform,
 					bounds_matrix,
 					transformed_bounds_matrix,
+					item_transform,
 					render_params,
 				);
 			}
