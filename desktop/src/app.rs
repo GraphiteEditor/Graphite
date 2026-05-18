@@ -2,6 +2,7 @@ use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -14,10 +15,9 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
 use crate::cef;
-use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::persist::PersistentData;
+use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
@@ -45,10 +45,8 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
-	persistent_data: PersistentData,
-	#[cfg_attr(not(target_os = "macos"), expect(unused))]
 	preferences: Preferences,
-	cli: Cli,
+	launch_documents: Option<Vec<PathBuf>>,
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
@@ -59,6 +57,7 @@ impl App {
 		Window::init();
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
 		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
@@ -66,7 +65,7 @@ impl App {
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
 		preferences: Preferences,
-		cli: Cli,
+		launch_documents: Vec<PathBuf>,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
 		ctrlc::set_handler(move || {
@@ -92,9 +91,6 @@ impl App {
 			}
 		});
 
-		let mut persistent_data = PersistentData::default();
-		persistent_data.load_from_disk();
-
 		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
 
 		Self {
@@ -118,9 +114,8 @@ impl App {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
-			persistent_data,
 			preferences,
-			cli,
+			launch_documents: Some(launch_documents),
 			startup_time: None,
 			exiting,
 			exit_reason: ExitReason::Shutdown,
@@ -202,7 +197,7 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
+			DesktopFrontendMessage::OpenFileDialog { title, filters, multiple, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
@@ -210,13 +205,21 @@ impl App {
 						dialog = dialog.add_filter(filter.name, &filter.extensions);
 					}
 
-					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
+					let handles = if multiple {
+						futures::executor::block_on(dialog.pick_files()).unwrap_or_default()
+					} else {
+						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
+					};
 
-					if let Some(path) = futures::executor::block_on(show_dialog)
-						&& let Ok(content) = fs::read(&path)
-					{
-						let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
-						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+					for handle in handles {
+						let path = handle.path().to_path_buf();
+						match fs::read(&path) {
+							Ok(content) => {
+								let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
+								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+							}
+							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
+						}
 					}
 				});
 			}
@@ -284,17 +287,24 @@ impl App {
 					window.request_redraw();
 				}
 			}
-			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
-				self.persistent_data.write_document(id, document);
+			DesktopFrontendMessage::PersistenceWriteState { state } => {
+				persist::write_state(state);
+			}
+			DesktopFrontendMessage::PersistenceReadState => {
+				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
+			}
+			DesktopFrontendMessage::PersistenceReadDocument { id } => {
+				if let Some(document) = persist::read_document_content(&id) {
+					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document });
+				} else {
+					tracing::error!("Failed to read document content for {id:?}");
+				}
+			}
+			DesktopFrontendMessage::PersistenceWriteDocument { id, document_serialized_content } => {
+				persist::write_document_content(id, document_serialized_content);
 			}
 			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
-				self.persistent_data.delete_document(&id);
-			}
-			DesktopFrontendMessage::PersistenceUpdateCurrentDocument { id } => {
-				self.persistent_data.set_current_document(id);
-			}
-			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
-				self.persistent_data.set_document_order(ids);
+				persist::delete_document(&id);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
 				preferences::write(preferences);
@@ -304,58 +314,12 @@ impl App {
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
 				responses.push(message);
 			}
-			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
-				if let Some((id, document)) = self.persistent_data.current_document() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: true,
-					};
-					responses.push(message);
-				}
-			}
-			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
-				for (id, document) in self.persistent_data.documents_before_current().into_iter().rev() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: true,
-						select_after_open: false,
-					};
-					responses.push(message);
-				}
-				for (id, document) in self.persistent_data.documents_after_current() {
-					let message = DesktopWrapperMessage::LoadDocument {
-						id,
-						document,
-						to_front: false,
-						select_after_open: false,
-					};
-					responses.push(message);
-				}
-				if let Some(id) = self.persistent_data.current_document_id() {
-					let message = DesktopWrapperMessage::SelectDocument { id };
-					responses.push(message);
-				}
-			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
-				if self.cli.files.is_empty() {
+				let Some(launch_documents) = std::mem::take(&mut self.launch_documents) else {
+					tracing::error!("OpenLaunchDocuments should only be sent once");
 					return;
-				}
-				let app_event_scheduler = self.app_event_scheduler.clone();
-				let launch_documents = std::mem::take(&mut self.cli.files);
-				let _ = thread::spawn(move || {
-					for path in launch_documents {
-						tracing::info!("Opening file from command line: {}", path.display());
-						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
-							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
-						}
-					}
-				});
+				};
+				self.app_event_scheduler.schedule(AppEvent::OpenFiles(launch_documents));
 			}
 			DesktopFrontendMessage::UpdateMenu { entries } => {
 				if let Some(window) = &self.window {
@@ -401,6 +365,11 @@ impl App {
 			DesktopFrontendMessage::WindowDrag => {
 				if let Some(window) = &self.window {
 					window.start_drag();
+				}
+			}
+			DesktopFrontendMessage::WindowFocus => {
+				if let Some(window) = &self.window {
+					window.focus();
 				}
 			}
 			DesktopFrontendMessage::WindowHide => {
@@ -508,6 +477,29 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			AppEvent::OpenFiles(paths) => {
+				// Accumulate launch documents until OpenLaunchDocuments message is received
+				if let Some(launch_documents) = &mut self.launch_documents {
+					launch_documents.extend(paths);
+					return;
+				}
+
+				if paths.is_empty() {
+					return;
+				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let _ = thread::spawn(move || {
+					for path in paths {
+						tracing::info!("Opening file: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
+			}
 			#[cfg(target_os = "macos")]
 			AppEvent::MenuEvent { id } => {
 				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
@@ -590,20 +582,16 @@ impl ApplicationHandler for App {
 						Err(RenderError::OutdatedUITextureError) => {
 							self.cef_context.notify_view_info_changed();
 						}
-						Err(RenderError::SurfaceError(wgpu::SurfaceError::Lost)) => {
+						Err(RenderError::SurfaceLost) => {
 							tracing::warn!("lost surface");
 						}
-						Err(RenderError::SurfaceError(wgpu::SurfaceError::OutOfMemory)) => {
-							tracing::error!("GPU out of memory");
-							self.exit(None);
-						}
-						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
+						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
 					let _ = self.start_render_sender.try_send(());
 				}
 
 				if !self.cef_init_successful
-					&& !self.cli.disable_ui_acceleration
+					&& !self.preferences.disable_ui_acceleration
 					&& self.web_communication_initialized
 					&& let Some(startup_time) = self.startup_time
 					&& startup_time.elapsed() > Duration::from_secs(3)

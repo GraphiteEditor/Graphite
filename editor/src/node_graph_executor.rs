@@ -1,17 +1,17 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::document::value::{RenderOutput, TaggedValue};
+use graph_craft::application_io::EditorPreferences;
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::{CPU, Raster};
-use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
+use graphene_std::renderer::RenderMetadata;
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
-use graphene_std::wasm_application_io::RenderOutputType;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 mod runtime_io;
@@ -54,7 +54,11 @@ pub struct NodeGraphExecutor {
 	current_execution_id: u64,
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
-	previous_node_to_inspect: Option<NodeId>,
+	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
+	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
+	/// so the runtime can splice its monitor node alongside the target rather than only at the top level.
+	/// Tracking the previously-sent value lets `update_node_graph` re-send the network when the inspection target changes.
+	previous_node_to_inspect: Vec<NodeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +80,7 @@ impl NodeGraphExecutor {
 			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
 			node_graph_hash: 0,
 			current_execution_id: 0,
-			previous_node_to_inspect: None,
+			previous_node_to_inspect: Vec::new(),
 		};
 		(node_runtime, node_executor)
 	}
@@ -110,18 +114,18 @@ impl NodeGraphExecutor {
 		let instrumented = Instrumented::new(&mut network);
 
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
 
 	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
 			let network = document.network_interface.document_network().clone();
-			self.previous_node_to_inspect = node_to_inspect;
+			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 
 			self.runtime_io
@@ -154,7 +158,6 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode: document.render_mode,
-			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: false,
 		};
@@ -176,7 +179,7 @@ impl NodeGraphExecutor {
 		viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
-		node_to_inspect: Option<NodeId>,
+		node_to_inspect: Vec<NodeId>,
 		ignore_hash: bool,
 		pointer: DVec2,
 	) -> Result<Message, String> {
@@ -219,7 +222,6 @@ impl NodeGraphExecutor {
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode,
-			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
 		};
@@ -242,10 +244,12 @@ impl NodeGraphExecutor {
 			graphene_std::application_io::ExportFormat::Raster
 		};
 
-		// Calculate the bounding box of the region to be exported
+		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
+		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
+		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -267,7 +271,6 @@ impl NodeGraphExecutor {
 			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
-			hide_artboards: export_config.transparent_background,
 			for_export: true,
 			for_eyedropper: false,
 		};
@@ -275,7 +278,7 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((
@@ -309,6 +312,7 @@ impl NodeGraphExecutor {
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
@@ -342,7 +346,7 @@ impl NodeGraphExecutor {
 					});
 
 					// Update the Data panel on the frontend using the value of the inspect result.
-					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
+					if let Some(inspect_result) = (!self.previous_node_to_inspect.is_empty()).then_some(inspect_result).flatten() {
 						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
 					} else {
 						responses.add(DataPanelMessage::ClearLayout);
@@ -355,6 +359,7 @@ impl NodeGraphExecutor {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
 
 							log::trace!("{e}");
@@ -380,6 +385,7 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
+				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 			}
 		}
 
@@ -393,16 +399,29 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Send to frontend
+				// Convert each linear-light `Image<Color>` into the JS-boundary `Image<SRGBA8>` form (gamma byte channels) before dispatching.
+				let image_data = image_data
+					.into_iter()
+					.map(|(id, image)| {
+						(
+							id,
+							graphene_std::raster::Image {
+								width: image.width,
+								height: image.height,
+								data: image.data.iter().map(|&c| SRGBA8::from(c)).collect(),
+								base64_string: image.base64_string,
+							},
+						)
+					})
+					.collect();
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
-			RenderOutputType::CanvasFrame(frame) => {
-				let matrix = format_transform_matrix(frame.transform);
-				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
+			#[cfg(target_family = "wasm")]
+			RenderOutputType::CanvasFrame { canvas_id, resolution } => {
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
+					r#"<svg><foreignObject width="{}" height="{}"><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					resolution.x, resolution.y, canvas_id,
 				);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
@@ -415,8 +434,11 @@ impl NodeGraphExecutor {
 			local_transforms,
 			first_element_source_id,
 			click_targets,
+			outlines,
+			text_frames,
 			clip_targets,
 			vector_data,
+			backgrounds: _,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately
@@ -426,6 +448,8 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateOutlines { outlines });
+		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);
@@ -482,7 +506,7 @@ impl NodeGraphExecutor {
 				use image::buffer::ConvertBuffer;
 				use image::{ImageFormat, RgbImage, RgbaImage};
 
-				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+				let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
 					return Err("Failed to create image buffer for export".to_string());
 				};
 
@@ -497,6 +521,14 @@ impl NodeGraphExecutor {
 						}
 					}
 					FileType::Jpg => {
+						// Composite onto a white background since JPG doesn't support transparency
+						for pixel in image.pixels_mut() {
+							let [r, g, b, a] = pixel.0;
+							let alpha = a as f32 / 255.;
+							let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
+							*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
+						}
+
 						let image: RgbImage = image.convert();
 						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
 						if let Err(err) = result {

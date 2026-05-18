@@ -247,7 +247,7 @@ export function onModifyInputField(e: CustomEvent) {
 
 export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorWrapper, portfolioStore: PortfolioStore) {
 	const activeDocument = get(portfolioStore).documents[get(portfolioStore).activeDocumentIndex];
-	if (activeDocument && !activeDocument.details.isAutoSaved) editor.triggerAutoSave(activeDocument.id);
+	if (activeDocument) editor.triggerAutoSave(activeDocument.id);
 
 	// Skip the message if the editor crashed, since work is already lost
 	if (await editor.hasCrashed()) return;
@@ -255,7 +255,7 @@ export async function onBeforeUnload(e: BeforeUnloadEvent, editor: EditorWrapper
 	// Skip the message during development, since it's annoying when testing
 	if (await editor.inDevelopmentMode()) return;
 
-	const allDocumentsSaved = get(portfolioStore).documents.reduce((acc, doc) => acc && doc.details.isSaved, true);
+	const allDocumentsSaved = get(portfolioStore).documents.reduce((acc, doc) => acc && doc.is_saved, true);
 	if (!allDocumentsSaved) {
 		e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 		e.preventDefault();
@@ -343,7 +343,12 @@ function detectShake(e: PointerEvent | MouseEvent): boolean {
 }
 
 function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
-	return target instanceof HTMLElement && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.isContentEditable);
+	if (!(target instanceof HTMLElement)) return false;
+	return (
+		target.isContentEditable ||
+		target instanceof HTMLTextAreaElement ||
+		(target instanceof HTMLInputElement && ["text", "password", "email", "url", "tel", "search", "number", "date", "datetime-local", "month", "time", "week"].includes(target.type))
+	);
 }
 
 function potentiallyRestoreCanvasFocus(e: Event) {

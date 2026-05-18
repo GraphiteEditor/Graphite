@@ -12,12 +12,12 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
-	import { fillChoiceColor, createColor } from "/src/utility-functions/colors";
+	import { fillChoiceUIColor, createSRgba8 } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver } from "/src/utility-functions/viewports";
-	import type { Color, EditorWrapper, MenuDirection, MouseCursorIcon } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
@@ -44,6 +44,11 @@
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
 	let rulersVisible = true;
+	let rulerTilt = 0;
+	let rulerFlip = false;
+	let rulerCursorPosition: { x: number; y: number } | undefined;
+	let rulerSelectionQuad: [number, number][] | undefined;
+	let viewportBounds: DOMRect | undefined;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -65,7 +70,7 @@
 	let cursorEyedropperPreviewColorSecondary = "";
 
 	// Gradient stop color picker
-	let gradientStopPickerColor: Color | undefined = undefined;
+	let gradientStopPickerColor: SRGBA8 | undefined = undefined;
 	let gradientStopPickerPosition: { x: number; y: number } | undefined = undefined;
 
 	// Canvas dimensions
@@ -191,7 +196,7 @@
 			const isViewport = placeholder.hasAttribute("data-is-viewport");
 			if (isViewport && canvas.isConnected && canvas.parentElement?.closest("[data-viewport]")) return;
 
-			// Clone canvas for repeated instances (layers that appear multiple times)
+			// Clone canvas for repeated occurrences (layers that appear multiple times)
 			if (!isViewport && canvas.parentElement) {
 				const newCanvas = window.document.createElement("canvas");
 				const context = newCanvas.getContext("2d");
@@ -218,7 +223,7 @@
 		mousePosition: [number, number] | undefined,
 		colorPrimary: string,
 		colorSecondary: string,
-	): Promise<[number, number, number] | undefined> {
+	): Promise<SRGBA8 | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
@@ -270,14 +275,14 @@
 			};
 		})();
 		const hex = [centerPixel.r, centerPixel.g, centerPixel.b].map((x) => x.toString(16).padStart(2, "0")).join("");
-		const rgb: [number, number, number] = [centerPixel.r / 255, centerPixel.g / 255, centerPixel.b / 255];
+		const sRgba8: SRGBA8 = { red: centerPixel.r, green: centerPixel.g, blue: centerPixel.b, alpha: 255 };
 
 		cursorEyedropperPreviewColorChoice = "#" + hex;
 		cursorEyedropperPreviewColorPrimary = colorPrimary;
 		cursorEyedropperPreviewColorSecondary = colorSecondary;
 		cursorEyedropperPreviewImageData = preview;
 
-		return rgb;
+		return sRgba8;
 	}
 
 	// Update scrollbars and rulers
@@ -287,11 +292,18 @@
 		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean) {
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number, flip: boolean, selectionQuad: [number, number][] | undefined) {
 		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
+		rulerTilt = tilt;
+		rulerFlip = flip;
+		rulerSelectionQuad = selectionQuad;
+	}
+
+	function updateRulerCursorPosition(e: PointerEvent) {
+		if (viewportBounds) rulerCursorPosition = { x: e.clientX - viewportBounds.left, y: e.clientY - viewportBounds.top };
 	}
 
 	// Update mouse cursor icon
@@ -368,6 +380,7 @@
 		textInput.style.fontSize = `${data.fontSize}px`;
 		textInput.style.color = data.color;
 		textInput.style.textAlign = data.align;
+		textInput.style.textAlignLast = data.alignLast;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
@@ -414,6 +427,7 @@
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
 		devicePixelRatio = window.devicePixelRatio || 1;
+		viewportBounds = viewport.getBoundingClientRect();
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -463,11 +477,11 @@
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
 			const imageData = image !== undefined ? new ImageData(new Uint8ClampedArray(image.data), image.width, image.height) : undefined;
-			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
+			const sRgba8 = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
-			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.updateSecondaryColor(...rgb, 1);
+			if (setColorChoice && sRgba8) {
+				if (setColorChoice === "Primary") editor.updatePrimaryColor(sRgba8);
+				if (setColorChoice === "Secondary") editor.updateSecondaryColor(sRgba8);
 			}
 		});
 
@@ -487,8 +501,8 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible } = data;
-			updateDocumentRulers(origin, spacing, interval, visible);
+			const { origin, spacing, interval, visible, tilt, flip, selectionQuad } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined);
 		});
 
 		// Update mouse cursor icon
@@ -595,13 +609,35 @@
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
-					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+					<RulerInput
+						originX={rulerOrigin.x}
+						originY={rulerOrigin.y}
+						tilt={rulerTilt}
+						flip={rulerFlip}
+						majorMarkSpacing={rulerSpacing}
+						numberInterval={rulerInterval}
+						direction="Horizontal"
+						cursorPosition={rulerCursorPosition}
+						selectionQuad={rulerSelectionQuad}
+						bind:this={rulerHorizontal}
+					/>
 				</LayoutRow>
 			{/if}
 			<LayoutRow class="viewport-container-inner-1">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
-						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+						<RulerInput
+							originX={rulerOrigin.x}
+							originY={rulerOrigin.y}
+							tilt={rulerTilt}
+							flip={rulerFlip}
+							majorMarkSpacing={rulerSpacing}
+							numberInterval={rulerInterval}
+							direction="Vertical"
+							cursorPosition={rulerCursorPosition}
+							selectionQuad={rulerSelectionQuad}
+							bind:this={rulerVertical}
+						/>
 					</LayoutCol>
 				{/if}
 				<LayoutCol class="viewport-container-inner-2" styles={{ cursor: canvasCursor }} data-viewport-container>
@@ -632,10 +668,10 @@
 									gradientStopPickerColor = undefined;
 								}
 							}}
-							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
+							colorOrGradient={{ Solid: gradientStopPickerColor || createSRgba8(0, 0, 0, 255) }}
 							on:colorOrGradient={({ detail }) => {
-								const color = fillChoiceColor(detail);
-								if (color) editor.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
+								const color = fillChoiceUIColor(detail);
+								if (color) editor.updateGradientStopColor(color);
 							}}
 							on:startHistoryTransaction={() => editor.startGradientStopColorTransaction()}
 							on:commitHistoryTransaction={() => editor.commitGradientStopColorTransaction()}
@@ -646,6 +682,8 @@
 						class:viewport={!$appWindow.viewportHolePunch}
 						class:viewport-transparent={$appWindow.viewportHolePunch}
 						on:pointerdown={(e) => canvasPointerDown(e)}
+						on:pointermove={updateRulerCursorPosition}
+						on:pointerleave={() => (rulerCursorPosition = undefined)}
 						bind:this={viewport}
 						data-viewport
 					>

@@ -9,7 +9,7 @@ use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifie
 use dyn_any::DynAny;
 use glam::IVec2;
 use log::Metadata;
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -32,7 +32,7 @@ fn return_true() -> bool {
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNode {
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
@@ -49,7 +49,7 @@ pub struct DocumentNode {
 	pub call_argument: Type,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with a passthrough node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
@@ -172,13 +172,17 @@ impl DocumentNode {
 }
 
 /// Represents the possible inputs to a node.
-#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum NodeInput {
 	/// A reference to another node in the same network from which this node can receive its input.
 	Node { node_id: NodeId, output_index: usize },
 
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: MemoHash<TaggedValue>, exposed: bool },
+	Value {
+		#[cfg_attr(feature = "loading", serde(deserialize_with = "crate::document::value::deserialize_tagged_value_with_legacy_migration"))]
+		tagged_value: MemoHash<TaggedValue>,
+		exposed: bool,
+	},
 
 	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the import from the parent network to this document node network.
@@ -188,7 +192,7 @@ pub enum NodeInput {
 	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
 	Scope(Cow<'static, str>),
 
-	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
+	/// Input that is replaced at graph compilation with introspective metadata about this node's location.
 	Reflection(DocumentNodeMetadata),
 
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
@@ -196,7 +200,7 @@ pub enum NodeInput {
 	Inline(InlineRust),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct InlineRust {
 	pub expr: String,
 	pub ty: Type,
@@ -208,7 +212,7 @@ impl InlineRust {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
 }
@@ -216,7 +220,7 @@ pub enum DocumentNodeMetadata {
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
-			DocumentNodeMetadata::DocumentNodePath => concrete!(Vec<NodeId>),
+			DocumentNodeMetadata::DocumentNodePath => concrete!(core_types::list::List<NodeId>),
 		}
 	}
 }
@@ -229,6 +233,12 @@ impl NodeInput {
 	pub fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
 		let tagged_value = tagged_value.into();
 		Self::Value { tagged_value, exposed }
+	}
+
+	/// Constructs a `NodeInput::Value` whose tagged value is `TaggedValue::TypeDefault(td)`, recording only the
+	/// type so the runtime materializes its default rather than baking a placeholder value into the saved document.
+	pub fn type_default(td: core_types::TypeDescriptor, exposed: bool) -> Self {
+		Self::value(TaggedValue::TypeDefault(td), exposed)
 	}
 
 	pub const fn import(import_type: Type, import_index: usize) -> Self {
@@ -292,7 +302,7 @@ pub enum OldDocumentNodeImplementation {
 	Extract,
 }
 
-#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum DocumentNodeImplementation {
 	/// This describes a (document) node built out of a subgraph of other (document) nodes.
@@ -328,7 +338,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::ProtoNode(graphene_core::ops::identity::IDENTIFIER)
+		Self::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER)
 	}
 }
 
@@ -433,7 +443,7 @@ pub struct OldDocumentNode {
 	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub is_layer: bool,
-	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with a passthrough node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
@@ -546,29 +556,42 @@ pub struct NodeNetwork {
 	pub generated: bool,
 }
 
-impl Hash for NodeNetwork {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.exports.hash(state);
+impl core_types::CacheHash for NodeNetwork {
+	fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+		self.exports.cache_hash(state);
+
 		let mut nodes: Vec<_> = self.nodes.iter().collect();
 		nodes.sort_by_key(|(id, _)| *id);
 		for (id, node) in nodes {
-			id.hash(state);
-			node.hash(state);
+			id.cache_hash(state);
+			node.cache_hash(state);
+		}
+
+		let mut scope_injections: Vec<_> = self.scope_injections.iter().collect();
+		scope_injections.sort_by_key(|(key, _)| key.as_str());
+		for (key, (node_id, ty)) in scope_injections {
+			key.cache_hash(state);
+			node_id.cache_hash(state);
+			ty.cache_hash(state);
 		}
 	}
 }
 
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports
+		self.exports == other.exports && self.nodes == other.nodes && self.scope_injections == other.scope_injections
 	}
 }
 
 /// Graph modification functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
-		use std::hash::BuildHasher;
-		FxBuildHasher.hash_one(self)
+		use core_types::graphene_hash::CacheHash;
+		use rustc_hash::FxHasher;
+		use std::hash::Hasher;
+		let mut hasher = FxHasher::default();
+		self.cache_hash(&mut hasher);
+		hasher.finish()
 	}
 
 	pub fn value_network(node: DocumentNode) -> Self {
@@ -785,10 +808,10 @@ impl NodeNetwork {
 			return;
 		};
 
-		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
-		if !node.visible && node.implementation != identity_node {
-			node.implementation = identity_node;
+		// If the node is hidden, replace it with a passthrough node
+		let passthrough_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER);
+		if !node.visible && node.implementation != passthrough_node {
+			node.implementation = passthrough_node;
 
 			// Connect layer node to the group below
 			node.inputs.drain(1..);
@@ -917,7 +940,7 @@ impl NodeNetwork {
 			let (tagged_value, exposed) = match previous_export {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
-					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodePath(path.to_vec()).into(), false),
+					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(path.to_vec()).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;
@@ -951,12 +974,12 @@ impl NodeNetwork {
 		}
 	}
 
-	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
+	fn remove_passthrough_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation
-			&& *ident == graphene_core::ops::identity::IDENTIFIER
+			&& *ident == graphene_core::ops::passthrough::IDENTIFIER
 		{
-			assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
+			assert_eq!(node.inputs.len(), 1, "Passthrough node has more than one input");
 			if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 				let node_input_output_index = output_index;
 				// TODO fix
@@ -999,20 +1022,20 @@ impl NodeNetwork {
 		Ok(())
 	}
 
-	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
-	pub fn remove_redundant_id_nodes(&mut self) {
-		let id_nodes = self
+	/// Strips out any [`graphene_core::ops::PassthroughNode`]s that are unnecessary.
+	pub fn remove_redundant_passthrough_nodes(&mut self) {
+		let passthrough_nodes = self
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::identity::IDENTIFIER)
+				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER)
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>();
-		for id in id_nodes {
-			if let Err(e) = self.remove_id_node(id) {
+		for id in passthrough_nodes {
+			if let Err(e) = self.remove_passthrough_node(id) {
 				log::warn!("{e}")
 			}
 		}
@@ -1136,6 +1159,17 @@ fn migrate_call_argument<'de, D: serde::Deserializer<'de>>(deserializer: D) -> R
 	})
 }
 
+impl core_types::graphene_hash::CacheHash for DocumentNode {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.inputs.cache_hash(state);
+		self.call_argument.cache_hash(state);
+		self.implementation.cache_hash(state);
+		self.visible.cache_hash(state);
+		self.skip_deduplication.cache_hash(state);
+		self.context_features.cache_hash(state);
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -1207,16 +1241,16 @@ mod test {
 
 	#[test]
 	fn extract_node() {
-		let id_node = DocumentNode {
+		let passthrough_node = DocumentNode {
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 			..Default::default()
 		};
 		// TODO: Extend test cases to test nested network
 		let mut extraction_network = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
-				id_node.clone(),
+				passthrough_node.clone(),
 				DocumentNode {
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::Extract,
@@ -1233,7 +1267,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &passthrough_node));
 	}
 
 	#[test]
@@ -1254,11 +1288,11 @@ mod test {
 		};
 		network.populate_dependants();
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		let flat_network = flat_network();
-		println!("{flat_network:#?}");
+		let expected = flatten_add_expected();
+		println!("{expected:#?}");
 		println!("{network:#?}");
 
-		assert_eq!(flat_network, network);
+		assert_eq!(expected, network);
 	}
 
 	#[test]
@@ -1345,6 +1379,55 @@ mod test {
 		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
 	}
 
+	fn flatten_add_expected() -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(11), 0)],
+			nodes: [
+				(
+					NodeId(10),
+					DocumentNode {
+						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
+						original_location: OriginalLocation {
+							inputs_source: [(Source { node: vec![], index: 0 }, 1)].into(),
+							dependants: vec![vec![NodeId(11)]],
+							..Default::default()
+						},
+						..Default::default()
+					},
+				),
+				(
+					NodeId(14),
+					DocumentNode {
+						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(4)]),
+							dependants: vec![vec![NodeId(1), NodeId(10)]],
+							..Default::default()
+						},
+						..Default::default()
+					},
+				),
+				(
+					NodeId(11),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(10), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
+						original_location: OriginalLocation {
+							dependants: vec![vec![]],
+							..Default::default()
+						},
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(11), 0)],
@@ -1399,7 +1482,7 @@ mod test {
 		}
 	}
 
-	fn two_node_identity() -> NodeNetwork {
+	fn two_node_passthrough() -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 			nodes: [
@@ -1407,7 +1490,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1415,7 +1498,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1434,7 +1517,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
-						implementation: DocumentNodeImplementation::Network(two_node_identity()),
+						implementation: DocumentNodeImplementation::Network(two_node_passthrough()),
 						..Default::default()
 					},
 				),
@@ -1442,7 +1525,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1467,7 +1550,7 @@ mod test {
 		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
 		ids.sort();
-		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain identity and values");
+		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain passthrough and values");
 	}
 
 	// TODO: Write more tests

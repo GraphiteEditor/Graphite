@@ -1,0 +1,28 @@
+[package]
+name = "graphene-canvas-utils"
+version = "0.1.0"
+edition = "2024"
+description = "graphene canvas utilities"
+authors = ["Graphite Authors <contact@graphite.art>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+wgpu = ["dep:wgpu", "dep:wgpu-executor"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+core-types = { workspace = true }
+vector-types = { workspace = true }
+text-nodes = { workspace = true }
+graphene-application-io = { workspace = true }
+
+# Workspace dependencies
+web-sys = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+
+# Optional workspace dependencies
+wgpu = { workspace = true, optional = true }
+wgpu-executor = { workspace = true, optional = true }

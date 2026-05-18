@@ -16,14 +16,17 @@ use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
+use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::color::SRGBA8;
+use graphene_std::graphene_hash::CacheHashWrapper;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::GradientStops;
+use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -131,7 +134,7 @@ impl EditorWrapper {
 	// Sends a FrontendMessage to JavaScript
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			let new_hash = calculate_hash(image_data);
+			let new_hash = calculate_hash(&CacheHashWrapper(image_data));
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
 
 			if new_hash != prev_hash {
@@ -319,52 +322,58 @@ impl EditorWrapper {
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
 	#[wasm_bindgen(js_name = widgetValueUpdate)]
-	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+	pub fn widget_value_update(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)
 	}
 
 	/// Commit the value of a given UI widget to the history
 	#[wasm_bindgen(js_name = widgetValueCommit)]
-	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_commit(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		self.widget_value_commit_helper(layout_target, widget_id, value)
 	}
 
 	/// Update the value of a given UI widget, and commit it to the history
 	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
-	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
-		self.widget_value_commit_helper(layout_target.clone(), widget_id, value.clone())?;
+	pub fn widget_value_commit_and_update(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target, widget_id, value.clone())?;
 		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)?;
+		// Close out a transaction that the widget's `on_commit` opened (if any), so a single click on widgets like the
+		// NumberInput's increment buttons collapses into one history step instead of leaving the transaction in `Modified`
+		self.dispatch(DocumentMessage::EndTransaction);
 		Ok(())
 	}
 
-	pub fn widget_value_update_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+	/// Fire a widget's drag-drop action (e.g. when a draggable item is dropped on a button)
+	#[wasm_bindgen(js_name = widgetValueDragDrop)]
+	pub fn widget_value_drag_drop(&self, layout_target: LayoutTarget, widget_id: u64) {
 		let widget_id = WidgetId(widget_id);
-		match (from_value(layout_target), from_value(value)) {
-			(Ok(layout_target), Ok(value)) => {
-				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
-				self.dispatch(message);
-
-				if resend_widget {
-					let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
-					self.dispatch(resend_message);
-				}
-
-				Ok(())
-			}
-			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
-		}
+		self.dispatch(LayoutMessage::WidgetValueDragDrop { layout_target, widget_id });
 	}
 
-	pub fn widget_value_commit_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
+	#[wasm_bindgen(js_name = endTransaction)]
+	pub fn end_transaction(&self) {
+		self.dispatch(DocumentMessage::EndTransaction);
+	}
+
+	pub fn widget_value_update_helper(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
-		match (from_value(layout_target), from_value(value)) {
-			(Ok(layout_target), Ok(value)) => {
-				let message = LayoutMessage::WidgetValueCommit { layout_target, widget_id, value };
-				self.dispatch(message);
-				Ok(())
-			}
-			(target, val) => Err(Error::new(&format!("Could not commit UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
+		let value: serde_json::Value = from_value(value).map_err(|e| Error::new(&format!("Could not update UI: {e}")))?;
+		let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
+		self.dispatch(message);
+		if resend_widget {
+			let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
+			self.dispatch(resend_message);
 		}
+		Ok(())
+	}
+
+	pub fn widget_value_commit_helper(&self, layout_target: LayoutTarget, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		let value: serde_json::Value = from_value(value).map_err(|e| Error::new(&format!("Could not commit UI: {e}")))?;
+		let message = LayoutMessage::WidgetValueCommit { layout_target, widget_id, value };
+		self.dispatch(message);
+		Ok(())
 	}
 
 	#[wasm_bindgen(js_name = loadPreferences)]
@@ -379,10 +388,31 @@ impl EditorWrapper {
 		}
 	}
 
+	#[wasm_bindgen(js_name = loadPersistedState)]
+	pub fn load_persisted_state(&self, state: editor::messages::frontend::utility_types::PersistedState) {
+		self.dispatch(PersistentStateMessage::LoadState { state });
+	}
+
+	#[wasm_bindgen(js_name = loadDocumentContent)]
+	pub fn load_document_content(&self, document_id: u64, document: String) {
+		let message = PersistentStateMessage::LoadDocument {
+			document_id: DocumentId(document_id),
+			document,
+		};
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = selectDocument)]
 	pub fn select_document(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::SelectDocument { document_id };
+		self.dispatch(message);
+	}
+
+	/// Rename the currently active document.
+	#[wasm_bindgen(js_name = renameDocument)]
+	pub fn rename_document(&self, new_name: String) {
+		let message = PortfolioMessage::RenameDocument { new_name };
 		self.dispatch(message);
 	}
 
@@ -404,22 +434,6 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String, to_front: bool) {
-		let document_id = DocumentId(document_id);
-		let message = PortfolioMessage::OpenDocumentFileWithId {
-			document_id,
-			document_name: Some(document_name),
-			document_path: None,
-			document_is_auto_saved: true,
-			document_is_saved,
-			document_serialized_content,
-			to_front,
-			select_after_open: false,
-		};
-		self.dispatch(message);
-	}
-
 	#[wasm_bindgen(js_name = triggerAutoSave)]
 	pub fn trigger_auto_save(&self, document_id: u64) {
 		let document_id = DocumentId(document_id);
@@ -435,25 +449,59 @@ impl EditorWrapper {
 	}
 
 	#[wasm_bindgen(js_name = reorderPanelGroupTab)]
-	pub fn reorder_panel_group_tab(&self, group: String, old_index: usize, new_index: usize) {
-		let group = group.into();
-		let message = PortfolioMessage::ReorderPanelGroupTab { group, old_index, new_index };
+	pub fn reorder_panel_group_tab(&self, group: u64, old_index: usize, new_index: usize) {
+		let message = PortfolioMessage::ReorderPanelGroupTab {
+			group: PanelGroupId(group),
+			old_index,
+			new_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = moveAllPanelTabs)]
+	pub fn move_all_panel_tabs(&self, source_group: u64, target_group: u64, insert_index: usize) {
+		let message = PortfolioMessage::MoveAllPanelTabs {
+			source_group: PanelGroupId(source_group),
+			target_group: PanelGroupId(target_group),
+			insert_index,
+		};
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = movePanelTab)]
-	pub fn move_panel_tab(&self, source_group: String, target_group: String, insert_index: usize) {
+	pub fn move_panel_tab(&self, source_group: u64, target_group: u64, insert_index: usize) {
 		let message = PortfolioMessage::MovePanelTab {
-			source_group: source_group.into(),
-			target_group: target_group.into(),
+			source_group: PanelGroupId(source_group),
+			target_group: PanelGroupId(target_group),
 			insert_index,
 		};
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = setPanelGroupActiveTab)]
-	pub fn set_panel_group_active_tab(&self, group: String, tab_index: usize) {
-		let message = PortfolioMessage::SetPanelGroupActiveTab { group: group.into(), tab_index };
+	pub fn set_panel_group_active_tab(&self, group: u64, tab_index: usize) {
+		let message = PortfolioMessage::SetPanelGroupActiveTab {
+			group: PanelGroupId(group),
+			tab_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = splitPanelGroup)]
+	pub fn split_panel_group(&self, target_group: u64, direction: DockingSplitDirection, tabs: Vec<PanelType>, active_tab_index: usize) {
+		let message = PortfolioMessage::SplitPanelGroup {
+			target_group: PanelGroupId(target_group),
+			direction,
+			tabs,
+			active_tab_index,
+		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = setPanelGroupSizes)]
+	pub fn set_panel_group_sizes(&self, split_path: Vec<u32>, sizes: Vec<f64>) {
+		let split_path = split_path.into_iter().map(|i| i as usize).collect();
+		let message = PortfolioMessage::SetPanelGroupSizes { split_path, sizes };
 		self.dispatch(message);
 	}
 
@@ -588,13 +636,8 @@ impl EditorWrapper {
 
 	/// The font catalog has been loaded
 	#[wasm_bindgen(js_name = onFontCatalogLoad)]
-	pub fn on_font_catalog_load(&self, catalog: JsValue) -> Result<(), JsValue> {
-		// Deserializing from TS type: `{ name: string; styles: { weight: number, italic: boolean, url: string }[] }[]`
-		let families = serde_wasm_bindgen::from_value::<Vec<FontCatalogFamily>>(catalog)?;
-		let message = PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(families) };
-		self.dispatch(message);
-
-		Ok(())
+	pub fn on_font_catalog_load(&self, catalog: Vec<FontCatalogFamily>) {
+		self.dispatch(PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(catalog) });
 	}
 
 	/// A font has been downloaded
@@ -622,46 +665,41 @@ impl EditorWrapper {
 		Ok(())
 	}
 
-	/// Update primary color with values on a scale from 0 to 1.
+	/// Update primary color from sRGB bytes (the wire format at the JS boundary).
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
-	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let Some(primary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
-			return Err(Error::new("Invalid color").into());
-		};
-
-		let message = ToolMessage::SelectWorkingColor {
-			color: primary_color.to_linear_srgb(),
+	pub fn update_primary_color(&self, color: SRGBA8) {
+		self.dispatch(ToolMessage::SelectWorkingColor {
+			color: Color::from(color),
 			primary: true,
-		};
-		self.dispatch(message);
-
-		Ok(())
+		});
 	}
 
-	/// Update secondary color with values on a scale from 0 to 1.
+	/// Update secondary color from sRGB bytes (the wire format at the JS boundary).
 	#[wasm_bindgen(js_name = updateSecondaryColor)]
-	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let Some(secondary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
-			return Err(Error::new("Invalid color").into());
-		};
-
-		let message = ToolMessage::SelectWorkingColor {
-			color: secondary_color.to_linear_srgb(),
+	pub fn update_secondary_color(&self, color: SRGBA8) {
+		self.dispatch(ToolMessage::SelectWorkingColor {
+			color: Color::from(color),
 			primary: false,
-		};
-		self.dispatch(message);
-
-		Ok(())
+		});
 	}
 
-	/// Update the color of the currently-edited gradient stop
+	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
+	#[wasm_bindgen(js_name = openColorPicker)]
+	pub fn open_color_picker(&self, initial_value: FillChoiceUI, allow_none: bool, disabled: bool) {
+		let initial_value = FillChoice::from(&initial_value);
+		self.dispatch(ColorPickerMessage::Open { initial_value, allow_none, disabled });
+	}
+
+	/// Tell the Rust color picker handler that the popover is closing.
+	#[wasm_bindgen(js_name = closeColorPicker)]
+	pub fn close_color_picker(&self) {
+		self.dispatch(ColorPickerMessage::Close);
+	}
+
+	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
 	#[wasm_bindgen(js_name = updateGradientStopColor)]
-	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
-			return Err(Error::new("Invalid color").into());
-		};
-		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
-		Ok(())
+	pub fn update_gradient_stop_color(&self, color: SRGBA8) {
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: Color::from(color) });
 	}
 
 	/// Start a new undo transaction for gradient stop color editing
@@ -726,6 +764,7 @@ impl EditorWrapper {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		let message = NodeGraphMessage::SetDisplayName {
 			node_id: layer.to_node(),
+			network_path: Vec::new(),
 			alias: name,
 			skip_adding_history_step: false,
 		};
@@ -863,7 +902,7 @@ impl EditorWrapper {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		let message = NodeGraphMessage::ToggleVisibility { node_id, network_path: Vec::new() };
 		self.dispatch(message);
 	}
 
@@ -882,15 +921,18 @@ impl EditorWrapper {
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, node_id: u64) {
-		let message = NodeGraphMessage::ToggleLocked { node_id: NodeId(node_id) };
+		let message = NodeGraphMessage::ToggleLocked {
+			node_id: NodeId(node_id),
+			network_path: Vec::new(),
+		};
 		self.dispatch(message);
 	}
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, instance_path: &[u64], recursive: bool) {
-		let instance_path = instance_path.iter().map(|&id| NodeId(id)).collect();
-		let message = DocumentMessage::ToggleLayerExpansion { instance_path, recursive };
+	pub fn toggle_layer_expansion(&self, tree_path: &[u64], recursive: bool) {
+		let tree_path = tree_path.iter().map(|&id| NodeId(id)).collect();
+		let message = DocumentMessage::ToggleLayerExpansion { tree_path, recursive };
 		self.dispatch(message);
 	}
 
@@ -945,27 +987,4 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 		return None;
 	};
 	Some(real)
-}
-
-#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
-pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
-	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
-	GradientStops { position, midpoint, color }
-		.interpolated_samples()
-		.into_iter()
-		.map(|(position, color, _)| {
-			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
-			let percent = ((position * 100.) * 1e2).round() / 1e2;
-			format!("#{hex} {percent}%")
-		})
-		.collect::<Vec<_>>()
-		.join(", ")
-}
-
-#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
-pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> JsValue {
-	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
-	let color = GradientStops { position, midpoint, color }.evaluate(t);
-
-	serde_wasm_bindgen::to_value(&color).unwrap()
 }

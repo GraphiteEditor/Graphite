@@ -11,7 +11,7 @@ pub trait MergeByDistanceExt {
 	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64);
 }
 
-impl<Upstream: 'static> MergeByDistanceExt for Vector<Upstream> {
+impl MergeByDistanceExt for Vector {
 	fn merge_by_distance_topological(&mut self, distance: f64) {
 		// Treat self as an undirected graph
 		let indices = VectorIndex::build_from(self);
@@ -237,7 +237,7 @@ pub struct VectorIndex {
 
 impl VectorIndex {
 	/// Construct a [`VectorIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
-	pub fn build_from<Upstream: 'static>(data: &Vector<Upstream>) -> Self {
+	pub fn build_from(data: &Vector) -> Self {
 		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
 
 		let mut point_to_node = FxHashMap::default();
@@ -295,7 +295,7 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// Will panic if `id` isn't in the data.
-	pub fn point_position<Upstream: 'static>(&self, id: PointId, data: &Vector<Upstream>) -> DVec2 {
+	pub fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
 		let offset = self.point_to_offset[&id];
 		data.point_domain.positions()[offset]
 	}

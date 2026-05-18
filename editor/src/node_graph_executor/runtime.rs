@@ -1,25 +1,25 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, UVec2};
-use graph_craft::document::value::TaggedValue;
+use glam::{DAffine2, DVec2, UVec2};
+use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
-use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::bounds::RenderBoundingBox;
+use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
+use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
+#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
-use graphene_std::renderer::{Render, RenderParams, SvgRender};
-use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
-use graphene_std::table::{Table, TableRow};
+use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
-/// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
+/// Some of these fields are put into a [`PlatformEditorApi`] which is passed to the final compiled graph network upon each execution.
 /// Once the implementation is finished, this will live in a separate thread. Right now it's part of the main JS thread, but its own separate JS stack frame independent from the editor.
 pub struct NodeRuntime {
 	#[cfg(test)]
@@ -41,7 +41,7 @@ pub struct NodeRuntime {
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
 
-	editor_api: Arc<WasmEditorApi>,
+	editor_api: Arc<PlatformEditorApi>,
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
@@ -57,10 +57,10 @@ pub struct NodeRuntime {
 	vector_modify: HashMap<NodeId, Vector>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
-	#[cfg(all(target_family = "wasm", feature = "gpu"))]
-	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
+	wasm_canvas_cache: CanvasSurfaceHandle,
 	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
-	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 	current_viewport_texture: Option<ImageTexture>,
 }
 
@@ -76,8 +76,10 @@ pub enum GraphRuntimeRequest {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
-	/// The node that should be temporary inspected during execution
-	pub(super) node_to_inspect: Option<NodeId>,
+	/// Full path from the root network to the node that should be temporarily inspected during execution.
+	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
+	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
+	pub(super) node_to_inspect: Vec<NodeId>,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -86,7 +88,6 @@ pub struct ExportConfig {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
-	pub transparent_background: bool,
 	pub size: UVec2,
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
@@ -128,7 +129,7 @@ impl NodeRuntime {
 			old_graph: None,
 			update_thumbnails: true,
 
-			editor_api: WasmEditorApi {
+			editor_api: PlatformEditorApi {
 				font_cache: FontCache::default(),
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
@@ -146,7 +147,7 @@ impl NodeRuntime {
 			vector_modify: Default::default(),
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
-			wasm_viewport_surface: None,
+			wasm_canvas_cache: CanvasSurfaceHandle::new(),
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			current_viewport_texture: None,
 		}
@@ -154,11 +155,11 @@ impl NodeRuntime {
 
 	pub async fn run(&mut self) -> Option<ImageTexture> {
 		if self.editor_api.application_io.is_none() {
-			self.editor_api = WasmEditorApi {
+			self.editor_api = PlatformEditorApi {
 				#[cfg(all(not(test), target_family = "wasm"))]
-				application_io: Some(WasmApplicationIo::new().await.into()),
+				application_io: Some(PlatformApplicationIo::new().await.into()),
 				#[cfg(any(test, not(target_family = "wasm")))]
-				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
+				application_io: Some(PlatformApplicationIo::new().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
 				editor_preferences: Box::new(self.editor_preferences.clone()),
@@ -208,7 +209,7 @@ impl NodeRuntime {
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
-					self.editor_api = WasmEditorApi {
+					self.editor_api = PlatformEditorApi {
 						font_cache,
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
@@ -222,7 +223,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
-					self.editor_api = WasmEditorApi {
+					self.editor_api = PlatformEditorApi {
 						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
@@ -236,7 +237,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
 					// Insert the monitor node to manage the inspection
-					self.inspect_state = node_to_inspect.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
 
 					self.old_graph = Some(network.clone());
 
@@ -265,7 +266,7 @@ impl NodeRuntime {
 					self.update_thumbnails = false;
 
 					// Resolve the result from the inspection by accessing the monitor node
-					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
 
 					let (result, texture) = match result {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
@@ -280,7 +281,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -304,7 +305,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -318,83 +319,20 @@ impl NodeRuntime {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
 						})) if !render_config.for_export => {
-							// On Wasm, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							self.current_viewport_texture = Some(image_texture.clone());
+
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
 
-							// Get or create the cached surface
-							if self.wasm_viewport_surface.is_none() {
-								let surface_handle = app_io.create_window();
-								let wasm_surface = executor
-									.create_surface(graphene_std::wasm_application_io::WasmSurfaceHandle {
-										surface: surface_handle.surface.clone(),
-										window_id: surface_handle.window_id,
-									})
-									.expect("Failed to create surface");
-								self.wasm_viewport_surface = Some(Arc::new(wasm_surface));
-							}
+							self.wasm_canvas_cache.present(&image_texture, executor);
 
-							let surface = self.wasm_viewport_surface.as_ref().unwrap();
-
-							// Use logical resolution for CSS sizing, physical resolution for the actual surface/texture
-							let physical_resolution = render_config.viewport.resolution;
-							let logical_resolution = physical_resolution.as_dvec2() / render_config.scale;
-
-							// Blit the texture to the surface
-							let mut encoder = executor.context.device.create_command_encoder(&vello::wgpu::CommandEncoderDescriptor {
-								label: Some("Texture to Surface Blit"),
-							});
-
-							// Configure the surface at physical resolution (for HiDPI displays)
-							let surface_inner = &surface.surface.inner;
-							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
-							surface_inner.configure(
-								&executor.context.device,
-								&vello::wgpu::SurfaceConfiguration {
-									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
-									format: vello::wgpu::TextureFormat::Rgba8Unorm,
-									width: physical_resolution.x,
-									height: physical_resolution.y,
-									present_mode: surface_caps.present_modes[0],
-									alpha_mode: vello::wgpu::CompositeAlphaMode::PreMultiplied,
-									view_formats: vec![],
-									desired_maximum_frame_latency: 2,
-								},
-							);
-
-							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
-							self.current_viewport_texture = Some(image_texture.clone());
-
-							encoder.copy_texture_to_texture(
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: image_texture.texture.as_ref(),
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								vello::wgpu::TexelCopyTextureInfoBase {
-									texture: &surface_texture.texture,
-									mip_level: 0,
-									origin: Default::default(),
-									aspect: Default::default(),
-								},
-								image_texture.texture.size(),
-							);
-
-							executor.context.queue.submit([encoder.finish()]);
-							surface_texture.present();
-
-							// TODO: Figure out if we can explicityl destroy the wgpu texture here to reduce the allocation pressure. We might also be able to use a texture allocation pool
-
-							let frame = graphene_std::application_io::SurfaceFrame {
-								surface_id: surface.window_id,
-								resolution: logical_resolution,
-								transform: glam::DAffine2::IDENTITY,
-							};
-
+							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
 							(
 								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::CanvasFrame(frame),
+									data: RenderOutputType::CanvasFrame {
+										canvas_id: self.wasm_canvas_cache.id(),
+										resolution: logical_resolution,
+									},
 									metadata,
 								})),
 								None,
@@ -472,7 +410,11 @@ impl NodeRuntime {
 
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip the inspect monitor node
-			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
+			if self
+				.inspect_state
+				.as_ref()
+				.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node))
+			{
 				continue;
 			}
 
@@ -490,24 +432,25 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Graphic table: thumbnail
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Graphic>>>() {
+			// Graphic list: thumbnail
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					let bounds = io.output.thumbnail_bounding_box(DAffine2::IDENTITY, true);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
-			// Artboard table: thumbnail
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Artboard>>>() {
+			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
+			// clips content to those rectangles so anything outside isn't visible
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
 				if update_thumbnails {
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses)
+					let bounds = artboard_clip_bounds(&io.output);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
 				}
 			}
-			// Vector table: vector modifications
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Table<Vector>>>() {
+			// Vector list: vector modifications
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
 				// Insert the vector modify
-				let default = TableRow::default();
-				self.vector_modify
-					.insert(parent_network_node_id, io.output.iter().next().unwrap_or_else(|| default.as_ref()).element.clone());
+				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
 			// Other
 			else {
@@ -517,7 +460,13 @@ impl NodeRuntime {
 	}
 
 	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn render_thumbnail(thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>, parent_network_node_id: NodeId, graphic: &impl Render, responses: &mut VecDeque<FrontendMessage>) {
+	fn render_thumbnail(
+		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
+		parent_network_node_id: NodeId,
+		graphic: &impl Render,
+		bounds: RenderBoundingBox,
+		responses: &mut VecDeque<FrontendMessage>,
+	) {
 		// Skip thumbnails if the layer is too complex (for performance)
 		if graphic.render_complexity() > 1000 {
 			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
@@ -531,12 +480,13 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
-			RenderBoundingBox::None => None,
-			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
-			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
+		// Fall back to a 1×1 rectangle if no caller offered finite bounds, then aspect-correct to the panel's 3:2 ratio
+		let raw_bounds = match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
+			_ => [DVec2::ZERO, DVec2::ONE],
 		};
-		let new_thumbnail_svg = if let Some(bounds) = bounds {
+		let bounds = expand_to_thumbnail_aspect(raw_bounds);
+		let new_thumbnail_svg = {
 			let footprint = Footprint {
 				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
 				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
@@ -556,8 +506,6 @@ impl NodeRuntime {
 			render.format_svg(bounds[0], bounds[1]);
 
 			render.svg
-		} else {
-			Vec::new()
 		};
 
 		// Update frontend thumbnail
@@ -570,6 +518,41 @@ impl NodeRuntime {
 			*old_thumbnail_svg = new_thumbnail_svg;
 		}
 	}
+}
+
+/// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
+/// framing matches what's actually visible after clipping rather than the unclipped content extents.
+fn artboard_clip_bounds(artboards: &List<Artboard>) -> RenderBoundingBox {
+	let mut combined: Option<[DVec2; 2]> = None;
+	for index in 0..artboards.len() {
+		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
+		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
+		let bounds = [location, location + dimensions];
+		combined = Some(match combined {
+			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],
+			None => bounds,
+		});
+	}
+	match combined {
+		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
+		None => RenderBoundingBox::None,
+	}
+}
+
+/// Expands an AABB outward (centered) to match the Layers panel thumbnail's 3:2 aspect ratio, padding the smaller axis
+/// so the input's extent is always preserved.
+fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
+	const THUMBNAIL_ASPECT_RATIO: f64 = 1.5;
+
+	let size = bounds[1] - bounds[0];
+	let center = (bounds[0] + bounds[1]) / 2.;
+	let (width, height) = if size.x >= size.y * THUMBNAIL_ASPECT_RATIO {
+		(size.x, size.x / THUMBNAIL_ASPECT_RATIO)
+	} else {
+		(size.y * THUMBNAIL_ASPECT_RATIO, size.y)
+	};
+	let half = DVec2::new(width, height) / 2.;
+	[center - half, center + half]
 }
 
 pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
@@ -592,10 +575,10 @@ pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
 }
-pub async fn replace_application_io(application_io: WasmApplicationIo) {
+pub async fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.editor_api = WasmEditorApi {
+		node_runtime.editor_api = PlatformEditorApi {
 			font_cache: node_runtime.editor_api.font_cache.clone(),
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(node_runtime.sender.clone()),
@@ -606,16 +589,22 @@ pub async fn replace_application_io(application_io: WasmApplicationIo) {
 }
 
 /// Which node is inspected and which monitor node is used (if any) for the current execution
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct InspectState {
 	inspect_node: NodeId,
 	monitor_node: NodeId,
+	/// Path of the subnetwork the monitor was inserted into (i.e., the parent of `inspect_node`).
+	/// Used to construct the full node path when introspecting the monitor's value.
+	monitor_parent_path: Vec<NodeId>,
 }
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
 pub struct InspectResult {
 	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	pub inspect_node: NodeId,
+	/// Full path from the root network to the inspected node, with the node itself as the last element.
+	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
+	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
+	pub inspect_node_path: Vec<NodeId>,
 }
 
 impl InspectResult {
@@ -627,17 +616,21 @@ impl InspectResult {
 // This is very ugly but is required to be inside a message
 impl PartialEq for InspectResult {
 	fn eq(&self, other: &Self) -> bool {
-		self.inspect_node == other.inspect_node
+		self.inspect_node_path == other.inspect_node_path
 	}
 }
 
 impl InspectState {
-	/// Insert the monitor node to manage the inspection
-	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_node: NodeId) -> Self {
+	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
+	/// Returns `None` if the path is empty or doesn't resolve to a node inside a reachable subnetwork.
+	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
+		let (inspect_node, parent_path) = inspect_path.split_last()?;
+		let inspect_node = *inspect_node;
+		let target_network = navigate_to_network_mut(network, parent_path)?;
 		let monitor_id = NodeId::new();
 
 		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
-		for input in network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut network.exports) {
+		for input in target_network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut target_network.exports) {
 			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
 			// We only care about the primary output of our inspect node
 			if *output_index != 0 || *node_id != inspect_node {
@@ -654,21 +647,39 @@ impl InspectState {
 			skip_deduplication: true,
 			..Default::default()
 		};
-		network.nodes.insert(monitor_id, monitor_node);
+		target_network.nodes.insert(monitor_id, monitor_node);
 
-		Self {
+		Some(Self {
 			inspect_node,
 			monitor_node: monitor_id,
-		}
+			monitor_parent_path: parent_path.to_vec(),
+		})
 	}
 	/// Resolve the result from the inspection by accessing the monitor node
 	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
+		// The executor's source map indexes by full path from root, so prepend the subnetwork path to the monitor ID.
+		let mut monitor_path = self.monitor_parent_path.clone();
+		monitor_path.push(self.monitor_node);
+		let introspected_data = executor.introspect(&monitor_path).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
 		// TODO: Consider displaying the error instead of ignoring it
 
-		Some(InspectResult {
-			inspect_node: self.inspect_node,
-			introspected_data,
-		})
+		let mut inspect_node_path = self.monitor_parent_path.clone();
+		inspect_node_path.push(self.inspect_node);
+		Some(InspectResult { inspect_node_path, introspected_data })
 	}
+}
+
+/// Walks `network` down through `path`, returning a mutable reference to the nested `NodeNetwork`
+/// at the end. Each path element must name a `DocumentNode` whose implementation is `Network(...)`.
+/// Returns `None` if any step is missing or doesn't refer to a subnetwork.
+fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) -> Option<&'a mut NodeNetwork> {
+	let mut current = network;
+	for node_id in path {
+		let node = current.nodes.get_mut(node_id)?;
+		current = match &mut node.implementation {
+			DocumentNodeImplementation::Network(nested) => nested,
+			_ => return None,
+		};
+	}
+	Some(current)
 }

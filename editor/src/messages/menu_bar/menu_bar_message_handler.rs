@@ -514,6 +514,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("NodeShape")
 							.on_commit(|_| NodeGraphMessage::AddPathNode.into())
 							.disabled(!make_path_editable_is_allowed),
+						MenuListEntry::new("Expand Fill/Stroke")
+							.label("Expand Fill/Stroke")
+							.icon("ExpandFillStroke")
+							.on_commit(|_| DocumentMessage::ExpandFillStrokeOnSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 				])
 				.widget_instance(),
@@ -646,6 +651,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.focus_document { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleFocusDocument))
 							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
+					],
+					vec![
+						MenuListEntry::new("Reset Workspace")
+							.label("Reset Workspace")
+							.icon("Reset")
+							.on_commit(|_| PortfolioMessage::ResetWorkspaceLayout.into()),
 					],
 					vec![
 						MenuListEntry::new("Properties")

@@ -1,10 +1,9 @@
 pub mod any;
 pub mod pixel_preview;
+pub mod platform_application_io;
 pub mod render_cache;
 pub mod render_node;
 pub mod text;
-#[cfg(feature = "wasm")]
-pub mod wasm_application_io;
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;
@@ -33,7 +32,7 @@ pub mod vector {
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
 	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
-	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap};
+	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder
 	pub use vector_types::vector::HandleExt;
@@ -45,7 +44,6 @@ pub mod vector {
 
 pub mod graphic {
 	pub use graphic_nodes::graphic::*;
-	pub use graphic_types::Artboard;
 	pub use graphic_types::graphic::*;
 }
 
@@ -77,10 +75,6 @@ pub mod math {
 	pub mod math_ext {
 		pub use vector_types::{QuadExt, RectExt};
 	}
-}
-
-pub mod logic {
-	pub use graphene_core::logic::*;
 }
 
 pub mod context {

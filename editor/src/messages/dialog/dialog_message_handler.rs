@@ -126,7 +126,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::RequestNewDocumentDialog => {
 				self.on_dismiss = Some(DialogMessage::Close.into());
 				self.new_document_dialog = NewDocumentDialogMessageHandler {
-					name: portfolio.generate_new_document_name(),
+					name: portfolio.generate_new_document_name(None),
 					infinite: false,
 					dimensions: glam::UVec2::new(1920, 1080),
 				};

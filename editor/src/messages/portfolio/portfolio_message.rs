@@ -1,6 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
-use super::utility_types::PanelGroupId;
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use super::persistent_state::PersistentStateMessage;
+use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
@@ -15,6 +16,8 @@ pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	PersistentState(PersistentStateMessage),
 
 	// Messages
 	Init,
@@ -61,6 +64,18 @@ pub enum PortfolioMessage {
 	LoadDocumentResources {
 		document_id: DocumentId,
 	},
+	LoadPersistedState {
+		state: PersistedState,
+	},
+	LoadDocumentContent {
+		document_id: DocumentId,
+		document_serialized_content: String,
+	},
+	MoveAllPanelTabs {
+		source_group: PanelGroupId,
+		target_group: PanelGroupId,
+		insert_index: usize,
+	},
 	MovePanelTab {
 		source_group: PanelGroupId,
 		target_group: PanelGroupId,
@@ -85,15 +100,13 @@ pub enum PortfolioMessage {
 		document_path: Option<PathBuf>,
 		document_serialized_content: String,
 	},
-	OpenDocumentFileWithId {
+	LoadDocument {
 		document_id: DocumentId,
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
-		to_front: bool,
-		select_after_open: bool,
 	},
 	OpenImage {
 		name: Option<String>,
@@ -146,15 +159,23 @@ pub enum PortfolioMessage {
 		group: PanelGroupId,
 		tab_index: usize,
 	},
+	SplitPanelGroup {
+		target_group: PanelGroupId,
+		direction: DockingSplitDirection,
+		tabs: Vec<PanelType>,
+		active_tab_index: usize,
+	},
 	SelectDocument {
 		document_id: DocumentId,
+	},
+	RenameDocument {
+		new_name: String,
 	},
 	SubmitDocumentExport {
 		name: String,
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
-		transparent_background: bool,
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},
@@ -173,4 +194,11 @@ pub enum PortfolioMessage {
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateWorkspacePanelLayout,
+	ResetWorkspaceLayout,
+	SetPanelGroupSizes {
+		/// Path of child indices from the root to the split node whose children's sizes are being set.
+		split_path: Vec<usize>,
+		/// New sizes for the children at that split node.
+		sizes: Vec<f64>,
+	},
 }

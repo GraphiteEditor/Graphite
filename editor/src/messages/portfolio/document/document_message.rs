@@ -86,6 +86,8 @@ pub enum DocumentMessage {
 	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
+	ExpandFillStrokeOnSelectedLayers,
+	ExpandFillStrokeOnSelectedLayersNoTransaction,
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
@@ -199,7 +201,7 @@ pub enum DocumentMessage {
 		undo_count: usize,
 	},
 	ToggleLayerExpansion {
-		instance_path: Vec<NodeId>,
+		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
 	ToggleSelectedVisibility,
@@ -214,6 +216,12 @@ pub enum DocumentMessage {
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	},
+	UpdateOutlines {
+		outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	},
+	UpdateTextFrames {
+		text_frames: HashMap<NodeId, DAffine2>,
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,

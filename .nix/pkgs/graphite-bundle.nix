@@ -1,5 +1,6 @@
 {
   pkgs,
+  deps,
   self,
   system,
   ...
@@ -33,7 +34,7 @@ let
           cp -r ${graphite}/share out/share
           mkdir -p out/lib/cef
           mkdir -p ./cef
-          tar -xvf ${pkgs.cef-binary.src} -C ./cef --strip-components=1
+          tar -xvf ${self.packages.${system}.graphite-cef.src} -C ./cef --strip-components=1
           cp -r ./cef/Release/* out/lib/cef/
           cp -r ./cef/Resources/* out/lib/cef/
           find "out/lib/cef/locales" -type f ! -name 'en-US*' -delete

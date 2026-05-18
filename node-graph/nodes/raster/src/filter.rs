@@ -1,17 +1,96 @@
-use core_types::color::Color;
+use bytemuck::{Pod, Zeroable};
+use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
+use core_types::list::List;
 use core_types::registry::types::PixelLength;
-use core_types::table::Table;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
+
+/// Working-buffer pixel for the blur algorithms' `gamma` mode: premultiplied sRGB-gamma `f32` channels.
+/// Only used internally so the working buffer's color space is reflected in the type instead of stuffed into `Color` (which is linear-light by invariant).
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+struct PremultipliedGammaPixel {
+	r: f32,
+	g: f32,
+	b: f32,
+	a: f32,
+}
+
+impl Pixel for PremultipliedGammaPixel {}
+
+impl RGB for PremultipliedGammaPixel {
+	type ColorChannel = f32;
+	fn red(&self) -> f32 {
+		self.r
+	}
+	fn green(&self) -> f32 {
+		self.g
+	}
+	fn blue(&self) -> f32 {
+		self.b
+	}
+}
+
+impl Alpha for PremultipliedGammaPixel {
+	type AlphaChannel = f32;
+	const TRANSPARENT: Self = Self { r: 0., g: 0., b: 0., a: 0. };
+	fn alpha(&self) -> f32 {
+		self.a
+	}
+	fn multiplied_alpha(&self, mult: f32) -> Self {
+		Self {
+			r: self.r * mult,
+			g: self.g * mult,
+			b: self.b * mult,
+			a: self.a * mult,
+		}
+	}
+}
+
+fn premultiply_gamma(buffer: Image<Color>) -> Image<PremultipliedGammaPixel> {
+	Image {
+		width: buffer.width,
+		height: buffer.height,
+		data: buffer
+			.data
+			.into_iter()
+			.map(|px| {
+				let [r, g, b, a] = px.to_gamma_srgb_channels();
+				PremultipliedGammaPixel { r: r * a, g: g * a, b: b * a, a }
+			})
+			.collect(),
+		base64_string: None,
+	}
+}
+
+fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Image<Color> {
+	Image {
+		width: buffer.width,
+		height: buffer.height,
+		data: buffer
+			.data
+			.into_iter()
+			.map(|px| {
+				if px.a > 0. {
+					let inv_a = 1. / px.a;
+					Color::from_gamma_srgb_channels(px.r * inv_a, px.g * inv_a, px.b * inv_a, px.a)
+				} else {
+					Color::TRANSPARENT
+				}
+			})
+			.collect(),
+		base64_string: None,
+	}
+}
 
 /// Blurs the image with a Gaussian or box blur kernel filter.
 #[node_macro::node(category("Raster: Filter"))]
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: Table<Raster<CPU>>,
+	image_frame: List<Raster<CPU>>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
@@ -20,11 +99,11 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {
-			let image = row.element.clone();
+			let image = row.element().clone();
 
 			// Run blur algorithm
 			let blurred_image = if radius < 0.1 {
@@ -36,7 +115,7 @@ async fn blur(
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
-			row.element = blurred_image;
+			*row.element_mut() = blurred_image;
 			row
 		})
 		.collect()
@@ -47,16 +126,16 @@ async fn blur(
 async fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.
-	image_frame: Table<Raster<CPU>>,
+	image_frame: List<Raster<CPU>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
 	#[range((0., 50.))]
 	#[hard_min(0.)]
 	radius: PixelLength,
-) -> Table<Raster<CPU>> {
+) -> List<Raster<CPU>> {
 	image_frame
 		.into_iter()
 		.map(|mut row| {
-			let image = row.element.clone();
+			let image = row.element().clone();
 
 			// Apply median filter
 			let filtered_image = if radius < 0.5 {
@@ -66,7 +145,7 @@ async fn median_filter(
 				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32))
 			};
 
-			row.element = filtered_image;
+			*row.element_mut() = filtered_image;
 			row
 		})
 		.collect()
@@ -98,26 +177,49 @@ fn gaussian_kernel(radius: f64) -> Vec<f64> {
 	gaussian_kernel
 }
 
-fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
-	if gamma {
-		original_buffer.map_pixels(|px| px.to_gamma_srgb().to_associated_alpha(px.a()));
-	} else {
-		original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
-	}
-
-	let (width, height) = original_buffer.dimensions();
-
-	// Create 1D gaussian kernel
+fn gaussian_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
 	let kernel = gaussian_kernel(radius);
+	if gamma {
+		let working = premultiply_gamma(buffer);
+		let blurred = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
+		unpremultiply_gamma_to_linear(blurred)
+	} else {
+		let mut working = buffer;
+		working.map_pixels(|px| px.apply_opacity(px.a()));
+		let mut blurred = gaussian_separable(working, &kernel, Color::from_rgbaf32_unchecked);
+		blurred.map_pixels(|px| px.to_unassociated_alpha());
+		blurred
+	}
+}
+
+fn box_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
+	if gamma {
+		let working = premultiply_gamma(buffer);
+		let blurred = box_separable(working, radius, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
+		unpremultiply_gamma_to_linear(blurred)
+	} else {
+		let mut working = buffer;
+		working.map_pixels(|px| px.apply_opacity(px.a()));
+		let mut blurred = box_separable(working, radius, Color::from_rgbaf32_unchecked);
+		blurred.map_pixels(|px| px.to_unassociated_alpha());
+		blurred
+	}
+}
+
+fn gaussian_separable<P, F>(buffer: Image<P>, kernel: &[f64], construct: F) -> Image<P>
+where
+	P: Pixel + Copy + RGB<ColorChannel = f32> + Alpha<AlphaChannel = f32>,
+	F: Fn(f32, f32, f32, f32) -> P,
+{
+	let (width, height) = buffer.dimensions();
 	let half_kernel = kernel.len() / 2;
 
-	// Intermediate buffer for horizontal and vertical passes
-	let mut x_axis = Image::new(width, height, Color::TRANSPARENT);
-	let mut y_axis = Image::new(width, height, Color::TRANSPARENT);
+	let mut x_axis = Image::new(width, height, P::default());
+	let mut y_axis = Image::new(width, height, P::default());
 
 	for pass in [false, true] {
 		let (max, old_buffer, current_buffer) = match pass {
-			false => (width, &original_buffer, &mut x_axis),
+			false => (width, &buffer, &mut x_axis),
 			true => (height, &x_axis, &mut y_axis),
 		};
 		let pass = pass as usize;
@@ -140,41 +242,32 @@ fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma
 					}
 				}
 
-				// Normalize
 				let (r, g, b, a) = if weight_sum > 0. {
 					((r_sum / weight_sum) as f32, (g_sum / weight_sum) as f32, (b_sum / weight_sum) as f32, (a_sum / weight_sum) as f32)
 				} else {
 					let px = old_buffer.get_pixel(x, y).unwrap();
 					(px.r(), px.g(), px.b(), px.a())
 				};
-				current_buffer.set_pixel(x, y, Color::from_rgbaf32_unchecked(r, g, b, a));
+				current_buffer.set_pixel(x, y, construct(r, g, b, a));
 			}
 		}
-	}
-
-	if gamma {
-		y_axis.map_pixels(|px| px.to_linear_srgb().to_unassociated_alpha());
-	} else {
-		y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	}
 
 	y_axis
 }
 
-fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
-	if gamma {
-		original_buffer.map_pixels(|px| px.to_gamma_srgb().to_associated_alpha(px.a()));
-	} else {
-		original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
-	}
-
-	let (width, height) = original_buffer.dimensions();
-	let mut x_axis = Image::new(width, height, Color::TRANSPARENT);
-	let mut y_axis = Image::new(width, height, Color::TRANSPARENT);
+fn box_separable<P, F>(buffer: Image<P>, radius: f64, construct: F) -> Image<P>
+where
+	P: Pixel + Copy + RGB<ColorChannel = f32> + Alpha<AlphaChannel = f32>,
+	F: Fn(f32, f32, f32, f32) -> P,
+{
+	let (width, height) = buffer.dimensions();
+	let mut x_axis = Image::new(width, height, P::default());
+	let mut y_axis = Image::new(width, height, P::default());
 
 	for pass in [false, true] {
 		let (max, old_buffer, current_buffer) = match pass {
-			false => (width, &original_buffer, &mut x_axis),
+			false => (width, &buffer, &mut x_axis),
 			true => (height, &x_axis, &mut y_axis),
 		};
 		let pass = pass as usize;
@@ -196,15 +289,9 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 				}
 
 				let (r, g, b, a) = ((r_sum / weight_sum) as f32, (g_sum / weight_sum) as f32, (b_sum / weight_sum) as f32, (a_sum / weight_sum) as f32);
-				current_buffer.set_pixel(x, y, Color::from_rgbaf32_unchecked(r, g, b, a));
+				current_buffer.set_pixel(x, y, construct(r, g, b, a));
 			}
 		}
-	}
-
-	if gamma {
-		y_axis.map_pixels(|px| px.to_linear_srgb().to_unassociated_alpha());
-	} else {
-		y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	}
 
 	y_axis

@@ -1,6 +1,6 @@
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
-use core_types::table::Table;
+use core_types::list::List;
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
@@ -23,42 +23,54 @@ impl Blend<Color> for Color {
 mod blend_std {
 	use super::*;
 	use core::cmp::Ordering;
-	use core_types::table::Table;
+	use core_types::list::List;
 	use raster_types::Image;
 	use raster_types::Raster;
 
-	impl Blend<Color> for Table<Raster<CPU>> {
+	impl Blend<Color> for List<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter()) {
-				let data = over.element.data.iter().zip(under.element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			let mut result_list = self.clone();
+			let pair_count = result_list.len().min(under.len());
+			for index in 0..pair_count {
+				let Some(over) = result_list.element(index) else { break };
+				let Some(under_element) = under.element(index) else { break };
+				let data = over.data.iter().zip(under_element.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+				let (width, height) = (over.width, over.height);
 
-				*over.element = Raster::new_cpu(Image {
+				*result_list.element_mut(index).unwrap() = Raster::new_cpu(Image {
 					data,
-					width: over.element.width,
-					height: over.element.height,
+					width,
+					height,
 					base64_string: None,
 				});
 			}
-			result_table
+			result_list
 		}
 	}
-	impl Blend<Color> for Table<Color> {
+	impl Blend<Color> for List<Color> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter()) {
-				*over.element = blend_fn(*over.element, *under.element);
+			let mut result_list = self.clone();
+			let pair_count = result_list.len().min(under.len());
+			for index in 0..pair_count {
+				let Some(over) = result_list.element(index) else { break };
+				let Some(under_element) = under.element(index) else { break };
+				let new_val = blend_fn(*over, *under_element);
+				*result_list.element_mut(index).unwrap() = new_val;
 			}
-			result_table
+			result_list
 		}
 	}
-	impl Blend<Color> for Table<GradientStops> {
+	impl Blend<Color> for List<GradientStops> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut result_table = self.clone();
-			for (over, under) in result_table.iter_mut().zip(under.iter()) {
-				*over.element = over.element.blend(under.element, &blend_fn);
+			let mut result_list = self.clone();
+			let pair_count = result_list.len().min(under.len());
+			for index in 0..pair_count {
+				let Some(over) = result_list.element(index) else { break };
+				let Some(under_element) = under.element(index) else { break };
+				let new_val = over.blend(under_element, &blend_fn);
+				*result_list.element_mut(index).unwrap() = new_val;
 			}
-			result_table
+			result_list
 		}
 	}
 	impl Blend<Color> for GradientStops {
@@ -87,7 +99,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity))
+	background.alpha_blend(target_color.apply_opacity(opacity))
 }
 
 pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
@@ -133,17 +145,17 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	over: T,
 	#[expose]
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	under: T,
@@ -157,9 +169,9 @@ fn mix<T: Blend<Color> + Send>(
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -185,7 +197,7 @@ fn color_overlay<T: Adjust<Color>>(
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;
-	use core_types::table::Table;
+	use core_types::list::List;
 	use raster_types::Image;
 	use raster_types::Raster;
 
@@ -200,8 +212,8 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100.;
 
-		let result = super::color_overlay((), Table::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.iter().next().unwrap().element;
+		let result = super::color_overlay((), List::new_from_element(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
+		let result = result.element(0).unwrap().clone();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

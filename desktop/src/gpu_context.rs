@@ -1,7 +1,7 @@
 use crate::wrapper::{WgpuContext, WgpuContextBuilder, WgpuFeatures};
 
 pub(super) async fn create_wgpu_context() -> WgpuContext {
-	let wgpu_context_builder = WgpuContextBuilder::new().with_features(WgpuFeatures::PUSH_CONSTANTS);
+	let wgpu_context_builder = WgpuContextBuilder::new().with_features(WgpuFeatures::IMMEDIATES);
 
 	// TODO: add a cli flag to list adapters and exit instead of always printing
 	println!("\nAvailable WGPU adapters:\n{}", wgpu_context_builder.available_adapters_fmt().await);

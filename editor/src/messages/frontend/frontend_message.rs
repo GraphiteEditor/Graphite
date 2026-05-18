@@ -1,7 +1,7 @@
 use super::IconName;
-use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
+use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::EyedropperPreviewImage;
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -13,9 +13,10 @@ use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
 use graph_craft::document::NodeId;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
-use graphene_std::raster::color::Color;
-use graphene_std::text::{Font, TextAlign};
+use graphene_std::text::Font;
+use graphene_std::vector::style::FillChoiceUI;
 use std::path::PathBuf;
 
 #[cfg(not(target_family = "wasm"))]
@@ -50,7 +51,9 @@ pub enum FrontendMessage {
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
-		align: TextAlign,
+		align: String,
+		#[serde(rename = "alignLast")]
+		align_last: String,
 	},
 	DisplayEditableTextboxUpdateFontData {
 		#[serde(rename = "fontData")]
@@ -113,7 +116,15 @@ pub enum FrontendMessage {
 		font: Font,
 		url: String,
 	},
-	TriggerPersistenceRemoveDocument {
+	TriggerPersistenceReadState,
+	TriggerPersistenceReadDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
+	},
+	TriggerPersistenceWriteState {
+		state: PersistedState,
+	},
+	TriggerPersistenceDeleteDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
@@ -121,23 +132,21 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 		document: String,
-		details: DocumentDetails,
 	},
-	TriggerLoadFirstAutoSaveDocument,
-	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
 	TriggerOpen,
 	TriggerImport,
 	TriggerSavePreferences {
-		#[tsify(type = "unknown")]
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
 	},
-	TriggerSaveActiveDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
 	TriggerTextCommit,
+	/// Asks the frontend to enter inline-rename mode for a layer in the graph view.
+	TriggerEditLayerNameInGraph {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+	},
 	TriggerVisitLink {
 		url: String,
 	},
@@ -158,9 +167,17 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateGradientStopColorPickerPosition {
-		color: Color, // TODO: Color (without `none`) -> Color (with `none`)
+		color: SRGBA8, // TODO: Color (without `none`) -> Color (with `none`)
 		position: (f64, f64),
 	},
+	/// The Rust color picker handler picked a new color/gradient. The frontend `<ColorPicker />` forwards this as its `colorOrGradient` event.
+	ColorPickerColorChanged {
+		value: FillChoiceUI,
+	},
+	/// The Rust color picker handler is starting an undo transaction. The frontend `<ColorPicker />` forwards this as its `startHistoryTransaction` event.
+	ColorPickerStartHistoryTransaction,
+	/// The Rust color picker handler is committing the in-flight undo transaction. The frontend `<ColorPicker />` forwards this as its `commitHistoryTransaction` event.
+	ColorPickerCommitHistoryTransaction,
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
 		imports: Vec<Option<FrontendGraphOutput>>,
@@ -224,7 +241,7 @@ pub enum FrontendMessage {
 		svg: String,
 	},
 	UpdateImageData {
-		image_data: Vec<(u64, Image<Color>)>,
+		image_data: Vec<(u64, Image<SRGBA8>)>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
@@ -238,6 +255,10 @@ pub enum FrontendMessage {
 		spacing: f64,
 		interval: f64,
 		visible: bool,
+		tilt: f64,
+		flip: bool,
+		#[serde(rename = "selectionQuad")]
+		selection_quad: Option<[(f64, f64); 4]>,
 	},
 	UpdateDocumentScrollbars {
 		position: (f64, f64),
@@ -287,7 +308,7 @@ pub enum FrontendMessage {
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
-		open_documents: Vec<OpenDocument>,
+		open_documents: Vec<DocumentInfo>,
 	},
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
@@ -340,6 +361,8 @@ pub enum FrontendMessage {
 	WindowDrag,
 	#[cfg(not(target_family = "wasm"))]
 	WindowHide,
+	#[cfg(not(target_family = "wasm"))]
+	WindowFocus,
 	#[cfg(not(target_family = "wasm"))]
 	WindowHideOthers,
 	#[cfg(not(target_family = "wasm"))]

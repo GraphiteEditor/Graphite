@@ -1,8 +1,8 @@
 use core::f64;
 use core_types::color::Color;
-use core_types::table::Table;
+use core_types::list::{List, ListDyn};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -10,24 +10,26 @@ use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
 /// Applies the specified transform to the input value, which may be a graphic type or another transform.
-#[node_macro::node(category(""))]
+#[node_macro::node(category("Math: Transform"))]
 async fn transform<T: ApplyTransform + 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Raster<GPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Color>,
+		Context -> List<GradientStops>,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
-	translation: DVec2,
-	rotation: f64,
+	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: DVec2,
+	#[widget(ParsedWidgetOverride::Custom = "transform_rotation")] rotation: f64,
+	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
+	#[default(1., 1.)]
 	scale: DVec2,
-	skew: DVec2,
+	#[widget(ParsedWidgetOverride::Custom = "transform_skew")] skew: DVec2,
 ) -> T {
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
 	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
@@ -54,36 +56,32 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 fn reset_transform<T>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	mut content: Table<T>,
+	mut content: List<T>,
 	#[default(true)] reset_translation: bool,
 	reset_rotation: bool,
 	reset_scale: bool,
-) -> Table<T> {
-	for row in content.iter_mut() {
-		// Translation
+) -> List<T> {
+	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
 		if reset_translation {
-			row.transform.translation = DVec2::ZERO;
+			row_transform.translation = DVec2::ZERO;
 		}
-		// (Rotation, Scale)
+
 		match (reset_rotation, reset_scale) {
-			(true, true) => {
-				row.transform.matrix2 = DMat2::IDENTITY;
-			}
+			(true, true) => row_transform.matrix2 = DMat2::IDENTITY,
 			(true, false) => {
-				let scale = row.transform.scale_magnitudes();
-				row.transform.matrix2 = DMat2::from_diagonal(scale);
+				let scale = row_transform.scale_magnitudes();
+				row_transform.matrix2 = DMat2::from_diagonal(scale);
 			}
 			(false, true) => {
-				let rotation = row.transform.decompose_rotation();
-				let rotation_matrix = DMat2::from_angle(rotation);
-				row.transform.matrix2 = rotation_matrix;
+				let rotation = row_transform.decompose_rotation();
+				row_transform.matrix2 = DMat2::from_angle(rotation);
 			}
 			(false, false) => {}
 		}
@@ -91,43 +89,32 @@ fn reset_transform<T>(
 	content
 }
 
-/// Overwrites the transform of each element in the input table with the specified transform.
+/// Overwrites the transform of each item in the input `List` with the specified transform.
 #[node_macro::node(category("Math: Transform"))]
 fn replace_transform<T>(
 	_: impl Ctx + InjectFootprint,
 	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
-	mut content: Table<T>,
+	mut content: List<T>,
 	transform: DAffine2,
-) -> Table<T> {
-	for row in content.iter_mut() {
-		*row.transform = transform.transform();
+) -> List<T> {
+	for row_transform in content.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+		*row_transform = transform.transform();
 	}
 	content
 }
 
 // TODO: Figure out how this node should behave once #2982 is implemented.
-/// Obtains the transform of the first element in the input table, if present.
+/// Obtains the transform of the first item in the input `List`, if present.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-async fn extract_transform<T>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Raster<GPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-	)]
-	content: Table<T>,
-) -> DAffine2 {
-	content.iter().next().map(|row| *row.transform).unwrap_or_default()
+async fn extract_transform(_: impl Ctx, content: ListDyn) -> DAffine2 {
+	content.attribute::<DAffine2>(ATTR_TRANSFORM, 0).copied().unwrap_or_default()
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.

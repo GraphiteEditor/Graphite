@@ -1,39 +1,30 @@
+import { tick } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
-import { storeDocumentTabOrder } from "/src/utility-functions/persistence";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
-import type { EditorWrapper, OpenDocument, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
+import { patchLayout } from "/src/utility-functions/widgets";
+import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
 
-export type PanelGroupState = {
-	tabs: PanelType[];
-	activeTabIndex: number;
-};
-
-export type WorkspacePanelLayout = {
-	propertiesGroup: PanelGroupState;
-	layersGroup: PanelGroupState;
-	dataGroup: PanelGroupState;
-};
-
 type PortfolioStoreState = {
 	unsaved: boolean;
-	documents: OpenDocument[];
+	documents: DocumentInfo[];
 	activeDocumentIndex: number;
 	panelLayout: WorkspacePanelLayout;
+	layerCache: SvelteMap<string, LayerPanelEntry>;
+	layerStructure: LayerStructureEntry[];
 };
 const initialState: PortfolioStoreState = {
 	unsaved: false,
 	documents: [],
 	activeDocumentIndex: 0,
-	panelLayout: {
-		propertiesGroup: { tabs: ["Properties"], activeTabIndex: 0 },
-		layersGroup: { tabs: ["Layers"], activeTabIndex: 0 },
-		dataGroup: { tabs: [], activeTabIndex: 0 },
-	},
+	panelLayout: {},
+	layerCache: new SvelteMap<string, LayerPanelEntry>(),
+	layerStructure: [],
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -43,6 +34,30 @@ const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || wri
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
+export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
+export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
+export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
+export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
+export const layersPanelControlBarRightLayout = makeLayoutStore("layersPanelControlBarRightLayout");
+export const layersPanelBottomBarLayout = makeLayoutStore("layersPanelBottomBarLayout");
+
+// Each panel layout has its own dedicated store so a layout update only re-renders that panel's consumers.
+// Putting them at module scope (not inside the component) lets them survive a Svelte remount during a
+// panel-tree restructure, since the backend's diff-based updates aren't re-sent on subscribe.
+function makeLayoutStore(name: string): Writable<Layout> {
+	const persisted = import.meta.hot?.data?.[name];
+	const layoutStore: Writable<Layout> = persisted || writable<Layout>([]);
+	if (import.meta.hot) import.meta.hot.data[name] = layoutStore;
+	return layoutStore;
+}
+
+function patchLayoutStore(layoutStore: Writable<Layout>, data: Parameters<typeof patchLayout>[1]) {
+	layoutStore.update((layout) => {
+		patchLayout(layout, data);
+		return layout;
+	});
+}
+
 export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor: EditorWrapper) {
 	destroyPortfolioStore();
 
@@ -51,9 +66,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	subscriptions.subscribeFrontendMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
 			state.documents = data.openDocuments;
+			if (state.documents.length === 0) state.activeDocumentIndex = 0;
 			return state;
 		});
-		storeDocumentTabOrder({ subscribe });
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateActiveDocument", (data) => {
@@ -79,8 +94,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerOpen", async () => {
-		const data = await upload(`image/*,.${editor.fileExtension()}`, "data");
-		editor.openFile(data.filename, data.content);
+		const files = await upload(`image/*,.${editor.fileExtension()}`, "data", true);
+		files.forEach((file) => editor.openFile(file.filename, file.content));
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerImport", async () => {
@@ -115,14 +130,53 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
-		// Coerce activeTabIndex from BigInt (produced by serde_wasm_bindgen for usize) to number
-		const layout = data.panelLayout;
-		layout.propertiesGroup.activeTabIndex = Number(layout.propertiesGroup.activeTabIndex);
-		layout.layersGroup.activeTabIndex = Number(layout.layersGroup.activeTabIndex);
-		layout.dataGroup.activeTabIndex = Number(layout.dataGroup.activeTabIndex);
-
 		update((state) => {
-			state.panelLayout = layout;
+			state.panelLayout = data.panelLayout;
+			return state;
+		});
+	});
+
+	// Each panel layout uses its own store so updates only re-render that panel's consumers
+	subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", async (data) => {
+		await tick();
+		patchLayoutStore(welcomeScreenButtonsLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("PropertiesPanel", async (data) => {
+		await tick();
+		patchLayoutStore(propertiesPanelLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
+		await tick();
+		patchLayoutStore(dataPanelLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", async (data) => {
+		await tick();
+		patchLayoutStore(layersPanelControlBarLeftLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", async (data) => {
+		await tick();
+		patchLayoutStore(layersPanelControlBarRightLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", async (data) => {
+		await tick();
+		patchLayoutStore(layersPanelBottomBarLayout, data);
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		update((state) => {
+			state.layerStructure = data.layerStructure;
+			return state;
+		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		update((state) => {
+			state.layerCache.set(String(data.data.id), data.data);
 			return state;
 		});
 	});
@@ -143,4 +197,12 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
+	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
+	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+	subscriptions.unsubscribeLayoutUpdate("DataPanel");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 }

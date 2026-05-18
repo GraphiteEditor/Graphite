@@ -9,11 +9,12 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
@@ -24,7 +25,7 @@ pub struct ToolActionMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -37,11 +38,11 @@ impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mu
 type Tool = dyn ToolCommon + Send + Sync;
 
 pub trait ToolRefreshOptions {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData);
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData);
 }
 
 impl<T: LayoutHolder> ToolRefreshOptions for T {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData) {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData) {
 		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 }
@@ -128,9 +129,7 @@ pub struct DocumentToolData {
 impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = Layout(vec![
-			LayoutGroup::row(vec![
-				WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance(),
-			]),
+			LayoutGroup::row(vec![WorkingColorsInput::new(SRGBA8::from(self.primary_color), SRGBA8::from(self.secondary_color)).widget_instance()]),
 			LayoutGroup::row(vec![
 				IconButton::new("SwapVertical", 16)
 					.tooltip_label("Swap Working Colors")
