@@ -2233,6 +2233,11 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
+
+					tool_data.next_point = input.mouse.position;
+					tool_data.next_handle_start = input.mouse.position;
+					tool_data.handle_end = Some(input.mouse.position);
+
 					tool_data
 						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
 						.unwrap_or(PenToolFsmState::PlacingAnchor)
