@@ -2234,8 +2234,6 @@ impl Fsm for PenToolFsmState {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
 
-					tool_data.next_point = input.mouse.position;
-					tool_data.next_handle_start = input.mouse.position;
 					tool_data.handle_end = Some(input.mouse.position);
 
 					tool_data
