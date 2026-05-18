@@ -2453,28 +2453,19 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.value(FillChoiceUI::from(&FillChoice::from(fill.clone())))
 			.on_update(move |x: &ColorInput| {
 				let new_fill = FillChoice::from(&x.value).to_fill(fill2.as_gradient());
+				let (backup_index, backup_value) = match &new_fill {
+					Fill::None => (BackupColorInput::INDEX, TaggedValue::Color(None)),
+					Fill::Solid(color) => (BackupColorInput::INDEX, TaggedValue::Color(Some(*color))),
+					Fill::Gradient(gradient) => (BackupGradientInput::INDEX, TaggedValue::FillGradient(gradient.clone())),
+				};
 				Message::Batched {
 					messages: Box::new([
-						match &new_fill {
-							Fill::None => NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: BackupColorInput::INDEX,
-								value: TaggedValue::Color(None),
-							}
-							.into(),
-							Fill::Solid(color) => NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: BackupColorInput::INDEX,
-								value: TaggedValue::Color(Some(*color)),
-							}
-							.into(),
-							Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: BackupGradientInput::INDEX,
-								value: TaggedValue::FillGradient(gradient.clone()),
-							}
-							.into(),
-						},
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: backup_index,
+							value: backup_value,
+						}
+						.into(),
 						NodeGraphMessage::SetInputValue {
 							node_id,
 							input_index: FillInput::<Color>::INDEX,
