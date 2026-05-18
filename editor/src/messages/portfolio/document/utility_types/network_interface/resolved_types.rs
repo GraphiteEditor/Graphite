@@ -94,8 +94,8 @@ impl TypeSource {
 	/// The type to display in the tooltip label.
 	pub fn resolved_type_tooltip_string(&self) -> String {
 		match self {
-			TypeSource::Compiled(compiled_type) => format!("Data Type: {}", compiled_type.nested_type()),
-			TypeSource::TaggedValue(value_type) => format!("Data Type: {}", value_type.nested_type()),
+			TypeSource::Compiled(compiled_type) => compiled_type.nested_type().to_string(),
+			TypeSource::TaggedValue(value_type) => value_type.nested_type().to_string(),
 			TypeSource::Unknown => "Unknown Data Type".to_string(),
 			TypeSource::Invalid => "Invalid Type Combination".to_string(),
 			TypeSource::Error(_) => "Error Getting Data Type".to_string(),
@@ -253,8 +253,8 @@ impl NodeNetworkInterface {
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
 				implementations
-					.iter()
-					.filter_map(|(node_io, _)| {
+					.keys()
+					.filter_map(|node_io| {
 						// Check if this NodeIOTypes implementation is valid for the other inputs
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
@@ -293,8 +293,8 @@ impl NodeNetworkInterface {
 						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
 
 						implementations
-							.iter()
-							.filter_map(|(node_io, _)| {
+							.keys()
+							.filter_map(|node_io| {
 								if !valid_output_types.iter().any(|output_type| output_type.nested_type() == node_io.return_value.nested_type()) {
 									return None;
 								}

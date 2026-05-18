@@ -2,6 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::proto::{Any as DAny, FutureAny};
 use brush_nodes::brush_stroke::BrushStroke;
+use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::transform::Footprint;
 use core_types::uuid::NodeId;
@@ -63,7 +64,7 @@ macro_rules! tagged_value {
 			/// Stored compactly as a `GradientStops`, materializes as a single-row `List<GradientStops>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			/// (Old documents that stored a full `Gradient` struct under this same `"Gradient"` tag are routed to `FillGradient` by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_to_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
-			#[serde(alias = "GradientTable", alias = "GradientPositions")]
+			#[serde(alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			Gradient(GradientStops),
 			/// Stored compactly as a `Vec<BrushStroke>`, materializes as `List<BrushStroke>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
 			#[serde(deserialize_with = "brush_nodes::migrations::migrate_to_brush_strokes")] // TODO: Eventually remove this migration document upgrade code
@@ -464,7 +465,7 @@ impl TaggedValue {
 			// String syntax (e.g. "000000ff")
 			if input.starts_with('"') && input.ends_with('"') {
 				let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
-				let color = Color::from_hex_str(hex);
+				let color = SRGBA8::from_hex_str(hex).map(Color::from);
 				if color.is_none() {
 					log::error!("Invalid default value color string: {input}");
 				}

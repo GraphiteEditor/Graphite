@@ -4,13 +4,13 @@ use crate::messages::portfolio::document::graph_operation::transform_utils::get_
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, solid_gamma};
+use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, solid};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Color;
 use graphene_std::brush::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_std::raster::BlendMode;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
@@ -104,13 +104,12 @@ impl ToolMetadata for BrushTool {
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
-			ColorInput::new(self.options.color.fill_choice.clone().unwrap_or(FillChoice::None))
+			ColorInput::new(FillChoiceUI::from(self.options.color.fill_choice.as_ref().unwrap_or(&FillChoice::None)))
 				.mixed(self.options.color.fill_choice.is_none())
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					BrushToolMessage::UpdateOptions {
-						// The picker emits gamma-space colors; working colors are stored in linear sRGB.
-						options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|c| c.to_linear_srgb())),
+						options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(Color::from)),
 					}
 					.into()
 				})
@@ -245,7 +244,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Brus
 				}
 			}
 			BrushToolMessageOptionsUpdate::WorkingColorsChanged => {
-				self.options.color.fill_choice = Some(solid_gamma(context.global_tool_data.primary_color));
+				self.options.color.fill_choice = Some(solid(context.global_tool_data.primary_color));
 			}
 		}
 

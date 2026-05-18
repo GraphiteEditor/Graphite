@@ -1,4 +1,5 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
+use core_types::color::SRGBA8;
 use core_types::uuid::generate_uuid;
 use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
@@ -22,7 +23,7 @@ impl RenderExt for Gradient {
 			if position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
-			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+			let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 			}
@@ -86,7 +87,7 @@ impl RenderExt for Fill {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
-				let mut result = format!(r##" fill="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+				let mut result = format!(r##" fill="#{}""##, SRGBA8::from(*color).to_rgb_hex());
 				if color.a() < 1. {
 					let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 				}
@@ -132,7 +133,7 @@ impl RenderExt for Stroke {
 		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+		let mut attributes = format!(r##" stroke="#{}""##, SRGBA8::from(color).to_rgb_hex());
 		if color.a() < 1. {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}

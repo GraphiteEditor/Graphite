@@ -1,4 +1,4 @@
-import type { Color, FillChoice, GradientStops } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FillChoiceUI, GradientStopsUI, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };
@@ -6,26 +6,33 @@ export type RGB = { r: number; g: number; b: number };
 
 // COLOR FACTORY FUNCTIONS
 
-export function createColor(red: number, green: number, blue: number, alpha: number): Color {
+export function createSRgba8(red: number, green: number, blue: number, alpha: number): SRGBA8 {
 	return { red, green, blue, alpha };
 }
 
-export function createColorFromHSVA(h: number, s: number, v: number, a: number): Color {
+// Build an `SRGBA8` from HSVA components on the 0..1 range.
+export function createSRgba8FromHsva(h: number, s: number, v: number, a: number): SRGBA8 {
 	const convert = (n: number): number => {
 		const k = (n + h * 6) % 6;
 		return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
 	};
 
-	return { red: convert(5), green: convert(3), blue: convert(1), alpha: a };
+	return {
+		red: Math.round(convert(5) * 255),
+		green: Math.round(convert(3) * 255),
+		blue: Math.round(convert(1) * 255),
+		alpha: Math.round(a * 255),
+	};
 }
 
 // COLOR UTILITY FUNCTIONS
 
-export function isColor(value: unknown): value is Color {
+export function isSRgba8(value: unknown): value is SRGBA8 {
 	return typeof value === "object" && value !== null && "red" in value;
 }
 
-export function colorFromCSS(colorCode: string): Color | undefined {
+// Parse a CSS color string into an `SRGBA8`. Uses a canvas to delegate parsing to the browser.
+export function sRgba8FromCSS(colorCode: string): SRGBA8 | undefined {
 	// Allow single-digit hex value inputs
 	let colorValue = colorCode.trim();
 	if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
@@ -52,52 +59,40 @@ export function colorFromCSS(colorCode: string): Color | undefined {
 	// Invalid color
 	if (comparisonA !== comparisonB) {
 		// If this color code didn't start with a #, add it and try again
-		if (colorValue.trim().charAt(0) !== "#") return colorFromCSS(`#${colorValue.trim()}`);
+		if (colorValue.trim().charAt(0) !== "#") return sRgba8FromCSS(`#${colorValue.trim()}`);
 		return undefined;
 	}
 
 	context.fillRect(0, 0, 1, 1);
 
 	const [r, g, b, a] = [...context.getImageData(0, 0, 1, 1).data];
-	return createColor(r / 255, g / 255, b / 255, a / 255);
+	return createSRgba8(r, g, b, a);
 }
 
-export function colorToHexNoAlpha(color: Color): string {
-	const r = Math.round(color.red * 255)
-		.toString(16)
-		.padStart(2, "0");
-	const g = Math.round(color.green * 255)
-		.toString(16)
-		.padStart(2, "0");
-	const b = Math.round(color.blue * 255)
-		.toString(16)
-		.padStart(2, "0");
+export function sRgba8ToHexNoAlpha(color: SRGBA8): string {
+	const r = color.red.toString(16).padStart(2, "0");
+	const g = color.green.toString(16).padStart(2, "0");
+	const b = color.blue.toString(16).padStart(2, "0");
 
 	return `#${r}${g}${b}`;
 }
 
-export function colorToRgb255(color: Color): RGB {
-	return {
-		r: Math.round(color.red * 255),
-		g: Math.round(color.green * 255),
-		b: Math.round(color.blue * 255),
-	};
+export function sRgba8ToRgb255(color: SRGBA8): RGB {
+	return { r: color.red, g: color.green, b: color.blue };
 }
 
-export function colorToRgbCSS(color: Color): string {
-	const rgb = colorToRgb255(color);
-
-	return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+export function sRgba8ToRgbCSS(color: SRGBA8): string {
+	return `rgb(${color.red}, ${color.green}, ${color.blue})`;
 }
 
-export function colorToRgbaCSS(color: Color): string {
-	const rgb = colorToRgb255(color);
-
-	return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${color.alpha})`;
+export function sRgba8ToRgbaCSS(color: SRGBA8): string {
+	return `rgba(${color.red}, ${color.green}, ${color.blue}, ${color.alpha / 255})`;
 }
 
-export function colorToHSV(color: Color): HSV {
-	const { red: r, green: g, blue: b } = color;
+export function sRgba8ToHSV(color: SRGBA8): HSV {
+	const r = color.red / 255;
+	const g = color.green / 255;
+	const b = color.blue / 255;
 
 	const max = Math.max(r, g, b);
 	const min = Math.min(r, g, b);
@@ -126,15 +121,17 @@ export function colorToHSV(color: Color): HSV {
 	return { h, s, v };
 }
 
-export function colorOpaque(color: Color): Color {
-	return createColor(color.red, color.green, color.blue, 1);
+export function sRgba8Opaque(color: SRGBA8): SRGBA8 {
+	return createSRgba8(color.red, color.green, color.blue, 255);
 }
 
-export function colorLuminance(color: Color): number {
+// WCAG-style relative luminance computed from an `SRGBA8` (alpha composited over white).
+export function sRgba8Luminance(color: SRGBA8): number {
+	const a = color.alpha / 255;
 	// Convert alpha into white
-	const r = color.red * color.alpha + (1 - color.alpha);
-	const g = color.green * color.alpha + (1 - color.alpha);
-	const b = color.blue * color.alpha + (1 - color.alpha);
+	const r = (color.red / 255) * a + (1 - a);
+	const g = (color.green / 255) * a + (1 - a);
+	const b = (color.blue / 255) * a + (1 - a);
 
 	// https://stackoverflow.com/a/3943023/775283
 
@@ -145,32 +142,32 @@ export function colorLuminance(color: Color): number {
 	return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
 }
 
-export function colorContrastingColor(color: Color | undefined): "black" | "white" {
+export function sRgba8ContrastingColor(color: SRGBA8 | undefined): "black" | "white" {
 	if (!color) return "black";
 
-	const luminance = colorLuminance(color);
+	const luminance = sRgba8Luminance(color);
 
 	return luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 }
 
-export function contrastingOutlineFactor(value: FillChoice, proximityColor: string | [string, string], proximityRange: number): number {
+export function contrastingOutlineFactor(value: FillChoiceUI, proximityColor: string | [string, string], proximityRange: number): number {
 	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
-	const [range1, range2] = pair.map((color) => colorFromCSS(window.getComputedStyle(document.body).getPropertyValue(color)));
+	const [range1, range2] = pair.map((color) => sRgba8FromCSS(window.getComputedStyle(document.body).getPropertyValue(color)));
 
-	const contrast = (color: Color | undefined): number => {
+	const contrast = (color: SRGBA8 | undefined): number => {
 		if (!color) return 0;
 
-		const lum = colorLuminance(color);
-		let rangeLuminance1 = range1 ? colorLuminance(range1) : 0;
-		let rangeLuminance2 = range2 ? colorLuminance(range2) : 0;
+		const lum = sRgba8Luminance(color);
+		let rangeLuminance1 = range1 ? sRgba8Luminance(range1) : 0;
+		let rangeLuminance2 = range2 ? sRgba8Luminance(range2) : 0;
 		[rangeLuminance1, rangeLuminance2] = [Math.min(rangeLuminance1, rangeLuminance2), Math.max(rangeLuminance1, rangeLuminance2)];
 
 		const distance = Math.max(0, rangeLuminance1 - lum, lum - rangeLuminance2);
 
-		return (1 - Math.min(distance / proximityRange, 1)) * (1 - colorToHSV(color).s);
+		return (1 - Math.min(distance / proximityRange, 1)) * (1 - sRgba8ToHSV(color).s);
 	};
 
-	const gradientStops = fillChoiceGradientStops(value);
+	const gradientStops = fillChoiceUIGradientStops(value);
 	if (gradientStops) {
 		if (gradientStops.color.length === 0) return 0;
 
@@ -180,30 +177,30 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 		return Math.min(first, last);
 	}
 
-	return contrast(fillChoiceColor(value));
+	return contrast(fillChoiceUIColor(value));
 }
 
 // GRADIENT UTILITY FUNCTIONS
 
-export function isGradientStops(value: unknown): value is GradientStops {
+export function isGradientStopsUI(value: unknown): value is GradientStopsUI {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value && "color" in value;
 }
 
 // FILL CHOICE UTILITY FUNCTIONS
 
-export function fillChoiceColor(value: FillChoice): Color | undefined {
+export function fillChoiceUIColor(value: FillChoiceUI): SRGBA8 | undefined {
 	if (typeof value === "object" && "Solid" in value) return value.Solid;
 	return undefined;
 }
 
-export function fillChoiceGradientStops(value: FillChoice): GradientStops | undefined {
+export function fillChoiceUIGradientStops(value: FillChoiceUI): GradientStopsUI | undefined {
 	if (typeof value === "object" && "Gradient" in value) return value.Gradient;
 	return undefined;
 }
 
-export function parseFillChoice(value: unknown): FillChoice {
+export function parseFillChoiceUI(value: unknown): FillChoiceUI {
 	if (value === "None" || value === undefined || value === null) return "None";
-	if (typeof value === "object" && value !== null && "Solid" in value && isColor(value.Solid)) return { Solid: value.Solid };
-	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientStops(value.Gradient)) return { Gradient: value.Gradient };
+	if (typeof value === "object" && value !== null && "Solid" in value && isSRgba8(value.Solid)) return { Solid: value.Solid };
+	if (typeof value === "object" && value !== null && "Gradient" in value && isGradientStopsUI(value.Gradient)) return { Gradient: value.Gradient };
 	return "None";
 }

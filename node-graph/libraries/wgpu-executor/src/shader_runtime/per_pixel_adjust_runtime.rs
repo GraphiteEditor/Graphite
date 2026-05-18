@@ -113,10 +113,10 @@ impl PerPixelAdjustGraphicsPipeline {
 		};
 		let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
 			label: Some(&format!("PerPixelAdjust {name} PipelineLayout")),
-			bind_group_layouts: &[&device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+			bind_group_layouts: &[Some(&device.create_bind_group_layout(&BindGroupLayoutDescriptor {
 				label: Some(&format!("PerPixelAdjust {name} BindGroupLayout 0")),
 				entries,
-			})],
+			}))],
 			..Default::default()
 		});
 

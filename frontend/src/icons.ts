@@ -129,6 +129,7 @@ import Cut from "/../branding/assets/icon-16px-solid/cut.svg";
 import DeselectAll from "/../branding/assets/icon-16px-solid/deselect-all.svg";
 import Edit from "/../branding/assets/icon-16px-solid/edit.svg";
 import Empty from "/../branding/assets/icon-16px-solid/empty.svg";
+import ExpandFillStroke from "/../branding/assets/icon-16px-solid/expand-fill-stroke.svg";
 import EyeHidden from "/../branding/assets/icon-16px-solid/eye-hidden.svg";
 import EyeHide from "/../branding/assets/icon-16px-solid/eye-hide.svg";
 import EyeShow from "/../branding/assets/icon-16px-solid/eye-show.svg";
@@ -268,6 +269,7 @@ const SOLID_16PX = {
 	DeselectAll: { svg: DeselectAll, size: 16 },
 	Edit: { svg: Edit, size: 16 },
 	Empty: { svg: Empty, size: 16 },
+	ExpandFillStroke: { svg: ExpandFillStroke, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
 	EyeHidden: { svg: EyeHidden, size: 16 },
 	EyeHide: { svg: EyeHide, size: 16 },

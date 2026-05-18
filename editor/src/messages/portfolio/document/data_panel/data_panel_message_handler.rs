@@ -7,12 +7,13 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
 use graphene_std::blending::BlendMode;
+use graphene_std::color::SRGBA8;
 use graphene_std::gradient::GradientStops;
 use graphene_std::list::List;
 use graphene_std::memo::IORecord;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::vector::Vector;
-use graphene_std::vector::style::{Fill, FillChoice, GradientSpreadMethod, GradientType};
+use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, GradientSpreadMethod, GradientType};
 use graphene_std::{Artboard, Color, Context, Graphic};
 use std::any::Any;
 use std::sync::Arc;
@@ -385,11 +386,15 @@ impl TableItemLayout for Vector {
 				match self.style.fill.clone() {
 					Fill::None => table_rows.push(vec![
 						TextLabel::new("Fill").narrow(true).widget_instance(),
-						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
+						ColorInput::new(FillChoiceUI::None)
+							.disabled(true)
+							.menu_direction(Some(MenuDirection::Top))
+							.narrow(true)
+							.widget_instance(),
 					]),
 					Fill::Solid(color) => table_rows.push(vec![
 						TextLabel::new("Fill").narrow(true).widget_instance(),
-						ColorInput::new(FillChoice::Solid(color))
+						ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(color)))
 							.disabled(true)
 							.menu_direction(Some(MenuDirection::Top))
 							.narrow(true)
@@ -398,7 +403,7 @@ impl TableItemLayout for Vector {
 					Fill::Gradient(gradient) => {
 						table_rows.push(vec![
 							TextLabel::new("Fill").narrow(true).widget_instance(),
-							ColorInput::new(FillChoice::Gradient(gradient.stops))
+							ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(gradient.stops)))
 								.disabled(true)
 								.menu_direction(Some(MenuDirection::Top))
 								.narrow(true)
@@ -423,7 +428,11 @@ impl TableItemLayout for Vector {
 					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
 					table_rows.push(vec![
 						TextLabel::new("Stroke").narrow(true).widget_instance(),
-						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
+						ColorInput::new(FillChoiceUI::from(&color))
+							.disabled(true)
+							.menu_direction(Some(MenuDirection::Top))
+							.narrow(true)
+							.widget_instance(),
 					]);
 					table_rows.push(vec![
 						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
@@ -561,10 +570,10 @@ impl TableItemLayout for Color {
 		"Color"
 	}
 	fn identifier(&self) -> String {
-		format!("Color (#{})", self.to_gamma_srgb().to_rgba_hex_srgb())
+		format!("Color (#{})", SRGBA8::from(*self).to_rgba_hex())
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		ColorInput::new(FillChoice::Solid(*self))
+		ColorInput::new(FillChoiceUI::from(&FillChoice::Solid(*self)))
 			.disabled(true)
 			.menu_direction(Some(MenuDirection::Top))
 			.narrow(true)
@@ -584,7 +593,7 @@ impl TableItemLayout for GradientStops {
 		format!("Gradient ({} stops)", self.len())
 	}
 	fn value_widget(&self, _target: PathStep, _data: &LayoutData) -> WidgetInstance {
-		ColorInput::new(FillChoice::Gradient(self.clone()))
+		ColorInput::new(FillChoiceUI::from(&FillChoice::Gradient(self.clone())))
 			.menu_direction(Some(MenuDirection::Top))
 			.disabled(true)
 			.narrow(true)

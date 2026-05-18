@@ -3,9 +3,9 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
 use glam::DVec2;
-use graphene_std::raster::color::Color;
+use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::FillChoiceUI;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
@@ -231,7 +231,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::row(vec![TextLabel::new("Grid").bold(true).widget_instance()]));
 
 	widgets.push(LayoutGroup::row(vec![
-		TextLabel::new("Type").table_align(true).widget_instance(),
+		TextLabel::new("Type").min_width(60).max_width(60).table_align(true).widget_instance(),
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		RadioInput::new(vec![
 			RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
@@ -262,7 +262,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	]));
 
 	let mut color_widgets = vec![
-		TextLabel::new("Display").table_align(true).widget_instance(),
+		TextLabel::new("Display").min_width(60).max_width(60).table_align(true).widget_instance(),
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 	];
 	color_widgets.extend([
@@ -274,12 +274,12 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 	]);
 	color_widgets.push(
-		ColorInput::new(FillChoice::Solid(Color::from_hex_str(&grid.color).unwrap_or(Color::BLACK)))
+		ColorInput::new(FillChoiceUI::Solid(SRGBA8::from_hex_str(&grid.color).unwrap_or(SRGBA8::BLACK)))
 			.tooltip_label("Grid Display Color")
 			.allow_none(false)
 			.on_update(update_val::<ColorInput, _>(grid, |grid, color| {
-				if let Some(color) = color.value.as_solid() {
-					grid.color = format!("#{}", color.to_rgba_hex_srgb_from_gamma());
+				if let Some(srgba) = color.value.as_solid() {
+					grid.color = srgba.to_css_hex();
 				}
 			}))
 			.widget_instance(),
@@ -287,7 +287,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::row(color_widgets));
 
 	widgets.push(LayoutGroup::row(vec![
-		TextLabel::new("Origin").table_align(true).widget_instance(),
+		TextLabel::new("Origin").min_width(60).max_width(60).table_align(true).widget_instance(),
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		NumberInput::new(Some(grid.origin.x))
 			.label("X")
@@ -306,7 +306,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 
 	match grid.grid_type {
 		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::row(vec![
-			TextLabel::new("Spacing").table_align(true).widget_instance(),
+			TextLabel::new("Spacing").min_width(60).max_width(60).table_align(true).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(spacing.x))
 				.label("X")
@@ -326,7 +326,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		])),
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
 			widgets.push(LayoutGroup::row(vec![
-				TextLabel::new("Y Spacing").table_align(true).widget_instance(),
+				TextLabel::new("Y Spacing").min_width(60).max_width(60).table_align(true).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(y_axis_spacing))
 					.unit(" px")
@@ -336,7 +336,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.widget_instance(),
 			]));
 			widgets.push(LayoutGroup::row(vec![
-				TextLabel::new("Angles").table_align(true).widget_instance(),
+				TextLabel::new("Angles").min_width(60).max_width(60).table_align(true).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(angle_a))
 					.unit("°")

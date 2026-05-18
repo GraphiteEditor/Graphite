@@ -4,15 +4,15 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import type { ColorPickerStore } from "/src/stores/color-picker";
-	import type { EditorWrapper, FillChoice, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ColorPickerCallbacks, ColorPickerStore } from "/src/stores/color-picker";
+	import type { EditorWrapper, FillChoiceUI, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoiceUI; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
 
 	const editor = getContext<EditorWrapper>("editor");
 	const colorPickerStore = getContext<ColorPickerStore>("colorPicker");
 
-	export let colorOrGradient: FillChoice;
+	export let colorOrGradient: FillChoiceUI;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let disabled = false;
@@ -27,15 +27,18 @@
 	// Open/close lifecycle: when `open` flips, register/clear the global callbacks (so events route to *this* instance)
 	// and tell the Rust handler to (re)initialize its state from the current `colorOrGradient`.
 	let lastOpen = false;
+	// Identity used by `clearCallbacks` to skip stale clears when another picker has already taken over the store's callbacks
+	let installedCallbacks: ColorPickerCallbacks | undefined;
 	$: handleOpenChange(open);
 
 	function handleOpenChange(isOpen: boolean) {
 		if (isOpen && !lastOpen) {
-			colorPickerStore.setCallbacks({
+			installedCallbacks = {
 				onColorChanged: (value) => dispatch("colorOrGradient", value),
 				onStartTransaction: () => dispatch("startHistoryTransaction"),
 				onCommitTransaction: () => dispatch("commitHistoryTransaction"),
-			});
+			};
+			colorPickerStore.setCallbacks(installedCallbacks);
 			editor.openColorPicker(colorOrGradient, allowNone, disabled);
 			// Auto-select the hex color code text input. Deferred so the layout has time to render after the picker opens.
 			setTimeout(() => {
@@ -43,7 +46,8 @@
 				if (hexInput instanceof HTMLInputElement) hexInput.select();
 			}, 0);
 		} else if (!isOpen && lastOpen) {
-			colorPickerStore.clearCallbacks();
+			if (installedCallbacks) colorPickerStore.clearCallbacks(installedCallbacks);
+			installedCallbacks = undefined;
 			editor.closeColorPicker();
 		}
 		lastOpen = isOpen;
@@ -55,7 +59,8 @@
 
 	onDestroy(() => {
 		if (!lastOpen) return;
-		colorPickerStore.clearCallbacks();
+		if (installedCallbacks) colorPickerStore.clearCallbacks(installedCallbacks);
+		installedCallbacks = undefined;
 		editor.closeColorPicker();
 	});
 </script>

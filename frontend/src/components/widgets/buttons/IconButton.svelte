@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount, onDestroy } from "svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import type { IconName, IconSize } from "/src/icons";
 	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -16,6 +17,9 @@
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
+	// Fired when a draggable item is dropped onto this button. Setting this also flags the button as a valid drop target
+	// (the consumer of the drag interaction looks for `[data-drag-droppable]` and dispatches a `dragdrop` event on it).
+	export let actionDragDrop: (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -24,6 +28,14 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
+
+	// Element-level listener for the `dragdrop` custom event that consumers dispatch when something is dropped on this button
+	let buttonElement: HTMLButtonElement | undefined;
+	function handleDragDrop() {
+		actionDragDrop?.();
+	}
+	onMount(() => buttonElement?.addEventListener("dragdrop", handleDragDrop));
+	onDestroy(() => buttonElement?.removeEventListener("dragdrop", handleDragDrop));
 </script>
 
 <button
@@ -31,11 +43,14 @@
 	class:hover-icon={hoverIcon && !disabled}
 	class:disabled
 	class:emphasized
+	class:drag-droppable={Boolean(actionDragDrop)}
+	bind:this={buttonElement}
 	on:click={action}
 	{disabled}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
+	data-drag-droppable={actionDragDrop ? "" : undefined}
 	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >

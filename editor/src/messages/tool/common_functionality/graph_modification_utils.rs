@@ -15,7 +15,7 @@ use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::subpath::Subpath;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{Fill, FillChoice, Gradient};
+use graphene_std::vector::style::{Fill, FillChoice, Gradient, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{GradientStops, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -329,10 +329,10 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
-	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let &TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
-	Some(color.to_linear_srgb())
+	Some(color)
 }
 
 /// Get the current blend mode of a layer from the closest upstream "Blend Mode" node.
@@ -491,6 +491,66 @@ pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetw
 	} else {
 		None
 	}
+}
+
+/// Subset of Stroke node inputs read for the control bar's stroke options popover.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrokeOptionsState {
+	pub align: StrokeAlign,
+	pub cap: StrokeCap,
+	pub join: StrokeJoin,
+	pub miter_limit: f64,
+	pub paint_order: PaintOrder,
+	pub dash_lengths: Vec<f64>,
+	pub dash_offset: f64,
+}
+
+/// Reads the non-color stroke option inputs from a layer's Stroke proto node. Returns `None` when the layer has no Stroke node.
+/// Inputs that aren't a static value (e.g. wired to another node) fall back to per-field defaults so the layer still participates in the sync.
+pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<StrokeOptionsState> {
+	let stroke = &DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+	let layer_view = NodeGraphLayer::new(layer, network_interface);
+	layer_view.upstream_node_id_from_name(stroke)?;
+	let read = |index: usize| layer_view.find_input(stroke, index);
+
+	let align = match read(graphene_std::vector::stroke::AlignInput::INDEX) {
+		Some(TaggedValue::StrokeAlign(value)) => *value,
+		_ => StrokeAlign::default(),
+	};
+	let cap = match read(graphene_std::vector::stroke::CapInput::INDEX) {
+		Some(TaggedValue::StrokeCap(value)) => *value,
+		_ => StrokeCap::default(),
+	};
+	let join = match read(graphene_std::vector::stroke::JoinInput::INDEX) {
+		Some(TaggedValue::StrokeJoin(value)) => *value,
+		_ => StrokeJoin::default(),
+	};
+	let miter_limit = match read(graphene_std::vector::stroke::MiterLimitInput::INDEX) {
+		Some(TaggedValue::F64(value)) => *value,
+		_ => 4.,
+	};
+	let paint_order = match read(graphene_std::vector::stroke::PaintOrderInput::INDEX) {
+		Some(TaggedValue::PaintOrder(value)) => *value,
+		_ => PaintOrder::default(),
+	};
+	let dash_lengths = match read(graphene_std::vector::stroke::DashLengthsInput::<List<f64>>::INDEX) {
+		Some(TaggedValue::F64Array(value)) => value.clone(),
+		_ => Vec::new(),
+	};
+	let dash_offset = match read(graphene_std::vector::stroke::DashOffsetInput::INDEX) {
+		Some(TaggedValue::F64(value)) => *value,
+		_ => 0.,
+	};
+
+	Some(StrokeOptionsState {
+		align,
+		cap,
+		join,
+		miter_limit,
+		paint_order,
+		dash_lengths,
+		dash_offset,
+	})
 }
 
 /// Returns the node ID of a layer's upstream Stroke proto node, if one exists.
@@ -759,9 +819,10 @@ impl<'a> NodeGraphLayer<'a> {
 		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], &[], FlowType::HorizontalFlow)
 	}
 
-	/// Node id of a node if it exists in the layer's primary flow
+	/// Node id of a node if it exists in this specific layer's primary flow, stopping at the next layer upstream so a group doesn't incorrectly match its children's nodes.
 	pub fn upstream_node_id_from_name(&self, identifier: &DefinitionIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()
+			.take_while(|&node_id| node_id == self.layer_node || !self.network_interface.is_layer(&node_id, &[]))
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| reference == *identifier))
 	}
 

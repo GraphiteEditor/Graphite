@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::DocumentToolData;
 use graphene_std::Color;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::vector::style::{FillChoice, FillChoiceUI, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// Color selector widgets seen in [`LayoutTarget::ToolOptions`] bar.
 pub struct ToolColorOptions {
@@ -47,13 +47,12 @@ impl ToolColorOptions {
 		self.enabled == Some(true)
 	}
 
-	/// The active solid color in linear sRGB, suitable for storing in a working color or downstream rendering input.
-	/// `fill_choice` is stored in gamma space (per [`FillChoice`]'s contract), so this method converts to linear before returning.
+	/// The active solid color, suitable for storing in a working color or downstream rendering input.
 	pub fn active_color(&self) -> Option<Color> {
 		if !self.is_active() {
 			return None;
 		}
-		Some(self.fill_choice.as_ref()?.as_solid()?.to_linear_srgb())
+		self.fill_choice.as_ref()?.as_solid()
 	}
 
 	pub fn apply_fill(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
@@ -86,7 +85,8 @@ impl ToolColorOptions {
 		// In the mixed state (`fill_choice` is `None`) the dash overlay covers the swatch, so the underlying widget value just drives the picker's initial position.
 		// `FillChoice::None` gives it a neutral starting point.
 		let mixed_color = self.fill_choice.is_none();
-		let widget_value = self.fill_choice.clone().unwrap_or(FillChoice::None);
+		// Convert the internal linear-light `FillChoice` to the JS-boundary `FillChoiceUI` (with `SRGBA8` colors) for the widget value.
+		let widget_value = FillChoiceUI::from(self.fill_choice.as_ref().unwrap_or(&FillChoice::None));
 		let mixed_enabled = self.enabled.is_none();
 		// In the mixed-enabled state the underlying `checked` value is hidden behind the indeterminate dash.
 		// The frontend's click handler sends `true` when the user resolves the mixed state by clicking.
@@ -109,13 +109,25 @@ impl ToolColorOptions {
 }
 
 /// Shared per-tool state for drawing tools that produce a stroked-and-filled shape (Shape, Pen, Freehand, Spline).
-/// Bundles the weight, color, and selection-sync fields that would otherwise be duplicated across each tool's options struct.
-/// The displayed fill/stroke colors track the global working colors.
 pub struct DrawingToolState {
 	/// The current stroke weight. `None` = mixed across selected layers.
 	pub line_weight: Option<f64>,
 	/// Persistent default weight, updated when the user edits the weight while no layer is selected.
 	pub default_line_weight: f64,
+	/// Stroke alignment from the selection. `None` = mixed.
+	pub stroke_align: Option<StrokeAlign>,
+	/// Stroke cap from the selection. `None` = mixed.
+	pub stroke_cap: Option<StrokeCap>,
+	/// Stroke join from the selection. `None` = mixed.
+	pub stroke_join: Option<StrokeJoin>,
+	/// Stroke miter limit from the selection. `None` = mixed.
+	pub miter_limit: Option<f64>,
+	/// Paint order from the selection. `None` = mixed.
+	pub paint_order: Option<PaintOrder>,
+	/// Dash lengths from the selection. `None` = mixed.
+	pub dash_lengths: Option<Vec<f64>>,
+	/// Dash offset from the selection. `None` = mixed.
+	pub dash_offset: Option<f64>,
 	/// Set of layers we last synced from, used to detect real selection changes vs. internal node toggles.
 	pub last_synced_selection: Vec<LayerNodeIdentifier>,
 	/// The fill swatch's color, checkbox, and mixed state.
@@ -132,6 +144,13 @@ impl DrawingToolState {
 		Self {
 			line_weight: Some(DEFAULT_STROKE_WIDTH),
 			default_line_weight: DEFAULT_STROKE_WIDTH,
+			stroke_align: Some(StrokeAlign::default()),
+			stroke_cap: Some(StrokeCap::default()),
+			stroke_join: Some(StrokeJoin::default()),
+			miter_limit: Some(4.),
+			paint_order: Some(PaintOrder::default()),
+			dash_lengths: Some(Vec::new()),
+			dash_offset: Some(0.),
 			last_synced_selection: Vec::new(),
 			fill: if fill_enabled { ToolColorOptions::new_enabled() } else { ToolColorOptions::new_disabled() },
 			stroke: ToolColorOptions::new_enabled(),
@@ -143,12 +162,38 @@ impl DrawingToolState {
 	pub fn effective_line_weight(&self) -> f64 {
 		self.line_weight.unwrap_or(self.default_line_weight)
 	}
+
+	/// Dash lengths to apply, falling back to empty when [`Self::dash_lengths`] is `None` (mixed).
+	pub fn effective_dash_lengths(&self) -> Vec<f64> {
+		self.dash_lengths.clone().unwrap_or_default()
+	}
+
+	/// Applies a stroke to a freshly created `layer` using the tool's currently selected color, weight, and stroke options (align, cap, join, etc.).
+	/// Used by the drawing tools at shape-creation time so new shapes inherit the popover's options instead of defaulting to the `Stroke` struct's defaults.
+	pub fn apply_stroke_to_new_layer(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		if !self.stroke.is_active() {
+			return;
+		}
+		let Some(FillChoice::Solid(color)) = &self.stroke.fill_choice else { return };
+		let stroke = graphene_std::vector::style::Stroke {
+			color: Some(*color),
+			weight: self.effective_line_weight(),
+			align: self.stroke_align.unwrap_or_default(),
+			cap: self.stroke_cap.unwrap_or_default(),
+			join: self.stroke_join.unwrap_or_default(),
+			join_miter_limit: self.miter_limit.unwrap_or(4.),
+			paint_order: self.paint_order.unwrap_or_default(),
+			dash_lengths: self.effective_dash_lengths(),
+			dash_offset: self.dash_offset.unwrap_or(0.),
+			transform: glam::DAffine2::IDENTITY,
+		};
+		responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+	}
 }
 
-/// Builds a `FillChoice::Solid` from a linear-space color, applying gamma conversion to display sRGB.
-/// Common helper used throughout the color-syncing code where working colors (linear) flow into swatches that store gamma-encoded colors.
-pub fn solid_gamma(color: Color) -> FillChoice {
-	FillChoice::Solid(color.to_gamma_srgb())
+/// Builds a `FillChoice::Solid` from a color.
+pub fn solid(color: Color) -> FillChoice {
+	FillChoice::Solid(color)
 }
 
 /// The fill working color (the source for the fill swatch when nothing is selected).
@@ -173,8 +218,8 @@ pub fn sync_color_options(
 	document: &DocumentMessageHandler,
 	selection_changed: bool,
 ) -> bool {
-	let fill_fallback = solid_gamma(fill_working_color(global, drawing.colors_swapped));
-	let stroke_fallback = solid_gamma(stroke_working_color(global, drawing.colors_swapped));
+	let fill_fallback = solid(fill_working_color(global, drawing.colors_swapped));
+	let stroke_fallback = solid(stroke_working_color(global, drawing.colors_swapped));
 
 	let mut changed = false;
 
@@ -250,12 +295,75 @@ pub fn sync_drawing_state(drawing: &mut DrawingToolState, natural_fill_enabled: 
 		needs_refresh = true;
 	}
 
+	needs_refresh |= sync_stroke_options(drawing, document);
+
 	needs_refresh
+}
+
+/// Reads the stroke proto-node inputs (align, cap, join, miter limit, paint order, dash lengths, dash offset) across the selection and updates
+/// the matching fields on `drawing`. Each field becomes `None` (mixed) when selected strokes disagree. With no selection, fields are left as-is.
+fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessageHandler) -> bool {
+	let strokes: Vec<_> = document
+		.network_interface
+		.selected_nodes()
+		.selected_layers_except_artboards(&document.network_interface)
+		.filter_map(|layer| graph_modification_utils::get_stroke_options(layer, &document.network_interface))
+		.collect();
+	if strokes.is_empty() {
+		return false;
+	}
+
+	fn unanimous<T: PartialEq + Clone>(values: impl IntoIterator<Item = T>) -> Option<T> {
+		let mut iter = values.into_iter();
+		let first = iter.next()?;
+		iter.all(|v| v == first).then_some(first)
+	}
+
+	let new_align = unanimous(strokes.iter().map(|s| s.align));
+	let new_cap = unanimous(strokes.iter().map(|s| s.cap));
+	let new_join = unanimous(strokes.iter().map(|s| s.join));
+	let new_miter = unanimous(strokes.iter().map(|s| s.miter_limit));
+	let new_paint_order = unanimous(strokes.iter().map(|s| s.paint_order));
+	let new_dash_lengths = unanimous(strokes.iter().map(|s| &s.dash_lengths)).cloned();
+	let new_dash_offset = unanimous(strokes.iter().map(|s| s.dash_offset));
+
+	let mut changed = false;
+
+	if drawing.stroke_align != new_align {
+		drawing.stroke_align = new_align;
+		changed = true;
+	}
+	if drawing.stroke_cap != new_cap {
+		drawing.stroke_cap = new_cap;
+		changed = true;
+	}
+	if drawing.stroke_join != new_join {
+		drawing.stroke_join = new_join;
+		changed = true;
+	}
+	if drawing.miter_limit != new_miter {
+		drawing.miter_limit = new_miter;
+		changed = true;
+	}
+	if drawing.paint_order != new_paint_order {
+		drawing.paint_order = new_paint_order;
+		changed = true;
+	}
+	if drawing.dash_lengths != new_dash_lengths {
+		drawing.dash_lengths = new_dash_lengths;
+		changed = true;
+	}
+	if drawing.dash_offset != new_dash_offset {
+		drawing.dash_offset = new_dash_offset;
+		changed = true;
+	}
+
+	changed
 }
 
 /// Same as [`sync_color_options`] but for tools that only have a fill option (e.g., text). The fill follows the given working color when nothing is selected.
 pub fn sync_fill_only(fill: &mut ToolColorOptions, natural_fill_enabled: bool, fill_color: Color, document: &DocumentMessageHandler, selection_changed: bool) -> bool {
-	let fill_fallback = solid_gamma(fill_color);
+	let fill_fallback = solid(fill_color);
 
 	let new_fill = if let Some(state) = graph_modification_utils::selected_fill_state(document) {
 		let active = state.enabled == Some(true);
@@ -308,11 +416,7 @@ pub fn apply_fill_only_color_pick(fill: &mut ToolColorOptions, fill_choice: Fill
 		}
 		graph_modification_utils::set_fill_for_selected_layers(fill_choice, document, responses);
 	} else if let FillChoice::Solid(color) = fill_choice {
-		// Swatch is gamma; working colors are linear.
-		responses.add(ToolMessage::SelectWorkingColor {
-			color: color.to_linear_srgb(),
-			primary: slot_is_primary,
-		});
+		responses.add(ToolMessage::SelectWorkingColor { color, primary: slot_is_primary });
 	}
 }
 
@@ -327,9 +431,8 @@ pub fn apply_stroke_color_pick(drawing: &mut DrawingToolState, color: Option<Col
 		}
 		graph_modification_utils::set_stroke_color_for_selected_layers(color, drawing.effective_line_weight(), document, responses);
 	} else if let Some(color) = color {
-		// Swatch is gamma; working colors are linear.
 		responses.add(ToolMessage::SelectWorkingColor {
-			color: color.to_linear_srgb(),
+			color,
 			primary: !drawing.colors_swapped,
 		});
 	}
@@ -350,14 +453,14 @@ pub fn apply_fill_only_enabled(fill: &mut ToolColorOptions, enabled: bool, worki
 		// Mixed re-tick has no per-layer color to restore; fall back to the working color and keep tracking it.
 		let fill_choice = fill.fill_choice.clone().unwrap_or_else(|| {
 			fill.tracks_working_color = true;
-			solid_gamma(working_color)
+			solid(working_color)
 		});
 		fill.fill_choice = Some(fill_choice.clone());
 		graph_modification_utils::set_fill_for_selected_layers(fill_choice, document, responses);
 	} else {
 		// Unticking from mixed: capture the working color as the saved value so the swatch keeps following the link.
 		if fill.fill_choice.is_none() {
-			fill.fill_choice = Some(solid_gamma(working_color));
+			fill.fill_choice = Some(solid(working_color));
 			fill.tracks_working_color = true;
 		}
 		graph_modification_utils::remove_fill_for_selected_layers(document, responses);
@@ -373,13 +476,13 @@ pub fn apply_stroke_enabled(drawing: &mut DrawingToolState, enabled: bool, globa
 	if enabled {
 		let stroke_choice = drawing.stroke.fill_choice.clone().unwrap_or_else(|| {
 			drawing.stroke.tracks_working_color = true;
-			solid_gamma(stroke_working_color(global, drawing.colors_swapped))
+			solid(stroke_working_color(global, drawing.colors_swapped))
 		});
 		drawing.stroke.fill_choice = Some(stroke_choice.clone());
 		graph_modification_utils::set_stroke_color_for_selected_layers(stroke_choice.as_solid(), drawing.effective_line_weight(), document, responses);
 	} else {
 		if drawing.stroke.fill_choice.is_none() {
-			drawing.stroke.fill_choice = Some(solid_gamma(stroke_working_color(global, drawing.colors_swapped)));
+			drawing.stroke.fill_choice = Some(solid(stroke_working_color(global, drawing.colors_swapped)));
 			drawing.stroke.tracks_working_color = true;
 		}
 		graph_modification_utils::remove_stroke_for_selected_layers(document, responses);
@@ -404,14 +507,14 @@ pub fn apply_working_colors(drawing: &mut DrawingToolState, global: &DocumentToo
 /// Refreshes a single swatch from the given working color, subject to the rules in [`apply_working_colors`].
 pub fn refresh_slot_working_color(slot: &mut ToolColorOptions, working_color: Color, document: &DocumentMessageHandler) {
 	if slot.fill_choice.is_some() && (!has_selection(document) || slot.tracks_working_color) {
-		slot.fill_choice = Some(solid_gamma(working_color));
+		slot.fill_choice = Some(solid(working_color));
 	}
 }
 
 /// Resets the tool's swatches to the working colors. Called on tool deactivation and shape-mode changes.
 pub fn reset_colors_on_deactivation(drawing: &mut DrawingToolState, global: &DocumentToolData) {
-	drawing.fill.fill_choice = Some(solid_gamma(fill_working_color(global, drawing.colors_swapped)));
-	drawing.stroke.fill_choice = Some(solid_gamma(stroke_working_color(global, drawing.colors_swapped)));
+	drawing.fill.fill_choice = Some(solid(fill_working_color(global, drawing.colors_swapped)));
+	drawing.stroke.fill_choice = Some(solid(stroke_working_color(global, drawing.colors_swapped)));
 	drawing.fill.tracks_working_color = true;
 	drawing.stroke.tracks_working_color = true;
 }

@@ -72,7 +72,9 @@ impl TextContext {
 
 		builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
 		builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
-		builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(std::borrow::Cow::Owned(font_family)))));
+		builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(std::borrow::Cow::Owned(
+			font_family,
+		)))));
 		builder.push_default(StyleProperty::FontWeight(font_info.weight()));
 		builder.push_default(StyleProperty::FontStyle(font_info.style()));
 		builder.push_default(StyleProperty::FontWidth(font_info.width()));
@@ -81,7 +83,7 @@ impl TextContext {
 		let mut layout: Layout<()> = builder.build(text);
 
 		layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
-		layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
+		layout.align(typesetting.align.into(), AlignmentOptions::default());
 
 		Some(layout)
 	}

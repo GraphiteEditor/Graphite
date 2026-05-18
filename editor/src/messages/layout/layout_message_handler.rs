@@ -1,7 +1,8 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use graphene_std::vector::style::FillChoice;
+use graphene_std::color::SRGBA8;
+use graphene_std::vector::style::FillChoiceUI;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -60,6 +61,19 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			}
 			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
+			}
+			LayoutMessage::WidgetValueDragDrop { layout_target, widget_id } => {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+					warn!("WidgetValueDragDrop referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+					warn!("WidgetValueDragDrop referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				if let Widget::IconButton(icon_button) = &mut *widget_instance.widget {
+					responses.add((icon_button.on_drag_drop.callback)(icon_button));
+				}
 			}
 		}
 	}
@@ -179,11 +193,11 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let Ok(fill_choice) = serde_json::from_value::<FillChoice>(value) else {
-							warn!("ColorInput update was not able to be parsed as FillChoice: {color_button:?}");
+						let Ok(fill_choice_ui) = serde_json::from_value::<FillChoiceUI>(value) else {
+							warn!("ColorInput update was not able to be parsed as FillChoiceUI: {color_button:?}");
 							return;
 						};
-						color_button.value = fill_choice;
+						color_button.value = fill_choice_ui;
 						(color_button.on_update.callback)(color_button)
 					}
 				};
@@ -496,25 +510,14 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 			}
 			Widget::SpectrumInput(spectrum_input) => {
 				spectrum_input.track_css = spectrum_input.track.to_css_linear_gradient();
-				spectrum_input.track_start_css = spectrum_input
-					.track
-					.color
-					.first()
-					.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma()))
-					.unwrap_or_else(|| "black".to_string());
-				spectrum_input.track_end_css = spectrum_input
-					.track
-					.color
-					.last()
-					.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma()))
-					.unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_start_css = spectrum_input.track.color.first().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
+				spectrum_input.track_end_css = spectrum_input.track.color.last().map(|color| color.to_css_hex()).unwrap_or_else(|| "black".to_string());
 			}
 			Widget::ColorComparisonInput(comparison) => {
-				use graphene_std::Color;
-				let contrasting = |color: Option<Color>| format!("#{}", color.map_or(Color::BLACK, |color| color.contrasting_text_color_from_gamma()).to_rgba_hex_srgb_from_gamma());
-				comparison.new_color_css = comparison.new_color.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma())).unwrap_or_default();
+				let contrasting = |color: Option<SRGBA8>| color.map_or(SRGBA8::BLACK, |color| color.contrasting_text_color()).to_css_hex();
+				comparison.new_color_css = comparison.new_color.map(|color| color.to_css_hex()).unwrap_or_default();
 				comparison.new_color_contrasting = contrasting(comparison.new_color);
-				comparison.old_color_css = comparison.old_color.map(|color| format!("#{}", color.to_rgba_hex_srgb_from_gamma())).unwrap_or_default();
+				comparison.old_color_css = comparison.old_color.map(|color| color.to_css_hex()).unwrap_or_default();
 				comparison.old_color_contrasting = contrasting(comparison.old_color);
 			}
 			_ => {}

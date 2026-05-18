@@ -1,8 +1,8 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
-import type { PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { DockingSplitDirection, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-export type DockingEdge = "Left" | "Right" | "Top" | "Bottom" | "Center";
+export type DockingEdge = DockingSplitDirection | "Center";
 
 export type PanelDragState = {
 	active: boolean;

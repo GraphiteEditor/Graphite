@@ -4,7 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Panel from "/src/components/window/Panel.svelte";
 	import type { PortfolioStore } from "/src/stores/portfolio";
-	import type { DocumentInfo, EditorWrapper, PanelGroupState, PanelLayoutSubdivision } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { DockingSplitDirection, DocumentInfo, EditorWrapper, PanelGroupState, PanelLayoutSubdivision, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const MIN_PANEL_SIZE = 100;
 	const DOUBLE_CLICK_MILLISECONDS = 500;
@@ -85,7 +85,7 @@
 			sizeOverrides = sizeOverrides;
 
 			const allSizes = children.map((child, i) => sizeOverrides[i] ?? child.size);
-			editor.setPanelGroupSizes(splitPath, allSizes);
+			editor.setPanelGroupSizes(new Uint32Array(splitPath), new Float64Array(allSizes));
 			return;
 		}
 
@@ -140,7 +140,7 @@
 			// Persist the resized sizes to the backend
 			if ("Split" in subdivision) {
 				const allSizes = subdivision.Split.children.map((child, i) => sizeOverrides[i] ?? child.size);
-				editor.setPanelGroupSizes(splitPath, allSizes);
+				editor.setPanelGroupSizes(new Uint32Array(splitPath), new Float64Array(allSizes));
 			}
 		};
 
@@ -179,7 +179,7 @@
 		editor.moveAllPanelTabs(BigInt(sourcePanelId), BigInt(targetPanelId), insertIndex);
 	}
 
-	function splitDrop(targetPanelId: string, direction: string, tabs: string[], activeTabIndex: number) {
+	function splitDrop(targetPanelId: string, direction: DockingSplitDirection, tabs: PanelType[], activeTabIndex: number) {
 		editor.splitPanelGroup(BigInt(targetPanelId), direction, tabs, activeTabIndex);
 	}
 

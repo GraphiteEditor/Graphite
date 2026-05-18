@@ -8,12 +8,13 @@ use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles,
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{
-	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_line_weight, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation,
-	swap_fill_and_stroke, sync_drawing_state,
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation, swap_fill_and_stroke,
+	sync_drawing_state,
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -121,7 +122,7 @@ pub enum PenOverlayMode {
 pub enum PenOptionsUpdate {
 	FillColor(FillChoice),
 	FillEnabled(bool),
-	LineWeight(f64),
+	StrokeOption(StrokeOptionsUpdate),
 	StrokeColor(Option<Color>),
 	StrokeEnabled(bool),
 	SwapFillAndStroke,
@@ -141,29 +142,6 @@ impl ToolMetadata for PenTool {
 	}
 }
 
-fn create_weight_widget(line_weight: Option<f64>, disabled: bool) -> WidgetInstance {
-	NumberInput::new(line_weight)
-		.unit(" px")
-		.label("Weight")
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.min_width(100)
-		.narrow(true)
-		.disabled(disabled)
-		.on_update(|number_input: &NumberInput| {
-			if let Some(value) = number_input.value {
-				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::LineWeight(value),
-				}
-				.into()
-			} else {
-				Message::NoOp
-			}
-		})
-		.on_commit(|_| DocumentMessage::StartTransaction.into())
-		.widget_instance()
-}
-
 impl LayoutHolder for PenTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.drawing.fill.create_widgets(
@@ -176,7 +154,7 @@ impl LayoutHolder for PenTool {
 			},
 			|color: &ColorInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::FillColor(color.value.clone()),
+					options: PenOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 				}
 				.into()
 			},
@@ -206,16 +184,19 @@ impl LayoutHolder for PenTool {
 			},
 			|color: &ColorInput| {
 				PenToolMessage::UpdateOptions {
-					options: PenOptionsUpdate::StrokeColor(color.value.as_solid()),
+					options: PenOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
-
 		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
-		widgets.push(create_weight_widget(self.options.drawing.line_weight, weight_disabled));
+		widgets.push(create_stroke_options_popover_widget(&self.options.drawing, weight_disabled, |update| {
+			PenToolMessage::UpdateOptions {
+				options: PenOptionsUpdate::StrokeOption(update),
+			}
+			.into()
+		}));
 
 		widgets.push(Separator::new(SeparatorStyle::Section).widget_instance());
 
@@ -277,8 +258,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				self.options.pen_overlay_mode = overlay_mode_type;
 				responses.add(OverlaysMessage::Draw);
 			}
-			PenOptionsUpdate::LineWeight(line_weight) => {
-				apply_line_weight(&mut self.options.drawing, line_weight, context.document, responses);
+			PenOptionsUpdate::StrokeOption(update) => {
+				apply_stroke_option(&mut self.options.drawing, update, context.document, responses);
 			}
 			PenOptionsUpdate::FillColor(fill_choice) => {
 				apply_fill_color_pick(&mut self.options.drawing, fill_choice, context.document, responses);
@@ -1316,7 +1297,7 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.drawing.stroke.apply_stroke(tool_options.drawing.effective_line_weight(), layer, responses);
+		tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
 		tool_options.drawing.fill.apply_fill(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;

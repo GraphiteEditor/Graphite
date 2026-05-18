@@ -1,10 +1,11 @@
 use crate::render_ext::RenderExt;
-use crate::to_peniko::BlendModeExt;
+use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
+use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
@@ -273,19 +274,20 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 
 	let alpha = bg.a();
 
-	// Un-premultiply, then convert to gamma sRGB
-	let srgb = if alpha > f32::EPSILON {
-		Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb()
+	// Un-premultiply, then encode to gamma sRGB to do the composite in display space.
+	let (gamma_r, gamma_g, gamma_b) = if alpha > f32::EPSILON {
+		let [r, g, b, _] = Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb_channels();
+		(r, g, b)
 	} else {
-		Color::TRANSPARENT
+		(0., 0., 0.)
 	};
 
-	// Composite over black in sRGB space, then convert back to linear for luminance
-	let composited = Color::from_rgbaf32_unchecked(srgb.r() * alpha, srgb.g() * alpha, srgb.b() * alpha, 1.).to_linear_srgb();
+	// Composite over black in sRGB space (premultiplied by alpha), then decode to linear for the luminance test.
+	let composited = Color::from_gamma_srgb_channels(gamma_r * alpha, gamma_g * alpha, gamma_b * alpha, 1.);
 
 	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
 
-	if composited.luminance_srgb() > threshold { Color::BLACK } else { Color::WHITE }
+	if composited.luminance_rec_709() > threshold { Color::BLACK } else { Color::WHITE }
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -311,7 +313,7 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 	};
 
 	let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-	let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+	let outline_color_peniko = SRGBA8::from(outline_color).to_peniko_color();
 
 	(outline_stroke, outline_color_peniko)
 }
@@ -573,7 +575,7 @@ impl Render for List<Artboard> {
 
 			// Background
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", background.to_rgb_hex_srgb_from_gamma()));
+				attributes.push("fill", format!("#{}", SRGBA8::from(background).to_rgb_hex()));
 				if background.a() < 1. {
 					attributes.push("fill-opacity", ((background.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -629,7 +631,7 @@ impl Render for List<Artboard> {
 
 			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
 
-			let color = peniko::Color::new([background.r(), background.g(), background.b(), background.a()]);
+			let color = SRGBA8::from(background).to_peniko_color();
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
 			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
 			scene.pop_layer();
@@ -1182,7 +1184,7 @@ impl Render for List<Vector> {
 			// Closures to avoid duplicated fill/stroke drawing logic
 			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath, fill_rule: peniko::Fill| match element.style.fill() {
 				Fill::Solid(color) => {
-					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
+					let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 				}
 				Fill::Gradient(gradient) => {
@@ -1190,7 +1192,7 @@ impl Render for List<Vector> {
 					for (position, color, _) in gradient.stops.interpolated_samples() {
 						stops.push(peniko::ColorStop {
 							offset: position as f32,
-							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+							color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
 						});
 					}
 
@@ -1267,7 +1269,7 @@ impl Render for List<Vector> {
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
 				if let Some(stroke) = element.style.stroke() {
 					let color = match stroke.color {
-						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
+						Some(color) => SRGBA8::from(color).to_peniko_color(),
 						None => peniko::Color::TRANSPARENT,
 					};
 					let cap = match stroke.cap {
@@ -1811,7 +1813,7 @@ impl Render for List<Color> {
 				const MAX: f64 = 1e7;
 				attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 
-				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+				attributes.push("fill", format!("#{}", SRGBA8::from(*color).to_rgb_hex()));
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -1838,7 +1840,7 @@ impl Render for List<Color> {
 			let blend_mode = blend_mode_attr.to_peniko();
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
+			let vello_color = SRGBA8::from(*color).to_peniko_color();
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
@@ -1895,7 +1897,7 @@ impl Render for List<GradientStops> {
 
 				let mut stop_string = String::new();
 				for (position, color, original_midpoint) in gradient.interpolated_samples() {
-					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
+					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, SRGBA8::from(color).to_rgb_hex());
 					if color.a() < 1. {
 						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
 					}
@@ -1977,7 +1979,7 @@ impl Render for List<GradientStops> {
 			for (position, color, _) in gradient.interpolated_samples() {
 				stops.push(peniko::ColorStop {
 					offset: position as f32,
-					color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+					color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
 				})
 			}
 

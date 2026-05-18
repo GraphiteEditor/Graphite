@@ -6,8 +6,8 @@ use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER};
 use editor::application::Editor;
 use editor::messages::input_mapper::utility_types::input_keyboard::Key;
 use editor::messages::prelude::*;
+use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
-use graphene_std::raster::color::Color;
 use js_sys::{Object, Reflect};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -119,7 +119,7 @@ pub(crate) fn auto_save_all_documents() {
 	});
 }
 
-pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
+pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<SRGBA8>)]) {
 	let window = match window() {
 		Some(window) => window,
 		None => {
@@ -167,11 +167,12 @@ pub(crate) fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) 
 			.expect("2d context was not found")
 			.dyn_into::<CanvasRenderingContext2d>()
 			.expect("Failed to cast context to CanvasRenderingContext2d");
-		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
-		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
+		// `SRGBA8` is `#[repr(C)]` of four `u8`s, so the data buffer is already the byte format the canvas expects
+		let u8_data: &[u8] = bytemuck::cast_slice(&image.data);
+		let clamped_u8_data = wasm_bindgen::Clamped(u8_data);
 		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
 			Ok(image_data_obj) => {
-				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
+				if context.put_image_data(&image_data_obj, 0, 0).is_err() {
 					error!("Failed to put image data on canvas for id: {placeholder_id}");
 				}
 			}
