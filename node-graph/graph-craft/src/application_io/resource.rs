@@ -1,7 +1,7 @@
-#[cfg(target_family = "wasm")]
-pub mod indexed_db;
 #[cfg(not(target_family = "wasm"))]
 pub mod mmap;
+#[cfg(target_family = "wasm")]
+pub mod opfs;
 
 use graphene_application_io::{Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
 use std::collections::HashMap;

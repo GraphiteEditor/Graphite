@@ -6,10 +6,10 @@ pub mod resource;
 
 pub use graphene_application_io::{ApplicationIo, Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
 pub use resource::HashMapResourceStorage;
-#[cfg(target_family = "wasm")]
-pub use resource::indexed_db::IndexedDbResourceStorage;
 #[cfg(not(target_family = "wasm"))]
 pub use resource::mmap::MmapResourceStorage;
+#[cfg(target_family = "wasm")]
+pub use resource::opfs::OpfsResourceStorage;
 
 pub struct PlatformApplicationIo {
 	#[cfg(feature = "wgpu")]

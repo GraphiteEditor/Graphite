@@ -66,6 +66,17 @@ web-sys = { workspace = true, features = [
 	"DomStringList",
 	"Event",
 	"EventTarget",
+	"Window",
+	"StorageManager",
+	"FileSystemDirectoryHandle",
+	"FileSystemFileHandle",
+	"FileSystemGetFileOptions",
+	"FileSystemGetDirectoryOptions",
+	"FileSystemWritableFileStream",
+	"FileSystemRemoveOptions",
+	"WritableStream",
+	"File",
+	"Blob",
 ] }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }

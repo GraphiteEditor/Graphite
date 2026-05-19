@@ -24,7 +24,7 @@ use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCata
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
-use graph_craft::application_io::IndexedDbResourceStorage;
+use graph_craft::application_io::OpfsResourceStorage;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::graphene_hash::CacheHashWrapper;
@@ -83,10 +83,10 @@ impl EditorWrapper {
 			_ => unreachable!(),
 		};
 
-		let storage: Box<dyn graph_craft::application_io::ResourceStorage> = match IndexedDbResourceStorage::load("graphite-resources").await {
+		let storage: Box<dyn graph_craft::application_io::ResourceStorage> = match OpfsResourceStorage::load("resources").await {
 			Ok(storage) => Box::new(storage),
 			Err(error) => {
-				log::error!("Failed to open IndexedDB resource storage, falling back to in-memory: {error:?}");
+				log::error!("Failed to open OPFS resource storage, falling back to in-memory: {error:?}");
 				Box::new(graph_craft::application_io::HashMapResourceStorage::new())
 			}
 		};
