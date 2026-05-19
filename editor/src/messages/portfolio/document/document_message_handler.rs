@@ -2393,6 +2393,7 @@ impl DocumentMessageHandler {
 			let has_fill = !matches!(style.fill, Fill::None);
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
+			// FIXME: Consider if we need to check ATTR_STROKE_PAINT_GRAPHIC
 			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke());
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.

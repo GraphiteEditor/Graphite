@@ -1,4 +1,4 @@
-use crate::render_ext::RenderExt;
+use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::blending::BlendMode;
@@ -6,7 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_FILL_GRAPHIC, Item, List};
+use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -18,7 +18,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::graphic::fill_to_graphic_list;
+use graphic_types::graphic::{color_to_graphic_list, fill_to_graphic_list};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -367,6 +367,7 @@ fn emit_svg_fill_path(
 					bounds_matrix,
 					transformed_bounds_matrix,
 					render_params,
+					PaintTarget::Fill,
 				)
 			})
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
@@ -1004,8 +1005,17 @@ impl Render for List<Vector> {
 				.or_else(|| fill_to_graphic_list(vector.style.fill()).map(Cow::Owned));
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
+			let stroke_paint_graphic_list = self
+				.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index)
+				.filter(|list| !list.is_empty())
+				.map(Cow::Borrowed)
+				.or_else(|| color_to_graphic_list(vector.style.stroke().and_then(|s| s.color())).map(Cow::Owned));
+			let stroke_paint_graphic = stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0));
+
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
+			let can_draw_aligned_stroke = path_is_closed
+				&& vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
+				&& stroke_paint_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
 			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.is_opaque()) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
@@ -1098,21 +1108,47 @@ impl Render for List<Vector> {
 				render_params.aligned_strokes = can_draw_aligned_stroke;
 				render_params.override_paint_order = override_paint_order;
 
-				let stroke_attribute = vector
+				let stroke_shape_attribute = vector
 					.style
 					.stroke()
 					.map(|stroke| {
-						stroke.render(
-							defs,
-							item_transform,
-							element_transform,
-							applied_stroke_transform,
-							bounds_matrix,
-							transformed_bounds_matrix,
-							&render_params,
-						)
+						if stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
+							stroke.render(
+								defs,
+								item_transform,
+								element_transform,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								&render_params,
+								PaintTarget::Stroke,
+							)
+						} else {
+							String::new()
+						}
 					})
 					.unwrap_or_default();
+
+				// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
+				let stroke_paint_attribute = if vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) {
+					stroke_paint_graphic_list
+						.as_deref()
+						.map(|list| {
+							list.render(
+								defs,
+								item_transform,
+								element_transform,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								&render_params,
+								PaintTarget::Stroke,
+							)
+						})
+						.unwrap_or_else(|| r#" stroke="none""#.to_string())
+				} else {
+					String::new()
+				};
 
 				let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
 					r#" fill="none""#.to_string()
@@ -1128,6 +1164,7 @@ impl Render for List<Vector> {
 								bounds_matrix,
 								transformed_bounds_matrix,
 								&render_params,
+								PaintTarget::Fill,
 							)
 						})
 						.unwrap_or_else(|| r#" fill="none""#.to_string())
@@ -1138,7 +1175,8 @@ impl Render for List<Vector> {
 					attributes.push(mask_type.to_attribute(), selector);
 				}
 				attributes.push_val(fill_attribute);
-				attributes.push_val(stroke_attribute);
+				attributes.push_val(stroke_shape_attribute);
+				attributes.push_val(stroke_paint_attribute);
 
 				if vector.is_branching() && !use_face_fill {
 					attributes.push("fill-rule", "evenodd");
@@ -1218,6 +1256,7 @@ impl Render for List<Vector> {
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = element.style.stroke();
+			// FIXME: Need to add Graphic.is_fully_transparent check
 			let can_draw_aligned_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;

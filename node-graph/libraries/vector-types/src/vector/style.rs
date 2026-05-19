@@ -573,7 +573,7 @@ impl Stroke {
 	}
 
 	pub fn has_renderable_stroke(&self) -> bool {
-		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
+		self.weight > 0.
 	}
 }
 
