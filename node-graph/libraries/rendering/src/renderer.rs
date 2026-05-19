@@ -337,15 +337,6 @@ fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_p
 	scene.stroke(&outline_stroke, Affine::IDENTITY, outline_color_peniko, None, &outline_path);
 }
 
-/// Returns true if the resolved fill graphic fully and opaquely covers the path interior.
-fn fill_covers_opaquely(fill_graphic: Option<&Graphic>) -> bool {
-	match fill_graphic {
-		Some(Graphic::Color(list)) => list.element(0).is_some_and(|c| c.a() >= 1.0),
-		Some(Graphic::Gradient(list)) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.a() >= 1.0)),
-		_ => false,
-	}
-}
-
 /// Emits an SVG `<path>` element with the resolved fill attribute corresponding to the given fill_graphic.
 #[allow(clippy::too_many_arguments)]
 fn emit_svg_fill_path(
@@ -1015,7 +1006,7 @@ impl Render for List<Vector> {
 
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
-			let can_use_paint_order = !(fill_graphic.is_none() || !fill_covers_opaquely(fill_graphic) || mask_type == MaskType::Clip);
+			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.is_opaque()) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
@@ -2185,86 +2176,5 @@ impl SvgRenderAttrs<'_> {
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
-	}
-}
-
-#[cfg(test)]
-mod svg_fill_helper_tests {
-	use vector_types::GradientStop;
-
-	use super::*;
-
-	fn color_graphic(alpha: f64) -> Graphic {
-		let color = Color::from_rgbaf32(1.0, 0.0, 0.0, alpha as f32).unwrap();
-		Graphic::Color(List::new_from_element(color))
-	}
-
-	fn gradient_graphic(gradient: GradientStops) -> Graphic {
-		let mut gradient_list = List::new_from_element(gradient);
-		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
-		Graphic::Gradient(gradient_list)
-	}
-
-	#[test]
-	fn opaquely_none_is_false() {
-		assert!(!fill_covers_opaquely(None));
-	}
-
-	#[test]
-	fn opaquely_opaque_color_is_true() {
-		let g = color_graphic(1.0);
-		assert!(fill_covers_opaquely(Some(&g)));
-	}
-
-	#[test]
-	fn opaquely_transparent_color_is_false() {
-		let g = color_graphic(0.5);
-		assert!(!fill_covers_opaquely(Some(&g)));
-	}
-
-	#[test]
-	fn opaquely_vector_is_false() {
-		let g = Graphic::Vector(List::default());
-		assert!(!fill_covers_opaquely(Some(&g)));
-	}
-
-	#[test]
-	fn opaquely_gradient_all_opaque_is_true() {
-		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
-		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
-		let gradient = GradientStops::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: color_1,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: color_2,
-			},
-		]);
-		let g = gradient_graphic(gradient);
-		assert!(fill_covers_opaquely(Some(&g)));
-	}
-
-	#[test]
-	fn opaquely_transparent_gradient_is_false() {
-		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 0.5).unwrap();
-		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
-		let gradient = GradientStops::new(vec![
-			GradientStop {
-				position: 0.,
-				midpoint: 0.5,
-				color: color_1,
-			},
-			GradientStop {
-				position: 1.,
-				midpoint: 0.5,
-				color: color_2,
-			},
-		]);
-		let g = gradient_graphic(gradient);
-		assert!(!fill_covers_opaquely(Some(&g)));
 	}
 }
