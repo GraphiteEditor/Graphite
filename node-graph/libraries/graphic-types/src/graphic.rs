@@ -365,6 +365,14 @@ impl Graphic {
 			_ => false,
 		}
 	}
+
+	pub fn is_opaque(&self) -> bool {
+		match self {
+			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
+			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.a() >= 1. - f32::EPSILON)),
+			_ => false,
+		}
+	}
 }
 
 impl BoundingBox for Graphic {
@@ -522,5 +530,81 @@ mod tests {
 		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
 		let flattened: List<Vector> = group.into_flattened_list();
 		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+	}
+}
+
+#[cfg(test)]
+mod graphic_is_opaque_tests {
+	use vector_types::{GradientSpreadMethod, GradientStop};
+
+	use super::*;
+
+	fn color_graphic(alpha: f64) -> Graphic {
+		let color = Color::from_rgbaf32(1.0, 0.0, 0.0, alpha as f32).unwrap();
+		Graphic::Color(List::new_from_element(color))
+	}
+
+	fn gradient_graphic(gradient: GradientStops) -> Graphic {
+		let mut gradient_list = List::new_from_element(gradient);
+		gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
+		Graphic::Gradient(gradient_list)
+	}
+
+	#[test]
+	fn opaque_color_is_opaque() {
+		let g = color_graphic(1.0);
+		assert!(g.is_opaque());
+	}
+
+	#[test]
+	fn transparent_color_is_not_opaque() {
+		let g = color_graphic(0.5);
+		assert!(!g.is_opaque());
+	}
+
+	#[test]
+	fn vector_is_not_opaque() {
+		let g = Graphic::Vector(List::default());
+		assert!(!g.is_opaque());
+	}
+
+	#[test]
+	fn gradient_with_all_opaque_stops_is_opaque() {
+		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let gradient = GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: color_1,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: color_2,
+			},
+		]);
+		let g = gradient_graphic(gradient);
+		assert!(g.is_opaque());
+	}
+
+	#[test]
+	fn gradient_with_transparent_stop_is_not_opaque() {
+		let color_1 = Color::from_rgbaf32(1.0, 0.0, 0.0, 0.5).unwrap();
+		let color_2 = Color::from_rgbaf32(1.0, 0.0, 0.0, 1.).unwrap();
+		let gradient = GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: color_1,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: color_2,
+			},
+		]);
+		let g = gradient_graphic(gradient);
+		assert!(!g.is_opaque());
 	}
 }
