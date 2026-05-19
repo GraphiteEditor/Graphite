@@ -180,7 +180,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 }
 
 /// Converts a `Fill` enum into the `List<Graphic>` representation used as paint storage.
-/// TODO: Remove once all paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
 pub fn fill_to_graphic_list(fill: &Fill) -> Option<List<Graphic>> {
 	match fill {
 		Fill::None => None,
@@ -195,6 +195,12 @@ pub fn fill_to_graphic_list(fill: &Fill) -> Option<List<Graphic>> {
 			Some(List::new_from_element(Graphic::Gradient(gradient_list)))
 		}
 	}
+}
+
+/// Converts a `Color` into the `List<Graphic>` representation used as paint storage.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn color_to_graphic_list(color: Option<Color>) -> Option<List<Graphic>> {
+	color.as_ref().map(|color| List::new_from_element((*color).into()))
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
