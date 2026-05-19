@@ -40,7 +40,7 @@ impl RenderExt for List<Color> {
 		_transformed_bounds: DAffine2,
 		_render_params: &RenderParams,
 	) -> Self::Output {
-		let Some(color) = self.element(0) else { return String::new() };
+		let Some(color) = self.element(0) else { return r#" fill="none""#.to_string() };
 
 		let mut result = format!(r##" fill="#{}""##, SRGBA8::from(*color).to_rgb_hex());
 		if color.a() < 1. {
