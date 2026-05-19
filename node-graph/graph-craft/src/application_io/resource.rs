@@ -26,10 +26,6 @@ impl Resources for HashMapResourceStorage {
 }
 
 impl ResourceStorage for HashMapResourceStorage {
-	fn read(&mut self, hash: &ResourceHash) -> Option<Resource> {
-		self.resources.get_mut().unwrap().get(hash).cloned()
-	}
-
 	fn write(&mut self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		self.resources.get_mut().unwrap().insert(hash, Resource::new(Arc::<[u8]>::from(data)));

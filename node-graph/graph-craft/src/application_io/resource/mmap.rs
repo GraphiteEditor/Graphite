@@ -68,10 +68,6 @@ impl Resources for MmapResourceStorage {
 }
 
 impl ResourceStorage for MmapResourceStorage {
-	fn read(&mut self, hash: &ResourceHash) -> Option<Resource> {
-		self.lookup(hash)
-	}
-
 	fn write(&mut self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		let path = self.path_for(&hash);

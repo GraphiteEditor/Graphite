@@ -14,7 +14,6 @@ pub trait Resources: Send + Sync {
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'static>>;
 
 pub trait ResourceStorage: Resources {
-	fn read(&mut self, hash: &ResourceHash) -> Option<Resource>;
 	fn write(&mut self, data: &[u8]) -> ResourceHash;
 	fn contains(&mut self, hash: &ResourceHash) -> bool;
 	fn garbage_collect(&mut self, used: &[ResourceHash]);
@@ -170,9 +169,11 @@ impl Resource {
 	pub fn new<T: AsRef<[u8]> + Send + Sync + 'static>(data: T) -> Self {
 		Self { inner: Arc::new(data) }
 	}
+}
 
-	pub fn from_arc(inner: Arc<dyn AsRef<[u8]> + Send + Sync>) -> Self {
-		Self { inner }
+impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
+	fn from(val: &Resource) -> Self {
+		val.inner.clone()
 	}
 }
 

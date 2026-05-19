@@ -925,19 +925,32 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				let exported = resources.export(&Vec::from_iter(self.used_resources()));
-				self.embedded_resources = EmbeddedResources::from_iter(exported);
-				let content = self.serialize_document();
+				let resource_hashes = Vec::from_iter(self.used_resources()).into_boxed_slice();
+				let resources = resources.resources();
+				let mut document = self.clone();
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 
-				// Clear embedded resources after serialization to free memory.
-				let _ = std::mem::take(&mut self.embedded_resources);
+				responses.add(FrontendMessage::Await {
+					future: FrontendMessageFuture::new(async move {
+						let loads = resource_hashes
+							.into_iter()
+							.map(|hash| {
+								let resource = resources.load(hash);
+								async move { resource.await.map(|resource| (hash, resource)) }
+							})
+							.collect::<Vec<_>>();
 
-				responses.add(FrontendMessage::TriggerSaveDocument {
-					document_id,
-					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path,
-					folder,
-					content: content.into_bytes().into(),
+						document.embedded_resources = EmbeddedResources::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
+						let content = document.serialize_document();
+
+						FrontendMessage::TriggerSaveDocument {
+							document_id,
+							name,
+							path,
+							folder,
+							content: content.into_bytes().into(),
+						}
+					}),
 				});
 			}
 			DocumentMessage::SavedDocument { path } => {

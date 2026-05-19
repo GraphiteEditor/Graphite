@@ -75,10 +75,6 @@ impl Resources for OpfsResourceStorage {
 }
 
 impl ResourceStorage for OpfsResourceStorage {
-	fn read(&mut self, hash: &ResourceHash) -> Option<Resource> {
-		self.inner.lock().unwrap().cache.get(hash).cloned()
-	}
-
 	fn write(&mut self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		let mut guard = self.inner.lock().unwrap();

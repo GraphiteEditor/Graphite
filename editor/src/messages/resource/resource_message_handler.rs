@@ -1,5 +1,5 @@
 use crate::messages::prelude::*;
-use graph_craft::application_io::{Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
+use graph_craft::application_io::{ResourceFuture, ResourceHash, ResourceStorage, Resources};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
@@ -24,15 +24,6 @@ impl ResourceMessageHandler {
 		Self {
 			storage: Some(Arc::new(RwLock::new(resource_storage))),
 		}
-	}
-
-	pub fn export(&self, resources: &[ResourceHash]) -> Box<[(ResourceHash, Resource)]> {
-		let Some(storage) = &self.storage else {
-			log::error!("Attempted to export resources but storage is not initialized");
-			return Box::new([]);
-		};
-		let mut storage = storage.write().unwrap();
-		resources.iter().filter_map(|hash| storage.read(hash).map(|resource| (*hash, resource))).collect()
 	}
 
 	pub fn resources(&self) -> Box<dyn Resources> {

@@ -1,4 +1,7 @@
+use std::future::{Future, IntoFuture};
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 use graph_craft::application_io::ResourceHash;
 
@@ -81,4 +84,32 @@ pub struct EyedropperPreviewImage {
 	pub data: serde_bytes::ByteBuf,
 	pub width: u32,
 	pub height: u32,
+}
+
+#[derive(Clone, Default)]
+pub struct FrontendMessageFuture {
+	inner: Arc<Mutex<Option<InnerFrontendMessageFuture>>>,
+}
+
+impl FrontendMessageFuture {
+	pub fn new(future: impl Future<Output = FrontendMessage> + Send + 'static) -> Self {
+		Self {
+			inner: Arc::new(Mutex::new(Some(Box::pin(future)))),
+		}
+	}
+}
+
+type InnerFrontendMessageFuture = Pin<Box<dyn Future<Output = FrontendMessage> + Send + 'static>>;
+
+impl IntoFuture for FrontendMessageFuture {
+	type Output = FrontendMessage;
+	type IntoFuture = InnerFrontendMessageFuture;
+
+	fn into_future(self) -> Self::IntoFuture {
+		self.inner
+			.lock()
+			.unwrap_or_else(|poisoned| poisoned.into_inner())
+			.take()
+			.expect("FrontendMessageFuture can only be awaited once")
+	}
 }

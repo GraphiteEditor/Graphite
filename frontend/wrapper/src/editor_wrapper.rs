@@ -143,6 +143,14 @@ impl EditorWrapper {
 
 	// Sends a FrontendMessage to JavaScript
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
+		if let FrontendMessage::Await { future } = message {
+			let wrapper = self.clone();
+			wasm_bindgen_futures::spawn_local(async move {
+				wrapper.send_frontend_message_to_js(future.await);
+			});
+			return;
+		}
+
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(&CacheHashWrapper(image_data));
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
