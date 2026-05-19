@@ -1,6 +1,8 @@
+use std::borrow::Cow;
+
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{Item, List};
+use core_types::list::{ATTR_STROKE_PAINT_GRAPHIC, Item, List};
 use core_types::ops::ListConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::uuid::NodeId;
@@ -366,7 +368,16 @@ impl Graphic {
 			Graphic::Vector(vector) => (0..vector.len()).all(|index| {
 				let Some(element) = vector.element(index) else { return false };
 				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
-				opacity > 1. - f64::EPSILON && element.style.fill().is_opaque() && element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+				let stroke_paint_graphic_list = vector
+					.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index)
+					.filter(|list| !list.is_empty())
+					.map(Cow::Borrowed)
+					.or_else(|| color_to_graphic_list(element.style.stroke().and_then(|s| s.color())).map(Cow::Owned));
+				let stroke_paint_graphic = stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0));
+
+				opacity > 1. - f64::EPSILON
+					&& element.style.fill().is_opaque()
+					&& (element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || stroke_paint_graphic.is_none_or(|graphic| graphic.is_fully_transparent()))
 			}),
 			_ => false,
 		}
@@ -376,6 +387,15 @@ impl Graphic {
 		match self {
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.a() >= 1. - f32::EPSILON)),
+			_ => false,
+		}
+	}
+
+	pub fn is_fully_transparent(&self) -> bool {
+		match self {
+			Self::Color(list) => list.element(0).is_some_and(|c| c.a() == 0.),
+			Self::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
+			// FIXME: Write recursive check for other types
 			_ => false,
 		}
 	}

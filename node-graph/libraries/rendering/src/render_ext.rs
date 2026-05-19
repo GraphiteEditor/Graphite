@@ -12,6 +12,28 @@ use std::fmt::Write;
 use vector_types::GradientStops;
 use vector_types::gradient::GradientSpreadMethod;
 
+#[derive(Copy, Clone)]
+pub enum PaintTarget {
+	Fill,
+	Stroke,
+}
+
+impl PaintTarget {
+	fn paint_attr(self) -> &'static str {
+		match self {
+			Self::Fill => "fill",
+			Self::Stroke => "stroke",
+		}
+	}
+
+	fn opacity_attr(self) -> &'static str {
+		match self {
+			Self::Fill => "fill-opacity",
+			Self::Stroke => "stroke-opacity",
+		}
+	}
+}
+
 pub trait RenderExt {
 	type Output;
 	#[allow(clippy::too_many_arguments)]
@@ -24,6 +46,7 @@ pub trait RenderExt {
 		bounds: DAffine2,
 		transformed_bounds: DAffine2,
 		render_params: &RenderParams,
+		target: PaintTarget,
 	) -> Self::Output;
 }
 
@@ -39,12 +62,13 @@ impl RenderExt for List<Color> {
 		_bounds: DAffine2,
 		_transformed_bounds: DAffine2,
 		_render_params: &RenderParams,
+		target: PaintTarget,
 	) -> Self::Output {
 		let Some(color) = self.element(0) else { return r#" fill="none""#.to_string() };
 
-		let mut result = format!(r##" fill="#{}""##, SRGBA8::from(*color).to_rgb_hex());
+		let mut result = format!(r##" {}="#{}""##, target.paint_attr(), SRGBA8::from(*color).to_rgb_hex());
 		if color.a() < 1. {
-			let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+			let _ = write!(result, r#" {}="{}""#, target.opacity_attr(), (color.a() * 1000.).round() / 1000.);
 		}
 
 		result
@@ -64,6 +88,7 @@ impl RenderExt for List<GradientStops> {
 		bounds: DAffine2,
 		transformed_bounds: DAffine2,
 		_render_params: &RenderParams,
+		_target: PaintTarget,
 	) -> Self::Output {
 		let mut stop = String::new();
 
@@ -136,7 +161,7 @@ impl RenderExt for List<GradientStops> {
 impl RenderExt for Stroke {
 	type Output = String;
 
-	/// Provide the SVG attributes for the stroke.
+	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `List<Graphic>.render` with `PaintTarget::Stroke`.
 	fn render(
 		&self,
 		_svg_defs: &mut String,
@@ -146,9 +171,9 @@ impl RenderExt for Stroke {
 		_bounds: DAffine2,
 		_transformed_bounds: DAffine2,
 		render_params: &RenderParams,
+		_target: PaintTarget,
 	) -> Self::Output {
 		// Don't render a stroke at all if it would be invisible
-		let Some(color) = self.color else { return String::new() };
 		if !self.has_renderable_stroke() {
 			return String::new();
 		}
@@ -166,10 +191,7 @@ impl RenderExt for Stroke {
 		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, SRGBA8::from(color).to_rgb_hex());
-		if color.a() < 1. {
-			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
-		}
+		let mut attributes = String::new();
 		if let Some(mut weight) = weight {
 			if stroke_align.is_some() && render_params.aligned_strokes {
 				weight *= 2.;
@@ -210,21 +232,23 @@ impl RenderExt for List<Graphic> {
 		bounds: DAffine2,
 		transformed_bounds: DAffine2,
 		render_params: &RenderParams,
+		target: PaintTarget,
 	) -> Self::Output {
 		let fill_graphic = self.element(0);
+		let paint_attr = target.paint_attr();
 
 		match fill_graphic {
-			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params),
+			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params, target),
 			Some(Graphic::Gradient(gradient_list)) => {
-				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				format!(r##" fill="url(#{gradient_id})""##)
+				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params, target);
+				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
 				render_svg_fill_pattern(svg_defs, self, item_transform, bounds, render_params)
-					.map(|id| format!(r##" fill="url(#{id})""##))
-					.unwrap_or_else(|| r#" fill="none""#.to_string())
+					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
+					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
-			None => r#" fill="none""#.to_string(),
+			None => format!(r#" {paint_attr}="none""#),
 		}
 	}
 }
