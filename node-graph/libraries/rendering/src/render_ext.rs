@@ -1,9 +1,11 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
+use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
 use core_types::{ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
+use graphic_types::Graphic;
 use graphic_types::vector_types::gradient::GradientType;
 use graphic_types::vector_types::vector::style::{PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
@@ -12,7 +14,17 @@ use vector_types::gradient::GradientSpreadMethod;
 
 pub trait RenderExt {
 	type Output;
-	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> Self::Output;
+	#[allow(clippy::too_many_arguments)]
+	fn render(
+		&self,
+		svg_defs: &mut String,
+		item_transform: DAffine2,
+		element_transform: DAffine2,
+		stroke_transform: DAffine2,
+		bounds: DAffine2,
+		transformed_bounds: DAffine2,
+		render_params: &RenderParams,
+	) -> Self::Output;
 }
 
 impl RenderExt for List<Color> {
@@ -21,6 +33,7 @@ impl RenderExt for List<Color> {
 	fn render(
 		&self,
 		_svg_defs: &mut String,
+		_item_transform: DAffine2,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
@@ -42,7 +55,16 @@ impl RenderExt for List<GradientStops> {
 	type Output = u64;
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
+	fn render(
+		&self,
+		svg_defs: &mut String,
+		_item_transform: DAffine2,
+		element_transform: DAffine2,
+		stroke_transform: DAffine2,
+		bounds: DAffine2,
+		transformed_bounds: DAffine2,
+		_render_params: &RenderParams,
+	) -> Self::Output {
 		let mut stop = String::new();
 
 		let Some(stops) = self.element(0) else { return 0 };
@@ -118,6 +140,7 @@ impl RenderExt for Stroke {
 	fn render(
 		&self,
 		_svg_defs: &mut String,
+		_item_transform: DAffine2,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
 		_bounds: DAffine2,
@@ -173,4 +196,74 @@ impl RenderExt for Stroke {
 		}
 		attributes
 	}
+}
+
+impl RenderExt for List<Graphic> {
+	type Output = String;
+
+	fn render(
+		&self,
+		svg_defs: &mut String,
+		item_transform: DAffine2,
+		element_transform: DAffine2,
+		stroke_transform: DAffine2,
+		bounds: DAffine2,
+		transformed_bounds: DAffine2,
+		render_params: &RenderParams,
+	) -> Self::Output {
+		let fill_graphic = self.element(0);
+
+		match fill_graphic {
+			Some(Graphic::Color(color_list)) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params),
+			Some(Graphic::Gradient(gradient_list)) => {
+				let gradient_id = gradient_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+				format!(r##" fill="url(#{gradient_id})""##)
+			}
+			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
+				render_svg_fill_pattern(svg_defs, self, item_transform, bounds, render_params)
+					.map(|id| format!(r##" fill="url(#{id})""##))
+					.unwrap_or_else(|| r#" fill="none""#.to_string())
+			}
+			None => r#" fill="none""#.to_string(),
+		}
+	}
+}
+
+/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the fill content, and returns the pattern ID.
+/// Currently, this function is only used for clipping-based filling, not for tiling.
+fn render_svg_fill_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, item_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+	let min = bounds.transform_point2(DVec2::ZERO);
+	let max = bounds.transform_point2(DVec2::ONE);
+	let size = max - min;
+	if size.x <= 0. || size.y <= 0. {
+		return None;
+	}
+
+	// Render the pattern content recursively
+	let mut content = SvgRender::new();
+	fill_graphic_list.render_svg(&mut content, &render_params.for_pattern());
+
+	// Unwrap the inner def element
+	write!(svg_defs, "{}", content.svg_defs).unwrap();
+
+	let pattern_transform = item_transform * DAffine2::from_translation(min);
+	let transform_str = format_transform_matrix(pattern_transform);
+	let transform_attr = if transform_str.is_empty() {
+		String::new()
+	} else {
+		format!(r#" patternTransform="{transform_str}""#)
+	};
+
+	let pattern_id = format!("pattern-{}", generate_uuid());
+	write!(
+		svg_defs,
+		r##"<pattern id="{pattern_id}" patternUnits="userSpaceOnUse" x="0" y="0" width="{}" height="{}"{transform_attr}>"##,
+		size.x, size.y,
+	)
+	.unwrap();
+
+	let content_shift = format_transform_matrix(DAffine2::from_translation(-min));
+	write!(svg_defs, r##"<g transform="{content_shift}">{}</g></pattern>"##, content.svg.to_svg_string()).unwrap();
+
+	Some(pattern_id)
 }

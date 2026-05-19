@@ -346,87 +346,17 @@ fn fill_covers_opaquely(fill_graphic: Option<&Graphic>) -> bool {
 	}
 }
 
-/// Emits a SVG `<pattern>` paint server element that renders any graphic element into def and returns the id.
-/// Currently this function uses `<pattern>` as a clip-based paint server, which means the content is rendered once without tiling.
-fn render_svg_fill_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, path_bbox: [DVec2; 2], item_transform: DAffine2, render_params: &RenderParams) -> Option<String> {
-	let [min, max] = path_bbox;
-	let size = max - min;
-	if size.x <= 0. || size.y <= 0. {
-		return None;
-	}
-
-	// Render the pattern content recursively
-	let mut content = SvgRender::new();
-	fill_graphic_list.render_svg(&mut content, &render_params.for_pattern());
-
-	// Unwrap the inner def element
-	write!(svg_defs, "{}", content.svg_defs).unwrap();
-
-	let pattern_transform = item_transform * DAffine2::from_translation(min);
-	let transform_str = format_transform_matrix(pattern_transform);
-	let transform_attr = if transform_str.is_empty() {
-		String::new()
-	} else {
-		format!(r#" patternTransform="{transform_str}""#)
-	};
-
-	let pattern_id = format!("pattern-{}", generate_uuid());
-	write!(
-		svg_defs,
-		r##"<pattern id="{pattern_id}" patternUnits="userSpaceOnUse" x="0" y="0" width="{}" height="{}"{transform_attr}>"##,
-		size.x, size.y,
-	)
-	.unwrap();
-
-	let content_shift = format_transform_matrix(DAffine2::from_translation(-min));
-	write!(svg_defs, r##"<g transform="{content_shift}">{}</g></pattern>"##, content.svg.to_svg_string()).unwrap();
-
-	Some(pattern_id)
-}
-
-/// Returns the fill attribute for SVG tags corresponding to the given fill_graphic.
-#[allow(clippy::too_many_arguments)]
-fn compute_svg_fill_attribute(
-	fill_graphic_list: Option<&List<Graphic>>,
-	defs: &mut String,
-	element_transform: DAffine2,
-	applied_stroke_transform: DAffine2,
-	bounds_matrix: DAffine2,
-	transformed_bounds_matrix: DAffine2,
-	item_transform: DAffine2,
-	render_params: &RenderParams,
-) -> String {
-	let fill_graphic = fill_graphic_list.and_then(|l| l.element(0));
-
-	match fill_graphic {
-		Some(Graphic::Color(color_list)) => color_list.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params),
-		Some(Graphic::Gradient(gradient_list)) => {
-			let gradient_id = gradient_list.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, render_params);
-			format!(r##" fill="url(#{gradient_id})""##)
-		}
-		Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
-			let list = fill_graphic_list.unwrap();
-			let min = bounds_matrix.transform_point2(DVec2::ZERO);
-			let max = bounds_matrix.transform_point2(DVec2::ONE);
-			render_svg_fill_pattern(defs, list, [min, max], item_transform, render_params)
-				.map(|id| format!(r##" fill="url(#{id})""##))
-				.unwrap_or_else(|| r#" fill="none""#.to_string())
-		}
-		None => r#" fill="none""#.to_string(),
-	}
-}
-
 /// Emits an SVG `<path>` element with the resolved fill attribute corresponding to the given fill_graphic.
 #[allow(clippy::too_many_arguments)]
 fn emit_svg_fill_path(
 	render: &mut SvgRender,
 	d: String,
-	element_transform: DAffine2,
 	fill_graphic_list: Option<&List<Graphic>>,
+	item_transform: DAffine2,
+	element_transform: DAffine2,
 	applied_stroke_transform: DAffine2,
 	bounds_matrix: DAffine2,
 	transformed_bounds_matrix: DAffine2,
-	item_transform: DAffine2,
 	render_params: &RenderParams,
 ) {
 	render.leaf_tag("path", |attributes| {
@@ -436,16 +366,19 @@ fn emit_svg_fill_path(
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
 		let defs = &mut attributes.0.svg_defs;
-		let fill_attribute = compute_svg_fill_attribute(
-			fill_graphic_list,
-			defs,
-			element_transform,
-			applied_stroke_transform,
-			bounds_matrix,
-			transformed_bounds_matrix,
-			item_transform,
-			render_params,
-		);
+		let fill_attribute = fill_graphic_list
+			.map(|list| {
+				list.render(
+					defs,
+					item_transform,
+					element_transform,
+					applied_stroke_transform,
+					bounds_matrix,
+					transformed_bounds_matrix,
+					render_params,
+				)
+			})
+			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
 }
@@ -1093,12 +1026,12 @@ impl Render for List<Vector> {
 				emit_svg_fill_path(
 					render,
 					path.clone(),
-					element_transform,
 					fill_graphic_list.as_deref(),
+					item_transform,
+					element_transform,
 					applied_stroke_transform,
 					bounds_matrix,
 					transformed_bounds_matrix,
-					item_transform,
 					render_params,
 				);
 			}
@@ -1125,12 +1058,12 @@ impl Render for List<Vector> {
 					emit_svg_fill_path(
 						render,
 						face_d,
-						element_transform,
 						fill_graphic_list.as_deref(),
+						item_transform,
+						element_transform,
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						item_transform,
 						render_params,
 					);
 				}
@@ -1177,22 +1110,36 @@ impl Render for List<Vector> {
 				let stroke_attribute = vector
 					.style
 					.stroke()
-					.map(|stroke| stroke.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params))
+					.map(|stroke| {
+						stroke.render(
+							defs,
+							item_transform,
+							element_transform,
+							applied_stroke_transform,
+							bounds_matrix,
+							transformed_bounds_matrix,
+							&render_params,
+						)
+					})
 					.unwrap_or_default();
 
 				let fill_attribute = if needs_separate_alignment_fill || use_face_fill {
 					r#" fill="none""#.to_string()
 				} else {
-					compute_svg_fill_attribute(
-						fill_graphic_list.as_deref(),
-						defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						item_transform,
-						&render_params,
-					)
+					fill_graphic_list
+						.as_deref()
+						.map(|list| {
+							list.render(
+								defs,
+								item_transform,
+								element_transform,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								&render_params,
+							)
+						})
+						.unwrap_or_else(|| r#" fill="none""#.to_string())
 				};
 
 				if let Some((id, mask_type, _)) = push_id {
@@ -1221,12 +1168,12 @@ impl Render for List<Vector> {
 				emit_svg_fill_path(
 					render,
 					path.clone(),
-					element_transform,
 					fill_graphic_list.as_deref(),
+					item_transform,
+					element_transform,
 					applied_stroke_transform,
 					bounds_matrix,
 					transformed_bounds_matrix,
-					item_transform,
 					render_params,
 				);
 			}
