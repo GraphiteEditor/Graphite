@@ -220,7 +220,7 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
-	// Are we rendering for a pattern content
+	/// Are we rendering for a pattern content
 	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
