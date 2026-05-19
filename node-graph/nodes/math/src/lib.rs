@@ -1,5 +1,5 @@
 use core_types::Context;
-use core_types::list::{ATTR_FILL_GRAPHIC, List};
+use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, List};
 use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, num_traits};
@@ -1004,6 +1004,29 @@ fn fill_graphic<P: IntoGraphicList + 'n + Send>(
 	let paint_list = fill_graphic.into_graphic_list();
 	for row_idx in 0..vectors.len() {
 		vectors.set_attribute(ATTR_FILL_GRAPHIC, row_idx, paint_list.clone());
+	}
+	vectors
+}
+
+/// Sets the `stroke_paint_graphic` attribute on each item of the input vector list.
+/// Used for testing of gradient and clipping-based stroke rendering until the proper Stroke node refactor lands.
+#[node_macro::node(category("Debug"))]
+fn stroke_paint_graphic<P: IntoGraphicList + 'n + Send>(
+	_: impl Ctx,
+	mut vectors: List<Vector>,
+	#[implementations(
+        List<Graphic>,
+        List<Vector>,
+        List<Raster<CPU>>,
+        List<Raster<GPU>>,
+        List<Color>,
+        List<GradientStops>,
+    )]
+	stroke_paint_graphic: P,
+) -> List<Vector> {
+	let paint_list = stroke_paint_graphic.into_graphic_list();
+	for row_idx in 0..vectors.len() {
+		vectors.set_attribute(ATTR_STROKE_PAINT_GRAPHIC, row_idx, paint_list.clone());
 	}
 	vectors
 }

@@ -80,6 +80,9 @@ pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 /// List<Graphic> data for fill.
 pub const ATTR_FILL_GRAPHIC: &str = "fill_graphic";
 
+/// List<Graphic> data for stroke.
+pub const ATTR_STROKE_PAINT_GRAPHIC: &str = "stroke_paint_graphic";
+
 // ========================
 // TRAIT: AnyAttributeValue
 // ========================
