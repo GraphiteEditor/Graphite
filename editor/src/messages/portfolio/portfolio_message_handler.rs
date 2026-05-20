@@ -566,7 +566,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.failed_to_load_documents.is_empty() {
 					return;
 				}
-				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| info.name.clone()).collect();
+				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| display_name_with_fallback(info)).collect();
 				let dialog = simple_dialogs::FailedToLoadDocumentsDialog { failed_document_names };
 				dialog.send_dialog_to_frontend(responses);
 			}
@@ -592,7 +592,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					.failed_to_load_documents
 					.values()
 					.map(|(info, content)| {
-						let stem = if info.name.trim().is_empty() { format!("document-{:x}", info.id.0) } else { info.name.clone() };
+						let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
 						let base = format!("{stem}.{FILE_EXTENSION}");
 						let unique = match used_names.get(&base).copied() {
 							None => {
@@ -2200,6 +2200,43 @@ impl PortfolioMessageHandler {
 			}
 		}
 	}
+}
+
+/// Best-effort filename label for a failed-to-load document shown in user-facing lists. Falls back to
+/// an ID-based "Untitled Document" when the user never gave the document a name, so list items can't
+/// render as empty bullets.
+fn display_name_with_fallback(info: &DocumentInfo) -> String {
+	if info.name.trim().is_empty() {
+		format!("Untitled Document ({:x})", info.id.0)
+	} else {
+		info.name.clone()
+	}
+}
+
+/// Strip filesystem-unsafe characters from a user-supplied document name so it can be safely used as a
+/// single filename component when writing recovered documents to disk or packing them into a zip.
+/// Returns `None` if the name is empty or sanitizes away to nothing (e.g. it was only path separators
+/// or whitespace), letting the caller fall back to an ID-based stem.
+///
+/// Characters replaced are the union of Windows-reserved (`< > : " / \\ | ? *`) and Unix path
+/// separators, with `..` segments collapsed so a crafted name can't traverse out of the chosen folder
+/// when joined as a path.
+fn sanitize_filename_stem(name: &str) -> Option<String> {
+	let replaced: String = name
+		.chars()
+		.map(|c| {
+			if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+				'_'
+			} else {
+				c
+			}
+		})
+		.collect();
+
+	// Strip leading/trailing whitespace and dots; `..` or `.` as a path component would resolve to the
+	// parent or current directory on join. Also avoids Windows quirks around trailing dots/spaces.
+	let trimmed = replaced.trim().trim_matches('.').trim();
+	if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
 }
 
 /// Bundle the given `(filename, bytes)` entries into a single uncompressed (Stored) zip archive.
