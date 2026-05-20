@@ -2215,12 +2215,14 @@ fn display_name_with_fallback(info: &DocumentInfo) -> String {
 
 /// Strip filesystem-unsafe characters from a user-supplied document name so it can be safely used as a
 /// single filename component when writing recovered documents to disk or packing them into a zip.
-/// Returns `None` if the name is empty or sanitizes away to nothing (e.g. it was only path separators
-/// or whitespace), letting the caller fall back to an ID-based stem.
+/// Returns `None` if the name is empty, sanitizes away to nothing, or reduces to a Windows reserved
+/// device name, letting the caller fall back to an ID-based stem instead.
 ///
 /// Characters replaced are the union of Windows-reserved (`< > : " / \\ | ? *`) and Unix path
 /// separators, with `..` segments collapsed so a crafted name can't traverse out of the chosen folder
-/// when joined as a path.
+/// when joined as a path. Names whose first dot-segment matches a Windows reserved device name (e.g.
+/// `CON`, `NUL.graphite`, `COM1`) are rejected because Windows refuses to create such files even with
+/// an extension appended.
 fn sanitize_filename_stem(name: &str) -> Option<String> {
 	let replaced: String = name
 		.chars()
@@ -2236,7 +2238,37 @@ fn sanitize_filename_stem(name: &str) -> Option<String> {
 	// Strip leading/trailing whitespace and dots; `..` or `.` as a path component would resolve to the
 	// parent or current directory on join. Also avoids Windows quirks around trailing dots/spaces.
 	let trimmed = replaced.trim().trim_matches('.').trim();
-	if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+	if trimmed.is_empty() {
+		return None;
+	}
+
+	// Reject Windows reserved device names. The check is against the portion before the first dot
+	// (Windows treats `CON.graphite` the same as `CON` when resolving DOS device names). Superscript
+	// digit variants are included because they're treated equivalently to their ASCII counterparts by
+	// some Windows path APIs after Unicode normalization.
+	let first_segment = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
+	if matches!(
+		first_segment.as_str(),
+		"CON"
+			| "PRN" | "AUX"
+			| "NUL" | "COM1"
+			| "COM2" | "COM3"
+			| "COM4" | "COM5"
+			| "COM6" | "COM7"
+			| "COM8" | "COM9"
+			| "COM¹" | "COM²"
+			| "COM³" | "LPT1"
+			| "LPT2" | "LPT3"
+			| "LPT4" | "LPT5"
+			| "LPT6" | "LPT7"
+			| "LPT8" | "LPT9"
+			| "LPT¹" | "LPT²"
+			| "LPT³"
+	) {
+		return None;
+	}
+
+	Some(trimmed.to_string())
 }
 
 /// Bundle the given `(filename, bytes)` entries into a single uncompressed (Stored) zip archive.
