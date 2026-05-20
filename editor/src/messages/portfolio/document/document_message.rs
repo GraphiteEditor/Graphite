@@ -12,6 +12,7 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
@@ -232,8 +233,11 @@ pub enum DocumentMessage {
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
 	},
+	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
+	// `UpdateVectorData` is produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	#[serde(skip)]
 	UpdateVectorData {
-		vector_data: HashMap<NodeId, Arc<Vector>>,
+		vector_data: HashMap<NodeId, Arc<List<Vector>>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

@@ -34,6 +34,9 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graphene_std::Graphic;
+use graphene_std::graphic::{color_to_graphic_list, fill_to_graphic_list};
+use graphene_std::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, List};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
@@ -41,8 +44,9 @@ use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::{Fill, RenderMode};
+use graphene_std::vector::style::{RenderMode, Stroke};
 use kurbo::{Affine, BezPath, Line, PathSeg};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2480,17 +2484,32 @@ impl DocumentMessageHandler {
 		let mut resulting_layers: Vec<NodeId> = Vec::new();
 
 		for layer in selected_layers {
-			let style = self.network_interface.document_metadata().layer_vector_data.get(&layer).map(|arc| arc.style.clone());
-			let Some(style) = style else {
+			let vector_list = self.network_interface.document_metadata().layer_vector_data.get(&layer).cloned();
+			let Some(vector_list) = vector_list else {
 				resulting_layers.push(layer.to_node());
 				continue;
 			};
+			let style = vector_list.element(0).map(|vector| &vector.style);
 
-			let has_fill = !matches!(style.fill, Fill::None);
-			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
-			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
-			// FIXME: Consider if we need to check ATTR_STROKE_PAINT_GRAPHIC
-			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke());
+			let fill_graphic_list = vector_list
+				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, 0)
+				.filter(|list| !list.is_empty())
+				.map(Cow::Borrowed)
+				.or_else(|| style.and_then(|style| fill_to_graphic_list(style.fill())).map(Cow::Owned));
+			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
+
+			let stroke_paint_graphic_list = vector_list
+				.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, 0)
+				.filter(|list| !list.is_empty())
+				.map(Cow::Borrowed)
+				.or_else(|| color_to_graphic_list(style.and_then(|style| style.stroke().and_then(|s| s.color()))).map(Cow::Owned));
+			let stroke_paint_graphic = stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0));
+
+			let has_fill = fill_graphic.is_some();
+
+			let stroke_renderable = style.is_some_and(|s| s.stroke.as_ref().is_some_and(Stroke::has_renderable_stroke));
+			let stroke_paint_visible = stroke_paint_graphic.is_some_and(|g| !g.is_fully_transparent());
+			let has_stroke = stroke_renderable && stroke_paint_visible;
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {

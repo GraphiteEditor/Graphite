@@ -391,7 +391,9 @@ pub struct RenderMetadata {
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
-	pub vector_data: HashMap<NodeId, Arc<Vector>>,
+	// `RenderMetadata` only enters serialization via `TaggedValue::RenderOutput`, which also skips serde.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub vector_data: HashMap<NodeId, Arc<List<Vector>>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -1525,6 +1527,11 @@ impl Render for List<Vector> {
 		let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 		let mut accumulated_outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
+		// Source geometry (not the click-target override) so editing tools work on letterforms.
+		if let Some(element_id) = caller_element_id {
+			metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(self.clone()));
+		}
+
 		for index in 0..self.len() {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
@@ -1553,10 +1560,6 @@ impl Render for List<Vector> {
 				let mut outlines_unwrapped = Vec::new();
 				extend_targets_from_vector(&mut outlines_unwrapped, source, item_relative_transform);
 				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
-
-				// Source geometry (not the click-target override) so editing tools work on letterforms.
-				// Only item 0 is recorded since editing tools can only target a single item currently.
-				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(source.clone()));
 
 				// Surface `editor:text_frame` for the Text tool's drag cage
 				if let Some(&frame) = self.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index) {
