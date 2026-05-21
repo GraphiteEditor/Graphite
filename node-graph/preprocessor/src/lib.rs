@@ -10,13 +10,57 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 
 pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>) {
+	replace_resource_inputs(network);
+	expand_network_inner(network, substitutions);
+}
+
+/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
+fn replace_resource_inputs(network: &mut NodeNetwork) {
+	let mut hash_to_node_id: HashMap<application_io::ResourceHash, NodeId> = HashMap::new();
+	let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
+
+	for node in network.nodes.values_mut() {
+		if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+			replace_resource_inputs(nested);
+			continue;
+		}
+
+		if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == platform_application_io::resource::IDENTIFIER) {
+			continue;
+		}
+
+		for input in node.inputs.iter_mut() {
+			let NodeInput::Value { tagged_value, .. } = input else { continue };
+			let TaggedValue::Resource(hash) = **tagged_value else { continue };
+
+			let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
+				let id = NodeId::new();
+				let resource_node = DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::Resource(hash), false), NodeInput::scope("editor-api")],
+					implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
+					..Default::default()
+				};
+				new_resource_nodes.push((id, resource_node));
+				id
+			});
+
+			*input = NodeInput::node(resource_id, 0);
+		}
+	}
+
+	for (id, node) in new_resource_nodes {
+		network.nodes.insert(id, node);
+	}
+}
+
+fn expand_network_inner(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>) {
 	if network.generated {
 		return;
 	}
 
 	for node in network.nodes.values_mut() {
 		match &mut node.implementation {
-			DocumentNodeImplementation::Network(node_network) => expand_network(node_network, substitutions),
+			DocumentNodeImplementation::Network(node_network) => expand_network_inner(node_network, substitutions),
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				if let Some(new_node) = substitutions.get(proto_node_identifier) {
 					// Reconcile the document node's inputs with what the current node definition expects,

@@ -19,6 +19,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::embedded_resources::EmbeddedResources;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::{CachedData, PanelType};
@@ -29,13 +30,13 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::{ResourceHash, wgpu_available};
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
-use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
@@ -59,6 +60,7 @@ pub struct DocumentMessageContext<'a> {
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
+	pub resources: &'a ResourceMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -107,6 +109,9 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
+	/// Resources embedded in the document. Only propagated if saving to an external file and never for autosaved documents.
+	#[serde(rename = "resources", default, skip_serializing_if = "EmbeddedResources::is_empty")]
+	pub embedded_resources: EmbeddedResources,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -169,6 +174,7 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
+			embedded_resources: EmbeddedResources::default(),
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
@@ -200,6 +206,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
+			resources,
 		} = context;
 
 		match message {
@@ -916,15 +923,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
-
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				responses.add(FrontendMessage::TriggerSaveDocument {
-					document_id,
-					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
-					path,
-					folder,
-					content: self.serialize_document().into_bytes().into(),
+				let resource_hashes = Vec::from_iter(self.used_resources(false)).into_boxed_slice();
+				let resources = resources.resources();
+				let mut document = self.clone();
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
+
+				responses.add(FrontendMessage::Await {
+					future: FrontendMessageFuture::new(async move {
+						let loads = resource_hashes
+							.into_iter()
+							.map(|hash| {
+								let resource = resources.load(hash);
+								async move { resource.await.map(|resource| (hash, resource)) }
+							})
+							.collect::<Vec<_>>();
+
+						document.embedded_resources = EmbeddedResources::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
+						let content = document.serialize_document();
+
+						FrontendMessage::TriggerSaveDocument {
+							document_id,
+							name,
+							path,
+							folder,
+							content: content.into_bytes().into(),
+						}
+					}),
 				});
 			}
 			DocumentMessage::SavedDocument { path } => {
@@ -1306,11 +1332,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_text_frames = text_frames
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, frame)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, frame)
-						})
+					.filter(|&(node_id, _)| self.network_interface.is_layer(&node_id, &[]))
+					.map(|(node_id, frame)| {
+						let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+						(layer, frame)
 					})
 					.collect();
 				self.network_interface.update_text_frames(layer_text_frames);
@@ -2546,6 +2571,7 @@ impl DocumentMessageHandler {
 
 	/// Helper method for NudgeSelectedLayers message.
 	/// Handles keyboard nudging of selected layers with optional resize mode.
+	#[allow(clippy::too_many_arguments)]
 	fn handle_nudge_selected_layers(
 		&mut self,
 		delta_x: f64,
@@ -3443,6 +3469,16 @@ impl DocumentMessageHandler {
 
 	pub fn graph_view_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
+	}
+
+	pub fn used_resources(&self, include_history: bool) -> HashSet<ResourceHash> {
+		let mut resources = HashSet::new();
+		self.network_interface.collect_used_resources(&mut resources);
+		if include_history {
+			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+		}
+		resources
 	}
 }
 

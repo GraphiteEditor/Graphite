@@ -11,6 +11,7 @@ use crate::helpers::poll_node_graph_evaluation;
 use crate::helpers::{auto_save_all_documents, calculate_hash, render_image_data_to_canvases, request_animation_frame, set_timeout, translate_key, wrapper};
 use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
 #[cfg(not(feature = "native"))]
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Editor, Environment, Host, Platform};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
@@ -22,6 +23,8 @@ use editor::messages::portfolio::document::utility_types::network_interface::Imp
 use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use graph_craft::application_io::OpfsResourceStorage;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::graphene_hash::CacheHashWrapper;
@@ -69,22 +72,29 @@ impl EditorWrapper {
 	// Editor wrapper machinery
 	// ========================
 
-	#[cfg(not(feature = "native"))]
-	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
-		let editor = Editor::new(
-			Environment {
-				platform: Platform::Web,
-				host: match platform.as_str() {
-					"Linux" => Host::Linux,
-					"Mac" => Host::Mac,
-					"Windows" => Host::Windows,
-					_ => unreachable!(),
-				},
-			},
-			uuid_random_seed,
-		);
+	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use graph_craft::application_io::PlatformApplicationIo;
 
-		if EDITOR.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+		let host = match platform.as_str() {
+			"Linux" => Host::Linux,
+			"Mac" => Host::Mac,
+			"Windows" => Host::Windows,
+			_ => unreachable!(),
+		};
+
+		let storage: Box<dyn graph_craft::application_io::ResourceStorage> = match OpfsResourceStorage::load("resources").await {
+			Ok(storage) => Box::new(storage),
+			Err(error) => {
+				log::error!("Failed to open OPFS resource storage, falling back to in-memory: {error:?}");
+				Box::new(graph_craft::application_io::HashMapResourceStorage::new())
+			}
+		};
+
+		let mut editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage);
+		editor.replace_application_io(PlatformApplicationIo::new().await);
+
+		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
 
@@ -133,6 +143,14 @@ impl EditorWrapper {
 
 	// Sends a FrontendMessage to JavaScript
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
+		if let FrontendMessage::Await { future } = message {
+			let wrapper = self.clone();
+			wasm_bindgen_futures::spawn_local(async move {
+				wrapper.send_frontend_message_to_js(future.await);
+			});
+			return;
+		}
+
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(&CacheHashWrapper(image_data));
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);

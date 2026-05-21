@@ -5,6 +5,7 @@ use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBM
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
+use core_types::resource::Resource;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use fastnoise_lite;
@@ -289,7 +290,25 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: List<Color>) -> List
 }
 
 #[node_macro::node(category(""))]
-pub fn image(_: impl Ctx, _primary: (), image: Image<Color>) -> List<Raster<CPU>> {
+pub fn image<'a: 'n>(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
+	let image_data = resource.as_ref();
+
+	let Some(image) = ::image::load_from_memory(image_data).ok() else {
+		return List::new();
+	};
+	let image = image.to_rgba32f();
+	let image = Image {
+		data: image
+			.chunks(4)
+			.map(|pixel| {
+				let alpha = pixel[3];
+				Color::from_gamma_srgb_channels(pixel[0] * alpha, pixel[1] * alpha, pixel[2] * alpha, alpha)
+			})
+			.collect(),
+		width: image.width(),
+		height: image.height(),
+		..Default::default()
+	};
 	List::new_from_element(Raster::new_cpu(image))
 }
 

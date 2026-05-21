@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::consts::{APP_DIRECTORY_NAME, APP_DOCUMENTS_DIRECTORY_NAME};
+use crate::consts::{APP_DIRECTORY_NAME, APP_DOCUMENTS_DIRECTORY_NAME, APP_RESOURCES_DIRECTORY_NAME};
 
 pub(crate) fn ensure_dir_exists(path: &PathBuf) {
 	if !path.exists() {
@@ -47,6 +47,12 @@ pub(crate) fn app_tmp_dir_cleanup() {
 
 pub(crate) fn app_autosave_documents_dir() -> PathBuf {
 	let path = app_data_dir().join(APP_DOCUMENTS_DIRECTORY_NAME);
+	ensure_dir_exists(&path);
+	path
+}
+
+pub(crate) fn app_resources_dir() -> PathBuf {
+	let path = app_data_dir().join(APP_RESOURCES_DIRECTORY_NAME);
 	ensure_dir_exists(&path);
 	path
 }

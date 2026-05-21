@@ -20,7 +20,7 @@ impl NodeRuntimeIO {
 	pub fn new() -> Self {
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
-		futures::executor::block_on(replace_node_runtime(NodeRuntime::new(request_receiver, response_sender)));
+		replace_node_runtime(NodeRuntime::new(request_receiver, response_sender));
 
 		Self {
 			sender: request_sender,

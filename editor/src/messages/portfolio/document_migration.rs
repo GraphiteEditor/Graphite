@@ -1588,12 +1588,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) && inputs_count == 1 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+	// Upgrade `image` nodes that stored image data as `Image<Color>`` to `image` nodes that store a reference to the image data as a resource.
+	// Encodes the image data as PNG and stores it in the document's embedded resources and rewires the node to reference that resource.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) {
+		let image = node.inputs.iter().find_map(|input| match input.as_value()? {
+			TaggedValue::ImageData(image) => Some(image.clone()),
+			_ => None,
+		});
 
-		// Insert a new empty input for the image
-		document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", "", &[*node_id]);
+		if let Some(image) = image {
+			let hash = document.embedded_resources.store(graphene_std::application_io::Resource::new(image.to_png()));
+
+			let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Resource(hash), false), network_path);
+		}
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {

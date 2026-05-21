@@ -16,13 +16,14 @@ use winit::window::WindowId;
 
 use crate::cef;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
+use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Preferences};
-use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -91,7 +92,8 @@ impl App {
 			}
 		});
 
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
+		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage));
 
 		Self {
 			render_state: None,

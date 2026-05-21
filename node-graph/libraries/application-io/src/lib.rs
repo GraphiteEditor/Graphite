@@ -2,14 +2,16 @@ use core_types::transform::Footprint;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DVec2;
 use std::fmt::Debug;
-use std::future::Future;
 use std::hash::{Hash, Hasher};
-use std::pin::Pin;
 use std::ptr::addr_of;
 use std::sync::Arc;
 use std::time::Duration;
 use text_nodes::FontCache;
 use vector_types::vector::style::RenderMode;
+
+pub mod resource;
+pub use core_types::resource::Resource;
+pub use resource::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
 
 #[cfg(feature = "wgpu")]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
@@ -42,17 +44,12 @@ impl From<ImageTexture> for Arc<wgpu::Texture> {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
 pub struct ImageTexture;
 
-#[cfg(target_family = "wasm")]
-pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
-#[cfg(not(target_family = "wasm"))]
-pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>> + Send>>;
-
 pub trait ApplicationIo {
 	type Executor;
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
-	fn load_resource(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError>;
+	fn load_resource(&self, hash: ResourceHash) -> resource::ResourceFuture;
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
@@ -62,15 +59,9 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 		(**self).gpu_executor()
 	}
 
-	fn load_resource<'a>(&self, url: impl AsRef<str>) -> Result<ResourceFuture, ApplicationError> {
-		(**self).load_resource(url)
+	fn load_resource(&self, hash: ResourceHash) -> resource::ResourceFuture {
+		(**self).load_resource(hash)
 	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ApplicationError {
-	NotFound,
-	InvalidUrl,
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +130,7 @@ impl GetEditorPreferences for DummyPreferences {
 pub struct EditorApi<Io> {
 	/// Font data (for rendering text) made available to the graph through the `PlatformEditorApi`.
 	pub font_cache: FontCache,
-	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
+	/// Gives access to APIs like resources.
 	pub application_io: Option<Arc<Io>>,
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
 	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
@@ -162,7 +153,7 @@ impl<Io: Default> Default for EditorApi<Io> {
 impl<Io> Hash for EditorApi<Io> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.font_cache.hash(state);
-		self.application_io.as_ref().map_or(0, |io| io.as_ref() as *const _ as usize).hash(state);
+		self.application_io.as_ref().map_or(0, |io| io as *const _ as usize).hash(state);
 		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
 		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
 	}

@@ -1,4 +1,9 @@
+use std::future::{Future, IntoFuture};
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+
+use graph_craft::application_io::ResourceHash;
 
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
@@ -9,6 +14,9 @@ use crate::messages::prelude::*;
 pub struct DocumentInfo {
 	pub id: DocumentId,
 	pub name: String,
+	#[serde(default)]
+	#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+	pub resources: Option<Box<[ResourceHash]>>,
 	#[serde(default)]
 	pub path: Option<PathBuf>,
 	pub is_saved: bool,
@@ -76,4 +84,32 @@ pub struct EyedropperPreviewImage {
 	pub data: serde_bytes::ByteBuf,
 	pub width: u32,
 	pub height: u32,
+}
+
+#[derive(Clone, Default)]
+pub struct FrontendMessageFuture {
+	inner: Arc<Mutex<Option<InnerFrontendMessageFuture>>>,
+}
+
+impl FrontendMessageFuture {
+	pub fn new(future: impl Future<Output = FrontendMessage> + Send + 'static) -> Self {
+		Self {
+			inner: Arc::new(Mutex::new(Some(Box::pin(future)))),
+		}
+	}
+}
+
+type InnerFrontendMessageFuture = Pin<Box<dyn Future<Output = FrontendMessage> + Send + 'static>>;
+
+impl IntoFuture for FrontendMessageFuture {
+	type Output = FrontendMessage;
+	type IntoFuture = InnerFrontendMessageFuture;
+
+	fn into_future(self) -> Self::IntoFuture {
+		self.inner
+			.lock()
+			.unwrap_or_else(|poisoned| poisoned.into_inner())
+			.take()
+			.expect("FrontendMessageFuture can only be awaited once")
+	}
 }

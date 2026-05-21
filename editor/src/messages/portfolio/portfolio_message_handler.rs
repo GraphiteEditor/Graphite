@@ -26,6 +26,7 @@ use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::ResourceHash;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
@@ -35,6 +36,7 @@ use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::vec;
 
 #[derive(ExtractField)]
@@ -46,6 +48,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
+	pub resources: &'a ResourceMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -74,6 +77,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
+			resources,
 		} = context;
 
 		match message {
@@ -90,6 +94,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
+						resources,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -159,6 +164,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
+						resources,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -183,6 +189,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
 					}
 				}
+
+				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let Some(document) = self.document(document_id) else { return };
@@ -437,6 +445,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
+			PortfolioMessage::GarbageCollectResources => {
+				let mut used_resources = HashSet::new();
+				for (id, info) in self.unloaded_documents.iter() {
+					if let Some(resources) = &info.resources {
+						used_resources.extend(resources.iter());
+					} else {
+						responses.add(PersistentStateMessage::ReadDocument { document_id: *id });
+						return;
+					}
+				}
+				for document in self.documents.values() {
+					used_resources.extend(document.used_resources(true));
+				}
+				responses.add(ResourceMessage::GarbageCollect {
+					used: Vec::from_iter(used_resources).into_boxed_slice(),
+				});
+			}
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				let catalog = &self.cached_data.font_catalog;
 
@@ -757,6 +782,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Upgrade the document's nodes to be compatible with the latest version
 				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
+
+				// Load the document's embedded resources into the resource storage
+				std::mem::take(&mut document.embedded_resources).into_iter().for_each(|(hash, resource)| {
+					let data: Arc<[u8]> = Arc::from(resource.as_ref());
+					if ResourceHash::from(data.as_ref()) != hash {
+						log::error!("Resource hash mismatch for resource with hash {hash}");
+						return;
+					}
+					responses.add(ResourceMessage::Store { data });
+				});
 
 				// Ensure each node has the metadata for its inputs
 				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
@@ -1869,6 +1904,7 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
+				resources: Some(document.used_resources(false).into_iter().collect()),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()

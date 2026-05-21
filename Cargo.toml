@@ -171,6 +171,8 @@ glam = { version = "0.32.1", default-features = false, features = [
 	"bytemuck",
 ] }
 base64 = "0.22"
+blake3 = "1.5"
+mmap-io = { version = "0.9", features = ["hugepages"] }
 image = { version = "0.25", default-features = false, features = [
 	"png",
 	"jpeg",
