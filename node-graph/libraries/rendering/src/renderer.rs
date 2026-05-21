@@ -25,7 +25,7 @@ use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign};
 use graphic_types::{Artboard, Graphic, Vector};
-use kurbo::{Affine, Cap, Join, Shape};
+use kurbo::{Affine, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -372,6 +372,65 @@ fn emit_svg_fill_path(
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
+}
+
+fn create_peniko_gradient_brush(gradient_list: &List<GradientStops>, parent_vector: &Vector, parent_transform: &DAffine2, multiplied_transform: &DAffine2) -> Option<peniko::Brush> {
+	let stops = gradient_list.element(0)?;
+
+	let gradient_type: GradientType = gradient_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
+	let gradient_transform: DAffine2 = gradient_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+	let spread_method: GradientSpreadMethod = gradient_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
+
+	let mut peniko_stops = peniko::ColorStops::new();
+	for (position, color, _) in stops.interpolated_samples() {
+		peniko_stops.push(peniko::ColorStop {
+			offset: position as f32,
+			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
+		});
+	}
+
+	let bounds = parent_vector.nonzero_bounding_box();
+	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+
+	let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
+		parent_transform.inverse()
+	} else {
+		Default::default()
+	};
+	let mod_points = inverse_parent_transform * multiplied_transform * bound_transform * gradient_transform;
+
+	let start = mod_points.transform_point2(DVec2::ZERO);
+	let end = mod_points.transform_point2(DVec2::X);
+
+	let brush = peniko::Brush::Gradient(peniko::Gradient {
+		kind: match gradient_type {
+			GradientType::Linear => peniko::LinearGradientPosition {
+				start: to_point(start),
+				end: to_point(end),
+			}
+			.into(),
+			GradientType::Radial => {
+				let radius = start.distance(end);
+				peniko::RadialGradientPosition {
+					start_center: to_point(start),
+					start_radius: 0.,
+					end_center: to_point(start),
+					end_radius: radius as f32,
+				}
+				.into()
+			}
+		},
+		extend: match spread_method {
+			GradientSpreadMethod::Pad => peniko::Extend::Pad,
+			GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
+			GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
+		},
+		stops: peniko_stops,
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
+		..Default::default()
+	});
+
+	Some(brush)
 }
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
@@ -1206,7 +1265,7 @@ impl Render for List<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
+		use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
 
 		for index in 0..self.len() {
 			use graphic_types::vector_types::vector;
@@ -1241,6 +1300,9 @@ impl Render for List<Vector> {
 				}
 			}
 
+			let fill_graphic_list = fill_graphic_list_at(self, index);
+			let stroke_paint_graphic_list = stroke_paint_graphic_list_at(self, index);
+
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
 				RenderMode::Outline => peniko::Mix::Normal,
@@ -1252,8 +1314,9 @@ impl Render for List<Vector> {
 			// Used by both the blend-layer clip rect inflation below (as `max_aabb_inflation`'s `path_is_closed` arg, equivalent here since
 			// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 			let stroke = element.style.stroke();
-			// FIXME: Need to add Graphic.is_fully_transparent check
-			let can_draw_aligned_stroke = stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
+			let is_all_stroke_fully_transparent = stroke_paint_graphic_list.as_deref().is_none_or(|list| list.iter_element_values().all(Graphic::is_fully_transparent));
+			let can_draw_aligned_stroke =
+				!is_all_stroke_fully_transparent && stroke.as_ref().is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && element.stroke_bezier_paths().all(|p| p.closed());
 
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -1277,9 +1340,6 @@ impl Render for List<Vector> {
 			let use_layer = can_draw_aligned_stroke;
 			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
-			// Try to use ATTR_FILL_GRAPHIC attribute, which is set by `fill_graphic` debug node, then fall back to Fill enum.
-			let fill_graphic_list = fill_graphic_list_at(self, index);
-
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
 
@@ -1292,67 +1352,18 @@ impl Render for List<Vector> {
 							let fill = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
 							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 						}
-						Graphic::Gradient(stops_list) => {
-							let Some(stops) = stops_list.element(0) else { continue };
-							let gradient_type: GradientType = stops_list.attribute_cloned_or_default(ATTR_GRADIENT_TYPE, 0);
-							let gradient_transform: DAffine2 = stops_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-							let spread_method: GradientSpreadMethod = stops_list.attribute_cloned_or_default(ATTR_SPREAD_METHOD, 0);
-
-							let mut peniko_stops = peniko::ColorStops::new();
-							for (position, color, _) in stops.interpolated_samples() {
-								peniko_stops.push(peniko::ColorStop {
-									offset: position as f32,
-									color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color()),
-								});
-							}
-
-							let bounds = element.nonzero_bounding_box();
-							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-							let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
-								parent_transform.inverse()
-							} else {
-								Default::default()
+						Graphic::Gradient(list) => {
+							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+								continue;
 							};
-							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform * gradient_transform;
 
-							let start = mod_points.transform_point2(DVec2::ZERO);
-							let end = mod_points.transform_point2(DVec2::X);
-
-							let fill = peniko::Brush::Gradient(peniko::Gradient {
-								kind: match gradient_type {
-									GradientType::Linear => peniko::LinearGradientPosition {
-										start: to_point(start),
-										end: to_point(end),
-									}
-									.into(),
-									GradientType::Radial => {
-										let radius = start.distance(end);
-										peniko::RadialGradientPosition {
-											start_center: to_point(start),
-											start_radius: 0.,
-											end_center: to_point(start),
-											end_radius: radius as f32,
-										}
-										.into()
-									}
-								},
-								extend: match spread_method {
-									GradientSpreadMethod::Pad => peniko::Extend::Pad,
-									GradientSpreadMethod::Reflect => peniko::Extend::Reflect,
-									GradientSpreadMethod::Repeat => peniko::Extend::Repeat,
-								},
-								stops: peniko_stops,
-								interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
-								..Default::default()
-							});
 							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
 								element_transform.inverse()
 							} else {
 								Default::default()
 							};
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
+							scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 						}
 						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) => {
 							scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
@@ -1382,12 +1393,15 @@ impl Render for List<Vector> {
 				}
 			};
 
-			let do_stroke = |scene: &mut Scene, width_scale: f64| {
-				if let Some(stroke) = element.style.stroke() {
-					let color = match stroke.color {
-						Some(color) => SRGBA8::from(color).to_peniko_color(),
-						None => peniko::Color::TRANSPARENT,
+			let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
+				let Some(stroke_paint_graphic_list) = stroke_paint_graphic_list.as_deref() else { return };
+				let Some(stroke) = element.style.stroke() else { return };
+
+				for paint_idx in 0..stroke_paint_graphic_list.len() {
+					let Some(stroke_paint_graphic) = stroke_paint_graphic_list.element(paint_idx) else {
+						continue;
 					};
+
 					let cap = match stroke.cap {
 						StrokeCap::Butt => Cap::Butt,
 						StrokeCap::Round => Cap::Round,
@@ -1409,9 +1423,38 @@ impl Render for List<Vector> {
 						dash_offset: stroke.dash_offset,
 					};
 
-					if stroke.width > 0. {
-						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
-					}
+					if stroke.width <= 0. {
+						continue;
+					};
+
+					match stroke_paint_graphic {
+						Graphic::Color(list) => {
+							let Some(color) = list.element(0) else { continue };
+							let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
+
+							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
+						}
+						Graphic::Gradient(list) => {
+							let Some(brush) = create_peniko_gradient_brush(list, element, &parent_transform, &multiplied_transform) else {
+								continue;
+							};
+							let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
+								element_transform.inverse()
+							} else {
+								Default::default()
+							};
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+
+							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+						}
+						Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Graphic(_) => {
+							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
+
+							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
+							stroke_paint_graphic.render_to_vello(scene, multiplied_transform, context, render_params);
+							scene.pop_layer();
+						}
+					};
 				}
 			};
 
@@ -1451,7 +1494,7 @@ impl Render for List<Vector> {
 							vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-							do_stroke(scene, 2.);
+							do_stroke(scene, 2., context);
 
 							scene.pop_layer();
 							scene.pop_layer();
@@ -1465,7 +1508,7 @@ impl Render for List<Vector> {
 							vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
 							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-							do_stroke(scene, 2.);
+							do_stroke(scene, 2., context);
 
 							scene.pop_layer();
 							scene.pop_layer();
@@ -1485,7 +1528,7 @@ impl Render for List<Vector> {
 						for operation in &order {
 							match operation {
 								Op::Fill => do_fill(scene, context),
-								Op::Stroke => do_stroke(scene, 1.),
+								Op::Stroke => do_stroke(scene, 1., context),
 							}
 						}
 					}
