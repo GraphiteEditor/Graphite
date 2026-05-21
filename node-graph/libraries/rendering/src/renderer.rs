@@ -982,9 +982,11 @@ impl Render for List<Vector> {
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
+			let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY).unwrap_or(layer_bounds);
 
 			let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 			let transformed_bounds_matrix = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
+			let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
 			let mut path = String::new();
 
@@ -1133,7 +1135,7 @@ impl Render for List<Vector> {
 								item_transform,
 								element_transform,
 								applied_stroke_transform,
-								bounds_matrix,
+								stroke_bounds_matrix,
 								transformed_bounds_matrix,
 								&render_params,
 								PaintTarget::Stroke,

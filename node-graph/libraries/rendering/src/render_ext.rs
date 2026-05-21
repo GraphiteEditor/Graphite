@@ -12,7 +12,7 @@ use std::fmt::Write;
 use vector_types::GradientStops;
 use vector_types::gradient::GradientSpreadMethod;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum PaintTarget {
 	Fill,
 	Stroke,
@@ -244,7 +244,16 @@ impl RenderExt for List<Graphic> {
 				format!(r##" {paint_attr}="url(#{gradient_id})""##)
 			}
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
-				render_svg_fill_pattern(svg_defs, self, item_transform, bounds, render_params)
+				let bounds = if target == PaintTarget::Stroke {
+					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
+					let inflate = DVec2::new(1.0 / item_transform.matrix2.x_axis.length(), 1.0 / item_transform.matrix2.y_axis.length());
+					let min = bounds.transform_point2(DVec2::ZERO) - inflate;
+					let max = bounds.transform_point2(DVec2::ONE) + inflate;
+					DAffine2::from_scale_angle_translation(max - min, 0., min)
+				} else {
+					bounds
+				};
+				render_svg_pattern(svg_defs, self, item_transform, bounds, render_params)
 					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
 					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
@@ -253,9 +262,9 @@ impl RenderExt for List<Graphic> {
 	}
 }
 
-/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the fill content, and returns the pattern ID.
-/// Currently, this function is only used for clipping-based filling, not for tiling.
-fn render_svg_fill_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, item_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+/// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the paint content, and returns the pattern ID.
+/// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
+fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, item_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
 	let size = max - min;
