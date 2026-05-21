@@ -34,9 +34,7 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_std::Graphic;
-use graphene_std::graphic::{color_to_graphic_list, fill_to_graphic_list};
-use graphene_std::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, List};
+use graphene_std::graphic::{fill_graphic_list_at, stroke_paint_graphic_list_at};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
@@ -46,7 +44,6 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::{RenderMode, Stroke};
 use kurbo::{Affine, BezPath, Line, PathSeg};
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2491,19 +2488,10 @@ impl DocumentMessageHandler {
 			};
 			let style = vector_list.element(0).map(|vector| &vector.style);
 
-			let fill_graphic_list = vector_list
-				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, 0)
-				.filter(|list| !list.is_empty())
-				.map(Cow::Borrowed)
-				.or_else(|| style.and_then(|style| fill_to_graphic_list(style.fill())).map(Cow::Owned));
-			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
-
-			let stroke_paint_graphic_list = vector_list
-				.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, 0)
-				.filter(|list| !list.is_empty())
-				.map(Cow::Borrowed)
-				.or_else(|| color_to_graphic_list(style.and_then(|style| style.stroke().and_then(|s| s.color()))).map(Cow::Owned));
-			let stroke_paint_graphic = stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0));
+			let fill_graphic_list = fill_graphic_list_at(&vector_list, 0);
+			let fill_graphic = fill_graphic_list.as_deref().and_then(|l| l.element(0));
+			let stroke_paint_graphic_list = stroke_paint_graphic_list_at(&vector_list, 0);
+			let stroke_paint_graphic = stroke_paint_graphic_list.as_deref().and_then(|l| l.element(0));
 
 			let has_fill = fill_graphic.is_some();
 

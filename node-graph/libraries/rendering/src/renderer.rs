@@ -6,7 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, Item, List};
+use core_types::list::{Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -18,7 +18,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::graphic::{color_to_graphic_list, fill_to_graphic_list};
+use graphic_types::graphic::{fill_graphic_list_at, stroke_paint_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -27,7 +27,6 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::Deref;
@@ -1000,18 +999,10 @@ impl Render for List<Vector> {
 				MaskType::Mask
 			};
 
-			let fill_graphic_list = self
-				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
-				.filter(|list| !list.is_empty())
-				.map(Cow::Borrowed)
-				.or_else(|| fill_to_graphic_list(vector.style.fill()).map(Cow::Owned));
+			let fill_graphic_list = fill_graphic_list_at(self, index);
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
-			let stroke_paint_graphic_list = self
-				.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index)
-				.filter(|list| !list.is_empty())
-				.map(Cow::Borrowed)
-				.or_else(|| color_to_graphic_list(vector.style.stroke().and_then(|s| s.color())).map(Cow::Owned));
+			let stroke_paint_graphic_list = stroke_paint_graphic_list_at(self, index);
 			let stroke_paint_graphic = stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0));
 
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
@@ -1284,12 +1275,7 @@ impl Render for List<Vector> {
 			let wants_stroke_below = stroke.as_ref().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			// Try to use ATTR_FILL_GRAPHIC attribute, which is set by `fill_graphic` debug node, then fall back to Fill enum.
-			// TODO: Drop the Fill fall back once the Fill node becomes ready to store corresponding Graphic list directly.
-			let fill_graphic_list: Option<Cow<List<Graphic>>> = self
-				.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index)
-				.filter(|t| !t.is_empty())
-				.map(Cow::Borrowed)
-				.or_else(|| fill_to_graphic_list(element.style.fill()).map(Cow::Owned));
+			let fill_graphic_list = fill_graphic_list_at(self, index);
 
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
