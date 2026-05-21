@@ -15,13 +15,13 @@ use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::style::{PaintOrder, Stroke, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use js_sys::{Array, Reflect};
-use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
+use kurbo::{self, Affine, BezPath, CubicBez, ParamCurve, PathSeg, Shape};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasPattern, DomMatrix, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
+use web_sys::{CanvasPattern, CanvasWindingRule, DomMatrix, OffscreenCanvas, OffscreenCanvasRenderingContext2d, Path2d};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -954,7 +954,57 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, stroke_transform: DAffine2) {
+	fn path_from_subpaths(subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, stroke_transform: DAffine2) -> Path2d {
+		let path = Path2d::new().expect("Failed to create Path2d");
+
+		for subpath in subpaths {
+			let subpath = subpath.borrow().clone();
+			let mut bezpath = subpath.to_bezpath();
+			bezpath.apply_affine(Affine::new((stroke_transform).to_cols_array()));
+			let mut curves = bezpath.segments().peekable();
+
+			let Some(&first) = curves.peek() else {
+				continue;
+			};
+
+			let start_point = point_to_dvec2(first.start());
+			path.move_to(start_point.x, start_point.y);
+
+			for curve in curves {
+				match curve {
+					PathSeg::Line(line) => {
+						let a = point_to_dvec2(line.p1);
+						let a = a.round() - DVec2::splat(0.5);
+						path.line_to(a.x, a.y);
+					}
+					PathSeg::Quad(quad_bez) => {
+						let a = point_to_dvec2(quad_bez.p1);
+						let b = point_to_dvec2(quad_bez.p2);
+						let a = a.round() - DVec2::splat(0.5);
+						let b = b.round() - DVec2::splat(0.5);
+						path.quadratic_curve_to(a.x, a.y, b.x, b.y);
+					}
+					PathSeg::Cubic(cubic_bez) => {
+						let a = point_to_dvec2(cubic_bez.p1);
+						let b = point_to_dvec2(cubic_bez.p2);
+						let c = point_to_dvec2(cubic_bez.p3);
+						let a = a.round() - DVec2::splat(0.5);
+						let b = b.round() - DVec2::splat(0.5);
+						let c = c.round() - DVec2::splat(0.5);
+						path.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y);
+					}
+				}
+			}
+
+			if subpath.closed() && close_path {
+				path.close_path();
+			}
+		}
+
+		path
+	}
+
+	fn draw_path_from_subpaths(&self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, close_path: bool, stroke_transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow().clone();
@@ -1074,6 +1124,25 @@ impl OverlayContext {
 		return pattern;
 	}
 
+	fn path_and_winding_for_fill(vector_data: &Vector, transform: DAffine2, is_closed_on_all: bool) -> (Option<Path2d>, CanvasWindingRule) {
+		if vector_data.use_face_fill() {
+			let subpaths: Vec<Subpath<PointId>> = {
+				let face_paths = vector_data.construct_faces().filter(|face| face.area() >= 0.);
+				let segs = |path: BezPath| path.segments().collect::<Vec<PathSeg>>();
+
+				// TODO: test if is_closed_on_all is a proper value for closed paths
+				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), is_closed_on_all)).collect()
+			};
+			let path = Self::path_from_subpaths(subpaths.iter(), false, transform);
+
+			(Some(path), CanvasWindingRule::Nonzero)
+		} else if vector_data.is_branching() {
+			(None, CanvasWindingRule::Evenodd)
+		} else {
+			(None, CanvasWindingRule::Nonzero)
+		}
+	}
+
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.draw_path_from_subpaths(subpaths, true, transform);
@@ -1084,31 +1153,38 @@ impl OverlayContext {
 
 	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn fill_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
+	pub fn fill_overlay(&mut self, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
+		let subpaths = vector_data.stroke_bezier_paths();
+
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 
-		if let Some(stroke) = stroke {
+		if let Some(stroke) = vector_data.style.stroke() {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
-			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
-			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths as closed.
+			let path = Self::path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			let do_fill = || {
 				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-				self.render_context.fill();
+				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
+				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
+				// TODO: avoid cloning the path
+				let path = new_path.unwrap_or(path.clone());
+
+				self.render_context.fill_with_path_2d_and_winding(&path, winding);
 			};
 			let do_stroke = |stroke_weight: f64| {
 				self.render_context.set_line_width(stroke_weight);
 				self.render_context.set_stroke_style_str(&"#000000");
-				self.render_context.stroke();
+				self.render_context.stroke_with_path(&path);
 			};
 			let composite_mode = |composite_operation: &str| {
 				self.render_context
@@ -1137,9 +1213,11 @@ impl OverlayContext {
 				}
 			}
 		} else {
-			self.draw_path_from_subpaths(subpaths, false, transform);
+			let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, transform, is_closed_on_all);
+			let path = new_path.unwrap_or(Self::path_from_subpaths(subpaths, false, transform));
+
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-			self.render_context.fill();
+			self.render_context.fill_with_path_2d_and_winding(&path, winding);
 		}
 
 		self.end_dpi_aware_transform();
@@ -1149,19 +1227,21 @@ impl OverlayContext {
 	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is an sRGB hex string.
 	/// WARN: Don't use source-in, destination-atop, destination-in, copy
 	///       on the main canvas as it will erase the existing overlays
-	pub fn stroke_overlay(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, is_closed_on_all: bool, transform: DAffine2, color: &str, stroke: Option<Stroke>) {
+	pub fn stroke_overlay(&mut self, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
+		let subpaths = vector_data.stroke_bezier_paths();
+
 		self.render_context.save();
 		self.start_dpi_aware_transform();
 
-		if let Some(stroke) = stroke {
+		if let Some(stroke) = vector_data.style.stroke() {
 			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
 			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
 			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
 
 			let [a, b, c, d, e, f] = element_transform.to_cols_array();
 			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
-			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths.
-			self.draw_path_from_subpaths(subpaths, false, applied_stroke_transform);
+			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths as closed.
+			let path = Self::path_from_subpaths(subpaths, false, applied_stroke_transform);
 
 			// For layers with open subpaths, stroke align is ignored and set to default
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
@@ -1172,11 +1252,16 @@ impl OverlayContext {
 				self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
 				self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
 				self.render_context.set_miter_limit(stroke.join_miter_limit);
-				self.render_context.stroke();
+				self.render_context.stroke_with_path(&path);
 			};
 			let do_fill = || {
+				// Winding and path need to take into account face-by-face rendering
+				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
+				// TODO: avoid cloning the path
+				let path = new_path.unwrap_or(path.clone());
+
 				self.render_context.set_fill_style_str(&"#000000");
-				self.render_context.fill();
+				self.render_context.fill_with_path_2d_and_winding(&path, winding);
 			};
 			let composite_mode = |composite_operation: &str| {
 				self.render_context

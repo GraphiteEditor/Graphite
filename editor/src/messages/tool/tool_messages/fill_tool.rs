@@ -127,26 +127,32 @@ impl Fsm for FillToolFsmState {
 					// Stroke
 					let stroke_node = graph_layer.upstream_node_id_from_name(&STROKE_ID);
 					let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-					let stroke = vector_data.style.stroke();
 
 					let mut subpaths = vector_data.stroke_bezier_paths();
 					// Subpaths on a layer is considered "closed" only if all subpaths are closed.
 					let is_closed_on_all = subpaths.all(|subpath| subpath.closed);
 					subpaths = vector_data.stroke_bezier_paths();
-					let near_to_stroke = subpaths.any(|subpath| near_to_subpath(input.mouse.position, subpath, is_closed_on_all, stroke.clone(), layer_to_viewport, Some(overlay_context.clone())));
+					let near_to_stroke = subpaths.any(|subpath| {
+						near_to_subpath(
+							input.mouse.position,
+							subpath,
+							is_closed_on_all,
+							vector_data.style.stroke(),
+							layer_to_viewport,
+							Some(overlay_context.clone()),
+						)
+					});
 
 					// Fill
 					let fill_node = graph_layer.upstream_node_id_from_name(&FILL_ID);
 					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
-					subpaths = vector_data.stroke_bezier_paths();
 					if stroke_exists_and_visible && near_to_stroke {
-						overlay_context.stroke_overlay(subpaths, is_closed_on_all, layer_to_viewport, preview_color.as_str(), stroke);
+						overlay_context.stroke_overlay(&vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
 					} else if fill_exists_and_visible {
-						overlay_context.fill_overlay(subpaths, is_closed_on_all, layer_to_viewport, preview_color.as_str(), stroke);
+						overlay_context.fill_overlay(&vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
 					}
 				}
-
 				self
 			}
 			(_, FillToolMessage::PointerMove | FillToolMessage::WorkingColorChanged) => {
