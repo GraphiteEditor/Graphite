@@ -214,6 +214,36 @@ document.addEventListener("DOMContentLoaded", () => {
 		commits = fetched;
 	}
 
+	async function extendCommitsForward() {
+		if (commits.length === 0) return false;
+
+		const newest = commits[commits.length - 1];
+		const since = new Date(newest.date.getTime() + 1000).toISOString();
+
+		let /** @type {any[]} */ allRaw = [];
+		let page = 1;
+
+		while (true) {
+			const raw = await fetchCommitList(since, undefined, page);
+			if (!raw || raw.length === 0) break;
+			allRaw = allRaw.concat(raw);
+			if (raw.length < 100) break;
+			page++;
+		}
+
+		if (allRaw.length === 0) return false;
+
+		let fetched = parseCommits(allRaw);
+		fetched.reverse();
+
+		const existingShas = new Set(commits.map((c) => c.sha));
+		fetched = fetched.filter((c) => !existingShas.has(c.sha));
+		if (fetched.length === 0) return false;
+
+		commits = [...commits, ...fetched];
+		return true;
+	}
+
 	async function extendCommitsBackward() {
 		if (commits.length === 0) return false;
 
@@ -339,9 +369,11 @@ document.addEventListener("DOMContentLoaded", () => {
 				// Exists at starting commit, so it was introduced earlier. Search backward (doubling).
 				badIndex = currentIndex;
 				boundarySearching = true;
+				boundaryOffset = Math.max(1, commits.length - 1 - startIndex);
 			} else {
-				// Absent at starting commit. The newest commit should have it (user assumes master has it).
+				// Absent at starting commit, so the issue was introduced more recently. Extend the commit list forward (towards HEAD) before narrowing.
 				goodIndex = currentIndex;
+				await extendCommitsForward();
 				badIndex = commits.length - 1;
 				bisectPhase = "binary";
 			}
@@ -527,7 +559,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			stepCount = 0;
 			history = [];
 			bisectPhase = "boundary";
-			boundaryOffset = 1;
+			boundaryOffset = 0;
 			boundarySearching = false;
 			elements.goBackButton?.classList.remove("hidden");
 			if (elements.testBuildButton instanceof HTMLElement) elements.testBuildButton.style.display = "";

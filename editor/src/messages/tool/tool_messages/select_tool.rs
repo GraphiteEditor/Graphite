@@ -4,7 +4,6 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -12,28 +11,44 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::color_selector::{
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, swap_fill_and_stroke, sync_drawing_state,
+};
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use glam::DMat2;
 use graph_craft::document::NodeId;
+use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::BooleanOperation;
+use graphene_std::vector::style::FillChoice;
 use std::fmt;
 
-#[derive(Default, ExtractField)]
+#[derive(ExtractField)]
 pub struct SelectTool {
 	fsm_state: SelectToolFsmState,
 	tool_data: SelectToolData,
+	drawing: DrawingToolState,
+}
+
+impl Default for SelectTool {
+	fn default() -> Self {
+		Self {
+			fsm_state: SelectToolFsmState::default(),
+			tool_data: SelectToolData::default(),
+			drawing: DrawingToolState::new(true),
+		}
+	}
 }
 
 #[allow(dead_code)]
@@ -43,12 +58,19 @@ pub struct SelectOptions {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	PivotGizmoType(PivotGizmoType),
 	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
+	FillColor(FillChoice),
+	FillEnabled(bool),
+	StrokeColor(Option<Color>),
+	StrokeEnabled(bool),
+	SwapFillAndStroke,
+	StrokeOption(StrokeOptionsUpdate),
+	WorkingColorsChanged,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -83,6 +105,8 @@ pub struct SelectToolPointerKeys {
 pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
+	SelectionChanged,
+	WorkingColorChanged,
 	Overlays {
 		context: OverlayContext,
 	},
@@ -192,18 +216,6 @@ impl SelectTool {
 			})
 	}
 
-	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
-		[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
-			.into_iter()
-			.map(move |(degrees, icon, label)| {
-				IconButton::new(icon, 24)
-					.tooltip_label(label)
-					.on_update(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into())
-					.disabled(disabled)
-					.widget_instance()
-			})
-	}
-
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetInstance> + use<> {
 		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
@@ -223,6 +235,65 @@ impl SelectTool {
 impl LayoutHolder for SelectTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
+
+		// Fill/Stroke widget set (only shown when there's a selection to apply edits to)
+		if self.tool_data.selected_layers_count > 0 {
+			widgets.append(&mut self.drawing.fill.create_widgets(
+				"Fill:",
+				|checkbox: &CheckboxInput| {
+					SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::FillEnabled(checkbox.checked),
+					}
+					.into()
+				},
+				|color: &ColorInput| {
+					SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::FillColor(FillChoice::from(&color.value)),
+					}
+					.into()
+				},
+			));
+
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			widgets.push(
+				IconButton::new("SwapHorizontal", 16)
+					.tooltip_label("Swap Fill/Stroke Colors")
+					.on_update(|_| {
+						SelectToolMessage::SelectOptions {
+							options: SelectOptionsUpdate::SwapFillAndStroke,
+						}
+						.into()
+					})
+					.widget_instance(),
+			);
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+
+			widgets.append(&mut self.drawing.stroke.create_widgets(
+				"Stroke:",
+				|checkbox: &CheckboxInput| {
+					SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::StrokeEnabled(checkbox.checked),
+					}
+					.into()
+				},
+				|color: &ColorInput| {
+					SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
+					}
+					.into()
+				},
+			));
+
+			let weight_disabled = self.drawing.stroke.enabled == Some(false);
+			widgets.push(create_stroke_options_popover_widget(&self.drawing, weight_disabled, |update| {
+				SelectToolMessage::SelectOptions {
+					options: SelectOptionsUpdate::StrokeOption(update),
+				}
+				.into()
+			}));
+
+			widgets.push(Separator::new(SeparatorStyle::Section).widget_instance());
+		}
 
 		// Select mode (Deep/Shallow)
 		widgets.push(self.deep_selection_widget());
@@ -261,10 +332,6 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.flip_widgets(disabled));
 
-		// Turn
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.extend(self.turn_widgets(disabled));
-
 		// Boolean
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
@@ -277,16 +344,27 @@ impl LayoutHolder for SelectTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let mut redraw_reference_pivot = false;
+		let mut drawing_options_changed = false;
 
-		if let ToolMessage::Select(SelectToolMessage::SelectOptions { options: ref option_update }) = message {
-			match *option_update {
+		if matches!(&message, ToolMessage::Select(SelectToolMessage::SelectionChanged)) && sync_drawing_state(&mut self.drawing, true, true, context.global_tool_data, context.document) {
+			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
+
+		if matches!(&message, ToolMessage::Select(SelectToolMessage::WorkingColorChanged)) {
+			responses.add(SelectToolMessage::SelectOptions {
+				options: SelectOptionsUpdate::WorkingColorsChanged,
+			});
+		}
+
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions { options: option_update }) = &message {
+			match option_update {
 				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
-					self.tool_data.nested_selection_behavior = nested_selection_behavior;
+					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
 					responses.add(ToolMessage::UpdateHints);
 				}
 				SelectOptionsUpdate::PivotGizmoType(gizmo_type) => {
 					if self.tool_data.pivot_gizmo.state.enabled {
-						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
+						self.tool_data.pivot_gizmo.state.gizmo_type = *gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
 						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
@@ -295,24 +373,51 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 					}
 				}
 				SelectOptionsUpdate::SetPivotGizmoEnabled(enabled) => {
-					self.tool_data.pivot_gizmo.state.enabled = enabled;
+					self.tool_data.pivot_gizmo.state.enabled = *enabled;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					redraw_reference_pivot = true;
 				}
-
 				SelectOptionsUpdate::TogglePivotPinned => {
 					self.tool_data.pivot_gizmo.pivot.pinned = !self.tool_data.pivot_gizmo.pivot.pinned;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					redraw_reference_pivot = true;
 				}
+				SelectOptionsUpdate::FillColor(fill_choice) => {
+					apply_fill_color_pick(&mut self.drawing, fill_choice.clone(), context.document, responses);
+					drawing_options_changed = true;
+				}
+				SelectOptionsUpdate::FillEnabled(enabled) => {
+					apply_fill_enabled(&mut self.drawing, *enabled, context.global_tool_data, context.document, responses);
+					drawing_options_changed = true;
+				}
+				SelectOptionsUpdate::StrokeColor(color) => {
+					apply_stroke_color_pick(&mut self.drawing, *color, context.document, responses);
+					drawing_options_changed = true;
+				}
+				SelectOptionsUpdate::StrokeEnabled(enabled) => {
+					apply_stroke_enabled(&mut self.drawing, *enabled, context.global_tool_data, context.document, responses);
+					drawing_options_changed = true;
+				}
+				SelectOptionsUpdate::SwapFillAndStroke => {
+					swap_fill_and_stroke(&mut self.drawing, context.document, responses);
+					drawing_options_changed = true;
+				}
+				SelectOptionsUpdate::StrokeOption(update) => {
+					apply_stroke_option(&mut self.drawing, update.clone(), context.document, responses);
+					drawing_options_changed = true;
+				}
+				SelectOptionsUpdate::WorkingColorsChanged => {
+					apply_working_colors(&mut self.drawing, context.global_tool_data, context.document);
+					drawing_options_changed = true;
+				}
 			}
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
-		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot {
+		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot || drawing_options_changed {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
@@ -342,6 +447,8 @@ impl ToolTransition for SelectTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(SelectToolMessage::Abort.into()),
+			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
+			working_color_changed: Some(SelectToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| SelectToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
@@ -583,6 +690,18 @@ impl SelectToolData {
 	}
 }
 
+/// Draws the hover/selection outline for a layer. When a Path node is upstream, mirrors the Path tool's view
+/// (e.g. the pre-solidified centerline for a Solidify Stroke layer); otherwise uses the layer's recorded outlines.
+fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
+	if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
+		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		overlay_context.outline(targets.iter(), layer_to_viewport, color);
+	} else {
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+	}
+}
+
 /// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
 /// This uses some rather confusing logic to determine what transform that should be.
 pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
@@ -605,7 +724,7 @@ impl Fsm for SelectToolFsmState {
 			document,
 			input,
 			viewport,
-			persistent_data,
+			cached_data,
 			..
 		} = tool_action_data;
 
@@ -628,11 +747,11 @@ impl Fsm for SelectToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
-						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
+						draw_layer_outline(&mut overlay_context, document, layer, None);
 
-						if is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &persistent_data.font_cache);
+						if document.metadata().is_text_layer(layer) {
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &cached_data.font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}
@@ -669,14 +788,13 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() && !document.network_interface.is_artboard(&layer.to_node(), &[]) {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
 										overlay_context.quad(Quad::from_box(bounds), color, None);
 									}
 								} else {
-									overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
+									draw_layer_outline(&mut overlay_context, document, layer, color);
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -956,8 +1074,7 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
-							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
+							draw_layer_outline(&mut overlay_context, document, layer, None);
 						}
 					}
 
@@ -1430,9 +1547,15 @@ impl Fsm for SelectToolFsmState {
 								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
 								NestedSelectionBehavior::Shallowest if !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, false, true),
 								_ => {
-									responses.add(DocumentMessage::DeselectAllLayers);
-									tool_data.layers_dragging.clear();
-									drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									// Narrow multi-selection to just the clicked layer (no-op if it's already the sole selection)
+									let currently_selected = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+									let already_only_selection = currently_selected.as_slice() == [intersection];
+
+									if !already_only_selection {
+										responses.add(DocumentMessage::DeselectAllLayers);
+										tool_data.layers_dragging.clear();
+										drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									}
 								}
 							}
 
@@ -1568,7 +1691,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+					if selected_layers.next().is_none() && document.metadata().is_text_layer(layer) {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -1817,7 +1940,10 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	}
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
-	tool_data.layers_dragging.extend(vec![new_selected]);
+	// Duplicates cause `SelectedNodesSet` to carry the layer twice, breaking the Data panel's single-selection check in `node_to_inspect`
+	if !tool_data.layers_dragging.contains(&new_selected) {
+		tool_data.layers_dragging.push(new_selected);
+	}
 	tool_data.layers_dragging.retain(|&selected_layer| !selected_layer.is_child_of(metadata, &new_selected));
 	if remove {
 		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
@@ -1879,7 +2005,10 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 	);
 
 	if !remove {
-		tool_data.layers_dragging.extend(vec![layer]);
+		// Duplicates cause `SelectedNodesSet` to carry the layer twice, breaking the Data panel's single-selection check in `node_to_inspect`
+		if !tool_data.layers_dragging.contains(&layer) {
+			tool_data.layers_dragging.push(layer);
+		}
 	} else {
 		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
 	}
@@ -1922,7 +2051,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 /// Called when a double click on a layer in deep select mode.
 /// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
-	if is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+	if network_interface.document_metadata().is_text_layer(layer) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
 	}

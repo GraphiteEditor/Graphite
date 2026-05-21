@@ -72,7 +72,7 @@ impl NativeWindowHandle {
 
 		// Subclass the main window.
 		// https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowlongptra
-		let prev_window_message_handler = unsafe { SetWindowLongPtrW(main, GWLP_WNDPROC, main_window_handle_message as isize) };
+		let prev_window_message_handler = unsafe { SetWindowLongPtrW(main, GWLP_WNDPROC, main_window_handle_message as *const () as isize) };
 		if prev_window_message_handler == 0 {
 			let _ = unsafe { DestroyWindow(helper) };
 			panic!("SetWindowLongPtrW failed");

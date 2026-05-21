@@ -1,36 +1,16 @@
 <script lang="ts">
-	import { getContext, onMount, onDestroy } from "svelte";
-
-	import type { Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	const editor = getContext<Editor>("editor");
-
-	let propertiesPanelLayout: Layout = [];
-
-	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("PropertiesPanel", (data) => {
-			patchLayout(propertiesPanelLayout, data);
-			propertiesPanelLayout = propertiesPanelLayout;
-		});
-	});
-
-	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
-	});
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import { propertiesPanelLayout } from "/src/stores/portfolio";
 </script>
 
 <LayoutCol class="properties">
 	<LayoutCol class="sections" scrollableY={true}>
-		<WidgetLayout layout={propertiesPanelLayout} layoutTarget="PropertiesPanel" />
+		<WidgetLayout layout={$propertiesPanelLayout} layoutTarget="PropertiesPanel" />
 	</LayoutCol>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.properties {
 		height: 100%;
 		flex: 1 1 100%;

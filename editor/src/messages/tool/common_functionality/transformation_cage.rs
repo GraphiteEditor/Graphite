@@ -212,16 +212,15 @@ impl SelectedEdges {
 				let original_from_pivot = updated - pivot; // The original vector from the point to the pivot
 				let mut scale_factor = new_from_pivot / original_from_pivot;
 
-				// Constrain should always scale by the same factor in x and y
+				// Constrain should always scale by the same factor in x and y.
+				// When one axis of `original_from_pivot` is near zero (e.g. for a line's degenerate bounding box),
+				// the scale factor for that axis is numerically unstable, so we copy from the more stable axis.
 				if constrain {
-					// When the point is on the pivot, we simply copy the other axis.
-					if original_from_pivot.x.abs() < 1e-5 {
+					if original_from_pivot.x.abs() < original_from_pivot.y.abs() {
 						scale_factor.x = scale_factor.y;
-					} else if original_from_pivot.y.abs() < 1e-5 {
+					} else {
 						scale_factor.y = scale_factor.x;
 					}
-
-					debug_assert!((scale_factor.x - scale_factor.y).abs() < 1e-5);
 				}
 
 				if !(self.left || self.right || constrain) {

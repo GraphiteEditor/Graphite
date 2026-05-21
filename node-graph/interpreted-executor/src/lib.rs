@@ -6,7 +6,7 @@ pub mod util;
 mod tests {
 	use core_types::*;
 	use futures::executor::block_on;
-	use graphene_core::ops::identity;
+	use graphene_core::ops::passthrough;
 
 	#[test]
 	fn double_number() {
@@ -16,17 +16,17 @@ mod tests {
 		let network = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
-				// Simple identity node taking a number as input from outside the graph
+				// Simple passthrough node taking a number as input from outside the graph
 				(
 					NodeId(0),
 					DocumentNode {
 						inputs: vec![],
 						call_argument: concrete!(u32),
-						implementation: DocumentNodeImplementation::ProtoNode(identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(passthrough::IDENTIFIER),
 						..Default::default()
 					},
 				),
-				// An add node adding the result of the id node to its self
+				// An add node adding the result of the passthrough node to its self
 				(
 					NodeId(1),
 					DocumentNode {

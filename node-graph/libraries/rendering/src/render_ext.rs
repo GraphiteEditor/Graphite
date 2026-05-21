@@ -1,9 +1,11 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
+use core_types::color::SRGBA8;
 use core_types::uuid::generate_uuid;
 use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
+use vector_types::gradient::GradientSpreadMethod;
 
 pub trait RenderExt {
 	type Output;
@@ -21,7 +23,7 @@ impl RenderExt for Gradient {
 			if position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
-			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+			let _ = write!(stop, r##" stop-color="#{}""##, SRGBA8::from(color).to_rgb_hex());
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 			}
@@ -47,13 +49,19 @@ impl RenderExt for Gradient {
 			format!(r#" gradientTransform="{gradient_transform}""#)
 		};
 
+		let spread_method = if self.spread_method == GradientSpreadMethod::Pad {
+			String::new()
+		} else {
+			format!(r#" spreadMethod="{}""#, self.spread_method.svg_name())
+		};
+
 		let gradient_id = generate_uuid();
 
 		match self.gradient_type {
 			GradientType::Linear => {
 				let _ = write!(
 					svg_defs,
-					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{gradient_transform}>{}</linearGradient>"#,
+					r#"<linearGradient id="{}" x1="{}" y1="{}" x2="{}" y2="{}"{spread_method}{gradient_transform}>{}</linearGradient>"#,
 					gradient_id, start.x, start.y, end.x, end.y, stop
 				);
 			}
@@ -61,7 +69,7 @@ impl RenderExt for Gradient {
 				let radius = (f64::powi(start.x - end.x, 2) + f64::powi(start.y - end.y, 2)).sqrt();
 				let _ = write!(
 					svg_defs,
-					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{gradient_transform}>{}</radialGradient>"#,
+					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}"{spread_method}{gradient_transform}>{}</radialGradient>"#,
 					gradient_id, start.x, start.y, radius, stop
 				);
 			}
@@ -79,7 +87,7 @@ impl RenderExt for Fill {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
-				let mut result = format!(r##" fill="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+				let mut result = format!(r##" fill="#{}""##, SRGBA8::from(*color).to_rgb_hex());
 				if color.a() < 1. {
 					let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 				}
@@ -112,8 +120,10 @@ impl RenderExt for Stroke {
 			return String::new();
 		}
 
+		let default_weight = if self.align != StrokeAlign::Center && render_params.aligned_strokes { 1. / 2. } else { 1. };
+
 		// Set to None if the value is the SVG default
-		let weight = (self.weight != 1.).then_some(self.weight);
+		let weight = (self.weight != default_weight).then_some(self.weight);
 		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
 		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
 		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);
@@ -123,7 +133,7 @@ impl RenderExt for Stroke {
 		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || render_params.override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+		let mut attributes = format!(r##" stroke="#{}""##, SRGBA8::from(color).to_rgb_hex());
 		if color.a() < 1. {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}

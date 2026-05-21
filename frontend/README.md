@@ -10,7 +10,7 @@ Images that are used in components and embedded into the application bundle by t
 
 Source code for the web app in the form of Svelte components and [TypeScript](https://www.typescriptlang.org/) files.
 
-## WebAssembly wrapper: `wasm/`
+## Editor wrapper: `wrapper/`
 
 Wraps the editor backend codebase (`/editor`) and provides a JS-centric API for the web app to use as an entry point, unburdened by Rust's complex data types that are incompatible with JS data types. Bindings (JS functions that call into the Wasm module) are provided by [wasm-bindgen](https://rustwasm.github.io/docs/wasm-bindgen/) in concert with [wasm-pack](https://github.com/rustwasm/wasm-pack).
 

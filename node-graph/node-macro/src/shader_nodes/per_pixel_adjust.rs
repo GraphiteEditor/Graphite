@@ -66,7 +66,7 @@ impl ShaderCodegen for PerPixelAdjust {
 			}
 		}
 
-		let entry_point_mod = format_ident!("{}_gpu_entry_point", fn_name);
+		let entry_point_mod = format_ident!("{}_gpu", fn_name);
 		let entry_point_name_ident = format_ident!("ENTRY_POINT_NAME");
 		let entry_point_name = quote!(#entry_point_mod::#entry_point_name_ident);
 		let uniform_struct_ident = format_ident!("Uniform");
@@ -186,7 +186,7 @@ impl PerPixelAdjustCodegen<'_> {
 		let wgpu_executor = self.crate_ident.wgpu_executor()?;
 
 		// adapt fields for gpu node
-		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#raster_types::Raster<#raster_types::GPU>>);
+		let raster_gpu: Type = parse_quote!(#gcore::list::List<#raster_types::Raster<#raster_types::GPU>>);
 		let mut fields = self
 			.parsed
 			.fields

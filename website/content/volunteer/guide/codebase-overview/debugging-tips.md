@@ -60,7 +60,7 @@ This interactive tool helps you binary search through recent commits, test the b
 			<input type="date" data-commit-date />
 		</div>
 		<div class="start-input hidden" data-input="hash">
-			<input type="text" data-commit-hash placeholder="Commit hash" pattern="[0-9a-fA-F]{7,40}" />
+			<input data-commit-hash placeholder="Commit hash" pattern="[0-9a-fA-F]{7,40}" />
 		</div>
 		<span class="button arrow" data-start-button>Begin bisect</span>
 	</div>

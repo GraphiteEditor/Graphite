@@ -4,6 +4,7 @@ pub mod animation;
 pub mod app_window;
 pub mod broadcast;
 pub mod clipboard;
+pub mod color_picker;
 pub mod debug;
 pub mod defer;
 pub mod dialog;

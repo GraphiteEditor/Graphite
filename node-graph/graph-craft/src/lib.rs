@@ -3,11 +3,11 @@ extern crate log;
 #[macro_use]
 extern crate core_types;
 
-pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, generic};
+pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, descriptor, generic};
 
+pub mod application_io;
 pub mod document;
 pub mod graphene_compiler;
 pub mod proto;
 #[cfg(feature = "loading")]
 pub mod util;
-pub mod wasm_application_io;

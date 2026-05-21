@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 core-types = { workspace = true }
 node-macro = { workspace = true }
+graphic-types = { workspace = true }
 vector-types = { workspace = true }
 
 # Workspace dependencies

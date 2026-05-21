@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
+use crate::consts::{DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
@@ -7,12 +7,17 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_endp
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::color_selector::{
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, reset_colors_on_deactivation, swap_fill_and_stroke,
+	sync_drawing_state,
+};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
+use graphene_std::vector::style::FillChoice;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
 #[derive(Default, ExtractField)]
@@ -23,17 +28,13 @@ pub struct SplineTool {
 }
 
 pub struct SplineOptions {
-	line_weight: f64,
-	fill: ToolColorOptions,
-	stroke: ToolColorOptions,
+	drawing: DrawingToolState,
 }
 
 impl Default for SplineOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: DEFAULT_STROKE_WIDTH,
-			fill: ToolColorOptions::new_none(),
-			stroke: ToolColorOptions::new_primary(),
+			drawing: DrawingToolState::new(false),
 		}
 	}
 }
@@ -46,6 +47,7 @@ pub enum SplineToolMessage {
 	Overlays { context: OverlayContext },
 	CanvasTransformed,
 	Abort,
+	SelectionChanged,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -70,12 +72,13 @@ enum SplineToolFsmState {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SplineOptionsUpdate {
-	FillColor(Option<Color>),
-	FillColorType(ToolColorType),
-	LineWeight(f64),
+	FillColor(FillChoice),
+	FillEnabled(bool),
+	StrokeOption(StrokeOptionsUpdate),
 	StrokeColor(Option<Color>),
-	StrokeColorType(ToolColorType),
-	WorkingColors(Option<Color>, Option<Color>),
+	StrokeEnabled(bool),
+	SwapFillAndStroke,
+	WorkingColorsChanged,
 }
 
 impl ToolMetadata for SplineTool {
@@ -90,76 +93,60 @@ impl ToolMetadata for SplineTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetInstance {
-	NumberInput::new(Some(line_weight))
-		.unit(" px")
-		.label("Weight")
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| {
-			SplineToolMessage::UpdateOptions {
-				options: SplineOptionsUpdate::LineWeight(number_input.value.unwrap()),
-			}
-			.into()
-		})
-		.widget_instance()
-}
-
 impl LayoutHolder for SplineTool {
 	fn layout(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
-			"Fill",
-			true,
-			|_| {
+		let mut widgets = self.options.drawing.fill.create_widgets(
+			"Fill:",
+			|checkbox: &CheckboxInput| {
 				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::FillColor(None),
+					options: SplineOptionsUpdate::FillEnabled(checkbox.checked),
 				}
 				.into()
 			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
-					SplineToolMessage::UpdateOptions {
-						options: SplineOptionsUpdate::FillColorType(color_type.clone()),
-					}
-					.into()
-				})
-			},
 			|color: &ColorInput| {
 				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+					options: SplineOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 				}
 				.into()
 			},
 		);
 
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		widgets.append(&mut self.options.stroke.create_widgets(
-			"Stroke",
-			true,
-			|_| {
-				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::StrokeColor(None),
-				}
-				.into()
-			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
+		widgets.push(
+			IconButton::new("SwapHorizontal", 16)
+				.tooltip_label("Swap Fill/Stroke Colors")
+				.on_update(|_| {
 					SplineToolMessage::UpdateOptions {
-						options: SplineOptionsUpdate::StrokeColorType(color_type.clone()),
+						options: SplineOptionsUpdate::SwapFillAndStroke,
 					}
 					.into()
 				})
+				.widget_instance(),
+		);
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+
+		widgets.append(&mut self.options.drawing.stroke.create_widgets(
+			"Stroke:",
+			|checkbox: &CheckboxInput| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::StrokeEnabled(checkbox.checked),
+				}
+				.into()
 			},
 			|color: &ColorInput| {
 				SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+					options: SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(create_weight_widget(self.options.line_weight));
+		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
+		widgets.push(create_stroke_options_popover_widget(&self.options.drawing, weight_disabled, |update| {
+			SplineToolMessage::UpdateOptions {
+				options: SplineOptionsUpdate::StrokeOption(update),
+			}
+			.into()
+		}));
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -168,27 +155,48 @@ impl LayoutHolder for SplineTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
+		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
+		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
+		if matches!(&message, ToolMessage::Spline(SplineToolMessage::Abort)) && self.fsm_state == SplineToolFsmState::Ready {
+			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+		}
+
+		if matches!(&message, ToolMessage::Spline(SplineToolMessage::SelectionChanged)) {
+			if self.fsm_state != SplineToolFsmState::Ready {
+				return;
+			}
+			if sync_drawing_state(&mut self.options.drawing, false, true, context.global_tool_data, context.document) {
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
+			return;
+		}
+
 		let ToolMessage::Spline(SplineToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
 		match options {
-			SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
-			SplineOptionsUpdate::FillColor(color) => {
-				self.options.fill.custom_color = color;
-				self.options.fill.color_type = ToolColorType::Custom;
+			SplineOptionsUpdate::StrokeOption(update) => {
+				apply_stroke_option(&mut self.options.drawing, update, context.document, responses);
 			}
-			SplineOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
+			SplineOptionsUpdate::FillColor(fill_choice) => {
+				apply_fill_color_pick(&mut self.options.drawing, fill_choice, context.document, responses);
+			}
+			SplineOptionsUpdate::FillEnabled(enabled) => {
+				apply_fill_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
+			}
 			SplineOptionsUpdate::StrokeColor(color) => {
-				self.options.stroke.custom_color = color;
-				self.options.stroke.color_type = ToolColorType::Custom;
+				apply_stroke_color_pick(&mut self.options.drawing, color, context.document, responses);
 			}
-			SplineOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
-			SplineOptionsUpdate::WorkingColors(primary, secondary) => {
-				self.options.stroke.primary_working_color = primary;
-				self.options.stroke.secondary_working_color = secondary;
-				self.options.fill.primary_working_color = primary;
-				self.options.fill.secondary_working_color = secondary;
+			SplineOptionsUpdate::StrokeEnabled(enabled) => {
+				apply_stroke_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
+			}
+			SplineOptionsUpdate::SwapFillAndStroke => {
+				swap_fill_and_stroke(&mut self.options.drawing, context.document, responses);
+			}
+			SplineOptionsUpdate::WorkingColorsChanged => {
+				apply_working_colors(&mut self.options.drawing, context.global_tool_data, context.document);
 			}
 		}
 
@@ -224,8 +232,8 @@ impl ToolTransition for SplineTool {
 			overlay_provider: Some(|context: OverlayContext| SplineToolMessage::Overlays { context }.into()),
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
+			selection_changed: Some(SplineToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
-			..Default::default()
 		}
 	}
 }
@@ -296,7 +304,6 @@ impl Fsm for SplineToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
-			global_tool_data,
 			input,
 			shape_editor,
 			viewport,
@@ -344,7 +351,7 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.cleanup();
-				tool_data.weight = tool_options.line_weight;
+				tool_data.weight = tool_options.drawing.effective_line_weight();
 
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
@@ -400,8 +407,8 @@ impl Fsm for SplineToolFsmState {
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
-				tool_options.fill.apply_fill(layer, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+				tool_options.drawing.fill.apply_fill(layer, responses);
 				tool_data.current_layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(viewport_vec);
 
@@ -530,7 +537,7 @@ impl Fsm for SplineToolFsmState {
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
 				responses.add(SplineToolMessage::UpdateOptions {
-					options: SplineOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+					options: SplineOptionsUpdate::WorkingColorsChanged,
 				});
 				self
 			}

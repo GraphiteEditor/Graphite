@@ -19,6 +19,7 @@ mod gpu_context;
 mod persist;
 mod preferences;
 mod render;
+mod socket;
 mod window;
 
 pub(crate) mod consts;
@@ -58,11 +59,22 @@ pub fn start() {
 		}
 		Err(_) => {
 			tracing::error!("Another instance is already running, Exiting.");
-			std::process::exit(1);
+			if !cli.files.is_empty()
+				&& let Err(error) = socket::send(socket::Message::OpenFiles(cli.files))
+			{
+				tracing::error!("Failed to send socket message to running instance: {}", error);
+				std::process::exit(1);
+			}
+			return;
 		}
 	};
 
-	let prefs = preferences::read();
+	dirs::app_tmp_dir_cleanup();
+
+	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
+	dirs::delete_old_cef_browser_directory();
+
+	let mut prefs = preferences::read();
 
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
@@ -73,15 +85,19 @@ pub fn start() {
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
 	let app_event_scheduler = event_loop.create_app_event_scheduler(app_event_sender);
 
+	let _socket_handle = socket::start(app_event_scheduler.clone());
+
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	let disable_ui_acceleration = prefs.disable_ui_acceleration || cli.disable_ui_acceleration;
-	if disable_ui_acceleration {
+	if cli.disable_ui_acceleration {
+		prefs.disable_ui_acceleration = true;
+	}
+	if prefs.disable_ui_acceleration {
 		println!("UI acceleration is disabled");
 	}
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler, disable_ui_acceleration) {
+	let cef_context = match cef_context_builder.create(cef_handler, prefs.disable_ui_acceleration) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context
@@ -97,7 +113,7 @@ pub fn start() {
 		}
 	};
 
-	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli);
+	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli.files);
 
 	let exit_reason = app.run(event_loop);
 
@@ -114,7 +130,7 @@ pub fn start() {
 
 	match exit_reason {
 		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
-			tracing::error!("Restarting application");
+			tracing::info!("Restarting application");
 			let mut command = std::process::Command::new(std::env::current_exe().unwrap());
 			#[cfg(target_family = "unix")]
 			let _ = std::os::unix::process::CommandExt::exec(&mut command);

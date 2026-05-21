@@ -10,9 +10,12 @@ pub enum DataPanelMessage {
 		inspect_result: InspectResult,
 	},
 	ClearLayout,
+	/// Re-render the existing layout against the latest network interface state. Use this when node metadata
+	/// (display name, visibility, locked, etc.) changes but the introspected output value hasn't.
+	Refresh,
 
 	PushToElementPath {
-		index: usize,
+		step: PathStep,
 	},
 	TruncateElementPath {
 		len: usize,
@@ -21,6 +24,14 @@ pub enum DataPanelMessage {
 	ViewVectorTableTab {
 		tab: VectorTableTab,
 	},
+}
+
+/// One hop in the breadcrumb path through nested data the Data panel is displaying.
+/// Drilling into an item's element produces an `Element` step; drilling into one of an item's attributes produces an `Attribute` step.
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum PathStep {
+	Element(usize),
+	Attribute { row: usize, key: String },
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]

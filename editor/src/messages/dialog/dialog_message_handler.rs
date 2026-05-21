@@ -126,7 +126,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::RequestNewDocumentDialog => {
 				self.on_dismiss = Some(DialogMessage::Close.into());
 				self.new_document_dialog = NewDocumentDialogMessageHandler {
-					name: portfolio.generate_new_document_name(),
+					name: portfolio.generate_new_document_name(None),
 					infinite: false,
 					dimensions: glam::UVec2::new(1920, 1080),
 				};
@@ -136,11 +136,9 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.on_dismiss = Some(PreferencesDialogMessage::Confirm.into());
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
 			}
-			DialogMessage::RequestConfirmRestartDialog => {
+			DialogMessage::RequestConfirmRestartDialog { preferences_requiring_restart } => {
 				self.on_dismiss = Some(DialogMessage::Close.into());
-				let dialog = ConfirmRestartDialog {
-					changed_settings: vec!["Disable UI Acceleration".into()],
-				};
+				let dialog = ConfirmRestartDialog { preferences_requiring_restart };
 				dialog.send_dialog_to_frontend(responses);
 			}
 		}

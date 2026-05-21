@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
@@ -20,6 +21,7 @@ pub struct DispatcherMessageHandlers {
 	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	clipboard_message_handler: ClipboardMessageHandler,
+	color_picker_message_handler: ColorPickerMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -163,6 +165,7 @@ impl Dispatcher {
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
+				Message::ColorPicker(message) => self.message_handlers.color_picker_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
@@ -233,10 +236,11 @@ impl Dispatcher {
 				Message::MenuBar(message) => {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
-					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.focus_document;
-					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
-					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
-					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
+					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace_panel_layout.focus_document;
+					let layout = &self.message_handlers.portfolio_message_handler.workspace_panel_layout;
+					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
+					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
+					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 
@@ -293,7 +297,7 @@ impl Dispatcher {
 						document_id,
 						document,
 						input: &self.message_handlers.input_preprocessor_message_handler,
-						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+						cached_data: &self.message_handlers.portfolio_message_handler.cached_data,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
 						viewport: &self.message_handlers.viewport_message_handler,

@@ -3,7 +3,7 @@ use graphene_std::uuid::NodeId;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -13,7 +13,7 @@ pub struct PropertiesPanelMessageContext<'a> {
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
 	pub executor: &'a mut NodeGraphExecutor,
-	pub persistent_data: &'a PersistentData,
+	pub cached_data: &'a CachedData,
 	pub properties_panel_open: bool,
 }
 
@@ -28,7 +28,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			selection_network_path,
 			document_name,
 			executor,
-			persistent_data,
+			cached_data,
 			properties_panel_open,
 		} = context;
 
@@ -46,7 +46,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 				}
 
 				let mut node_properties_context = NodePropertiesContext {
-					persistent_data,
+					cached_data,
 					responses,
 					network_interface,
 					selection_network_path,

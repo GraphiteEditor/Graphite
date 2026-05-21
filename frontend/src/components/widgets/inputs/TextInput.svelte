@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
-
-	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
-
-	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ commitText: string }>();
 
@@ -42,10 +40,16 @@
 		// The `unFocus()` call in `onTextChangeCanceled()` causes itself to be run again, so this if statement skips a second run
 		if (!editing) return;
 
+		// Capture before `onTextChangeCanceled` blurs the input
+		const currentValue = self?.getValue();
+
 		onTextChangeCanceled();
 
-		// TODO: Find a less hacky way to do this
-		if (self) dispatch("commitText", self.getValue());
+		// Only commit on a real edit, so a blur fired when the focused input is removed from the DOM (e.g., from a picker closing
+		// during hover transfer) doesn't round-trip the original value back to the backend and overwrite concurrent state.
+		if (self && currentValue !== undefined && currentValue !== value) {
+			dispatch("commitText", currentValue);
+		}
 
 		// Required if value is not changed by the parent component upon update:value event
 		self?.setInputElementValue(self.getValue());
@@ -89,7 +93,7 @@
 	bind:this={self}
 />
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-input {
 		flex-shrink: 0;
 

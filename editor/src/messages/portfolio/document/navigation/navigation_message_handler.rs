@@ -343,8 +343,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				let (pos1, pos2) = (pos1.min(pos2), pos1.max(pos2));
 				let diagonal = pos2 - pos1;
 
-				if diagonal.length() < f64::EPSILON * 1000. || viewport.size().into_dvec2() == DVec2::ZERO {
-					warn!("Cannot center since the viewport size is 0");
+				if !diagonal.is_finite() || diagonal.length() < f64::EPSILON * 1000. || viewport.size().into_dvec2() == DVec2::ZERO {
+					warn!("Cannot center since the viewport size is 0 or the bounds are non-finite");
 					return;
 				}
 

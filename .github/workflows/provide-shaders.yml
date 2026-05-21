@@ -1,4 +1,4 @@
-name: Provide Shaders
+name: "Provide Shaders"
 
 on:
   push:
@@ -12,14 +12,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
 
-      - name: Build graphene raster nodes shaders
+      - name: ❄ Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://graphite.cachix.org https://graphite-dev.cachix.org
+            extra-trusted-public-keys = graphite.cachix.org-1:B7Il1yMpkquN/dXM+5GRmz+4Xmu2aaCS1GcWNfFhsOo= graphite-dev.cachix.org-1:RppXYpiV1qO2TYKTkXXGHsAEQDOB5G51b3VlrN9QmbI=
+
+      - name: 🏗 Build graphene raster nodes shaders
         run: nix build .#graphite-raster-nodes-shaders && cp result raster_nodes_shaders_entrypoint.wgsl
 
-      - name: Upload graphene raster nodes shaders to artifacts repository
+      - name: 📤 Upload graphene raster nodes shaders to artifacts repository
         run: |
           bash .github/workflows/scripts/artifact-upload.bash \
             ${{ vars.ARTIFACTS_REPO_OWNER }} \
@@ -29,3 +35,11 @@ jobs:
             raster_nodes_shaders_entrypoint.wgsl \
             "${{ github.sha }} raster_nodes_shaders_entrypoint.wgsl" \
             ${{ secrets.ARTIFACTS_REPO_TOKEN }}
+
+      - name: 📤 Push shaders to dev Nix cache
+        env:
+          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN_DEV }}
+          NIX_CACHE_NAME: graphite-dev
+        run: |
+          nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
+          nix build .#graphite-raster-nodes-shaders --no-link --print-out-paths | nix run nixpkgs#cachix -- push $NIX_CACHE_NAME

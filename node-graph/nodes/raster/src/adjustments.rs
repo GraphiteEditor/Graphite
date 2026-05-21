@@ -4,9 +4,9 @@ use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
-use core_types::table::Table;
-use glam::{Vec3, Vec4};
-use no_std_types::color::Color;
+use core_types::list::List;
+use glam::Vec3;
+use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
 use no_std_types::context::Ctx;
 use no_std_types::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
 use node_macro::BufferStruct;
@@ -34,7 +34,8 @@ use vector_types::GradientStops;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 #[repr(u32)]
@@ -52,9 +53,9 @@ pub enum LuminanceCalculation {
 fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -62,7 +63,7 @@ fn luminance<T: Adjust<Color>>(
 ) -> T {
 	input.adjust(|color| {
 		let luminance = match luminance_calc {
-			LuminanceCalculation::SRGB => color.luminance_srgb(),
+			LuminanceCalculation::SRGB => color.luminance_rec_709(),
 			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
 			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
@@ -77,9 +78,9 @@ fn luminance<T: Adjust<Color>>(
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -90,7 +91,7 @@ fn gamma_correction<T: Adjust<Color>>(
 	inverse: bool,
 ) -> T {
 	let exponent = if inverse { 1. / gamma } else { gamma };
-	input.adjust(|color| color.gamma(exponent));
+	input.adjust(|color| color.apply_gamma_exponent(exponent));
 	input
 }
 
@@ -98,9 +99,9 @@ fn gamma_correction<T: Adjust<Color>>(
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -122,9 +123,9 @@ fn extract_channel<T: Adjust<Color>>(
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -139,18 +140,14 @@ fn make_opaque<T: Adjust<Color>>(
 }
 
 // TODO: Remove this once GPU shader nodes are able to support the non-classic algorithm
-#[node_macro::node(
-	name("Brightness/Contrast Classic"),
-	category("Raster: Adjustment"),
-	properties("brightness_contrast_properties"),
-	shader_node(PerPixelAdjust)
-)]
+// TODO: Maybe re-add the "Raster: Adjustment" category to make this user-facing if we care to make this not just for testing
+#[node_macro::node(name("Brightness/Contrast Classic"), category(""), properties("brightness_contrast_properties"), shader_node(PerPixelAdjust))]
 fn brightness_contrast_classic<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -164,7 +161,7 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 
 	let offset = brightness * contrast + brightness - contrast / 2.;
 
-	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
+	input.adjust(|color| color.map_gamma_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)));
 
 	input
 }
@@ -179,9 +176,9 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 fn brightness_contrast<T: Adjust<Color>>(
 	_ctx: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -243,7 +240,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	});
 	let lut_max = (combined_lut.len() - 1) as f32;
 
-	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| combined_lut[(c * lut_max).round() as usize]).to_linear_srgb());
+	input.adjust(|color| color.map_gamma_rgb(|c| combined_lut[(c * lut_max).round() as usize]));
 
 	input
 }
@@ -256,13 +253,13 @@ fn brightness_contrast<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("levels_properties"), shader_node(PerPixelAdjust))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -273,7 +270,8 @@ fn levels<T: Adjust<Color>>(
 	#[default(100.)] output_maximums: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
-		let color = color.to_gamma_srgb();
+		// Levels math operates in gamma space
+		let [mut r, mut g, mut b, a] = color.to_gamma_srgb_channels();
 
 		// Input Range (Range: 0-1)
 		let input_shadows = shadows / 100.;
@@ -304,15 +302,24 @@ fn levels<T: Adjust<Color>>(
 
 		// Input levels (Range: 0-1)
 		let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
-		let color = color.map_rgb(|c| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.));
+		let input_map = |c: f32| ((c - input_shadows).max(0.) / highlights_minus_shadows).min(1.);
+		r = input_map(r);
+		g = input_map(g);
+		b = input_map(b);
 
-		// Midtones (Range: 0-1)
-		let color = color.gamma(gamma);
+		// Midtones gamma curve (Range: 0-1)
+		let inverse_gamma = 1. / gamma.max(0.0001);
+		r = r.powf(inverse_gamma);
+		g = g.powf(inverse_gamma);
+		b = b.powf(inverse_gamma);
 
 		// Output levels (Range: 0-1)
-		let color = color.map_rgb(|c| c * (output_maximums - output_minimums) + output_minimums);
+		let output_map = |c: f32| c * (output_maximums - output_minimums) + output_minimums;
+		r = output_map(r);
+		g = output_map(g);
+		b = output_map(b);
 
-		color.to_linear_srgb()
+		Color::from_gamma_srgb_channels(r, g, b, a)
 	});
 	image
 }
@@ -324,13 +331,14 @@ fn levels<T: Adjust<Color>>(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-#[node_macro::node(name("Black & White"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+// TODO: Currently the un-List-wrapped `tint` Color is causing a type error. Put this back in the "Raster: Adjustment" category once that's fixed.
+#[node_macro::node(name("Black & White"), category(""), properties("black_and_white_properties"), shader_node(PerPixelAdjust))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -355,7 +363,8 @@ fn black_and_white<T: Adjust<Color>>(
 	magentas: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
-		let color = color.to_gamma_srgb();
+		// Black & White channel weights are tuned for gamma-space values
+		let [r, g, b, alpha_part] = color.to_gamma_srgb_channels();
 
 		let reds = reds / 100.;
 		let yellows = yellows / 100.;
@@ -364,12 +373,11 @@ fn black_and_white<T: Adjust<Color>>(
 		let blues = blues / 100.;
 		let magentas = magentas / 100.;
 
-		let gray_base = color.r().min(color.g()).min(color.b());
+		let gray_base = r.min(g).min(b);
 
-		let red_part = color.r() - gray_base;
-		let green_part = color.g() - gray_base;
-		let blue_part = color.b() - gray_base;
-		let alpha_part = color.a();
+		let red_part = r - gray_base;
+		let green_part = g - gray_base;
+		let blue_part = b - gray_base;
 
 		let additional = if red_part == 0. {
 			let cyan_part = green_part.min(blue_part);
@@ -385,11 +393,15 @@ fn black_and_white<T: Adjust<Color>>(
 		let luminance = gray_base + additional;
 
 		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
-		let color = tint.with_luminance(luminance);
+		// Apply luminance substitution in gamma space
+		let [tr, tg, tb, _] = tint.to_gamma_srgb_channels();
+		let tint_luma_rec_601 = 0.3 * tr + 0.59 * tg + 0.11 * tb;
+		let delta = luminance - tint_luma_rec_601;
+		let result_r = (tr + delta).clamp(0., 1.);
+		let result_g = (tg + delta).clamp(0., 1.);
+		let result_b = (tb + delta).clamp(0., 1.);
 
-		let color = Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), alpha_part);
-
-		color.to_linear_srgb()
+		Color::from_gamma_srgb_channels(result_r, result_g, result_b, alpha_part)
 	});
 	image
 }
@@ -397,13 +409,13 @@ fn black_and_white<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
-#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), properties("hue_saturation_properties"), shader_node(PerPixelAdjust))]
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -412,20 +424,17 @@ fn hue_saturation<T: Adjust<Color>>(
 	lightness_shift: SignedPercentageF32,
 ) -> T {
 	input.adjust(|color| {
-		let color = color.to_gamma_srgb();
-
+		// HSL operates on gamma-space channels
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
 
-		let color = Color::from_hsla(
+		Color::from_hsla(
 			(hue + hue_shift / 360.) % 1.,
 			// TODO: Improve the way saturation works (it's slightly off)
 			(saturation + saturation_shift / 100.).clamp(0., 1.),
 			// TODO: Fix the way lightness works (it's very off)
 			(lightness + lightness_shift / 100.).clamp(0., 1.),
 			alpha,
-		);
-
-		color.to_linear_srgb()
+		)
 	});
 	input
 }
@@ -436,32 +445,30 @@ fn hue_saturation<T: Adjust<Color>>(
 fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
-		let color = color.to_gamma_srgb();
-
-		let color = color.map_rgb(|c| color.a() - c);
-
-		color.to_linear_srgb()
+		// Invert in gamma space relative to alpha
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
+		Color::from_gamma_srgb_channels(a - r, a - g, a - b, a)
 	});
 	input
 }
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -470,11 +477,11 @@ fn threshold<T: Adjust<Color>>(
 	luminance_calc: LuminanceCalculation,
 ) -> T {
 	image.adjust(|color| {
-		let min_luminance = Color::srgb_to_linear(min_luminance / 100.);
-		let max_luminance = Color::srgb_to_linear(max_luminance / 100.);
+		let min_luminance = srgb_to_linear(min_luminance / 100.);
+		let max_luminance = srgb_to_linear(max_luminance / 100.);
 
 		let luminance = match luminance_calc {
-			LuminanceCalculation::SRGB => color.luminance_srgb(),
+			LuminanceCalculation::SRGB => color.luminance_rec_709(),
 			LuminanceCalculation::Perceptual => color.luminance_perceptual(),
 			LuminanceCalculation::AverageChannels => color.average_rgb_channels(),
 			LuminanceCalculation::MinimumChannels => color.minimum_rgb_channels(),
@@ -501,30 +508,35 @@ fn threshold<T: Adjust<Color>>(
 // It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
 // When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
 // (Except for some noise probably due to rounding error.)
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
 	vibrance: SignedPercentageF32,
 ) -> T {
 	image.adjust(|color| {
+		let r_raw = color.r();
+		let g_raw = color.g();
+		let b_raw = color.b();
+		let alpha_in = color.a();
+
 		let vibrance = vibrance / 100.;
 		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 		// So this scales the 0% to -50% range to 0% to -100%.
 		let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
 
-		let channel_max = color.r().max(color.g()).max(color.b());
-		let channel_min = color.r().min(color.g()).min(color.b());
+		let channel_max = r_raw.max(g_raw).max(b_raw);
+		let channel_min = r_raw.min(g_raw).min(b_raw);
 		let channel_difference = channel_max - channel_min;
 
-		let scale_multiplier = if channel_max == color.r() {
-			let green_blue_difference = (color.g() - color.b()).abs();
+		let scale_multiplier = if channel_max == r_raw {
+			let green_blue_difference = (g_raw - b_raw).abs();
 			let t = (green_blue_difference / channel_difference).min(1.);
 			t * 0.5 + 0.5
 		} else {
@@ -534,30 +546,48 @@ fn vibrance<T: Adjust<Color>>(
 		let channel_reduction = channel_min * scale;
 		let scale = 1. + scale * (1. - channel_difference);
 
-		let luminance_initial = color.to_linear_srgb().luminance_srgb();
-		let altered_color = color.map_rgb(|c| c * scale - channel_reduction).to_linear_srgb();
-		let luminance = altered_color.luminance_srgb();
-		let altered_color = altered_color.map_rgb(|c| c * luminance_initial / luminance);
+		let r_lin0 = srgb_to_linear(r_raw);
+		let g_lin0 = srgb_to_linear(g_raw);
+		let b_lin0 = srgb_to_linear(b_raw);
+		let luminance_initial = 0.2126 * r_lin0 + 0.7152 * g_lin0 + 0.0722 * b_lin0;
 
-		let channel_max = altered_color.r().max(altered_color.g()).max(altered_color.b());
-		let altered_color = if Color::linear_to_srgb(channel_max) > 1. {
+		let mut alt_r = srgb_to_linear(r_raw * scale - channel_reduction);
+		let mut alt_g = srgb_to_linear(g_raw * scale - channel_reduction);
+		let mut alt_b = srgb_to_linear(b_raw * scale - channel_reduction);
+		let luminance = 0.2126 * alt_r + 0.7152 * alt_g + 0.0722 * alt_b;
+		// Skip the luminance-preservation scaling when the result is black (e.g. black input pixel), avoiding division by zero.
+		if luminance > 0. {
+			alt_r *= luminance_initial / luminance;
+			alt_g *= luminance_initial / luminance;
+			alt_b *= luminance_initial / luminance;
+		}
+
+		let channel_max = alt_r.max(alt_g).max(alt_b);
+		if linear_to_srgb(channel_max) > 1. {
 			let scale = (1. - luminance) / (channel_max - luminance);
-			altered_color.map_rgb(|c| (c - luminance) * scale + luminance)
-		} else {
-			altered_color
-		};
-		let altered_color = altered_color.to_gamma_srgb();
+			alt_r = (alt_r - luminance) * scale + luminance;
+			alt_g = (alt_g - luminance) * scale + luminance;
+			alt_b = (alt_b - luminance) * scale + luminance;
+		}
+
+		alt_r = linear_to_srgb(alt_r);
+		alt_g = linear_to_srgb(alt_g);
+		alt_b = linear_to_srgb(alt_b);
 
 		if vibrance >= 0. {
-			altered_color
+			Color::from_rgbaf32_unchecked(alt_r, alt_g, alt_b, alpha_in)
 		} else {
-			// TODO: The result ends up a bit darker than it should be, further investigation is needed
-			let luminance = color.luminance_rec_601();
-
-			// Near -0% vibrance we mostly use `altered_color`.
-			// Near -100% vibrance, we mostly use half the desaturated luminance color and half `altered_color`.
+			// TODO: The result ends up a bit darker than it should be, further investigation is needed.
+			// Mix in gamma space (matching `alt_*`), so the luminance is computed from gamma channels too.
+			let [gr, gg, gb, _] = color.to_gamma_srgb_channels();
+			let luminance = 0.299 * gr + 0.587 * gg + 0.114 * gb;
 			let factor = -slowed_vibrance;
-			altered_color.map_rgb(|c| c * (1. - factor) + luminance * factor)
+			Color::from_rgbaf32_unchecked(
+				alt_r * (1. - factor) + luminance * factor,
+				alt_g * (1. - factor) + luminance * factor,
+				alt_b * (1. - factor) + luminance * factor,
+				alpha_in,
+			)
 		}
 	});
 	image
@@ -565,7 +595,8 @@ fn vibrance<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
@@ -576,7 +607,8 @@ pub enum RedGreenBlue {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 #[repr(u32)]
@@ -590,7 +622,8 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum NoiseType {
@@ -608,7 +641,8 @@ pub enum NoiseType {
 
 /// Style of layered levels of the noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum FractalType {
 	#[default]
@@ -625,7 +659,8 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum CellularDistanceFunction {
 	#[default]
@@ -637,7 +672,8 @@ pub enum CellularDistanceFunction {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum CellularReturnType {
 	CellValue,
@@ -657,7 +693,8 @@ pub enum CellularReturnType {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
@@ -677,9 +714,9 @@ pub enum DomainWarpType {
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -742,16 +779,14 @@ fn channel_mixer<T: Adjust<Color>>(
 	_output_channel: RedGreenBlue,
 ) -> T {
 	image.adjust(|color| {
-		let color = color.to_gamma_srgb();
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
-		let (r, g, b, a) = color.components();
-
-		let color = if monochrome {
+		let (out_r, out_g, out_b) = if monochrome {
 			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r / 100., monochrome_g / 100., monochrome_b / 100., monochrome_c / 100.);
 
 			let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
 
-			Color::from_rgbaf32_unchecked(gray, gray, gray, a)
+			(gray, gray, gray)
 		} else {
 			let (red_r, red_g, red_b, red_c) = (red_r / 100., red_g / 100., red_b / 100., red_c / 100.);
 			let (green_r, green_g, green_b, green_c) = (green_r / 100., green_g / 100., green_b / 100., green_c / 100.);
@@ -761,17 +796,18 @@ fn channel_mixer<T: Adjust<Color>>(
 			let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
 			let blue = (r * blue_r + g * blue_g + b * blue_b + blue_c).clamp(0., 1.);
 
-			Color::from_rgbaf32_unchecked(red, green, blue, a)
+			(red, green, blue)
 		};
 
-		color.to_linear_srgb()
+		Color::from_gamma_srgb_channels(out_r, out_g, out_b, a)
 	});
 	image
 }
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
@@ -782,7 +818,8 @@ pub enum RelativeAbsolute {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 pub enum SelectiveColorChoice {
 	#[default]
@@ -809,9 +846,9 @@ pub enum SelectiveColorChoice {
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -866,9 +903,7 @@ fn selective_color<T: Adjust<Color>>(
 	_colors: SelectiveColorChoice,
 ) -> T {
 	image.adjust(|color| {
-		let color = color.to_gamma_srgb();
-
-		let (r, g, b, a) = color.components();
+		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
 		let min = |a: f32, b: f32, c: f32| a.min(b).min(c);
 		let max = |a: f32, b: f32, c: f32| a.max(b).max(c);
@@ -938,9 +973,9 @@ fn selective_color<T: Adjust<Color>>(
 		}
 
 		let rgb = Vec3::new(r, g, b);
-		let color = Color::from_vec4(Vec4::from(((sum + rgb).clamp(Vec3::ZERO, Vec3::ONE), a)));
+		let out = (sum + rgb).clamp(Vec3::ZERO, Vec3::ONE);
 
-		color.to_linear_srgb()
+		Color::from_gamma_srgb_channels(out.x, out.y, out.z, a)
 	});
 	image
 }
@@ -955,26 +990,22 @@ fn selective_color<T: Adjust<Color>>(
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
 	#[default(4)]
-	#[hard_min(2.)]
+	#[hard_min(2)]
 	levels: u32,
 ) -> T {
 	input.adjust(|color| {
-		let color = color.to_gamma_srgb();
-
-		let levels = levels as f32;
+		// `hard_min(2)` constrains the widget but doesn't bind the data-flow input (a saved doc or upstream node could still feed 0 or 1, producing inf/NaN below).
+		let levels = (levels as f32).max(2.);
 		let number_of_areas = levels.recip();
 		let size_of_areas = (levels - 1.).recip();
-		let channel = |channel: f32| (channel / number_of_areas).floor() * size_of_areas;
-		let color = color.map_rgb(channel);
-
-		color.to_linear_srgb()
+		color.map_gamma_rgb(|c| (c / number_of_areas).floor() * size_of_areas)
 	});
 	input
 }
@@ -989,9 +1020,9 @@ fn posterize<T: Adjust<Color>>(
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
+		List<Raster<CPU>>,
+		List<Color>,
+		List<GradientStops>,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -1009,9 +1040,26 @@ fn exposure<T: Adjust<Color>>(
 			// Offset
 			.map_rgb(|c: f32| c + offset)
 			// Gamma correction
-			.gamma(gamma_correction);
+			.apply_gamma_exponent(gamma_correction);
 
 		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 	});
 	input
+}
+
+#[cfg(feature = "std")]
+mod _graphene_hash_impls {
+	use super::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute, SelectiveColorChoice};
+	graphene_hash::impl_via_hash!(
+		LuminanceCalculation,
+		RedGreenBlue,
+		RedGreenBlueAlpha,
+		NoiseType,
+		FractalType,
+		CellularDistanceFunction,
+		CellularReturnType,
+		DomainWarpType,
+		RelativeAbsolute,
+		SelectiveColorChoice
+	);
 }

@@ -23,8 +23,7 @@
 		.start-input {
 			margin: 0;
 
-			input[type="text"],
-			input[type="date"] {
+			input {
 				background: none;
 				height: calc(var(--font-size-link) * 2);
 				font-size: calc(var(--font-size-link) * 0.9);
@@ -43,7 +42,7 @@
 				}
 			}
 
-			input[type="text"] {
+			input:not([type="date"]) {
 				font-family: monospace;
 				width: 320px;
 				max-width: 100%;

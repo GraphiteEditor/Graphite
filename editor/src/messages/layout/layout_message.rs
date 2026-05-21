@@ -8,6 +8,7 @@ pub enum LayoutMessage {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
 	},
+	ResendAllLayouts,
 	SendLayout {
 		layout: Layout,
 		layout_target: LayoutTarget,
@@ -24,5 +25,9 @@ pub enum LayoutMessage {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
 		value: serde_json::Value,
+	},
+	WidgetValueDragDrop {
+		layout_target: LayoutTarget,
+		widget_id: WidgetId,
 	},
 }

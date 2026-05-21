@@ -37,5 +37,7 @@ pub enum DialogMessage {
 	},
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,
-	RequestConfirmRestartDialog,
+	RequestConfirmRestartDialog {
+		preferences_requiring_restart: Vec<String>,
+	},
 }

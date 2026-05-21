@@ -28,9 +28,10 @@ impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_
 			}
 			PreferencesDialogMessage::Confirm => {
 				if let Some(unmodified_preferences) = &self.unmodified_preferences
-					&& unmodified_preferences.needs_restart(preferences)
+					&& let preferences_requiring_restart = unmodified_preferences.preferences_requiring_restart(preferences)
+					&& !preferences_requiring_restart.is_empty()
 				{
-					responses.add(DialogMessage::RequestConfirmRestartDialog);
+					responses.add(DialogMessage::RequestConfirmRestartDialog { preferences_requiring_restart });
 				} else {
 					responses.add(DialogMessage::Close);
 				}

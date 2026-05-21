@@ -23,8 +23,6 @@ pub mod types {
 	pub type Progression = f64;
 	/// Signed integer that's actually a float because we don't handle type conversions very well yet
 	pub type SignedInteger = f64;
-	/// Unsigned integer
-	pub type IntegerCount = u32;
 	/// Unsigned integer to be used for random seeds
 	pub type SeedValue = u32;
 	/// DVec2 with px unit

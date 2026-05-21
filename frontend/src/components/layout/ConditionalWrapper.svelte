@@ -11,4 +11,4 @@
 	<slot />
 {/if}
 
-<style lang="scss" global></style>
+<style lang="scss"></style>

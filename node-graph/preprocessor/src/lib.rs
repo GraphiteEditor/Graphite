@@ -19,6 +19,13 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 			DocumentNodeImplementation::Network(node_network) => expand_network(node_network, substitutions),
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				if let Some(new_node) = substitutions.get(proto_node_identifier) {
+					// Reconcile the document node's inputs with what the current node definition expects,
+					// since the saved document may have fewer or more inputs than the current version
+					while node.inputs.len() < new_node.inputs.len() {
+						node.inputs.push(new_node.inputs[node.inputs.len()].clone());
+					}
+					node.inputs.truncate(new_node.inputs.len());
+
 					node.implementation = new_node.implementation.clone();
 				}
 			}
@@ -35,7 +42,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 	for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
 
-		let NodeMetadata { fields, .. } = metadata;
+		let NodeMetadata { fields, memoize, .. } = metadata;
 		let Some(implementations) = node_registry.get(&id) else { continue };
 		let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -54,11 +61,12 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let input_count = inputs.len();
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
-		let identity_node = ops::identity::IDENTIFIER;
+		let passthrough_node = ops::passthrough::IDENTIFIER;
 
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
 			.iter()
+			.take(input_count)
 			.enumerate()
 			.map(|(i, inputs)| {
 				(
@@ -80,7 +88,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
 							} else {
-								identity_node.clone()
+								passthrough_node.clone()
 							};
 							let mut original_location = OriginalLocation::default();
 							original_location.auto_convert_index = Some(i);
@@ -94,7 +102,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 						}
 						_ => DocumentNode {
 							inputs: vec![NodeInput::import(generic!(X), i)],
-							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
+							implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 							visible: false,
 							..Default::default()
 						},
@@ -103,7 +111,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			})
 			.collect();
 
-		if generated_nodes == 0 {
+		if generated_nodes == 0 && !memoize {
 			continue;
 		}
 
@@ -119,12 +127,27 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		nodes.insert(NodeId(input_count as u64), document_node);
 
+		// If memoize is requested, append a Memoize node after the main node and redirect the export through it
+		let export_node_id = if *memoize {
+			let memoize_node_id = NodeId(input_count as u64 + 1);
+			let memoize_node = DocumentNode {
+				inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
+				implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
+				visible: true,
+				..Default::default()
+			};
+			nodes.insert(memoize_node_id, memoize_node);
+			memoize_node_id
+		} else {
+			NodeId(input_count as u64)
+		};
+
 		let node = DocumentNode {
 			inputs,
 			call_argument: input_type.clone(),
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::Node {
-					node_id: NodeId(input_count as u64),
+					node_id: export_node_id,
 					output_index: 0,
 				}],
 				nodes,
@@ -145,10 +168,13 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTypes) -> Vec<NodeInput> {
 	fields
 		.iter()
-		.zip(first_node_io.inputs.iter())
 		.enumerate()
-		.map(|(index, (field, node_io_ty))| {
-			let ty = field.default_type.as_ref().unwrap_or(node_io_ty);
+		.map(|(index, field)| {
+			// `skip_impl` nodes have no concrete implementations, so `first_node_io.inputs` is shorter than `fields`.
+			// When no type info is available for a field, fall through to the unspecified `None` value.
+			let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io.inputs.get(index)) else {
+				return NodeInput::value(TaggedValue::None, true);
+			};
 			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 			match field.value_source {

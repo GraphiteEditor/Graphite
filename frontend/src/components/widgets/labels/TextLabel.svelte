@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
-
-	import type { ActionShortcut } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let className = "";
 	export { className as class };
@@ -24,6 +23,7 @@
 	export let tableAlign = false;
 	// Sizing
 	export let minWidth = 0;
+	export let maxWidth = 0;
 	export let minWidthCharacters = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
@@ -62,7 +62,10 @@
 	}
 
 	onMount(() => watchForCheckbox(forCheckbox));
-	onDestroy(() => watchForCheckbox(undefined));
+	onDestroy(() => {
+		handlePointerLeave();
+		watchForCheckbox(undefined);
+	});
 </script>
 
 <label
@@ -75,18 +78,20 @@
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth || undefined}
+	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth > 0 ? `${minWidth}px` : undefined}
+	style:max-width={maxWidth > 0 ? `${maxWidth}px` : undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
+	on:dblclick
 	bind:this={self}
 >
 	<slot />
 </label>
 
-<style lang="scss" global>
+<style lang="scss">
 	.text-label {
 		line-height: 18px;
 		white-space: nowrap;

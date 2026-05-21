@@ -1,0 +1,51 @@
+name: "Nix Housekeeping"
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: {}
+
+jobs:
+  cache-dev-shell:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repo || github.repository }}
+          ref: ${{ inputs.checkout_ref || '' }}
+
+      - name: ❄ Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://graphite.cachix.org https://graphite-dev.cachix.org
+            extra-trusted-public-keys = graphite.cachix.org-1:B7Il1yMpkquN/dXM+5GRmz+4Xmu2aaCS1GcWNfFhsOo= graphite-dev.cachix.org-1:RppXYpiV1qO2TYKTkXXGHsAEQDOB5G51b3VlrN9QmbI=
+
+      - name: 🔎 Check whether development shell is already in binary cache
+        id: cache-check
+        run: |
+          out_path="$(nix eval --raw .#devShells.x86_64-linux.default.outPath)"
+          if nix path-info --store https://graphite-dev.cachix.org "$out_path" &>/dev/null; then
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+            echo "Development shell is already cached at $out_path"
+          else
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+            echo "Development shell is not cached"
+          fi
+
+      - name: 📦 Build Nix development shell
+        if: steps.cache-check.outputs.cached == 'false'
+        run: nix build .#devShells.x86_64-linux.default --no-link --print-out-paths
+
+      - name: 📤 Push Nix development shell to binary cache
+        if: steps.cache-check.outputs.cached == 'false'
+        env:
+          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN_DEV }}
+        run: |
+          nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
+          nix build .#devShells.x86_64-linux.default --no-link --print-out-paths | nix run nixpkgs#cachix -- push graphite-dev

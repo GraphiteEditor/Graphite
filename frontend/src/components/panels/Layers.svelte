@@ -1,27 +1,33 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-	import { SvelteMap } from "svelte/reactivity";
-
-	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Editor } from "@graphite/editor";
-	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
-	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { patchLayout } from "@graphite/utility-functions/widgets";
-
-	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import Separator from "/src/components/widgets/labels/Separator.svelte";
+	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
+	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
+	import type { NodeGraphStore } from "/src/stores/node-graph";
+	import { layersPanelControlBarLeftLayout, layersPanelControlBarRightLayout, layersPanelBottomBarLayout } from "/src/stores/portfolio";
+	import type { PortfolioStore } from "/src/stores/portfolio";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import { pasteFile } from "/src/utility-functions/files";
+	import { operatingSystem } from "/src/utility-functions/platform";
+	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
 		bottomLayer: boolean;
 		editingName: boolean;
 		entry: LayerPanelEntry;
+		depth: number;
+		parentId: bigint | undefined;
+		childrenPresent: boolean;
+		expanded: boolean;
+		ancestorOfSelected: boolean;
+		parentsVisible: boolean;
+		parentsUnlocked: boolean;
+		treePath: bigint[];
 	};
 
 	type DraggingData = {
@@ -30,6 +36,7 @@
 		insertDepth: number;
 		insertIndex: number | undefined;
 		highlightFolder: boolean;
+		highlightFolderIndex: number | undefined;
 		markerHeight: number;
 	};
 
@@ -41,14 +48,13 @@
 		startY: number;
 	};
 
-	const editor = getContext<Editor>("editor");
-	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const tooltip = getContext<TooltipState>("tooltip");
+	const editor = getContext<EditorWrapper>("editor");
+	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const tooltip = getContext<TooltipStore>("tooltip");
+	const portfolio = getContext<PortfolioStore>("portfolio");
 
 	let list: LayoutCol | undefined;
 
-	// Layer data
-	let layerCache = new SvelteMap<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
@@ -58,42 +64,19 @@
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
+	let dragDropTarget: HTMLElement | undefined = undefined;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
 
-	// Layouts
-	let layersPanelControlBarLeftLayout: Layout = [];
-	let layersPanelControlBarRightLayout: Layout = [];
-	let layersPanelBottomBarLayout: Layout = [];
+	// Drag-toggle: tracked here so the template can render the invisible lock placeholder during a `layer-lock` gesture
+	let activeDragToggleGroup: string | undefined = undefined;
+
+	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
 
 	onMount(() => {
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
-			patchLayout(layersPanelControlBarLeftLayout, data);
-			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
-		});
-
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
-			patchLayout(layersPanelControlBarRightLayout, data);
-			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
-		});
-
-		editor.subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
-			patchLayout(layersPanelBottomBarLayout, data);
-			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
-		});
-
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
-			rebuildLayerHierarchy(data.layerStructure);
-		});
-
-		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
-			const targetLayer = data.data;
-			const targetId = targetLayer.id;
-
-			updateLayerInTree(targetId, targetLayer);
-		});
+		createDragToggleManager(dragToggleListener);
 
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
@@ -107,11 +90,7 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
-		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
+		destroyDragToggleManager(dragToggleListener);
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
@@ -124,18 +103,22 @@
 		removeEventListener("keyup", clippingKeyPress);
 	});
 
+	function dragToggleListener(group: string | undefined) {
+		activeDragToggleGroup = group;
+	}
+
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
-		editor.handle.toggleNodeVisibilityLayerPanel(id);
+		editor.toggleNodeVisibilityLayerPanel(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.handle.toggleLayerLock(id);
+		editor.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, treePath: bigint[]) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
-		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		editor.toggleLayerExpansion(BigUint64Array.from(treePath), collapseRecursive);
 		e.stopPropagation();
 	}
 
@@ -162,7 +145,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.handle.setLayerName(listing.entry.id, name);
+		editor.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -200,7 +183,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.handle.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.entry.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -247,7 +230,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.handle.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -256,7 +239,7 @@
 			return;
 		}
 
-		editor.handle.deselectAllLayers();
+		editor.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -272,48 +255,50 @@
 
 		// Whether you are inserting into a folder and should show the folder outline
 		let highlightFolder = false;
+		let highlightFolderIndex: number | undefined = undefined;
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
-		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+		if (layerPanel && treeChildren && treeOffset !== undefined) {
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 			Array.from(treeChildren).forEach((treeChild) => {
 				const indexAttribute = treeChild.getAttribute("data-index");
 				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+				const listing = layers[parseInt(indexAttribute, 10)];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
 					return;
 				}
 				const pointerPercentage = (clientY - rect.top) / rect.height;
-				if (layer.childrenAllowed) {
+				if (listing.entry.childrenAllowed || listing.childrenPresent) {
 					if (pointerPercentage < 0.25) {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
-					} else if (pointerPercentage < 0.75 || (layer.childrenPresent && layer.expanded)) {
-						insertParentId = layer.id;
-						insertDepth = layer.depth;
+					} else if (pointerPercentage < 0.75 || (listing.childrenPresent && listing.expanded)) {
+						insertParentId = listing.entry.id;
+						insertDepth = listing.depth;
 						insertIndex = 0;
 						highlightFolder = true;
+						highlightFolderIndex = parseInt(indexAttribute, 10);
 					} else {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex + 1;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex + 1;
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				} else {
 					if (pointerPercentage < 0.5) {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
 					} else {
-						insertParentId = layer.parentId;
-						insertDepth = layer.depth - 1;
-						insertIndex = folderIndex + 1;
+						insertParentId = listing.parentId;
+						insertDepth = listing.depth - 1;
+						insertIndex = listing.folderIndex + 1;
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
@@ -321,7 +306,7 @@
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
-				const numberRootLayers = layers.filter((layer) => layer.entry.depth === 1).length;
+				const numberRootLayers = layers.filter((listing) => listing.depth === 1).length;
 				insertParentId = undefined;
 				insertDepth = 0;
 				insertIndex = numberRootLayers;
@@ -335,6 +320,7 @@
 			insertDepth,
 			insertIndex,
 			highlightFolder,
+			highlightFolderIndex,
 			markerHeight,
 		};
 	}
@@ -373,6 +359,18 @@
 
 		// Perform drag calculations if a drag is occurring
 		if (internalDragState.active) {
+			// Check if the cursor is over any element flagged as a drag drop target
+			// (e.g. a bottom-bar action button whose backend widget has an `on_drag_drop` callback set)
+			const droppable = (e.target instanceof Element && e.target.closest("[data-drag-droppable]")) || undefined;
+			dragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
+
+			// Hide the move-in-tree insert indicator whenever the cursor enters the bottom bar
+			const overBottomBar = ((e.target instanceof Element && e.target.closest("[data-layer-bottom-bar]")) || undefined) !== undefined;
+			if (dragDropTarget || overBottomBar) {
+				draggingData = undefined;
+				return;
+			}
+
 			const select = () => {
 				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
 					selectLayer(internalDragState.listing, false, false);
@@ -384,12 +382,20 @@
 	}
 
 	function draggingPointerUp() {
-		if (internalDragState?.active && draggingData) {
+		if (internalDragState?.active && dragDropTarget) {
+			// Ensure the dragged layer is part of the selection, matching the move-in-tree behavior
+			if (!$nodeGraph.selected.includes(internalDragState.layerId)) selectLayer(internalDragState.listing, false, false);
+
+			// Hand off to the button's backend `on_drag_drop` callback via the custom event
+			dragDropTarget.dispatchEvent(new CustomEvent("dragdrop"));
+
+			justFinishedDrag = true;
+		} else if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			// Commit the move
 			select?.();
-			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+			editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;
@@ -409,6 +415,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		dragDropTarget = undefined;
 	}
 
 	function draggingMouseDown(e: MouseEvent) {
@@ -445,7 +452,7 @@
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
 			const name = inputElement.value || "";
-			editor.handle.setLayerName(currentListing.entry.id, name);
+			editor.setLayerName(currentListing.entry.id, name);
 			currentListing.entry.alias = name;
 		}
 
@@ -493,53 +500,55 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
-		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
-		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
+	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[], cache: Map<string, LayerPanelEntry>) {
+		// Track the editing state by flat list index, not layer ID, since a layer can appear at multiple positions
+		const editingIndex = layers.findIndex((layer: LayerListingInfo) => layer.editingName);
 
 		// Clear the layer hierarchy before rebuilding it
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (children: LayerStructureEntry[]) => {
+		const recurse = (children: LayerStructureEntry[], depth: number, parentId: bigint | undefined, parentPath: bigint[], parentsVisible: boolean, parentsUnlocked: boolean) => {
 			children.forEach((item, index) => {
-				const mapping = layerCache.get(String(item.layerId));
+				const treePath = [...parentPath, item.layerId];
+				const mapping = cache.get(String(item.layerId));
+
 				if (mapping) {
 					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
 						bottomLayer: index === children.length - 1,
 						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === item.layerId,
+						editingName: editingIndex === layers.length,
+						depth,
+						parentId,
+						childrenPresent: item.childrenPresent,
+						expanded: item.childrenPresent && item.children.length > 0,
+						ancestorOfSelected: item.descendantSelected,
+						parentsVisible,
+						parentsUnlocked,
+						treePath,
 					});
 				}
 
-				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item.children);
+				// Call self recursively, propagating this layer's visibility/lock state to its children
+				const childParentsVisible = parentsVisible && (mapping?.visible ?? true);
+				const childParentsUnlocked = parentsUnlocked && (mapping?.unlocked ?? true);
+				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, treePath, childParentsVisible, childParentsUnlocked);
 			});
 		};
-		recurse(layerStructure);
+		recurse(layerStructure, 1, undefined, [], true, true);
 		layers = layers;
-	}
-
-	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
-		layerCache.set(String(targetId), targetLayer);
-
-		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
-		if (layer) {
-			layer.entry = targetLayer;
-			layers = layers;
-		}
 	}
 </script>
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
-		{#if layersPanelControlBarLeftLayout?.length > 0 && layersPanelControlBarRightLayout?.length > 0}
+		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		{#if $layersPanelControlBarLeftLayout?.length > 0 && $layersPanelControlBarRightLayout?.length > 0}
 			<Separator />
 		{/if}
-		<WidgetLayout layout={layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
+		<WidgetLayout layout={$layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -557,29 +566,29 @@
 					class="layer"
 					classes={{
 						selected,
-						"ancestor-of-selected": listing.entry.ancestorOfSelected,
+						"ancestor-of-selected": listing.ancestorOfSelected,
 						"descendant-of-selected": listing.entry.descendantOfSelected,
 						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
-						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
+						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.highlightFolderIndex === index,
 					}}
-					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
+					styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
 					data-layer
 					data-index={index}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
-					{#if listing.entry.childrenAllowed}
+					{#if listing.entry.childrenAllowed || listing.childrenPresent}
 						<button
 							class="expand-arrow"
-							class:expanded={listing.entry.expanded}
-							disabled={!listing.entry.childrenPresent}
-							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
-							data-tooltip-description={(listing.entry.expanded
-								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
-								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
-								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							class:expanded={listing.expanded}
+							disabled={!listing.childrenPresent}
+							data-tooltip-label={listing.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.expanded
+								? "Hide this layer's children. (To recursively collapse all descendants, perform the shortcut shown.)"
+								: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
+								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
 							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.treePath)}
 							tabindex="0"
 						></button>
 					{:else}
@@ -629,27 +638,40 @@
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
-					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
+					{#if !listing.entry.unlocked || !listing.parentsUnlocked}
 						<IconButton
 							class="status-toggle"
-							classes={{ inherited: !listing.entry.parentsUnlocked }}
+							classes={{ inherited: !listing.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
 							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
-							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+							tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+							data-drag-toggle-group="layer-lock"
+							data-drag-toggle-state={listing.entry.unlocked ? "unlocked" : "locked"}
+						/>
+					{:else if activeDragToggleGroup === "layer-lock"}
+						<IconButton
+							class="status-toggle drag-toggle-placeholder"
+							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							size={24}
+							icon="PadlockUnlocked"
+							data-drag-toggle-group="layer-lock"
+							data-drag-toggle-state="unlocked"
 						/>
 					{/if}
 					<IconButton
 						class="status-toggle"
-						classes={{ inherited: !listing.entry.parentsVisible }}
+						classes={{ inherited: !listing.parentsVisible }}
 						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
 						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						data-drag-toggle-group="layer-visibility"
+						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
 					/>
 				</LayoutRow>
 			{/each}
@@ -658,12 +680,12 @@
 			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="bottom-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
+	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active) }} scrollableX={true} data-layer-bottom-bar>
+		<WidgetLayout layout={$layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
 
-<style lang="scss" global>
+<style lang="scss">
 	.layers {
 		// Control bar
 		.control-bar {
@@ -697,6 +719,26 @@
 
 			&:not(:has(*)) {
 				display: none;
+			}
+
+			&.layer-drag-active .icon-button,
+			&.layer-drag-active .popover-button {
+				&.drag-droppable:hover {
+					background: var(--color-e-nearwhite);
+
+					svg {
+						fill: var(--color-2-mildblack);
+					}
+				}
+
+				&:not(.drag-droppable) {
+					pointer-events: none;
+					background: none;
+
+					svg {
+						fill: var(--color-8-uppergray);
+					}
+				}
 			}
 		}
 
@@ -738,9 +780,13 @@
 					background: rgba(var(--color-4-dimgray-rgb), 0.5);
 				}
 
-				&.insert-folder {
-					outline: 3px solid var(--color-e-nearwhite);
-					outline-offset: -3px;
+				&.insert-folder::after {
+					content: "";
+					position: absolute;
+					inset: 0;
+					border: 3px solid var(--color-e-nearwhite);
+					border-radius: 2px;
+					pointer-events: none;
 				}
 
 				.expand-arrow {
@@ -863,6 +909,17 @@
 
 					&.inherited {
 						background-image: var(--inheritance-stripes-background);
+					}
+
+					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted.
+					// Overlaid with absolute positioning so it doesn't shift the layer name's width.
+					&.drag-toggle-placeholder {
+						position: absolute;
+						width: 24px;
+						right: 24px;
+						top: 0;
+						bottom: 0;
+						opacity: 0; // Not `visibility: hidden`, which would exclude it from hit-testing
 					}
 
 					.icon-button {

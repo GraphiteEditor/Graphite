@@ -13,9 +13,9 @@ use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::list::List;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::table::Table;
 use graphene_std::text::FontCache;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
@@ -64,21 +64,17 @@ where
 
 /// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
 pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
-	let Some((text, font, typesetting, per_glyph_instances)) = get_text(layer, &document.network_interface) else {
+	// Use the `editor:text_frame` attribute if available (handles multi-item glyphs and the 'Index Elements' node)
+	if let Some(&frame) = document.metadata().text_frames.get(&layer) {
+		return frame * Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+	}
+
+	// Fallback: recompute from text content (e.g. layer hasn't rendered yet)
+	let Some((text, font, typesetting, _)) = get_text(layer, &document.network_interface) else {
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
-
 	let far = graphene_std::text::bounding_box(text, font, font_cache, typesetting, false);
-
-	// TODO: Once the instance tables refactor is complete and per_glyph_instances can be removed (since it'll be the default),
-	// TODO: remove this because the top of the dashed bounding overlay should no longer be based on the first line's baseline.
-	let vertical_offset = if per_glyph_instances {
-		DVec2::NEG_Y * typesetting.font_size * (1. + (typesetting.line_height_ratio - 1.) / 2.)
-	} else {
-		DVec2::ZERO
-	};
-
-	Quad::from_box([DVec2::ZERO + vertical_offset, far + vertical_offset])
+	Quad::from_box([DVec2::ZERO, far])
 }
 
 pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vector, prefer_handle_direction: bool) -> Option<f64> {
@@ -572,11 +568,11 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	}
 	for _ in selected_layers {}
 
-	// Must be a layer of type Table<Vector>
+	// Must be a layer of type List<Vector>
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
 	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
+	if output_type.compiled_nested_type() != Some(&concrete!(List<Vector>)) {
 		return None;
 	}
 
