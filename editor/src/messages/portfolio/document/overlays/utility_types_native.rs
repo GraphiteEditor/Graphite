@@ -1241,7 +1241,7 @@ impl OverlayContextInternal {
 				let inflation = stroke.weight() * INFLATE_FACTOR;
 				let path_bbox = path.bounding_box().inflate(inflation, inflation);
 
-				let (new_path, winding) = ctx.path_and_winding_for_fill(vector_data, transform, is_closed_on_all);
+				let (new_path, winding) = ctx.path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
 

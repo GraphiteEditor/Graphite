@@ -146,7 +146,10 @@ impl Fsm for FillToolFsmState {
 				}
 				// Choose the color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
-				let preview_color = (if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color }).to_rgba_hex_srgb();
+				let preview_color = {
+					let color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
+					SRGBA8::from(color).to_css_hex()
+				};
 
 				// Get the layer the user is hovering
 				if let Some(layer) = document.click(input, viewport)
@@ -200,13 +203,13 @@ impl Fsm for FillToolFsmState {
 					return self;
 				}
 				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
+					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
+					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
 					_ => return self,
 				};
 				let stroke_color = match color_event {
-					FillToolMessage::FillPrimaryColor => global_tool_data.primary_color.to_gamma_srgb(),
-					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color.to_gamma_srgb(),
+					FillToolMessage::FillPrimaryColor => global_tool_data.primary_color,
+					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color,
 					_ => return self,
 				};
 
