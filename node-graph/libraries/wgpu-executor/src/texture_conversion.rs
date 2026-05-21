@@ -120,7 +120,9 @@ impl RasterGpuToRasterCpuConverter {
 			let start = row * row_stride;
 			let row_slice = &view[start..start + row_bytes];
 			for px in row_slice.chunks_exact(4) {
-				cpu_data.push(Color::from_rgba8_srgb(px[0], px[1], px[2], px[3]));
+				// `Image<Color>` pixels are stored linear-light with associated (premultiplied) alpha
+				let srgba = SRGBA8::new(px[0], px[1], px[2], px[3]);
+				cpu_data.push(Color::from(srgba).apply_opacity(px[3] as f32 / 255.));
 			}
 		}
 

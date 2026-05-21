@@ -328,7 +328,7 @@
 	.icon-button,
 	.text-button,
 	.popover-button,
-	.color-button > button,
+	.color-input > button,
 	.color-picker .preset-color,
 	.working-colors-input .swatch > button,
 	.radio-input button,

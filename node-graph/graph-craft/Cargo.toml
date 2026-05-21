@@ -62,7 +62,7 @@ winit = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
-iai-callgrind = { workspace = true }
+gungraun = { workspace = true }
 
 # Benchmarks
 [[bench]]
@@ -70,5 +70,5 @@ name = "compile_demo_art_criterion"
 harness = false
 
 [[bench]]
-name = "compile_demo_art_iai"
+name = "compile_demo_art_gungraun"
 harness = false

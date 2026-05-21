@@ -1,11 +1,14 @@
 use super::tool_prelude::*;
-use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
+use crate::consts::{BOUNDS_SELECT_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::color_selector::{
+	DrawingToolState, apply_fill_color_pick, apply_fill_enabled, apply_stroke_color_pick, apply_stroke_enabled, apply_working_colors, has_selection, reset_colors_on_deactivation,
+	swap_fill_and_stroke, sync_color_options, sync_drawing_state,
+};
 use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoManager;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -20,12 +23,15 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
+use crate::messages::tool::utility_types::DocumentToolData;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
+use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, NodeInputDecleration};
 use std::vec;
 
@@ -37,9 +43,17 @@ pub struct ShapeTool {
 }
 
 pub struct ShapeToolOptions {
-	line_weight: f64,
-	fill: ToolColorOptions,
-	stroke: ToolColorOptions,
+	drawing: DrawingToolState,
+	/// Per-shape-mode default for whether the fill checkbox is ticked when no layer is selected. Initialized from
+	/// [`ShapeType::defaults_to_fill`] and updated when the user toggles the fill checkbox while nothing is selected,
+	/// so the preference for each mode persists across mode switches and selection changes.
+	shape_fill_defaults: std::collections::HashMap<ShapeType, bool>,
+	/// Per-shape-mode default for whether the stroke checkbox is ticked when no layer is selected.
+	/// Initialized to `true` for every mode and updated when the user toggles the stroke checkbox while nothing is selected.
+	shape_stroke_defaults: std::collections::HashMap<ShapeType, bool>,
+	/// Per-shape-mode value of the fill/stroke swap flag (mirrors `drawing.colors_swapped` for the current shape mode).
+	/// Updated whenever the user toggles swap; read back when changing shape modes so each alias remembers its own routing.
+	shape_colors_swapped: std::collections::HashMap<ShapeType, bool>,
 	vertices: u32,
 	shape_type: ShapeType,
 	arc_type: ArcType,
@@ -53,10 +67,15 @@ pub struct ShapeToolOptions {
 
 impl Default for ShapeToolOptions {
 	fn default() -> Self {
+		let shape_fill_defaults = ShapeType::ALL.iter().map(|&shape| (shape, shape.defaults_to_fill())).collect();
+		let shape_stroke_defaults = ShapeType::ALL.iter().map(|&shape| (shape, true)).collect();
+		let shape_colors_swapped = ShapeType::ALL.iter().map(|&shape| (shape, false)).collect();
+
 		Self {
-			line_weight: DEFAULT_STROKE_WIDTH,
-			fill: ToolColorOptions::new_secondary(),
-			stroke: ToolColorOptions::new_primary(),
+			drawing: DrawingToolState::new(true),
+			shape_fill_defaults,
+			shape_stroke_defaults,
+			shape_colors_swapped,
 			vertices: 5,
 			shape_type: ShapeType::Polygon,
 			arc_type: ArcType::Open,
@@ -73,12 +92,13 @@ impl Default for ShapeToolOptions {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ShapeOptionsUpdate {
-	FillColor(Option<Color>),
-	FillColorType(ToolColorType),
-	LineWeight(f64),
+	FillColor(FillChoice),
+	FillEnabled(bool),
+	StrokeOption(StrokeOptionsUpdate),
 	StrokeColor(Option<Color>),
-	StrokeColorType(ToolColorType),
-	WorkingColors(Option<Color>, Option<Color>),
+	StrokeEnabled(bool),
+	SwapFillAndStroke,
+	WorkingColorsChanged,
 	Vertices(u32),
 	ShapeType(ShapeType),
 	ArcType(ArcType),
@@ -218,21 +238,6 @@ fn create_arc_type_widget(arc_type: ArcType) -> WidgetInstance {
 		}),
 	];
 	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_instance()
-}
-
-fn create_weight_widget(line_weight: f64) -> WidgetInstance {
-	NumberInput::new(Some(line_weight))
-		.unit(" px")
-		.label("Weight")
-		.min(0.)
-		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::LineWeight(number_input.value.unwrap()),
-			}
-			.into()
-		})
-		.widget_instance()
 }
 
 fn create_arrow_shaft_width_widget(shaft_width: f64) -> WidgetInstance {
@@ -431,102 +436,117 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 	changed
 }
 
+/// Shared logic for handling a shape-mode change from either the `SetShape` alias (FSM-driven) or the `ShapeType` dropdown.
+/// Loads the new mode's persistent swap flag, resets the displayed fill/stroke colors back to the (now routed) working colors,
+/// and re-syncs from the selection using the new mode's natural fill/stroke defaults. The caller is responsible for updating
+/// `options.shape_type` and `tool_data.current_shape` beforehand if needed.
+fn handle_shape_mode_change(options: &mut ShapeToolOptions, new_shape: ShapeType, prev_shape: ShapeType, global: &DocumentToolData, document: &DocumentMessageHandler) {
+	if new_shape != prev_shape {
+		options.drawing.colors_swapped = *options.shape_colors_swapped.get(&new_shape).unwrap_or(&false);
+		reset_colors_on_deactivation(&mut options.drawing, global);
+	}
+	let natural_fill_enabled = *options.shape_fill_defaults.get(&new_shape).unwrap_or(&new_shape.defaults_to_fill());
+	let natural_stroke_enabled = *options.shape_stroke_defaults.get(&new_shape).unwrap_or(&true);
+	// Treat the shape change as a real selection change so the new mode's natural defaults apply when nothing matches on the selection.
+	sync_color_options(&mut options.drawing, natural_fill_enabled, natural_stroke_enabled, global, document, true);
+}
+
 impl LayoutHolder for ShapeTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![];
 
-		if !self.tool_data.hide_shape_option_widget {
-			widgets.push(create_shape_option_widget(self.options.shape_type));
-			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-			if self.options.shape_type == ShapeType::Polygon || self.options.shape_type == ShapeType::Star {
-				widgets.push(create_sides_widget(self.options.vertices));
-				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-			}
-
-			if self.options.shape_type == ShapeType::Arc {
-				widgets.push(create_arc_type_widget(self.options.arc_type));
-				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-			}
-		}
-
-		if self.options.shape_type == ShapeType::Spiral {
-			widgets.push(create_spiral_type_widget(self.options.spiral_type));
-			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
-
-			widgets.push(create_turns_widget(self.options.turns));
-			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		}
-
-		if self.options.shape_type == ShapeType::Grid {
-			widgets.push(create_grid_type_widget(self.options.grid_type));
-			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		}
-
-		if self.options.shape_type == ShapeType::Arrow {
-			widgets.push(create_arrow_shaft_width_widget(self.options.arrow_shaft_width));
-			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
-			widgets.push(create_arrow_head_width_widget(self.options.arrow_head_width));
-			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
-			widgets.push(create_arrow_head_length_widget(self.options.arrow_head_length));
-			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		}
-
+		// Fill / Stroke / Weight (Shared across all shape modes. Line shows no Fill)
 		if self.options.shape_type != ShapeType::Line {
-			widgets.append(&mut self.options.fill.create_widgets(
-				"Fill",
-				true,
-				|_| {
+			widgets.append(&mut self.options.drawing.fill.create_widgets(
+				"Fill:",
+				|checkbox: &CheckboxInput| {
 					ShapeToolMessage::UpdateOptions {
-						options: ShapeOptionsUpdate::FillColor(None),
+						options: ShapeOptionsUpdate::FillEnabled(checkbox.checked),
 					}
 					.into()
 				},
-				|color_type: ToolColorType| {
-					WidgetCallback::new(move |_| {
-						ShapeToolMessage::UpdateOptions {
-							options: ShapeOptionsUpdate::FillColorType(color_type.clone()),
-						}
-						.into()
-					})
-				},
 				|color: &ColorInput| {
 					ShapeToolMessage::UpdateOptions {
-						options: ShapeOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+						options: ShapeOptionsUpdate::FillColor(FillChoice::from(&color.value)),
 					}
 					.into()
 				},
 			));
 
 			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+			widgets.push(
+				IconButton::new("SwapHorizontal", 16)
+					.tooltip_label("Swap Fill/Stroke Colors")
+					.on_update(|_| {
+						ShapeToolMessage::UpdateOptions {
+							options: ShapeOptionsUpdate::SwapFillAndStroke,
+						}
+						.into()
+					})
+					.widget_instance(),
+			);
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
-		widgets.append(&mut self.options.stroke.create_widgets(
-			"Stroke",
-			true,
-			|_| {
+		widgets.append(&mut self.options.drawing.stroke.create_widgets(
+			"Stroke:",
+			|checkbox: &CheckboxInput| {
 				ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::StrokeColor(None),
+					options: ShapeOptionsUpdate::StrokeEnabled(checkbox.checked),
 				}
 				.into()
 			},
-			|color_type: ToolColorType| {
-				WidgetCallback::new(move |_| {
-					ShapeToolMessage::UpdateOptions {
-						options: ShapeOptionsUpdate::StrokeColorType(color_type.clone()),
-					}
-					.into()
-				})
-			},
 			|color: &ColorInput| {
 				ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+					options: ShapeOptionsUpdate::StrokeColor(color.value.as_solid().map(Color::from)),
 				}
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(create_weight_widget(self.options.line_weight));
+		let weight_disabled = self.options.drawing.stroke.enabled == Some(false);
+		widgets.push(create_stroke_options_popover_widget(&self.options.drawing, weight_disabled, |update| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::StrokeOption(update),
+			}
+			.into()
+		}));
+
+		// Shape-mode dropdown and per-shape parameters
+		if !self.tool_data.hide_shape_option_widget {
+			widgets.push(Separator::new(SeparatorStyle::Section).widget_instance());
+			widgets.push(create_shape_option_widget(self.options.shape_type));
+
+			if self.options.shape_type == ShapeType::Polygon || self.options.shape_type == ShapeType::Star {
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+				widgets.push(create_sides_widget(self.options.vertices));
+			}
+
+			if self.options.shape_type == ShapeType::Arc {
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+				widgets.push(create_arc_type_widget(self.options.arc_type));
+			}
+
+			if self.options.shape_type == ShapeType::Spiral {
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+				widgets.push(create_spiral_type_widget(self.options.spiral_type));
+				widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+				widgets.push(create_turns_widget(self.options.turns));
+			}
+
+			if self.options.shape_type == ShapeType::Grid {
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+				widgets.push(create_grid_type_widget(self.options.grid_type));
+			}
+
+			if self.options.shape_type == ShapeType::Arrow {
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+				widgets.push(create_arrow_shaft_width_widget(self.options.arrow_shaft_width));
+				widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+				widgets.push(create_arrow_head_width_widget(self.options.arrow_head_width));
+				widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+				widgets.push(create_arrow_head_length_widget(self.options.arrow_head_length));
+			}
+		}
 
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
@@ -537,20 +557,23 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		use graphene_std::vector::generator_nodes::*;
 
+		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
+		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
+		// Guarded on `Ready(_)` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
+		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::Abort)) && matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
+			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+		}
+
 		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::SelectionChanged)) {
 			if !matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
 				return;
 			}
 
-			let mut needs_refresh = false;
-
-			// Stroke weight is shape-agnostic. Sync it regardless of which (if any) shape proto node the layer has.
-			if let Some(weight) = graph_modification_utils::first_selected_stroke_weight(context.document)
-				&& self.options.line_weight != weight
-			{
-				self.options.line_weight = weight;
-				needs_refresh = true;
-			}
+			// The natural fill/stroke defaults depend on the shape type (Spiral/Grid/Line have no fill by default).
+			let current_shape = self.tool_data.current_shape;
+			let natural_fill_enabled = *self.options.shape_fill_defaults.get(&current_shape).unwrap_or(&current_shape.defaults_to_fill());
+			let natural_stroke_enabled = *self.options.shape_stroke_defaults.get(&current_shape).unwrap_or(&true);
+			let mut needs_refresh = sync_drawing_state(&mut self.options.drawing, natural_fill_enabled, natural_stroke_enabled, context.global_tool_data, context.document);
 
 			// Detect which shape the first selected layer is by checking for each generator's proto node, then mirror
 			// the control bar's `shape_type` into that and pull the shape's parameters into the matching control bar fields.
@@ -562,38 +585,57 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			return;
 		}
 
+		// SetShape changes the active shape mode, which can change the natural fill default (e.g. Line/Spiral/Grid have no fill).
+		// Trigger a re-sync afterward so the controls reflect either the current selection or the new natural default.
+		// Note: the `UpdateOptions { ShapeType(_) }` variant matches the `let else` below and is handled by the `ShapeType` arm,
+		// so it can't reach the `else` block where this flag is read — only `SetShape` (the FSM-routed alias) can.
+		let is_set_shape = matches!(&message, ToolMessage::Shape(ShapeToolMessage::SetShape { .. }));
+		let shape_before = self.tool_data.current_shape;
+
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
+			if is_set_shape {
+				handle_shape_mode_change(&mut self.options, self.tool_data.current_shape, shape_before, context.global_tool_data, context.document);
+				self.send_layout(responses, LayoutTarget::ToolOptions);
+			}
 			return;
 		};
 		match options {
-			ShapeOptionsUpdate::FillColor(color) => {
-				self.options.fill.custom_color = color;
-				self.options.fill.color_type = ToolColorType::Custom;
+			ShapeOptionsUpdate::FillColor(fill_choice) => {
+				apply_fill_color_pick(&mut self.options.drawing, fill_choice, context.document, responses);
 			}
-			ShapeOptionsUpdate::FillColorType(color_type) => {
-				self.options.fill.color_type = color_type;
+			ShapeOptionsUpdate::FillEnabled(enabled) => {
+				// When toggled with no selection, persist the new state as the current shape mode's default
+				if !has_selection(context.document) {
+					self.options.shape_fill_defaults.insert(self.tool_data.current_shape, enabled);
+				}
+				apply_fill_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
 			}
-			ShapeOptionsUpdate::LineWeight(line_weight) => {
-				self.options.line_weight = line_weight;
-				graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, context.document, responses);
+			ShapeOptionsUpdate::StrokeOption(update) => {
+				apply_stroke_option(&mut self.options.drawing, update, context.document, responses);
 			}
 			ShapeOptionsUpdate::StrokeColor(color) => {
-				self.options.stroke.custom_color = color;
-				self.options.stroke.color_type = ToolColorType::Custom;
+				apply_stroke_color_pick(&mut self.options.drawing, color, context.document, responses);
 			}
-			ShapeOptionsUpdate::StrokeColorType(color_type) => {
-				self.options.stroke.color_type = color_type;
+			ShapeOptionsUpdate::StrokeEnabled(enabled) => {
+				// When toggled with no selection, persist the new state as the current shape mode's default
+				if !has_selection(context.document) {
+					self.options.shape_stroke_defaults.insert(self.tool_data.current_shape, enabled);
+				}
+				apply_stroke_enabled(&mut self.options.drawing, enabled, context.global_tool_data, context.document, responses);
 			}
-			ShapeOptionsUpdate::WorkingColors(primary, secondary) => {
-				self.options.stroke.primary_working_color = primary;
-				self.options.stroke.secondary_working_color = secondary;
-				self.options.fill.primary_working_color = primary;
-				self.options.fill.secondary_working_color = secondary;
+			ShapeOptionsUpdate::SwapFillAndStroke => {
+				swap_fill_and_stroke(&mut self.options.drawing, context.document, responses);
+				// Persist the new swap state as the current shape mode's default
+				self.options.shape_colors_swapped.insert(self.tool_data.current_shape, self.options.drawing.colors_swapped);
+			}
+			ShapeOptionsUpdate::WorkingColorsChanged => {
+				apply_working_colors(&mut self.options.drawing, context.global_tool_data, context.document);
 			}
 			ShapeOptionsUpdate::ShapeType(shape) => {
 				self.options.shape_type = shape;
 				self.tool_data.current_shape = shape;
+				handle_shape_mode_change(&mut self.options, shape, shape_before, context.global_tool_data, context.document);
 			}
 			ShapeOptionsUpdate::Vertices(vertices) => {
 				self.options.vertices = vertices;
@@ -806,7 +848,6 @@ impl Fsm for ShapeToolFsmState {
 		tool_data: &mut Self::ToolData,
 		ToolActionMessageContext {
 			document,
-			global_tool_data,
 			input,
 			shape_editor,
 			viewport,
@@ -1117,8 +1158,8 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
-						tool_options.fill.apply_fill(layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
 						let viewport_drag_start = tool_data.data.viewport_drag_start(document);
@@ -1129,10 +1170,10 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_data.line_data.weight = tool_options.line_weight;
+						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
-						tool_options.fill.apply_fill(layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
 						let viewport_drag_start = tool_data.data.viewport_drag_start(document);
@@ -1143,9 +1184,9 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_data.line_data.weight = tool_options.line_weight;
+						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.stroke.apply_stroke(tool_options.line_weight, layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
 					}
 				}
 
@@ -1351,7 +1392,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(_, ShapeToolMessage::WorkingColorChanged) => {
 				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+					options: ShapeOptionsUpdate::WorkingColorsChanged,
 				});
 				self
 			}

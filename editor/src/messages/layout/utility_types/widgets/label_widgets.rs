@@ -72,6 +72,8 @@ pub struct TextLabel {
 	// Sizing
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 	#[serde(rename = "minWidthCharacters")]
 	pub min_width_characters: u32,
 

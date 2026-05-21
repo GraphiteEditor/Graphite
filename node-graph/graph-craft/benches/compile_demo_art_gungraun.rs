@@ -1,6 +1,6 @@
 use graph_craft::document::NodeNetwork;
 use graph_craft::util::*;
-use iai_callgrind::{library_benchmark, library_benchmark_group, main};
+use gungraun::prelude::*;
 
 #[library_benchmark]
 #[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = load_from_name)]

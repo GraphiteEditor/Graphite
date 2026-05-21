@@ -3,7 +3,7 @@
 pub use crate::gradient::*;
 use core_types::ATTR_OPACITY;
 use core_types::Color;
-use core_types::color::Alpha;
+use core_types::color::{Alpha, SRGBA8};
 use core_types::list::List;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
@@ -30,7 +30,7 @@ impl std::fmt::Display for Fill {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::None => write!(f, "None"),
-			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", color.to_rgb_hex_srgb(), color.a() * 100.),
+			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", SRGBA8::from(*color).to_rgb_hex(), color.a() * 100.),
 			Self::Gradient(gradient) => write!(f, "{gradient}"),
 		}
 	}
@@ -161,17 +161,73 @@ impl From<Gradient> for Fill {
 /// Can be None, a solid [Color], or a linear/radial [Gradient].
 ///
 /// In the future we'll probably also add a pattern fill.
+///
+/// Use [`FillChoiceUI`] at the JS boundary.
 #[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FillChoice {
 	#[default]
 	None,
-	/// WARNING: Color is gamma, not linear!
 	Solid(Color),
-	/// WARNING: Color stops are gamma, not linear!
 	Gradient(GradientStops),
+}
+
+// TODO: Deprecate [`FillChoice`] and keep this, renamed, as the main widget-controlling type
+/// JS-boundary version of [`FillChoice`] where the solid color is [`SRGBA8`] and the gradient is [`GradientStopsUI`].
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[derive(Default, Debug, Clone, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FillChoiceUI {
+	#[default]
+	None,
+	Solid(SRGBA8),
+	Gradient(GradientStopsUI),
+}
+
+impl From<&FillChoice> for FillChoiceUI {
+	fn from(value: &FillChoice) -> Self {
+		match value {
+			FillChoice::None => Self::None,
+			FillChoice::Solid(color) => Self::Solid(SRGBA8::from(*color)),
+			FillChoice::Gradient(stops) => Self::Gradient(GradientStopsUI::from(stops)),
+		}
+	}
+}
+
+impl From<&FillChoiceUI> for FillChoice {
+	fn from(value: &FillChoiceUI) -> Self {
+		match value {
+			FillChoiceUI::None => Self::None,
+			FillChoiceUI::Solid(srgba) => Self::Solid(Color::from(*srgba)),
+			FillChoiceUI::Gradient(stops) => Self::Gradient(GradientStops::from(stops)),
+		}
+	}
+}
+
+impl FillChoiceUI {
+	pub fn as_solid(&self) -> Option<SRGBA8> {
+		let Self::Solid(c) = self else { return None };
+		Some(*c)
+	}
+
+	pub fn as_gradient(&self) -> Option<&GradientStopsUI> {
+		let Self::Gradient(g) = self else { return None };
+		Some(g)
+	}
+
+	/// Build a CSS `background-image` string (always a `linear-gradient(...)`) representing this fill, or `None` if the fill is [`FillChoiceUI::None`].
+	/// Solid colors become a degenerate gradient between the same color so the CSS variable can always be assigned to a `background-image`.
+	pub fn to_css_background_image(&self) -> Option<String> {
+		match self {
+			Self::None => None,
+			Self::Solid(srgba) => {
+				let hex = srgba.to_rgba_hex();
+				Some(format!("linear-gradient(#{hex}, #{hex})"))
+			}
+			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
+		}
+	}
 }
 
 impl FillChoice {
@@ -190,7 +246,7 @@ impl FillChoice {
 		match self {
 			Self::None => None,
 			Self::Solid(color) => {
-				let hex = color.to_rgba_hex_srgb_from_gamma();
+				let hex = SRGBA8::from(*color).to_rgba_hex();
 				Some(format!("linear-gradient(#{hex}, #{hex})"))
 			}
 			Self::Gradient(stops) => Some(stops.to_css_linear_gradient()),
@@ -230,8 +286,11 @@ impl From<Fill> for FillChoice {
 #[widget(Radio)]
 pub enum StrokeCap {
 	#[default]
+	#[icon("StrokeCapButt")]
 	Butt,
+	#[icon("StrokeCapRound")]
 	Round,
+	#[icon("StrokeCapSquare")]
 	Square,
 }
 
@@ -268,8 +327,11 @@ impl StrokeCap {
 #[widget(Radio)]
 pub enum StrokeJoin {
 	#[default]
+	#[icon("StrokeJoinMiter")]
 	Miter,
+	#[icon("StrokeJoinBevel")]
 	Bevel,
+	#[icon("StrokeJoinRound")]
 	Round,
 }
 
@@ -306,8 +368,11 @@ impl StrokeJoin {
 #[widget(Radio)]
 pub enum StrokeAlign {
 	#[default]
+	#[icon("StrokeAlignCenter")]
 	Center,
+	#[icon("StrokeAlignInside")]
 	Inside,
+	#[icon("StrokeAlignOutside")]
 	Outside,
 }
 
@@ -324,7 +389,9 @@ impl StrokeAlign {
 #[widget(Radio)]
 pub enum PaintOrder {
 	#[default]
+	#[icon("StrokeOrderAbove")]
 	StrokeAbove,
+	#[icon("StrokeOrderBelow")]
 	StrokeBelow,
 }
 
@@ -561,7 +628,7 @@ impl Default for Stroke {
 	fn default() -> Self {
 		Self {
 			weight: 0.,
-			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
+			color: Some(Color::BLACK),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
 			cap: StrokeCap::Butt,
@@ -588,7 +655,7 @@ impl std::fmt::Display for PathStyle {
 		let fill = &self.fill;
 
 		let stroke = match &self.stroke {
-			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| c.to_rgba_hex_srgb()), stroke.weight),
+			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| SRGBA8::from(c).to_rgba_hex()), stroke.weight),
 			None => "None".to_string(),
 		};
 

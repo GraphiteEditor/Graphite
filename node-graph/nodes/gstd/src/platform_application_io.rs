@@ -2,6 +2,7 @@
 use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
+use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 #[cfg(target_family = "wasm")]
 use core_types::math::bbox::Bbox;
@@ -123,7 +124,15 @@ fn string_to_bytes(_: impl Ctx, string: String) -> List<u8> {
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: List<Raster<CPU>>) -> List<u8> {
 	let Some(image) = image.element(0) else { return List::new() };
-	image.data.iter().flat_map(|color| color.to_rgba8_srgb()).map(Item::new_from_element).collect()
+	image
+		.data
+		.iter()
+		.flat_map(|color| {
+			let SRGBA8 { red, green, blue, alpha } = (*color).into();
+			[red, green, blue, alpha]
+		})
+		.map(Item::new_from_element)
+		.collect()
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
@@ -154,7 +163,11 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
 	let image = Image {
 		data: image
 			.chunks(4)
-			.map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3]).to_linear_srgb())
+			.map(|pixel| {
+				// Decoded bytes are unassociated gamma sRGB; premultiply in gamma then lift to linear
+				let a = pixel[3];
+				Color::from_gamma_srgb_channels(pixel[0] * a, pixel[1] * a, pixel[2] * a, a)
+			})
 			.collect(),
 		width: image.width(),
 		height: image.height(),
@@ -232,7 +245,7 @@ where
 		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
 		.unwrap();
 
-	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
+	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
 
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	List::new_from_item(

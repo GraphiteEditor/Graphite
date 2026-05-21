@@ -102,3 +102,37 @@ pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -
 		F64ArrayFormat::List(list) => list.element,
 	})
 }
+
+/// Parse a CSS color string (named color, hex, `rgb(...)`, `hsl(...)`, etc.) into a linear-light [`Color`] using the `color` crate's CSS Color 4 parser.
+/// Tries the input as-is first (catches CSS named colors like `red`, `rgb(...)`, and well-formed hex like `#abcdef`), then falls back to treating the input as bare hex with length-based expansion to a CSS-parseable form:
+/// - 1 char `f` → `#fff` (CSS 3-char shorthand)
+/// - 2 char `ab` → `#ababab` (repeated to 6 chars)
+/// - 4 char `abcd` → `#00abcd` (left-padded with `00`)
+/// - 5 char `abcde` → `#0abcde` (left-padded with `0`)
+/// - 3, 6, 8 char inputs are passed through with a `#` prefix.
+pub fn parse_css_color(input: &str) -> Option<crate::Color> {
+	let trimmed = input.trim();
+
+	let parsed = color::parse_color(trimmed).ok().or_else(|| {
+		let bare = trimmed.strip_prefix('#').unwrap_or(trimmed);
+		if bare.is_empty() || !bare.chars().all(|c| c.is_ascii_hexdigit()) {
+			return None;
+		}
+		let expanded = match bare.len() {
+			1 => bare.repeat(3),
+			2 => bare.repeat(3),
+			4 => format!("00{bare}"),
+			5 => format!("0{bare}"),
+			_ => bare.to_string(),
+		};
+		let candidate = format!("#{expanded}");
+		// Avoid retrying the exact same string we just failed to parse.
+		(candidate != trimmed).then(|| color::parse_color(&candidate).ok()).flatten()
+	})?;
+
+	let srgb: color::AlphaColor<color::Srgb> = parsed.to_alpha_color();
+	let [red, green, blue, alpha] = srgb.components;
+	// Reject out-of-gamut values that `color::parse_color` accepts for newer CSS syntax (e.g., `rgb(300 -50 200)`).
+	let in_gamut = alpha <= 1. && ![red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite());
+	in_gamut.then(|| crate::Color::from_gamma_srgb_channels(red, green, blue, alpha))
+}

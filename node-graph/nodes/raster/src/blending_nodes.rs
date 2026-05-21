@@ -99,7 +99,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity))
+	background.alpha_blend(target_color.apply_opacity(opacity))
 }
 
 pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {

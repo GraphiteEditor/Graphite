@@ -823,7 +823,8 @@ fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue
 	let blue = (blue as f32).clamp(0., 1.);
 	let alpha = (alpha as f32).clamp(0., 1.);
 
-	List::new_from_element(Color::from_rgbaf32_unchecked(red, green, blue, alpha))
+	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
+	List::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
 }
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
@@ -848,11 +849,11 @@ fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] satura
 	List::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
 
-/// Constructs a color value from an sRGB color code string, such as `#RRGGBB` or `#RRGGBBAA`. Invalid hex code strings produce no color.
+/// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce no color.
 #[node_macro::node(category("Color"), name("Hex to Color"))]
 fn hex_to_color(_: impl Ctx, hex_code: String) -> List<Color> {
-	match Color::from_hex_str(&hex_code) {
-		Some(c) => List::new_from_element(c),
+	match core_types::misc::parse_css_color(&hex_code) {
+		Some(color) => List::new_from_element(color),
 		None => List::new(),
 	}
 }

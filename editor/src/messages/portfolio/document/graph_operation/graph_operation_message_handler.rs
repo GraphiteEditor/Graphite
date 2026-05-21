@@ -328,7 +328,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_text(text, font, typesetting, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
-				responses.add(GraphOperationMessage::StrokeSet { layer, stroke: Stroke::default() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
@@ -491,7 +490,8 @@ struct ArtboardInfo {
 }
 
 fn usvg_color(c: usvg::Color, a: f32) -> Color {
-	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
+	// `usvg::Color` channels are u8 sRGB display values (gamma-encoded); lift to linear-light for the internal `Color`
+	Color::from_gamma_srgb_channels(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
 }
 
 fn usvg_transform(c: usvg::Transform) -> DAffine2 {
