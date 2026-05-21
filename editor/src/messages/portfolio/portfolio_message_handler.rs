@@ -108,6 +108,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				self.persistent_state.process_message(message, responses, context);
 			}
+
 			// Messages
 			PortfolioMessage::Init => {
 				responses.add(PersistentStateMessage::ReadState);
@@ -188,6 +189,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
 					}
 				}
+
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
@@ -454,7 +456,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 				for document in self.documents.values() {
-					used_resources.extend(document.used_resources());
+					used_resources.extend(document.used_resources(true));
 				}
 				responses.add(ResourceMessage::GarbageCollect {
 					used: Vec::from_iter(used_resources).into_boxed_slice(),
@@ -788,7 +790,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						log::error!("Resource hash mismatch for resource with hash {hash}");
 						return;
 					}
-					responses.add(ResourceMessage::Write { data });
+					responses.add(ResourceMessage::Store { data });
 				});
 
 				// Ensure each node has the metadata for its inputs
@@ -1902,7 +1904,7 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
-				resources: Some(document.used_resources().into_iter().collect()),
+				resources: Some(document.used_resources(false).into_iter().collect()),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()

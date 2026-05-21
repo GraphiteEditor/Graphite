@@ -92,7 +92,7 @@ impl EditorWrapper {
 		};
 
 		let mut editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage);
-		editor.replace_application_io(PlatformApplicationIo::new().await).await;
+		editor.replace_application_io(PlatformApplicationIo::new().await);
 
 		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");

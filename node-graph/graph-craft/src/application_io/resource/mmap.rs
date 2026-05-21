@@ -1,4 +1,4 @@
-use graphene_application_io::{Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
+use graphene_application_io::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use mmap_io::mmap::{MemoryMappedFile, MmapMode};
 use std::collections::HashMap;
 use std::fs;
@@ -60,7 +60,7 @@ impl MmapResourceStorage {
 	}
 }
 
-impl Resources for MmapResourceStorage {
+impl LoadResource for MmapResourceStorage {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture {
 		let result = self.lookup(&hash);
 		Box::pin(async move { result })
@@ -68,7 +68,7 @@ impl Resources for MmapResourceStorage {
 }
 
 impl ResourceStorage for MmapResourceStorage {
-	fn write(&mut self, data: &[u8]) -> ResourceHash {
+	fn store(&mut self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		let path = self.path_for(&hash);
 

@@ -562,11 +562,11 @@ pub async fn run_node_graph() -> (bool, Option<ImageTexture>) {
 	(false, None)
 }
 
-pub async fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
+pub fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	node_runtime.replace(runtime)
 }
-pub(crate) async fn replace_application_io(application_io: PlatformApplicationIo) {
+pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
 		node_runtime.replace_application_io(application_io);

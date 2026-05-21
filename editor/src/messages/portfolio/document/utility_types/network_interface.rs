@@ -6777,10 +6777,10 @@ pub enum TransactionStatus {
 fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceHash>) {
 	for node in network.nodes.values() {
 		for input in &node.inputs {
-			if let NodeInput::Value { tagged_value, .. } = input {
-				if let TaggedValue::Resource(hash) = &**tagged_value {
-					out.insert(*hash);
-				}
+			if let NodeInput::Value { tagged_value, .. } = input
+				&& let TaggedValue::Resource(hash) = &**tagged_value
+			{
+				out.insert(*hash);
 			}
 		}
 		if let DocumentNodeImplementation::Network(nested) = &node.implementation {

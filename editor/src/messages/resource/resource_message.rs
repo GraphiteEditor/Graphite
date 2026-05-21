@@ -5,6 +5,6 @@ use std::sync::Arc;
 #[impl_message(Message, Resource)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ResourceMessage {
-	Write { data: Arc<[u8]> },
+	Store { data: Arc<[u8]> },
 	GarbageCollect { used: Box<[ResourceHash]> },
 }

@@ -549,13 +549,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::platform_application_io::image::IDENTIFIER,
+		node: graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
 		aliases: &[
 			"raster_nodes::std_nodes::ImageValueNode",
 			"graphene_raster_nodes::std_nodes::ImageValueNode",
 			"graphene_std::raster::ImageValueNode",
 			"graphene_std::raster::ImageNode",
-			"raster_nodes::std_nodes::ImageNode",
 		],
 	},
 	NodeReplacement {
@@ -1591,7 +1590,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Upgrade `image` nodes that stored image data as `Image<Color>`` to `image` nodes that store a reference to the image data as a resource.
 	// Encodes the image data as PNG and stores it in the document's embedded resources and rewires the node to reference that resource.
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::platform_application_io::image::IDENTIFIER) && inputs_count == 2 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER) {
 		let image = node.inputs.iter().find_map(|input| match input.as_value()? {
 			TaggedValue::ImageData(image) => Some(image.clone()),
 			_ => None,

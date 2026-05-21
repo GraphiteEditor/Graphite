@@ -1,4 +1,4 @@
-use graphene_application_io::{Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
+use graphene_application_io::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use js_sys::Uint8Array;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::pin::Pin;
@@ -20,6 +20,7 @@ struct Inner {
 	on_disk: HashSet<ResourceHash>,
 	queue: VecDeque<Mutation>,
 	worker_active: bool,
+	persist_requested: bool,
 }
 
 pub struct OpfsResourceStorage {
@@ -33,10 +34,7 @@ unsafe impl Sync for OpfsResourceStorage {}
 impl OpfsResourceStorage {
 	pub async fn load(directory_name: &str) -> Result<Self, JsValue> {
 		let directory = open_resource_directory(directory_name).await?;
-		let on_disk = enumerate_hashes(&directory).await.unwrap_or_else(|error| {
-			log::error!("Failed to enumerate existing OPFS resource keys: {error:?}");
-			HashSet::new()
-		});
+		let on_disk = enumerate_hashes(&directory).await?;
 
 		Ok(Self {
 			inner: Arc::new(Mutex::new(Inner {
@@ -45,12 +43,13 @@ impl OpfsResourceStorage {
 				on_disk,
 				queue: VecDeque::new(),
 				worker_active: false,
+				persist_requested: false,
 			})),
 		})
 	}
 }
 
-impl Resources for OpfsResourceStorage {
+impl LoadResource for OpfsResourceStorage {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture {
 		let inner = self.inner.clone();
 
@@ -75,7 +74,7 @@ impl Resources for OpfsResourceStorage {
 }
 
 impl ResourceStorage for OpfsResourceStorage {
-	fn write(&mut self, data: &[u8]) -> ResourceHash {
+	fn store(&mut self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		let mut guard = self.inner.lock().unwrap();
 
@@ -131,14 +130,24 @@ fn kick_worker(inner: &Arc<Mutex<Inner>>, guard: &mut Inner) {
 
 async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 	loop {
-		let (directory, mutation) = {
+		let (directory, mutation, persist_requested) = {
 			let mut guard = inner.lock().unwrap();
 			let Some(mutation) = guard.queue.pop_front() else {
 				guard.worker_active = false;
 				return;
 			};
-			(guard.directory.clone(), mutation)
+
+			let persist_requested = matches!(mutation, Mutation::Write { .. }) && !guard.persist_requested;
+			if persist_requested {
+				guard.persist_requested = true;
+			}
+
+			(guard.directory.clone(), mutation, persist_requested)
 		};
+
+		if persist_requested {
+			request_persistence().await;
+		}
 
 		match mutation {
 			Mutation::Write { hash, bytes } => {
@@ -152,6 +161,23 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 				}
 			}
 		}
+	}
+}
+
+async fn request_persistence() {
+	let Some(window) = web_sys::window() else {
+		log::warn!("OPFS persist() skipped: no window");
+		return;
+	};
+	let storage = window.navigator().storage();
+
+	match storage.persist() {
+		Ok(promise) => match JsFuture::from(promise).await {
+			Ok(value) if value.as_bool() == Some(true) => {}
+			Ok(_) => log::warn!("OPFS persistence was not granted; browser may evict resources under storage pressure"),
+			Err(error) => log::warn!("OPFS persist() rejected: {error:?}"),
+		},
+		Err(error) => log::warn!("OPFS persist() threw: {error:?}"),
 	}
 }
 

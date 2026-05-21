@@ -55,10 +55,6 @@ enum Command {
 		#[clap(long, short = 'o')]
 		output: PathBuf,
 
-		/// Optional input image resource
-		#[clap(long)]
-		image: Option<PathBuf>,
-
 		/// Scale factor for export (default: 1.0)
 		#[clap(long, default_value = "1.0")]
 		scale: f64,

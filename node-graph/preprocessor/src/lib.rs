@@ -36,11 +36,7 @@ fn replace_resource_inputs(network: &mut NodeNetwork) {
 			let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
 				let id = NodeId::new();
 				let resource_node = DocumentNode {
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::scope("editor-api"),
-						NodeInput::value(TaggedValue::Resource(hash), false),
-					],
+					inputs: vec![NodeInput::value(TaggedValue::Resource(hash), false), NodeInput::scope("editor-api")],
 					implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
 					..Default::default()
 				};

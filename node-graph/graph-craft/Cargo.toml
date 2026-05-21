@@ -52,20 +52,7 @@ wasm-bindgen = { workspace = true, optional = true }
 [target.'cfg(target_family = "wasm")'.dependencies]
 web-sys = { workspace = true, features = [
 	"Navigator",
-	"Gpu",
-	"IdbFactory",
-	"IdbDatabase",
-	"IdbObjectStore",
-	"IdbObjectStoreParameters",
-	"IdbTransaction",
-	"IdbTransactionMode",
-	"IdbRequest",
-	"IdbOpenDbRequest",
-	"IdbVersionChangeEvent",
 	"DomException",
-	"DomStringList",
-	"Event",
-	"EventTarget",
 	"Window",
 	"StorageManager",
 	"FileSystemDirectoryHandle",
@@ -73,9 +60,7 @@ web-sys = { workspace = true, features = [
 	"FileSystemGetFileOptions",
 	"FileSystemGetDirectoryOptions",
 	"FileSystemWritableFileStream",
-	"FileSystemRemoveOptions",
 	"WritableStream",
-	"File",
 	"Blob",
 ] }
 js-sys = { workspace = true }

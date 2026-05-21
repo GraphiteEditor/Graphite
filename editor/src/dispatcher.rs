@@ -39,15 +39,17 @@ pub struct DispatcherMessageHandlers {
 
 impl DispatcherMessageHandlers {
 	pub fn with_resource_storage(resource_storage: Box<dyn ResourceStorage>) -> Self {
-		let mut s = Self::default();
-		s.resource_message_handler = ResourceMessageHandler::new(resource_storage);
-		s
+		Self {
+			resource_message_handler: ResourceMessageHandler::new(resource_storage),
+			..Self::default()
+		}
 	}
 
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		let mut s = Self::default();
-		s.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
-		s
+		Self {
+			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
+			..Self::default()
+		}
 	}
 }
 

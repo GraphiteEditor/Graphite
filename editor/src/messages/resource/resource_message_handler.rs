@@ -1,5 +1,5 @@
 use crate::messages::prelude::*;
-use graph_craft::application_io::{ResourceFuture, ResourceHash, ResourceStorage, Resources};
+use graph_craft::application_io::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
@@ -7,7 +7,7 @@ pub struct ResourcesHandle {
 	inner: Arc<RwLock<Box<dyn ResourceStorage>>>,
 }
 
-impl Resources for ResourcesHandle {
+impl LoadResource for ResourcesHandle {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture {
 		let guard = self.inner.read().unwrap();
 		guard.load(hash)
@@ -26,7 +26,7 @@ impl ResourceMessageHandler {
 		}
 	}
 
-	pub fn resources(&self) -> Box<dyn Resources> {
+	pub fn resources(&self) -> Box<dyn LoadResource> {
 		Box::new(ResourcesHandle {
 			inner: self.storage.clone().expect("Resource storage not initialized"),
 		})
@@ -66,8 +66,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessage
 		let mut storage = storage.write().unwrap();
 
 		match message {
-			ResourceMessage::Write { data } => {
-				let _hash = storage.write(data.as_ref());
+			ResourceMessage::Store { data } => {
+				let _hash = storage.store(data.as_ref());
 			}
 			ResourceMessage::GarbageCollect { used } => {
 				storage.garbage_collect(&used);

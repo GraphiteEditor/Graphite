@@ -161,7 +161,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 /// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
 fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> List<Raster<CPU>> {
-	let Some(image) = ::image::load_from_memory(data.as_ref()).ok() else {
+	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return List::new();
 	};
 	let image = image.to_rgba32f();
@@ -261,32 +261,9 @@ where
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_api: &'a PlatformEditorApi, hash: ResourceHash) -> Resource {
+pub async fn resource<'a: 'n>(_: impl Ctx, hash: ResourceHash, #[scope("editor-api")] editor_api: &'a PlatformEditorApi) -> Resource {
 	let application_io = editor_api.application_io.as_ref().expect("ApplicationIo must be available when using resources");
 	application_io.load_resource(hash).await.unwrap_or_else(|| {
 		panic!("Resource {hash} not found");
 	})
-}
-
-#[node_macro::node(category(""))]
-pub fn image<'a: 'n>(_: impl Ctx, resource: Resource) -> List<Raster<CPU>> {
-	let image_data = resource.as_ref();
-
-	let Some(image) = ::image::load_from_memory(image_data).ok() else {
-		return List::new();
-	};
-	let image = image.to_rgba32f();
-	let image = Image {
-		data: image
-			.chunks(4)
-			.map(|pixel| {
-				let alpha = pixel[3];
-				Color::from_gamma_srgb_channels(pixel[0] * alpha, pixel[1] * alpha, pixel[2] * alpha, alpha)
-			})
-			.collect(),
-		width: image.width(),
-		height: image.height(),
-		..Default::default()
-	};
-	List::new_from_element(Raster::new_cpu(image))
 }

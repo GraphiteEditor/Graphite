@@ -925,7 +925,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				let resource_hashes = Vec::from_iter(self.used_resources()).into_boxed_slice();
+				let resource_hashes = Vec::from_iter(self.used_resources(false)).into_boxed_slice();
 				let resources = resources.resources();
 				let mut document = self.clone();
 				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
@@ -3471,11 +3471,13 @@ impl DocumentMessageHandler {
 		self.graph_view_overlay_open
 	}
 
-	pub fn used_resources(&self) -> HashSet<ResourceHash> {
+	pub fn used_resources(&self, include_history: bool) -> HashSet<ResourceHash> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
-		self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
-		self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+		if include_history {
+			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
+		}
 		resources
 	}
 }

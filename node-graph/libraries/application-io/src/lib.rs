@@ -10,7 +10,8 @@ use text_nodes::FontCache;
 use vector_types::vector::style::RenderMode;
 
 pub mod resource;
-pub use resource::{Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
+pub use core_types::resource::Resource;
+pub use resource::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
 
 #[cfg(feature = "wgpu")]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]

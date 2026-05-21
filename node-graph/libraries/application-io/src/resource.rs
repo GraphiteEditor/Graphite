@@ -1,20 +1,19 @@
 use core_types::CacheHash;
-use dyn_any::{DynAny, StaticType};
+use core_types::resource::Resource;
+use dyn_any::DynAny;
 use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
-use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::Arc;
 
-pub trait Resources: Send + Sync {
+pub trait LoadResource: Send + Sync {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture;
 }
 
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'static>>;
 
-pub trait ResourceStorage: Resources {
-	fn write(&mut self, data: &[u8]) -> ResourceHash;
+pub trait ResourceStorage: LoadResource {
+	fn store(&mut self, data: &[u8]) -> ResourceHash;
 	fn contains(&mut self, hash: &ResourceHash) -> bool;
 	fn garbage_collect(&mut self, used: &[ResourceHash]);
 }
@@ -59,6 +58,35 @@ impl fmt::Display for ResourceHash {
 	}
 }
 
+impl std::str::FromStr for ResourceHash {
+	type Err = ResourceHashParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		fn decode_hex_nibble(byte: u8, position: usize) -> Result<u8, ResourceHashParseError> {
+			match byte {
+				b'0'..=b'9' => Ok(byte - b'0'),
+				b'a'..=b'f' => Ok(byte - b'a' + 10),
+				b'A'..=b'F' => Ok(byte - b'A' + 10),
+				_ => Err(ResourceHashParseError::InvalidCharacter { byte, position }),
+			}
+		}
+
+		let bytes = s.as_bytes();
+		if bytes.len() != 64 {
+			return Err(ResourceHashParseError::InvalidLength { found: bytes.len() });
+		}
+
+		let mut out = [0u8; 32];
+		for (index, chunk) in bytes.chunks_exact(2).enumerate() {
+			let high = decode_hex_nibble(chunk[0], index * 2)?;
+			let low = decode_hex_nibble(chunk[1], index * 2 + 1)?;
+			out[index] = (high << 4) | low;
+		}
+
+		Ok(Self(out))
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceHashParseError {
 	InvalidLength { found: usize },
@@ -80,19 +108,7 @@ impl TryFrom<&str> for ResourceHash {
 	type Error = ResourceHashParseError;
 
 	fn try_from(value: &str) -> Result<Self, Self::Error> {
-		let bytes = value.as_bytes();
-		if bytes.len() != 64 {
-			return Err(ResourceHashParseError::InvalidLength { found: bytes.len() });
-		}
-
-		let mut out = [0u8; 32];
-		for (index, chunk) in bytes.chunks_exact(2).enumerate() {
-			let high = decode_hex_nibble(chunk[0], index * 2)?;
-			let low = decode_hex_nibble(chunk[1], index * 2 + 1)?;
-			out[index] = (high << 4) | low;
-		}
-
-		Ok(Self(out))
+		value.parse()
 	}
 }
 
@@ -149,66 +165,4 @@ impl CacheHash for ResourceHash {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		core::hash::Hash::hash(self, state);
 	}
-}
-
-fn decode_hex_nibble(byte: u8, position: usize) -> Result<u8, ResourceHashParseError> {
-	match byte {
-		b'0'..=b'9' => Ok(byte - b'0'),
-		b'a'..=b'f' => Ok(byte - b'a' + 10),
-		b'A'..=b'F' => Ok(byte - b'A' + 10),
-		_ => Err(ResourceHashParseError::InvalidCharacter { byte, position }),
-	}
-}
-
-#[derive(Clone)]
-pub struct Resource {
-	inner: Arc<dyn AsRef<[u8]> + Send + Sync>,
-}
-
-impl Resource {
-	pub fn new<T: AsRef<[u8]> + Send + Sync + 'static>(data: T) -> Self {
-		Self { inner: Arc::new(data) }
-	}
-}
-
-impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
-	fn from(val: &Resource) -> Self {
-		val.inner.clone()
-	}
-}
-
-impl Deref for Resource {
-	type Target = [u8];
-
-	fn deref(&self) -> &[u8] {
-		(*self.inner).as_ref()
-	}
-}
-
-impl AsRef<[u8]> for Resource {
-	fn as_ref(&self) -> &[u8] {
-		(*self.inner).as_ref()
-	}
-}
-
-impl fmt::Debug for Resource {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Resource").field("len", &self.len()).finish()
-	}
-}
-
-impl PartialEq for Resource {
-	fn eq(&self, other: &Self) -> bool {
-		self.as_ref() == other.as_ref()
-	}
-}
-
-impl CacheHash for Resource {
-	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.as_ref().hash(state);
-	}
-}
-
-unsafe impl StaticType for Resource {
-	type Static = Resource;
 }

@@ -3,7 +3,7 @@ pub mod mmap;
 #[cfg(target_family = "wasm")]
 pub mod opfs;
 
-use graphene_application_io::{Resource, ResourceFuture, ResourceHash, ResourceStorage, Resources};
+use graphene_application_io::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +18,7 @@ impl HashMapResourceStorage {
 	}
 }
 
-impl Resources for HashMapResourceStorage {
+impl LoadResource for HashMapResourceStorage {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture {
 		let result = self.resources.lock().unwrap().get(&hash).cloned();
 		Box::pin(async move { result })
@@ -26,7 +26,7 @@ impl Resources for HashMapResourceStorage {
 }
 
 impl ResourceStorage for HashMapResourceStorage {
-	fn write(&mut self, data: &[u8]) -> ResourceHash {
+	fn store(&mut self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		self.resources.get_mut().unwrap().insert(hash, Resource::new(Arc::<[u8]>::from(data)));
 		hash
