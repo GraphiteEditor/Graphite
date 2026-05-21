@@ -1123,7 +1123,8 @@ impl Render for List<Vector> {
 					.unwrap_or_default();
 
 				// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-				let stroke_paint_attribute = if vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) {
+				let stroke_paint_visible = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_paint_graphic.is_some_and(|g| !g.is_fully_transparent());
+				let stroke_paint_attribute = if stroke_paint_visible {
 					stroke_paint_graphic_list
 						.as_deref()
 						.map(|list| {
@@ -1539,12 +1540,12 @@ impl Render for List<Vector> {
 				let item_relative_transform = item_zero_inverse * transform;
 
 				let mut click_targets_unwrapped = Vec::new();
-				extend_targets_from_vector(&mut click_targets_unwrapped, click_target_vector, item_relative_transform);
+				extend_targets_from_vector(&mut click_targets_unwrapped, self, index, click_target_vector, item_relative_transform);
 				accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
 
 				// Outlines always use source geometry so the visual outline reflects actual letterforms
 				let mut outlines_unwrapped = Vec::new();
-				extend_targets_from_vector(&mut outlines_unwrapped, source, item_relative_transform);
+				extend_targets_from_vector(&mut outlines_unwrapped, self, index, source, item_relative_transform);
 				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
 				// Surface `editor:text_frame` for the Text tool's drag cage
@@ -1581,7 +1582,7 @@ impl Render for List<Vector> {
 			// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 			let vector = self.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET, index).unwrap_or(source);
 
-			extend_targets_from_vector(click_targets, vector, transform);
+			extend_targets_from_vector(click_targets, self, index, vector, transform);
 		}
 	}
 
@@ -1591,7 +1592,7 @@ impl Render for List<Vector> {
 			let Some(source) = self.element(index) else { continue };
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
-			extend_targets_from_vector(outlines, source, transform);
+			extend_targets_from_vector(outlines, self, index, source, transform);
 		}
 	}
 
@@ -1604,15 +1605,17 @@ impl Render for List<Vector> {
 
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
-fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, transform: DAffine2) {
-	let filled = vector.style.fill() != &Fill::None;
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
+	let fill_graphic_list = fill_graphic_list_at(vector_list, index);
+	let fill_graphic = fill_graphic_list.as_deref().and_then(|l| l.element(0));
+	let filled = fill_graphic.is_some();
 
-	let mut subpaths: Vec<Subpath<_>> = vector.stroke_bezier_paths().collect();
+	let mut subpaths: Vec<Subpath<_>> = geometry.stroke_bezier_paths().collect();
 	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
-	let stroke_width = vector.style.stroke().map_or(0., |stroke| {
+	let stroke_width = geometry.style.stroke().map_or(0., |stroke| {
 		if stroke.align.is_not_centered() && all_subpaths_closed {
 			stroke.weight * 2.
 		} else {
@@ -1632,7 +1635,7 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, t
 		targets.push(click_target);
 	}
 
-	for click_target in extend_free_point_targets(vector, transform) {
+	for click_target in extend_free_point_targets(geometry, transform) {
 		targets.push(click_target);
 	}
 }

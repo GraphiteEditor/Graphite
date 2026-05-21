@@ -394,9 +394,11 @@ impl Graphic {
 
 				let stroke_paint_graphic_list = stroke_paint_graphic_list_at(vector, index);
 				let stroke_paint_graphic = stroke_paint_graphic_list.as_deref().and_then(|l| l.element(0));
+				let fill_graphic_list = fill_graphic_list_at(vector, index);
+				let fill_graphic = fill_graphic_list.as_deref().and_then(|l| l.element(0));
 
 				opacity > 1. - f64::EPSILON
-					&& element.style.fill().is_opaque()
+					&& fill_graphic.is_none_or(|g| g.is_opaque())
 					&& (element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || stroke_paint_graphic.is_none_or(|graphic| graphic.is_fully_transparent()))
 			}),
 			_ => false,
