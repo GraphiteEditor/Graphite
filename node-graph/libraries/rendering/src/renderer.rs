@@ -1199,12 +1199,18 @@ impl Render for List<Vector> {
 					stroke_paint_graphic_list
 						.as_deref()
 						.map(|list| {
+							// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
+							// only clipping-based paints need the stroke-inclusive bbox.
+							let paint_bounds = match list.element(0) {
+								Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
+								_ => stroke_bounds_matrix,
+							};
 							list.render(
 								defs,
 								item_transform,
 								element_transform,
 								applied_stroke_transform,
-								stroke_bounds_matrix,
+								paint_bounds,
 								transformed_bounds_matrix,
 								&render_params,
 								PaintTarget::Stroke,
