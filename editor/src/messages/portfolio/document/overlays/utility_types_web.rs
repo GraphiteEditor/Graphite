@@ -1124,14 +1124,14 @@ impl OverlayContext {
 		return pattern;
 	}
 
-	fn path_and_winding_for_fill(vector_data: &Vector, transform: DAffine2, is_closed_on_all: bool) -> (Option<Path2d>, CanvasWindingRule) {
+	fn path_and_winding_for_fill(vector_data: &Vector, transform: DAffine2) -> (Option<Path2d>, CanvasWindingRule) {
 		if vector_data.use_face_fill() {
 			let subpaths: Vec<Subpath<PointId>> = {
 				let face_paths = vector_data.construct_faces().filter(|face| face.area() >= 0.);
 				let segs = |path: BezPath| path.segments().collect::<Vec<PathSeg>>();
 
-				// TODO: test if is_closed_on_all is a proper value for closed paths
-				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), is_closed_on_all)).collect()
+				// TODO: test if closed on face_paths holds on all cases
+				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), true)).collect()
 			};
 			let path = Self::path_from_subpaths(subpaths.iter(), false, transform);
 
@@ -1171,34 +1171,28 @@ impl OverlayContext {
 			// For layers with open subpaths, stroke align is ignored and set to default
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
-			let do_fill = || {
-				match style_type {
-					PathStyleType::Fill => {
-						self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-					}
-					PathStyleType::Stroke => {
-						self.render_context.set_fill_style_str(&"#000000");
-					}
+			let do_fill = |use_as_mask: bool| {
+				if use_as_mask {
+					self.render_context.set_fill_style_str(&"#000000");
+				} else {
+					self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
 				}
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
-				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
+				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
 				self.render_context.fill_with_path_2d_and_winding(&path, winding);
 			};
-			let do_stroke = |stroke_weight: f64| {
-				match style_type {
-					PathStyleType::Fill => {
-						self.render_context.set_stroke_style_str(&"#000000");
-						self.render_context.set_line_width(stroke_weight);
-					}
-					PathStyleType::Stroke => {
-						self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
-						self.render_context.set_line_width(stroke_weight);
-						self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
-						self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
-						self.render_context.set_miter_limit(stroke.join_miter_limit);
-					}
+			let do_stroke = |stroke_weight: f64, use_as_mask: bool| {
+				if use_as_mask {
+					self.render_context.set_stroke_style_str(&"#000000");
+					self.render_context.set_line_width(stroke_weight);
+				} else {
+					self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
+					self.render_context.set_line_width(stroke_weight);
+					self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
+					self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
+					self.render_context.set_miter_limit(stroke.join_miter_limit);
 				}
 				self.render_context.stroke_with_path(&path);
 			};
@@ -1215,22 +1209,22 @@ impl OverlayContext {
 				PathStyleType::Fill => {
 					match (stroke_align, stroke.paint_order) {
 						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
-							do_fill();
+							do_fill(false);
 							composite_mode("destination-out");
-							do_stroke(stroke.weight() * 2.);
+							do_stroke(stroke.weight() * 2., true);
 						}
-						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => do_fill(),
+						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => do_fill(false),
 						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
-							do_fill();
+							do_fill(false);
 							composite_mode("destination-out");
-							do_stroke(stroke.weight());
+							do_stroke(stroke.weight(), true);
 						}
 						(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
-							do_fill();
+							do_fill(false);
 						}
 						// Paint order does not affect StrokeAlign::Outside
 						(StrokeAlign::Outside, _) => {
-							do_fill();
+							do_fill(false);
 						}
 					}
 				}
@@ -1238,23 +1232,23 @@ impl OverlayContext {
 					match (stroke_align, stroke.paint_order) {
 						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
 							// Clips away the stroke lying outside the path drawn from the subpaths
-							self.render_context.clip();
-							do_stroke(stroke.weight() * 2.);
+							self.render_context.clip_with_path_2d(&path);
+							do_stroke(stroke.weight() * 2., false);
 						}
 						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
 						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
-							do_stroke(stroke.weight());
+							do_stroke(stroke.weight(), false);
 						}
 						(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
-							do_stroke(stroke.weight());
+							do_stroke(stroke.weight(), false);
 							composite_mode("destination-out");
-							do_fill();
+							do_fill(true);
 						}
 						// Paint order does not affect StrokeAlign::Outside
 						(StrokeAlign::Outside, _) => {
-							do_stroke(stroke.weight() * 2.);
+							do_stroke(stroke.weight() * 2., false);
 							composite_mode("destination-out");
-							do_fill();
+							do_fill(true);
 						}
 					}
 				}
@@ -1262,7 +1256,7 @@ impl OverlayContext {
 		} else {
 			if let PathStyleType::Fill = style_type {
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
-				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, transform, is_closed_on_all);
+				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, transform);
 				let path = new_path.unwrap_or(Self::path_from_subpaths(subpaths, false, transform));
 
 				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));

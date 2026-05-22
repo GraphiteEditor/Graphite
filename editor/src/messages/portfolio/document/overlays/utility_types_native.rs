@@ -1107,21 +1107,15 @@ impl OverlayContextInternal {
 		image
 	}
 
-	fn path_and_winding_for_fill(&self, vector_data: &Vector, transform: DAffine2, is_closed_on_all: bool) -> (Option<BezPath>, peniko::Fill) {
+	fn path_and_winding_for_fill(&self, vector_data: &Vector, transform: DAffine2) -> (Option<BezPath>, peniko::Fill) {
 		if vector_data.use_face_fill() {
 			let subpaths: Vec<Subpath<PointId>> = {
 				let face_paths = vector_data.construct_faces().filter(|face| face.area() >= 0.);
 				let segs = |path: BezPath| path.segments().collect::<Vec<PathSeg>>();
 
-				// TODO: test if is_closed_on_all is a proper value for closed paths
-				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), is_closed_on_all)).collect()
+				// TODO: test if closed on face_paths holds on all cases
+				face_paths.map(|path| Subpath::from_beziers(segs(path).as_slice(), true)).collect()
 			};
-			// let path = subpaths.iter().fold(BezPath::new(), |mut acc, subpath| {
-			// 	let mut bezpath = subpath.to_bezpath();
-			// 	bezpath.apply_affine(Affine::new((transform).to_cols_array()));
-			// 	bezpath.elements().iter().for_each(|ele| acc.push(*ele));
-			// 	acc
-			// });
 			let path = self.path_from_subpaths(subpaths.iter(), false, transform);
 
 			(Some(path), peniko::Fill::NonZero)
@@ -1159,7 +1153,7 @@ impl OverlayContextInternal {
 			let do_fill = |ctx: &mut Self, compose_mode: Option<peniko::Compose>, stroke_scale: Option<f64>| {
 				let element_transform = Affine::new(element_transform.to_cols_array());
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
-				let (new_path, winding) = ctx.path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
+				let (new_path, winding) = ctx.path_and_winding_for_fill(vector_data, applied_stroke_transform);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
 
@@ -1243,7 +1237,7 @@ impl OverlayContextInternal {
 		} else {
 			if let PathStyleType::Fill = style_type {
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
-				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, transform, is_closed_on_all);
+				let (new_path, winding) = self.path_and_winding_for_fill(vector_data, transform);
 				let path = new_path.unwrap_or(self.path_from_subpaths(subpaths, false, transform));
 
 				let brush = peniko::Brush::Image(self.fill_canvas_pattern_image(color));
