@@ -6,7 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_FILL_GRAPHIC, Item, List};
+use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -450,6 +450,14 @@ pub struct RenderMetadata {
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
+	/// Per-layer `ATTR_FILL_GRAPHIC` row attribute, exposed so message handlers can read paint
+	/// information that lives on the list rather than on `PathStyle.fill`.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	/// Per-layer `ATTR_STROKE_PAINT_GRAPHIC` row attribute, exposed so message handlers can read
+	/// stroke paint information that lives on the list rather than on `Stroke.color`.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub stroke_paint_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -473,6 +481,8 @@ impl RenderMetadata {
 			text_frames,
 			clip_targets,
 			vector_data,
+			fill_attributes,
+			stroke_paint_attributes,
 			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
@@ -483,6 +493,8 @@ impl RenderMetadata {
 		text_frames.extend(other.text_frames.iter());
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
+		fill_attributes.extend(other.fill_attributes.iter().map(|(id, data)| (*id, data.clone())));
+		stroke_paint_attributes.extend(other.stroke_paint_attributes.iter().map(|(id, data)| (*id, data.clone())));
 
 		// TODO: Find a better non O(n^2) way to merge backgrounds
 		for background in &other.backgrounds {
@@ -1589,6 +1601,15 @@ impl Render for List<Vector> {
 				// Source geometry (not the click-target override) so editing tools work on letterforms.
 				// Only item 0 is recorded since editing tools can only target a single item currently.
 				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(source.clone()));
+
+				// Surface row attribute paint sources (only for item 0) so message handlers can read
+				// `ATTR_FILL_GRAPHIC` / `ATTR_STROKE_PAINT_GRAPHIC` without rebuilding the list.
+				if let Some(fill_paint) = self.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index).cloned() {
+					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_paint));
+				}
+				if let Some(stroke_paint) = self.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index).cloned() {
+					metadata.stroke_paint_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_paint));
+				}
 
 				// Surface `editor:text_frame` for the Text tool's drag cage
 				if let Some(&frame) = self.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index) {

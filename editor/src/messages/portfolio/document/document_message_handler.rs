@@ -1404,6 +1404,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_vector_data(layer_vector_data);
 			}
+			DocumentMessage::UpdateFillAttributes { fill_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_fill_attributes = fill_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_fill_attributes(layer_fill_attributes);
+			}
+			DocumentMessage::UpdateStrokePaintAttributes { stroke_paint_attributes } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_stroke_paint_attributes = stroke_paint_attributes
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, attrs)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, attrs)
+						})
+					})
+					.collect();
+				self.network_interface.update_stroke_paint_attributes(layer_stroke_paint_attributes);
+			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;
@@ -2486,11 +2514,23 @@ impl DocumentMessageHandler {
 				continue;
 			};
 
-			let has_fill = !matches!(style.fill, Fill::None);
+			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
+			let stroke_paint_graphic_list = self.network_interface.document_metadata().layer_stroke_paint_attributes.get(&layer);
+
+			let has_fill = if let Some(list) = fill_graphic_list {
+				list.element(0).is_some()
+			} else {
+				!matches!(style.fill, Fill::None)
+			};
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
-			// FIXME: Consider if we need to check ATTR_STROKE_PAINT_GRAPHIC
-			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke());
+			// `ATTR_STROKE_PAINT_GRAPHIC` is the source of truth when set; fall back to `style.stroke.color` only when no row attribute is present.
+			let stroke_paint_visible = if let Some(list) = stroke_paint_graphic_list {
+				list.element(0).is_some_and(|g| !g.is_fully_transparent())
+			} else {
+				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
+			};
+			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_paint_visible;
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
