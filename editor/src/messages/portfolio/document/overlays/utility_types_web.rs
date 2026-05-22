@@ -15,7 +15,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::style::{PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{PaintOrder, PathStyleType, StrokeAlign};
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use js_sys::{Array, Reflect};
 use kurbo::{self, Affine, BezPath, CubicBez, ParamCurve, PathSeg, Shape};
@@ -1066,12 +1066,12 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			self.draw_path_from_subpaths(subpaths.iter(), true, transform);
+			let path = Self::path_from_subpaths(subpaths.iter(), true, transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
 			self.render_context.set_line_width(1.);
-			self.render_context.stroke();
+			self.render_context.stroke_with_path(&path);
 		}
 		self.end_dpi_aware_transform();
 		self.render_context.restore();
@@ -1145,15 +1145,14 @@ impl OverlayContext {
 
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.draw_path_from_subpaths(subpaths, true, transform);
+		let path = Self::path_from_subpaths(subpaths, true, transform);
 
 		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
+		self.render_context.fill_with_path_2d(&path);
 	}
 
-	/// Fills the shape's fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
-	/// https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
-	pub fn fill_overlay(&mut self, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
+	/// Previews the fill on the shape's stroke/fill region with a pattern of the given color. Assumes `color` is an sRGB hex string.
+	pub fn preview_fill(&mut self, style_type: PathStyleType, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
 		let subpaths = vector_data.stroke_bezier_paths();
 
 		self.render_context.save();
@@ -1173,123 +1172,101 @@ impl OverlayContext {
 			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
 
 			let do_fill = || {
-				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+				match style_type {
+					PathStyleType::Fill => {
+						self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+					}
+					PathStyleType::Stroke => {
+						self.render_context.set_fill_style_str(&"#000000");
+					}
+				}
 				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
 				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
 				// TODO: avoid cloning the path
 				let path = new_path.unwrap_or(path.clone());
-
 				self.render_context.fill_with_path_2d_and_winding(&path, winding);
 			};
 			let do_stroke = |stroke_weight: f64| {
-				self.render_context.set_line_width(stroke_weight);
-				self.render_context.set_stroke_style_str(&"#000000");
+				match style_type {
+					PathStyleType::Fill => {
+						self.render_context.set_stroke_style_str(&"#000000");
+						self.render_context.set_line_width(stroke_weight);
+					}
+					PathStyleType::Stroke => {
+						self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
+						self.render_context.set_line_width(stroke_weight);
+						self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
+						self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
+						self.render_context.set_miter_limit(stroke.join_miter_limit);
+					}
+				}
 				self.render_context.stroke_with_path(&path);
 			};
 			let composite_mode = |composite_operation: &str| {
+				// For HTMLCanvas Composition Operations: https://www.w3schools.com/tags/canvas_globalcompositeoperation.asp
 				self.render_context
 					.set_global_composite_operation(composite_operation)
 					.expect("Failed to set global composite operation");
 			};
 
-			match (stroke_align, stroke.paint_order) {
-				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
-					do_fill();
-					composite_mode("destination-out");
-					do_stroke(stroke.weight() * 2.);
+			// WARN: don't use source-in, destination-atop, destination-in, copy
+			//       on the main canvas as it will erase the existing overlays.
+			match style_type {
+				PathStyleType::Fill => {
+					match (stroke_align, stroke.paint_order) {
+						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+							do_fill();
+							composite_mode("destination-out");
+							do_stroke(stroke.weight() * 2.);
+						}
+						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => do_fill(),
+						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+							do_fill();
+							composite_mode("destination-out");
+							do_stroke(stroke.weight());
+						}
+						(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+							do_fill();
+						}
+						// Paint order does not affect StrokeAlign::Outside
+						(StrokeAlign::Outside, _) => {
+							do_fill();
+						}
+					}
 				}
-				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => do_fill(),
-				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
-					do_fill();
-					composite_mode("destination-out");
-					do_stroke(stroke.weight());
-				}
-				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
-					do_fill();
-				}
-				// Paint order does not affect this
-				(StrokeAlign::Outside, _) => {
-					do_fill();
+				PathStyleType::Stroke => {
+					match (stroke_align, stroke.paint_order) {
+						(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
+							// Clips away the stroke lying outside the path drawn from the subpaths
+							self.render_context.clip();
+							do_stroke(stroke.weight() * 2.);
+						}
+						(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
+						(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
+							do_stroke(stroke.weight());
+						}
+						(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
+							do_stroke(stroke.weight());
+							composite_mode("destination-out");
+							do_fill();
+						}
+						// Paint order does not affect StrokeAlign::Outside
+						(StrokeAlign::Outside, _) => {
+							do_stroke(stroke.weight() * 2.);
+							composite_mode("destination-out");
+							do_fill();
+						}
+					}
 				}
 			}
 		} else {
-			let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, transform, is_closed_on_all);
-			let path = new_path.unwrap_or(Self::path_from_subpaths(subpaths, false, transform));
+			if let PathStyleType::Fill = style_type {
+				// Winding and path have to be regenerated just for the fills so, the obey face-by-face rendering
+				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, transform, is_closed_on_all);
+				let path = new_path.unwrap_or(Self::path_from_subpaths(subpaths, false, transform));
 
-			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-			self.render_context.fill_with_path_2d_and_winding(&path, winding);
-		}
-
-		self.end_dpi_aware_transform();
-		self.render_context.restore();
-	}
-
-	/// Fills the shape's stroke region with a pattern of the given color. Assumes `color` is an sRGB hex string.
-	/// WARN: Don't use source-in, destination-atop, destination-in, copy
-	///       on the main canvas as it will erase the existing overlays
-	pub fn stroke_overlay(&mut self, vector_data: &Vector, color: &str, transform: DAffine2, is_closed_on_all: bool) {
-		let subpaths = vector_data.stroke_bezier_paths();
-
-		self.render_context.save();
-		self.start_dpi_aware_transform();
-
-		if let Some(stroke) = vector_data.style.stroke() {
-			let has_real_stroke = stroke.weight() > 0. && stroke.transform.matrix2.determinant() != 0.;
-			let applied_stroke_transform = if has_real_stroke { stroke.transform } else { transform };
-			let element_transform = if has_real_stroke { transform * stroke.transform.inverse() } else { DAffine2::IDENTITY };
-
-			let [a, b, c, d, e, f] = element_transform.to_cols_array();
-			self.render_context.transform(a, b, c, d, e, f).expect("element_transform should be set to render stroke properly");
-			// TODO: mitigate stroke artifacts when strokes are rendered for closed paths as closed.
-			let path = Self::path_from_subpaths(subpaths, false, applied_stroke_transform);
-
-			// For layers with open subpaths, stroke align is ignored and set to default
-			let stroke_align = if is_closed_on_all { stroke.align } else { StrokeAlign::Center };
-
-			let do_stroke = |stroke_weight: f64| {
-				self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
-				self.render_context.set_line_width(stroke_weight);
-				self.render_context.set_line_cap(stroke.cap.html_canvas_name().as_str());
-				self.render_context.set_line_join(stroke.join.html_canvas_name().as_str());
-				self.render_context.set_miter_limit(stroke.join_miter_limit);
-				self.render_context.stroke_with_path(&path);
-			};
-			let do_fill = || {
-				// Winding and path need to take into account face-by-face rendering
-				let (new_path, winding) = Self::path_and_winding_for_fill(vector_data, applied_stroke_transform, is_closed_on_all);
-				// TODO: avoid cloning the path
-				let path = new_path.unwrap_or(path.clone());
-
-				self.render_context.set_fill_style_str(&"#000000");
+				self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
 				self.render_context.fill_with_path_2d_and_winding(&path, winding);
-			};
-			let composite_mode = |composite_operation: &str| {
-				self.render_context
-					.set_global_composite_operation(composite_operation)
-					.expect("Failed to set global composite operation");
-			};
-
-			match (stroke_align, stroke.paint_order) {
-				(StrokeAlign::Inside, PaintOrder::StrokeAbove) => {
-					// Clips away the stroke lying outside the path drawn from the subpaths
-					self.render_context.clip();
-					do_stroke(stroke.weight() * 2.);
-				}
-				(StrokeAlign::Inside, PaintOrder::StrokeBelow) => {}
-				(StrokeAlign::Center, PaintOrder::StrokeAbove) => {
-					do_stroke(stroke.weight());
-				}
-				(StrokeAlign::Center, PaintOrder::StrokeBelow) => {
-					do_stroke(stroke.weight());
-					composite_mode("destination-out");
-					do_fill();
-				}
-				// Paint order does not affect this
-				(StrokeAlign::Outside, _) => {
-					do_stroke(stroke.weight() * 2.);
-					composite_mode("destination-out");
-					do_fill();
-				}
 			}
 		}
 

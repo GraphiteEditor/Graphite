@@ -641,6 +641,11 @@ impl Default for Stroke {
 	}
 }
 
+pub enum PathStyleType {
+	Fill,
+	Stroke,
+}
+
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Default, graphene_hash::CacheHash, DynAny)]

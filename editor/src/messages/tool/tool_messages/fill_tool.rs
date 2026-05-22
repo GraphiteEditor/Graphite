@@ -6,7 +6,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::near_to_subpath;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{Fill, FillChoiceUI};
+use graphene_std::vector::style::{Fill, FillChoiceUI, PathStyleType};
 
 const STROKE_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
 const FILL_ID: DefinitionIdentifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
@@ -182,9 +182,9 @@ impl Fsm for FillToolFsmState {
 					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
 					if stroke_exists_and_visible && near_to_stroke {
-						overlay_context.stroke_overlay(&vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
+						overlay_context.preview_fill(PathStyleType::Stroke, &vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
 					} else if fill_exists_and_visible {
-						overlay_context.fill_overlay(&vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
+						overlay_context.preview_fill(PathStyleType::Fill, &vector_data, preview_color.as_str(), layer_to_viewport, is_closed_on_all);
 					}
 				}
 				self
