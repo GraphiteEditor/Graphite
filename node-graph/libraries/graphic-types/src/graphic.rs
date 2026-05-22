@@ -474,9 +474,11 @@ impl Graphic {
 				!list.is_empty()
 					&& (0..list.len()).all(|i| {
 						let Some(vector) = list.element(i) else { return false };
-						let fill_opaque = is_fill_opaque_at(list, i);
+						let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+						let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+						let fill_opaque = opacity_fill >= 1. - f64::EPSILON && is_fill_opaque_at(list, i);
 						let stroke_opaque_or_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_opaque_at(list, i);
-						fill_opaque && stroke_opaque_or_invisible
+						opacity >= 1. - f64::EPSILON && fill_opaque && stroke_opaque_or_invisible
 					})
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
@@ -490,7 +492,12 @@ impl Graphic {
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
 			Graphic::Vector(list) => (0..list.len()).all(|i| {
 				let Some(vector) = list.element(i) else { return false };
-				let fill_invisible = is_fill_fully_transparent_at(list, i);
+				let opacity: f64 = list.attribute_cloned_or(ATTR_OPACITY, i, 1.);
+				if opacity <= f64::EPSILON {
+					return true;
+				}
+				let opacity_fill: f64 = list.attribute_cloned_or(ATTR_OPACITY_FILL, i, 1.);
+				let fill_invisible = opacity_fill <= f64::EPSILON || is_fill_fully_transparent_at(list, i);
 				let stroke_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_fully_transparent_at(list, i);
 				fill_invisible && stroke_invisible
 			}),
