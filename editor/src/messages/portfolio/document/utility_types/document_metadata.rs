@@ -6,7 +6,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath;
 use graphene_std::transform::Footprint;
@@ -39,7 +38,7 @@ pub struct DocumentMetadata {
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
-	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<List<Vector>>>,
+	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -226,7 +225,7 @@ impl DocumentMetadata {
 	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
 	/// bounds for non-vector layers (groups, raster, text, color, gradient).
 	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		if let Some(vector) = self.layer_vector_data.get(&layer).and_then(|vector_list| vector_list.element(0))
+		if let Some(vector) = self.layer_vector_data.get(&layer)
 			&& let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer))
 		{
 			return Some(bounds);

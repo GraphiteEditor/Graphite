@@ -24,7 +24,6 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::ContextDependencies;
-use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
@@ -3236,9 +3235,8 @@ impl NodeNetworkInterface {
 			}
 			return Some(modified);
 		}
-		// Only item 0 is returned since editing tools can only target a single item currently.
-		let vector_list = self.document_metadata.layer_vector_data.get(&layer).cloned();
-		vector_list.and_then(|list| list.element(0).cloned())
+
+		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
 	}
 
 	/// The vector geometry an upstream Path node would surface for editing.
@@ -3400,7 +3398,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the layer vector data (for layers without Path nodes)
-	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<List<Vector>>>) {
+	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 }
