@@ -47,7 +47,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let luminance = select(1.0, 0.8, parity == 1);
 
 	let fw = fwidthFine(in.document_position);
-	let coverage_max = smoothstep(uniforms.rect_max, uniforms.rect_max - fw, in.document_position);
+	let coverage_max = 1.0 - smoothstep(uniforms.rect_max - fw, uniforms.rect_max, in.document_position);
 	let coverage_min = smoothstep(uniforms.rect_min, uniforms.rect_min + fw, in.document_position);
 	let coverage = coverage_max * coverage_min;
 	let alpha = coverage.x * coverage.y;
