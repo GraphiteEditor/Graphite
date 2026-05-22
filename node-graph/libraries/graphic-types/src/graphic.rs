@@ -209,7 +209,7 @@ pub fn color_to_graphic_list(color: Option<Color>) -> Option<List<Graphic>> {
 /// `style.fill` when the row attribute is absent or empty.
 /// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
 pub fn fill_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
-	list.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index).filter(|l| !l.is_empty()).map(Cow::Borrowed).or_else(|| {
+	list.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index).map(Cow::Borrowed).or_else(|| {
 		let vector = list.element(index)?;
 		fill_to_graphic_list(vector.style.fill()).map(Cow::Owned)
 	})
@@ -219,13 +219,70 @@ pub fn fill_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_,
 /// `style.stroke.color` when the row attribute is absent or empty.
 /// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
 pub fn stroke_paint_graphic_list_at(list: &List<Vector>, index: usize) -> Option<Cow<'_, List<Graphic>>> {
-	list.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index)
-		.filter(|l| !l.is_empty())
-		.map(Cow::Borrowed)
-		.or_else(|| {
-			let vector = list.element(index)?;
-			color_to_graphic_list(vector.style.stroke().and_then(|s| s.color())).map(Cow::Owned)
-		})
+	list.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index).map(Cow::Borrowed).or_else(|| {
+		let vector = list.element(index)?;
+		color_to_graphic_list(vector.style.stroke().and_then(|s| s.color())).map(Cow::Owned)
+	})
+}
+
+/// Check whether the fill paint for a vector row is fully opaque, falling back to
+/// the legacy `style.fill` when the row attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Fill` fallback path performs.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn is_fill_opaque_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = list.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index) {
+		return graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque());
+	}
+	let Some(vector) = list.element(index) else { return false };
+	match vector.style.fill() {
+		Fill::None => false,
+		Fill::Solid(color) => color.is_opaque(),
+		Fill::Gradient(gradient) => gradient.stops.iter().all(|stop| stop.color.is_opaque()),
+	}
+}
+
+/// Check whether the fill paint for a vector row is fully transparent, falling back to
+/// the legacy `style.fill` when the row attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Fill` fallback path performs.
+/// TODO: Remove once all fill paint sources flow through `List<Graphic>` directly without going through the `Fill` enum.
+pub fn is_fill_fully_transparent_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = list.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index) {
+		return graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent());
+	}
+	let Some(vector) = list.element(index) else { return false };
+	match vector.style.fill() {
+		Fill::None => true,
+		Fill::Solid(color) => color.a() == 0.,
+		Fill::Gradient(gradient) => gradient.stops.iter().all(|stop| stop.color.a() == 0.),
+	}
+}
+
+/// Check whether the stroke paint for a vector row is fully opaque, falling back to
+/// the legacy `style.stroke.color` when the row attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Stroke.color` fallback path performs.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn is_stroke_opaque_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = list.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index) {
+		return graphic_list.element(0).is_some_and(|graphic| graphic.is_opaque());
+	}
+	let Some(color) = list.element(index).and_then(|vector| vector.style.stroke()).and_then(|stroke| stroke.color()) else {
+		return false;
+	};
+	color.is_opaque()
+}
+
+/// Check whether the stroke paint for a vector row is fully transparent, falling back to
+/// the legacy `style.stroke.color` when the row attribute is absent.
+/// This avoids the `List<Graphic>` allocation that the legacy `Stroke.color` fallback path performs.
+/// TODO: Remove once all stroke paint sources flow through `List<Graphic>` directly without going through `Stroke.color`.
+pub fn is_stroke_fully_transparent_at(list: &List<Vector>, index: usize) -> bool {
+	if let Some(graphic_list) = list.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index) {
+		return graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent());
+	}
+	let Some(color) = list.element(index).and_then(|vector| vector.style.stroke()).and_then(|stroke| stroke.color()) else {
+		return true;
+	};
+	color.a() == 0.
 }
 
 /// Maps from a concrete element type to its corresponding `Graphic` enum variant,
@@ -392,14 +449,19 @@ impl Graphic {
 				let Some(element) = vector.element(index) else { return false };
 				let opacity: f64 = vector.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 
-				let stroke_paint_graphic_list = stroke_paint_graphic_list_at(vector, index);
-				let stroke_paint_graphic = stroke_paint_graphic_list.as_deref().and_then(|l| l.element(0));
-				let fill_graphic_list = fill_graphic_list_at(vector, index);
-				let fill_graphic = fill_graphic_list.as_deref().and_then(|l| l.element(0));
+				let fill_opaque_or_absent = match vector.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index) {
+					Some(graphic_list) => graphic_list.element(0).is_none_or(|graphic| graphic.is_opaque()),
+					None => element.style.fill().is_opaque(),
+				};
 
-				opacity > 1. - f64::EPSILON
-					&& fill_graphic.is_none_or(|g| g.is_opaque())
-					&& (element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || stroke_paint_graphic.is_none_or(|graphic| graphic.is_fully_transparent()))
+				let stroke_invisible_or_transparent = element.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+					|| if let Some(graphic_list) = vector.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index) {
+						graphic_list.element(0).is_none_or(|graphic| graphic.is_fully_transparent())
+					} else {
+						element.style.stroke().and_then(|stroke| stroke.color()).is_none_or(|color| color.a() == 0.)
+					};
+
+				opacity > 1. - f64::EPSILON && fill_opaque_or_absent && stroke_invisible_or_transparent
 			}),
 			_ => false,
 		}
@@ -410,22 +472,15 @@ impl Graphic {
 			Graphic::Graphic(list) => !list.is_empty() && list.iter_element_values().all(Graphic::is_opaque),
 			Graphic::Vector(list) => {
 				!list.is_empty()
-					&& list.iter_element_values().enumerate().all(|(i, vector)| {
-						let style = &vector.style;
-
-						let fill_graphic_list = fill_graphic_list_at(list, i);
-						let fill_graphic = fill_graphic_list.as_deref().and_then(|l| l.element(0));
-						let stroke_paint_graphic_list = stroke_paint_graphic_list_at(list, i);
-						let stroke_paint_graphic = stroke_paint_graphic_list.as_deref().and_then(|l| l.element(0));
-
-						let fill_opaque = fill_graphic.is_some_and(|g| g.is_opaque());
-						let stroke_opaque_or_invisible = style.stroke().is_none_or(|s| !s.has_renderable_stroke()) || stroke_paint_graphic.is_some_and(|g| g.is_opaque());
-
+					&& (0..list.len()).all(|i| {
+						let Some(vector) = list.element(i) else { return false };
+						let fill_opaque = is_fill_opaque_at(list, i);
+						let stroke_opaque_or_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_opaque_at(list, i);
 						fill_opaque && stroke_opaque_or_invisible
 					})
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
-			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.a() >= 1. - f32::EPSILON)),
+			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
 		}
 	}
@@ -433,20 +488,13 @@ impl Graphic {
 	pub fn is_fully_transparent(&self) -> bool {
 		match self {
 			Graphic::Graphic(list) => list.iter_element_values().all(Graphic::is_fully_transparent),
-			Graphic::Vector(list) => list.iter_element_values().enumerate().all(|(i, vector)| {
-				let style = &vector.style;
-
-				let fill_graphic_list = fill_graphic_list_at(list, i);
-				let fill_graphic = fill_graphic_list.as_deref().and_then(|l| l.element(0));
-				let stroke_paint_graphic_list = stroke_paint_graphic_list_at(list, i);
-				let stroke_paint_graphic = stroke_paint_graphic_list.as_deref().and_then(|l| l.element(0));
-
-				let fill_invisible = fill_graphic.is_none_or(|g| g.is_fully_transparent());
-				let stroke_invisible = style.stroke().is_none_or(|s| !s.has_renderable_stroke()) || stroke_paint_graphic.is_none_or(|g| g.is_fully_transparent());
-
+			Graphic::Vector(list) => (0..list.len()).all(|i| {
+				let Some(vector) = list.element(i) else { return false };
+				let fill_invisible = is_fill_fully_transparent_at(list, i);
+				let stroke_invisible = vector.style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke()) || is_stroke_fully_transparent_at(list, i);
 				fill_invisible && stroke_invisible
 			}),
-			Graphic::Color(list) => list.iter_element_values().all(|c| c.a() == 0.),
+			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
 		}
