@@ -44,6 +44,13 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let tile = floor((in.document_position - uniforms.pattern_origin) / uniforms.checker_size);
 	let parity = i32(tile.x + tile.y) & 1;
-	let luminance = vec3<f32>(select(1.0, 0.8, parity == 1));
-	return vec4<f32>(luminance, 1.0);
+	let luminance = select(1.0, 0.8, parity == 1);
+
+	let fw = fwidthFine(in.document_position);
+	let coverage_max = smoothstep(uniforms.rect_max, uniforms.rect_max - fw, in.document_position);
+	let coverage_min = smoothstep(uniforms.rect_min, uniforms.rect_min + fw, in.document_position);
+	let coverage = coverage_max * coverage_min;
+	let alpha = coverage.x * coverage.y;
+
+	return vec4<f32>(vec3<f32>(luminance), alpha);
 }
