@@ -55,6 +55,16 @@ pub struct PortfolioMessageContext<'a> {
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	unloaded_documents: HashMap<DocumentId, DocumentInfo>,
+	/// Pairs of `(info, raw serialized content)` for autosaved documents that failed to deserialize.
+	/// The info entries are folded back into `persisted_state_snapshot` so their on-disk autosave files survive garbage collection.
+	// TODO: Eventually remove this document upgrade code
+	failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
+	/// In-flight count of autosaved-document loads from the initial startup batch; the batched failure dialog fires when this hits 0.
+	// TODO: Eventually remove this document upgrade code
+	pending_initial_autosave_loads: usize,
+	/// Background eager loads whose trailing `SelectDocument` should be suppressed to keep focus on the user's active doc.
+	// TODO: Eventually remove this document upgrade code
+	pending_eager_loads: HashSet<DocumentId>,
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
@@ -493,11 +503,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					workspace_layout: _,
 				} = state;
 
+				// TODO: Eventually remove this document upgrade code
+				let mut newly_unloaded_ids = Vec::new();
+
 				for info in documents {
 					if !self.document_ids.contains(&info.id) {
 						self.document_ids.push_back(info.id);
 					}
-					if !self.documents.contains_key(&info.id) {
+					if !self.documents.contains_key(&info.id) && !self.unloaded_documents.contains_key(&info.id) {
+						// TODO: Eventually remove this document upgrade code
+						newly_unloaded_ids.push(info.id);
+
 						self.unloaded_documents.insert(info.id, info);
 					}
 				}
@@ -505,8 +521,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 				let select_document_id = current_document.filter(|id| self.document_ids.contains(id)).or_else(|| self.document_ids.front().copied());
+
+				// Eagerly load every autosaved doc on startup so deserialization failures can be reported in one batched dialog at the end.
+				// The active doc's read is deferred to the `SelectDocument` below, but is still counted.
+				// TODO: Eventually remove this document upgrade code
+				self.pending_initial_autosave_loads = self.pending_initial_autosave_loads.saturating_add(newly_unloaded_ids.len());
+
+				// TODO: Eventually remove this document upgrade code
+				for document_id in &newly_unloaded_ids {
+					if Some(*document_id) != select_document_id {
+						self.pending_eager_loads.insert(*document_id);
+						responses.add(PersistentStateMessage::ReadDocument { document_id: *document_id });
+					}
+				}
+
 				if let Some(document_id) = select_document_id {
 					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
+				// TODO: Eventually remove this document upgrade code
+				else if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+					responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
 				}
 			}
 			PortfolioMessage::LoadDocumentContent {
@@ -526,7 +560,85 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_is_saved: info.is_saved,
 					document_serialized_content,
 				});
-				responses.add(PortfolioMessage::SelectDocument { document_id });
+
+				// Suppress auto-select for startup eager loads to keep focus on the user's active doc
+				// TODO: Eventually remove this document upgrade code
+				// TODO: (But keep the inner logic unconditionally, just remove the condition)
+				if !self.pending_eager_loads.remove(&document_id) {
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
+			}
+			// TODO: Eventually remove this document upgrade code
+			PortfolioMessage::ShowFailedToLoadDocumentsDialog => {
+				if self.failed_to_load_documents.is_empty() {
+					return;
+				}
+				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| display_name_with_fallback(info)).collect();
+				let dialog = simple_dialogs::FailedToLoadDocumentsDialog { failed_document_names };
+				dialog.send_dialog_to_frontend(responses);
+			}
+			// TODO: Eventually remove this document upgrade code
+			PortfolioMessage::DiscardFailedToLoadDocuments => {
+				let failed = std::mem::take(&mut self.failed_to_load_documents);
+				for document_id in failed.keys() {
+					self.document_ids.retain(|id| id != document_id);
+					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
+				}
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(PersistentStateMessage::WriteState);
+			}
+			// TODO: Eventually remove this document upgrade code
+			PortfolioMessage::DownloadFailedToLoadDocuments => {
+				if self.failed_to_load_documents.is_empty() {
+					return;
+				}
+
+				let mut used_names: HashMap<String, u32> = HashMap::new();
+				let files: Vec<(String, Vec<u8>)> = self
+					.failed_to_load_documents
+					.values()
+					.map(|(info, content)| {
+						let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
+						let base = format!("{stem}.{FILE_EXTENSION}");
+						let unique = match used_names.get(&base).copied() {
+							None => {
+								used_names.insert(base.clone(), 1);
+								base
+							}
+							Some(n) => {
+								used_names.insert(base.clone(), n + 1);
+								format!("{stem} ({n}).{FILE_EXTENSION}")
+							}
+						};
+						(unique, content.as_bytes().to_vec())
+					})
+					.collect();
+
+				const FOLDER_NAME: &str = "Graphite Recovered Documents";
+
+				if files.len() == 1 {
+					let (filename, content) = files.into_iter().next().expect("just checked there's one entry");
+					responses.add(FrontendMessage::TriggerSaveFile {
+						name: filename,
+						folder: None,
+						content: serde_bytes::ByteBuf::from(content),
+					});
+				} else {
+					match build_recovery_zip(&files) {
+						Ok(zip_bytes) => responses.add(FrontendMessage::TriggerSaveFile {
+							name: format!("{FOLDER_NAME}.zip"),
+							folder: None,
+							content: serde_bytes::ByteBuf::from(zip_bytes),
+						}),
+						Err(e) => {
+							log::error!("Failed to build recovery zip: {e}");
+							responses.add(DialogMessage::DisplayDialogError {
+								title: "Failed to download".to_string(),
+								description: format!("Could not bundle the failed documents for download.\n\n{e}"),
+							});
+						}
+					}
+				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
@@ -769,11 +881,37 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut document = match document {
 					Ok(document) => document,
 					Err(e) => {
-						if !document_is_auto_saved {
-							responses.add(DialogMessage::DisplayDialogError {
-								title: "Failed to open document".to_string(),
-								description: e.to_string(),
-							});
+						// TODO: Eventually remove this document upgrade code
+						// TODO: (Only the `if` branch, the `else` branch's manual-open dialog stays)
+						if document_is_auto_saved {
+							let name = document_name.unwrap_or_default();
+							let info = DocumentInfo {
+								id: document_id,
+								name,
+								resources: None,
+								path: document_path,
+								is_saved: document_is_saved,
+							};
+							self.document_ids.retain(|id| id != &document_id);
+							self.failed_to_load_documents.insert(document_id, (info, document_serialized_content));
+
+							if self.active_document_id == Some(document_id) {
+								self.active_document_id = None;
+								if let Some(next_id) = self.document_ids.front().copied() {
+									responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
+								}
+							}
+
+							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+							self.tick_autosave_load_progress(responses, true);
+						} else {
+							log::error!("{e}");
+							let name = document_name
+								.filter(|n| !n.trim().is_empty())
+								.or_else(|| document_path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()))
+								.unwrap_or_default();
+							let dialog = simple_dialogs::FailedToOpenDocumentDialog { document_name: name };
+							dialog.send_dialog_to_frontend(responses);
 						}
 
 						return;
@@ -856,6 +994,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.load_document(document, document_id, responses);
 
 				responses.add(AppWindowMessage::Focus);
+
+				// TODO: Eventually remove this document upgrade code
+				if document_is_auto_saved {
+					self.tick_autosave_load_progress(responses, false);
+				}
 			}
 			PortfolioMessage::OpenImage { name, image } => {
 				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
@@ -1765,7 +1908,13 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn persisted_state_snapshot(&self) -> PersistedState {
-		let documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+		let mut documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
+
+		// Keep failed-to-load docs referenced in `state.documents` so their autosave files survive `garbage_collect_document_files`
+		// TODO: Eventually remove this document upgrade code
+		for (info, _) in self.failed_to_load_documents.values() {
+			documents.push(info.clone());
+		}
 
 		PersistedState {
 			documents,
@@ -1806,6 +1955,18 @@ impl PortfolioMessageHandler {
 		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
 			_ => format!("{DEFAULT_DOCUMENT_NAME} {new_doc_title_num}"),
+		}
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	fn tick_autosave_load_progress(&mut self, responses: &mut VecDeque<Message>, failed: bool) {
+		if self.pending_initial_autosave_loads > 0 {
+			self.pending_initial_autosave_loads -= 1;
+			if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+				responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
+			}
+		} else if failed {
+			responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
 		}
 	}
 
@@ -2017,4 +2178,77 @@ impl PortfolioMessageHandler {
 			}
 		}
 	}
+}
+
+// TODO: Eventually remove this document upgrade code
+fn display_name_with_fallback(info: &DocumentInfo) -> String {
+	if info.name.trim().is_empty() {
+		format!("Untitled Document ({:x})", info.id.0)
+	} else {
+		info.name.clone()
+	}
+}
+
+/// Returns `None` if the name has no safe filename characters left or matches a Windows reserved device name, so callers fall back to an ID-based stem.
+// TODO: Eventually remove this document upgrade code
+fn sanitize_filename_stem(name: &str) -> Option<String> {
+	let replaced: String = name
+		.chars()
+		.map(|c| {
+			if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+				'_'
+			} else {
+				c
+			}
+		})
+		.collect();
+
+	// Trim dots to avoid `.` / `..` resolving against the parent directory, and to dodge Windows' trailing-dot/space quirks
+	let trimmed = replaced.trim().trim_matches('.').trim();
+	if trimmed.is_empty() {
+		return None;
+	}
+
+	// Windows rejects these regardless of extension; superscript digits are normalized equivalently by some path APIs
+	let first_segment = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
+	if matches!(
+		first_segment.as_str(),
+		"CON"
+			| "PRN" | "AUX"
+			| "NUL" | "COM1"
+			| "COM2" | "COM3"
+			| "COM4" | "COM5"
+			| "COM6" | "COM7"
+			| "COM8" | "COM9"
+			| "COM¹" | "COM²"
+			| "COM³" | "LPT1"
+			| "LPT2" | "LPT3"
+			| "LPT4" | "LPT5"
+			| "LPT6" | "LPT7"
+			| "LPT8" | "LPT9"
+			| "LPT¹" | "LPT²"
+			| "LPT³"
+	) {
+		return None;
+	}
+
+	Some(trimmed.to_string())
+}
+
+// TODO: Eventually remove this document upgrade code
+fn build_recovery_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+	use std::io::{Cursor, Write};
+	use zip::write::{SimpleFileOptions, ZipWriter};
+
+	let mut buffer = Cursor::new(Vec::<u8>::new());
+	let mut writer = ZipWriter::new(&mut buffer);
+	let options: SimpleFileOptions = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).unix_permissions(0o644);
+
+	for (filename, content) in entries {
+		writer.start_file(filename, options).map_err(|e| format!("start_file: {e}"))?;
+		writer.write_all(content).map_err(|e| format!("write_all: {e}"))?;
+	}
+
+	writer.finish().map_err(|e| format!("finish: {e}"))?;
+	Ok(buffer.into_inner())
 }
