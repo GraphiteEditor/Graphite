@@ -1,10 +1,8 @@
+// TODO: Eventually remove this document upgrade code
+
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-/// A dialog shown after startup when one or more autosaved documents fail to deserialize.
-/// Offers the user a chance to download the raw content (so the data isn't lost), discard the failed
-/// documents, or dismiss the dialog (keeping the autosave for a later session, when the deserialization
-/// bug may be fixed in a future release).
 pub struct FailedToLoadDocumentsDialog {
 	pub failed_document_names: Vec<String>,
 }

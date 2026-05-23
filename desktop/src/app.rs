@@ -251,14 +251,6 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::WriteFile { path, content } => {
-				// Create the parent directory on demand so flows that drop multiple files into a fresh folder
-				// (e.g. recovered-documents bundle) don't have to materialize it ahead of time
-				if let Some(parent) = path.parent()
-					&& !parent.as_os_str().is_empty()
-					&& let Err(e) = fs::create_dir_all(parent)
-				{
-					tracing::error!("Failed to create parent directory {}: {}", parent.display(), e);
-				}
 				if let Err(e) = fs::write(&path, content) {
 					tracing::error!("Failed to write file {}: {}", path.display(), e);
 				}

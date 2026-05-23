@@ -16,8 +16,6 @@ pub enum EditorError {
 	#[error("The operation caused a document error:\n{0:?}")]
 	Document(String),
 
-	// User-facing presentation now lives in `FailedToOpenDocumentDialog` /
-	// `FailedToLoadDocumentsDialog`; this Display string is for logs only.
 	#[error("Failed to deserialize document: {0}")]
 	DocumentDeserialization(String),
 

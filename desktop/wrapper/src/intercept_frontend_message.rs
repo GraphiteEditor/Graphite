@@ -63,18 +63,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				context: SaveFileDialogContext::File { content },
 			});
 		}
-		FrontendMessage::TriggerSaveRecoveredDocumentsFolder { folder_name, files } => {
-			// Treat the save dialog's chosen path as a folder name. The dialog result handler strips any
-			// extension the user typed and writes each entry inside that folder
-			let files: Vec<(String, Vec<u8>)> = files.into_iter().map(|(name, bytes)| (name, bytes.into_vec())).collect();
-			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
-				title: "Save Recovered Documents Folder As".to_string(),
-				default_filename: folder_name,
-				default_folder: None,
-				filters: Vec::new(),
-				context: SaveFileDialogContext::RecoveredDocuments { files },
-			});
-		}
 		FrontendMessage::TriggerVisitLink { url } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenUrl(url));
 		}

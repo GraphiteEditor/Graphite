@@ -1,13 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-/// A dialog shown when a manually opened document fails to deserialize. Mirrors the recovery affordances
-/// of [`super::FailedToLoadDocumentsDialog`] (offering Discord/GitHub/previous-version links) but for
-/// the single-file, user-initiated open case, where the file is already on the user's disk and there's
-/// nothing to download or discard.
 pub struct FailedToOpenDocumentDialog {
-	/// Display name of the file the user tried to open; used in the dialog header. Falls back to a
-	/// generic phrase when empty.
 	pub document_name: String,
 }
 
