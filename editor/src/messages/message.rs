@@ -36,6 +36,8 @@ pub enum Message {
 	#[child]
 	Preferences(PreferencesMessage),
 	#[child]
+	Resource(ResourceMessage),
+	#[child]
 	Tool(ToolMessage),
 	#[child]
 	Viewport(ViewportMessage),

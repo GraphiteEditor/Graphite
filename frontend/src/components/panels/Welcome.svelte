@@ -33,11 +33,17 @@
 		</LayoutCol>
 	</LayoutCol>
 	<LayoutCol class="bottom-message">
-		<TextLabel italic={true} disabled={true}>
-			{#if import.meta.env.MODE === "native"}
+		{#if import.meta.env.MODE === "native"}
+			<TextLabel italic={true} disabled={true}>
 				You are testing Release Candidate 5 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
-			{/if}
-		</TextLabel>
+			</TextLabel>
+		{:else if new Date() < new Date(2026, 10, 1)}
+			<TextLabel italic={true} disabled={true}>
+				May 2026 release — <a href="https://youtube.com/watch?v=U3E-sWo2H_M" target="_blank">What's new? (video)</a>
+				— Note: Some nodes are renamed; Some older documents may render differently and require manual fixes.
+				<a href="https://57130155.graphite.pages.dev/" target="_blank">Need the old version?</a>
+			</TextLabel>
+		{/if}
 	</LayoutCol>
 </LayoutCol>
 

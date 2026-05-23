@@ -20,6 +20,7 @@ vector-types = { workspace = true }
 text-nodes = { workspace = true }
 
 # Workspace dependencies
+blake3 = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
 

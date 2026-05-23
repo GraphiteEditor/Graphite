@@ -4,6 +4,8 @@ mod close_document_dialog;
 mod confirm_restart_dialog;
 mod demo_artwork_dialog;
 mod error_dialog;
+mod failed_to_load_documents_dialog;
+mod failed_to_open_document_dialog;
 mod licenses_dialog;
 mod licenses_third_party_dialog;
 
@@ -14,5 +16,7 @@ pub use confirm_restart_dialog::ConfirmRestartDialog;
 pub use demo_artwork_dialog::ARTWORK;
 pub use demo_artwork_dialog::DemoArtworkDialog;
 pub use error_dialog::ErrorDialog;
+pub use failed_to_load_documents_dialog::FailedToLoadDocumentsDialog;
+pub use failed_to_open_document_dialog::FailedToOpenDocumentDialog;
 pub use licenses_dialog::LicensesDialog;
 pub use licenses_third_party_dialog::LicensesThirdPartyDialog;

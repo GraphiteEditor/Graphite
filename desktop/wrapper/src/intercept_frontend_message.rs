@@ -7,6 +7,10 @@ use super::messages::{DesktopFrontendMessage, FileFilter, OpenFileDialogContext,
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
+		FrontendMessage::Await { future } => {
+			let message = futures::executor::block_on(async move { future.await });
+			return intercept_frontend_message(dispatcher, message);
+		}
 		FrontendMessage::RenderOverlays { context } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
 		}

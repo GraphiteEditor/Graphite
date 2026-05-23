@@ -123,7 +123,7 @@ jobs:
           DELAY=15
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
-            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
+            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --branch="master" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
             if [ ${PIPESTATUS[0]} -eq 0 ]; then
               URL=$(grep -oP 'https://[^\s]+\.pages\.dev' /tmp/wrangler_output | head -1)
               echo "url=$URL" >> "$GITHUB_OUTPUT"
@@ -283,7 +283,7 @@ jobs:
       pull-requests: write
 
     env:
-      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+      WASM_BINDGEN_CLI_VERSION: "0.2.121"
 
     steps:
       - name: 📥 Clone repository
@@ -474,7 +474,7 @@ jobs:
       pull-requests: write
 
     env:
-      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+      WASM_BINDGEN_CLI_VERSION: "0.2.121"
 
     steps:
       - name: 📥 Clone repository

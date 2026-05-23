@@ -83,7 +83,7 @@ deps.crane.lib.buildPackage (
       pkgs.lld
       pkgs.nodejs
       pkgs.binaryen
-      pkgs.wasm-bindgen-cli_0_2_100
+      pkgs.wasm-bindgen-cli_0_2_121
       pkgs.wasm-pack
       pkgs.cargo-about
       pkgs.removeReferencesTo

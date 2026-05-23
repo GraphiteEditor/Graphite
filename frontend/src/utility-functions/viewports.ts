@@ -1,5 +1,15 @@
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
+// Tracks whether any document has produced its first frame of rendered artwork yet during this app session.
+// Used to show the one-time "Initializing Renderer…" overlay only on the very first document open.
+let firstArtworkEverReceived = false;
+export function hasFirstArtworkBeenReceived(): boolean {
+	return firstArtworkEverReceived;
+}
+export function markFirstArtworkReceived(): void {
+	firstArtworkEverReceived = true;
+}
+
 export function setupViewportResizeObserver(editor: EditorWrapper): () => void {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
 	if (viewports.length <= 0) return () => {};
