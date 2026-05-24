@@ -86,8 +86,32 @@ pub const ATTR_STROKE: &str = "stroke";
 /// Text item's font family (`String`, implicit default `"Lato"`).
 pub const ATTR_FONT_FAMILY: &str = "font_family";
 
+/// Text item's font style (`String`, implicit default `"Regular"`).
+pub const ATTR_FONT_STYLE: &str = "font_style";
+
 /// Text item's font size in document-space units (`f64`, implicit default `16.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
+
+/// Text item's font `Resource`. Only set by `text_layer`; used by `text_to_vector` and the renderer to reconstruct exact glyph paths.
+pub const ATTR_TEXT_FONT: &str = "text_font";
+
+/// Text item's line height ratio relative to the font size (`f64`, implicit default `1.2`). Only stored when it deviates from the default.
+pub const ATTR_TEXT_LINE_HEIGHT: &str = "text_line_height";
+
+/// Text item's extra inter-character spacing in document-space units (`f64`, implicit default `0.0`). Only stored when non-zero.
+pub const ATTR_TEXT_CHARACTER_SPACING: &str = "text_character_spacing";
+
+/// Text item's optional max line-wrap width (`Option<f64>`). Absent = no limit; present = wrap at that width.
+pub const ATTR_TEXT_MAX_WIDTH: &str = "text_max_width";
+
+/// Text item's optional max height cutoff (`Option<f64>`). Absent = no limit; lines whose baseline exceeds this value are not drawn.
+pub const ATTR_TEXT_MAX_HEIGHT: &str = "text_max_height";
+
+/// Text item's faux-italic tilt angle in degrees (`f64`, implicit default `0.0`). Only stored when non-zero.
+pub const ATTR_TEXT_TILT: &str = "text_tilt";
+
+/// Text item's horizontal alignment. Only stored when it deviates from the default.
+pub const ATTR_TEXT_ALIGN: &str = "text_align";
 
 // ===========================
 // Implicit attribute defaults

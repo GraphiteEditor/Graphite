@@ -458,6 +458,10 @@ pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))
 }
 
+pub fn get_text_layer_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::text::text_layer::IDENTIFIER))
+}
+
 pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))
 }
@@ -519,6 +523,56 @@ pub fn get_text<'a>(
 		align,
 	};
 	Some((text, font, typesetting, per_glyph_items))
+}
+
+/// Gets properties from the Text Layer node
+pub fn get_text_layer(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig)> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text_layer::IDENTIFIER))?;
+
+	let Some(TaggedValue::String(text)) = &inputs[graphene_std::text::text_layer::TextInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(TaggedValue::Font(font)) = &inputs[graphene_std::text::text_layer::FontInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::F64(font_size)) = inputs[graphene_std::text::text_layer::SizeInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::F64(line_height_ratio)) = inputs[graphene_std::text::text_layer::LineHeightInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::F64(character_spacing)) = inputs[graphene_std::text::text_layer::CharacterSpacingInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::Bool(has_max_width)) = inputs[graphene_std::text::text_layer::HasMaxWidthInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::F64(max_width)) = inputs[graphene_std::text::text_layer::MaxWidthInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::Bool(has_max_height)) = inputs[graphene_std::text::text_layer::HasMaxHeightInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::F64(max_height)) = inputs[graphene_std::text::text_layer::MaxHeightInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::F64(tilt)) = inputs[graphene_std::text::text_layer::TiltInput::INDEX].as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::TextAlign(align)) = inputs[graphene_std::text::text_layer::AlignInput::INDEX].as_value() else {
+		return None;
+	};
+
+	let typesetting = TypesettingConfig {
+		font_size,
+		line_height_ratio,
+		max_width: has_max_width.then_some(max_width),
+		max_height: has_max_height.then_some(max_height),
+		character_spacing,
+		tilt,
+		align,
+	};
+	Some((text, font, typesetting))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {

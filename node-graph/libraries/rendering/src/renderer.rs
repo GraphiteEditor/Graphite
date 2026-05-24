@@ -13,7 +13,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
-	ATTR_FONT_FAMILY, ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM,
+	ATTR_FONT_FAMILY, ATTR_FONT_SIZE, ATTR_FONT_STYLE, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING,
+	ATTR_TEXT_LINE_HEIGHT, ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -27,7 +28,7 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
-use parley::{FontContext, FontFamily, FontStack, LayoutContext, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, FontFamily, FontStack, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use skrifa::GlyphId;
 use skrifa::MetadataProvider;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -45,7 +46,7 @@ use vello::*;
 
 // Thread local storage for font bytes
 thread_local! {
-	static RENDER_FONTS: RefCell<Arc<[(String, u64, Arc<[u8]>)]>> = RefCell::new(Arc::from([]));
+	static RENDER_FONTS: RefCell<Arc<[(String, String, u64, Arc<[u8]>)]>> = RefCell::new(Arc::from([]));
 }
 
 // Thread-local parley font shaping context
@@ -58,14 +59,19 @@ thread_local! {
 	static REGISTERED_FONTS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
+// Caches the first FontInfo (weight/style/width) for each (family, style) pair after registration
+thread_local! {
+	static FONT_INFO_CACHE: RefCell<HashMap<(String, String), parley::fontique::FontInfo>> = RefCell::new(HashMap::new());
+}
+
 // Set the font bytes available to the renderer for the current execution.
-pub fn set_render_fonts(fonts: impl IntoIterator<Item = (String, Arc<[u8]>)>) {
-	let slice: Arc<[(String, u64, Arc<[u8]>)]> = fonts
+pub fn set_render_fonts(fonts: impl IntoIterator<Item = (String, String, Arc<[u8]>)>) {
+	let slice: Arc<[(String, String, u64, Arc<[u8]>)]> = fonts
 		.into_iter()
-		.map(|(name, bytes)| {
+		.map(|(family, style, bytes)| {
 			let mut hasher = std::collections::hash_map::DefaultHasher::new();
 			bytes.hash(&mut hasher);
-			(name, hasher.finish(), bytes)
+			(family, style, hasher.finish(), bytes)
 		})
 		.collect::<Vec<_>>()
 		.into();
@@ -2304,12 +2310,13 @@ struct SvgGlyphPen {
 	d: String,
 	ox: f64,
 	oy: f64,
+	tilt_tan: f64,
 }
 
 impl SvgGlyphPen {
 	#[inline]
-	fn px(&self, x: f32) -> f64 {
-		self.ox + x as f64
+	fn px(&self, x: f32, y: f32) -> f64 {
+		self.ox + x as f64 + (y as f64 * self.tilt_tan)
 	}
 
 	#[inline]
@@ -2320,16 +2327,16 @@ impl SvgGlyphPen {
 
 impl OutlinePen for SvgGlyphPen {
 	fn move_to(&mut self, x: f32, y: f32) {
-		write!(self.d, "M {} {} ", self.px(x), self.py(y)).ok();
+		write!(self.d, "M {} {} ", self.px(x, y), self.py(y)).ok();
 	}
 	fn line_to(&mut self, x: f32, y: f32) {
-		write!(self.d, "L {} {} ", self.px(x), self.py(y)).ok();
+		write!(self.d, "L {} {} ", self.px(x, y), self.py(y)).ok();
 	}
 	fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-		write!(self.d, "Q {} {} {} {} ", self.px(x1), self.py(y1), self.px(x), self.py(y)).ok();
+		write!(self.d, "Q {} {} {} {} ", self.px(x1, y1), self.py(y1), self.px(x, y), self.py(y)).ok();
 	}
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-		write!(self.d, "C {} {} {} {} {} {} ", self.px(x1), self.py(y1), self.px(x2), self.py(y2), self.px(x), self.py(y)).ok();
+		write!(self.d, "C {} {} {} {} {} {} ", self.px(x1, y1), self.py(y1), self.px(x2, y2), self.py(y2), self.px(x, y), self.py(y)).ok();
 	}
 	fn close(&mut self) {
 		self.d.push_str("Z ");
@@ -2341,24 +2348,33 @@ struct VelloPen<'a> {
 	path: &'a mut BezPath,
 	ox: f64,
 	oy: f64,
+	tilt_tan: f64,
+}
+
+impl VelloPen<'_> {
+	#[inline]
+	fn px(&self, x: f32, y: f32) -> f64 {
+		self.ox + x as f64 + (y as f64 * self.tilt_tan)
+	}
+
+	#[inline]
+	fn py(&self, y: f32) -> f64 {
+		self.oy - y as f64
+	}
 }
 
 impl OutlinePen for VelloPen<'_> {
 	fn move_to(&mut self, x: f32, y: f32) {
-		self.path.move_to((self.ox + x as f64, self.oy - y as f64));
+		self.path.move_to((self.px(x, y), self.py(y)));
 	}
 	fn line_to(&mut self, x: f32, y: f32) {
-		self.path.line_to((self.ox + x as f64, self.oy - y as f64));
+		self.path.line_to((self.px(x, y), self.py(y)));
 	}
 	fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
-		self.path.quad_to((self.ox + cx as f64, self.oy - cy as f64), (self.ox + x as f64, self.oy - y as f64));
+		self.path.quad_to((self.px(cx, cy), self.py(cy)), (self.px(x, y), self.py(y)));
 	}
 	fn curve_to(&mut self, cx1: f32, cy1: f32, cx2: f32, cy2: f32, x: f32, y: f32) {
-		self.path.curve_to(
-			(self.ox + cx1 as f64, self.oy - cy1 as f64),
-			(self.ox + cx2 as f64, self.oy - cy2 as f64),
-			(self.ox + x as f64, self.oy - y as f64),
-		);
+		self.path.curve_to((self.px(cx1, cy1), self.py(cy1)), (self.px(cx2, cy2), self.py(cy2)), (self.px(x, y), self.py(y)));
 	}
 	fn close(&mut self) {
 		self.path.close_path();
@@ -2370,7 +2386,7 @@ fn ensure_fonts_registered(font_ctx: &mut parley::FontContext) {
 	REGISTERED_FONTS.with(|reg| {
 		let mut reg = reg.borrow_mut();
 		RENDER_FONTS.with(|rf| {
-			for (_, hash, bytes) in rf.borrow().iter() {
+			for (family, style, hash, bytes) in rf.borrow().iter() {
 				if reg.insert(*hash) {
 					struct ArcBytes(std::sync::Arc<[u8]>);
 					impl AsRef<[u8]> for ArcBytes {
@@ -2379,7 +2395,15 @@ fn ensure_fonts_registered(font_ctx: &mut parley::FontContext) {
 						}
 					}
 					let font_data: std::sync::Arc<dyn AsRef<[u8]> + Send + Sync> = std::sync::Arc::new(ArcBytes(bytes.clone()));
-					font_ctx.collection.register_fonts(parley::fontique::Blob::new(font_data), None);
+					let families = font_ctx.collection.register_fonts(parley::fontique::Blob::new(font_data), None);
+
+					if let Some((_, fonts_info)) = families.first() {
+						if let Some(font_info) = fonts_info.first() {
+							FONT_INFO_CACHE.with(|cache| {
+								cache.borrow_mut().insert((family.clone(), style.clone()), font_info.clone());
+							});
+						}
+					}
 				}
 			}
 		});
@@ -2387,7 +2411,7 @@ fn ensure_fonts_registered(font_ctx: &mut parley::FontContext) {
 }
 
 const DEFAULT_FONT_FAMILY: &str = "Lato";
-const DEFAULT_FONT_SIZE: f64 = 16.;
+const DEFAULT_FONT_SIZE: f64 = 24.;
 
 impl Render for List<String> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
@@ -2402,8 +2426,25 @@ impl Render for List<String> {
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
+			let font_style: String = self.attribute_cloned_or(ATTR_FONT_STYLE, index, "Regular".to_string());
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
+			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
+			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
+			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
+			let tilt: f64 = self.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.);
+			let align_u8: u8 = self.attribute_cloned_or(ATTR_TEXT_ALIGN, index, 0_u8);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+
+			let (parley_align, last_line_correction) = match align_u8 {
+				1 => (parley::Alignment::Center, None),
+				2 => (parley::Alignment::Right, None),
+				3 => (parley::Alignment::Justify, Some(parley::Alignment::Left)),
+				4 => (parley::Alignment::Justify, Some(parley::Alignment::Center)),
+				5 => (parley::Alignment::Justify, Some(parley::Alignment::Right)),
+				6 => (parley::Alignment::Justify, Some(parley::Alignment::Justify)),
+				_ => (parley::Alignment::Left, None),
+			};
 
 			let mut glyph_paths: Vec<String> = Vec::new();
 
@@ -2416,14 +2457,63 @@ impl Render for List<String> {
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
 				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
+				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
+
+				FONT_INFO_CACHE.with(|cache| {
+					let cache = cache.borrow();
+					if let Some(font_info) = cache.get(&(font_family.clone(), font_style.clone())) {
+						builder.push_default(StyleProperty::FontWeight(font_info.weight()));
+						builder.push_default(StyleProperty::FontStyle(font_info.style()));
+						builder.push_default(StyleProperty::FontWidth(font_info.width()));
+					}
+				});
+
 				let mut layout = builder.build(text);
-				layout.break_all_lines(None);
+				let max_width_f32 = max_width.map(|w| w as f32);
+				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
+				layout.break_all_lines(max_width_f32);
+				layout.align(max_width_f32, parley_align, AlignmentOptions::default());
+
+				let tilt_tan = tilt.to_radians().tan();
 
 				for line in layout.lines() {
+					let range = line.text_range();
+					let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
+
+					let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+						let metrics = line.metrics();
+						let content_advance = metrics.advance - metrics.trailing_whitespace;
+						let free_space = alignment_width - content_advance;
+						// Correction is needed because Parley doesn't remove trailing whitespaces
+						match correction {
+							parley::Alignment::Center => (free_space * 0.5, 0.),
+							parley::Alignment::Right => (free_space, 0.),
+							parley::Alignment::Justify => {
+								let line_text = text.get(range.clone()).unwrap_or("");
+								let trailing_len = line_text.len() - line_text.trim_end().len();
+								let visible_end_index = range.end - trailing_len;
+
+								let space_count: usize = line
+									.runs()
+									.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
+									.sum();
+								let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
+								(0., extra)
+							}
+							_ => (0., 0.),
+						}
+					} else {
+						(0., 0.)
+					};
+
 					for item in line.items() {
 						let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+						if max_height.is_some_and(|mh| glyph_run.baseline() > mh as f32) {
+							continue;
+						}
 
-						let mut run_x = glyph_run.offset();
+						let mut run_x = glyph_run.offset() + x_offset;
 						let run_y = glyph_run.baseline();
 						let run = glyph_run.run();
 						let font = run.font();
@@ -2434,6 +2524,12 @@ impl Render for List<String> {
 						let Ok(font_ref) = SkrifaFontRef::from_index(font_data, font.index) else { continue };
 						let outlines = font_ref.outline_glyphs();
 
+						let mut pen = SvgGlyphPen {
+							d: String::new(),
+							ox: 0.,
+							oy: 0.,
+							tilt_tan,
+						};
 						for glyph in glyph_run.glyphs() {
 							let ox = (run_x + glyph.x) as f64;
 							let oy = (run_y - glyph.y) as f64;
@@ -2442,9 +2538,14 @@ impl Render for List<String> {
 							let glyph_id = GlyphId::from(glyph.id);
 							let Some(outline) = outlines.get(glyph_id) else { continue };
 							let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
-							let mut pen = SvgGlyphPen { d: String::new(), ox, oy };
+
+							pen.d.clear();
+							pen.ox = ox;
+							pen.oy = oy;
 							if outline.draw(settings, &mut pen).is_ok() && !pen.d.is_empty() {
-								glyph_paths.push(pen.d);
+								glyph_paths.push(pen.d.clone());
+							} else if space_extra != 0. && glyph.advance > 0. {
+								run_x += space_extra;
 							}
 						}
 					}
@@ -2498,11 +2599,28 @@ impl Render for List<String> {
 
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
+			let font_style: String = self.attribute_cloned_or(ATTR_FONT_STYLE, index, "Regular".to_string());
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
+			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
+			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
+			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
+			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
+			let tilt: f64 = self.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.);
+			let align_u8: u8 = self.attribute_cloned_or(ATTR_TEXT_ALIGN, index, 0_u8);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+
+			let (parley_align, last_line_correction) = match align_u8 {
+				1 => (parley::Alignment::Center, None),
+				2 => (parley::Alignment::Right, None),
+				3 => (parley::Alignment::Justify, Some(parley::Alignment::Left)),
+				4 => (parley::Alignment::Justify, Some(parley::Alignment::Center)),
+				5 => (parley::Alignment::Justify, Some(parley::Alignment::Right)),
+				6 => (parley::Alignment::Justify, Some(parley::Alignment::Justify)),
+				_ => (parley::Alignment::Left, None),
+			};
 
 			let affine = Affine::new((transform * item_transform).to_cols_array());
 
@@ -2515,8 +2633,23 @@ impl Render for List<String> {
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
 				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
+				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
+
+				FONT_INFO_CACHE.with(|cache| {
+					let cache = cache.borrow();
+					if let Some(font_info) = cache.get(&(font_family.clone(), font_style.clone())) {
+						builder.push_default(StyleProperty::FontWeight(font_info.weight()));
+						builder.push_default(StyleProperty::FontStyle(font_info.style()));
+						builder.push_default(StyleProperty::FontWidth(font_info.width()));
+					}
+				});
+
 				let mut layout = builder.build(text);
-				layout.break_all_lines(None);
+				let max_width_f32 = max_width.map(|w| w as f32);
+				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
+				layout.break_all_lines(max_width_f32);
+				layout.align(max_width_f32, parley_align, AlignmentOptions::default());
 
 				let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
 				if needs_layer {
@@ -2527,11 +2660,45 @@ impl Render for List<String> {
 					scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds);
 				}
 
+				let tilt_tan = tilt.to_radians().tan();
+
 				for line in layout.lines() {
+					let range = line.text_range();
+					let is_last_para_line = range.end == text.len() || text.get(range.clone()).is_some_and(|s| s.ends_with('\n'));
+
+					let (x_offset, space_extra) = if let (true, Some(correction)) = (is_last_para_line, last_line_correction) {
+						let metrics = line.metrics();
+						let content_advance = metrics.advance - metrics.trailing_whitespace;
+						let free_space = alignment_width - content_advance;
+
+						match correction {
+							parley::Alignment::Center => (free_space * 0.5, 0.),
+							parley::Alignment::Right => (free_space, 0.),
+							parley::Alignment::Justify => {
+								let line_text = text.get(range.clone()).unwrap_or("");
+								let trailing_len = line_text.len() - line_text.trim_end().len();
+								let visible_end_index = range.end - trailing_len;
+
+								let space_count: usize = line
+									.runs()
+									.map(|run| run.clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count())
+									.sum();
+								let extra = if space_count > 0 { free_space / space_count as f32 } else { 0. };
+								(0., extra)
+							}
+							_ => (0., 0.),
+						}
+					} else {
+						(0., 0.)
+					};
+
 					for item in line.items() {
 						let PositionedLayoutItem::GlyphRun(glyph_run) = item else { continue };
+						if max_height.is_some_and(|mh| glyph_run.baseline() > mh as f32) {
+							continue;
+						}
 
-						let mut run_x = glyph_run.offset();
+						let mut run_x = glyph_run.offset() + x_offset;
 						let run_y = glyph_run.baseline();
 						let run = glyph_run.run();
 						let font = run.font();
@@ -2542,6 +2709,7 @@ impl Render for List<String> {
 						let Ok(font_ref) = SkrifaFontRef::from_index(font_data, font.index) else { continue };
 						let outlines = font_ref.outline_glyphs();
 
+						let mut bez_path = BezPath::new();
 						for glyph in glyph_run.glyphs() {
 							let ox = (run_x + glyph.x) as f64;
 							let oy = (run_y - glyph.y) as f64;
@@ -2551,8 +2719,13 @@ impl Render for List<String> {
 							let Some(outline) = outlines.get(glyph_id) else { continue };
 							let settings = DrawSettings::unhinted(Size::new(font_size_pts), LocationRef::new(&normalized_coords));
 
-							let mut bez_path = BezPath::new();
-							let mut pen = VelloPen { path: &mut bez_path, ox, oy };
+							bez_path.truncate(0);
+							let mut pen = VelloPen {
+								path: &mut bez_path,
+								ox,
+								oy,
+								tilt_tan,
+							};
 							if outline.draw(settings, &mut pen).is_ok() && !bez_path.elements().is_empty() {
 								if let RenderMode::Outline = render_params.render_mode {
 									let (outline_stroke, outline_color) = get_outline_styles(render_params);
@@ -2560,6 +2733,8 @@ impl Render for List<String> {
 								} else {
 									scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, &bez_path);
 								}
+							} else if space_extra != 0. && glyph.advance > 0. {
+								run_x += space_extra;
 							}
 						}
 					}
@@ -2584,6 +2759,17 @@ impl Render for List<String> {
 			let Some(text) = self.element(index) else { continue };
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
 			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
+			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
+			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
+			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
+			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
+			let align_u8: u8 = self.attribute_cloned_or(ATTR_TEXT_ALIGN, index, 0_u8);
+			let parley_align = match align_u8 {
+				1 => parley::Alignment::Center,
+				2 => parley::Alignment::Right,
+				3..=6 => parley::Alignment::Justify,
+				_ => parley::Alignment::Left,
+			};
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			// Falls back to a single-em square if fonts are not yet registered.
@@ -2595,9 +2781,14 @@ impl Render for List<String> {
 					let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 					builder.push_default(StyleProperty::FontSize(font_size as f32));
 					builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+					builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
+					builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 					let mut layout = builder.build(text);
-					layout.break_all_lines(None);
-					Some((layout.width() as f64, layout.height() as f64))
+					layout.break_all_lines(max_width.map(|w| w as f32));
+					layout.align(max_width.map(|w| w as f32), parley_align, AlignmentOptions::default());
+					let w = max_width.unwrap_or_else(|| layout.width() as f64);
+					let h = max_height.unwrap_or_else(|| layout.height() as f64);
+					Some((w, h))
 				})
 				.unwrap_or((font_size, font_size));
 
