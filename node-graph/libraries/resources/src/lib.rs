@@ -189,14 +189,14 @@ impl CacheHash for ResourceHash {
 pub struct ResourceInfo {
 	pub id: ResourceId,
 	pub hash: Option<ResourceHash>,
-	pub sources: ResourceSources,
+	pub inputs: ResourceInputs,
 }
 
-pub type ResourceSources = Box<[ResourceSource]>;
+pub type ResourceInputs = Box<[ResourceInput]>;
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ResourceSource {
+pub enum ResourceInput {
 	Embedded,
 	Url(url::Url),
 	Font { family: String, style: Option<String> },
@@ -206,7 +206,7 @@ pub enum ResourceSource {
 pub struct ResourceRegistry {
 	ids: std::collections::HashSet<ResourceId>,
 	hashes: std::collections::HashMap<ResourceId, ResourceHash>,
-	sources: std::collections::HashMap<ResourceId, Vec<ResourceSource>>,
+	sources: std::collections::HashMap<ResourceId, Vec<ResourceInput>>,
 }
 
 impl ResourceRegistry {
@@ -218,7 +218,7 @@ impl ResourceRegistry {
 		self.ids.contains(id).then(|| ResourceInfo {
 			id: *id,
 			hash: self.hashes.get(id).copied(),
-			sources: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
+			inputs: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
 		})
 	}
 
@@ -226,21 +226,21 @@ impl ResourceRegistry {
 		self.hashes.insert(*id, *hash)
 	}
 
-	pub fn push_source_back(&mut self, id: &ResourceId, source: ResourceSource) {
+	pub fn push_input_back(&mut self, id: &ResourceId, input: ResourceInput) {
 		let sources = self.sources.entry(*id).or_default();
-		sources.push(source);
+		sources.push(input);
 	}
 
-	pub fn push_source_front(&mut self, id: &ResourceId, source: ResourceSource) {
+	pub fn push_input_front(&mut self, id: &ResourceId, input: ResourceInput) {
 		let sources = self.sources.entry(*id).or_default();
-		sources.insert(0, source);
+		sources.insert(0, input);
 	}
 
 	pub fn delete(&mut self, id: &ResourceId) -> Option<ResourceInfo> {
 		self.ids.remove(id).then(|| ResourceInfo {
 			id: *id,
 			hash: self.hashes.remove(id),
-			sources: self.sources.remove(id).unwrap_or_default().into_boxed_slice(),
+			inputs: self.sources.remove(id).unwrap_or_default().into_boxed_slice(),
 		})
 	}
 
@@ -252,7 +252,7 @@ impl ResourceRegistry {
 		self.hashes.get(id).copied()
 	}
 
-	pub fn unresolved(&self) -> HashMap<ResourceId, ResourceSources> {
+	pub fn unresolved(&self) -> HashMap<ResourceId, ResourceInputs> {
 		let mut result = HashMap::new();
 		for id in &self.ids {
 			if !self.hashes.contains_key(id) {
