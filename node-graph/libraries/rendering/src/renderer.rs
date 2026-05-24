@@ -2456,7 +2456,7 @@ impl Render for List<String> {
 
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(Cow::Borrowed(font_family.as_str())))));
 				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 
@@ -2473,7 +2473,7 @@ impl Render for List<String> {
 				let max_width_f32 = max_width.map(|w| w as f32);
 				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
 				layout.break_all_lines(max_width_f32);
-				layout.align(max_width_f32, parley_align, AlignmentOptions::default());
+				layout.align(parley_align, AlignmentOptions::default());
 
 				let tilt_tan = tilt.to_radians().tan();
 
@@ -2632,7 +2632,7 @@ impl Render for List<String> {
 
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(Cow::Borrowed(font_family.as_str())))));
 				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 
@@ -2649,7 +2649,7 @@ impl Render for List<String> {
 				let max_width_f32 = max_width.map(|w| w as f32);
 				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
 				layout.break_all_lines(max_width_f32);
-				layout.align(max_width_f32, parley_align, AlignmentOptions::default());
+				layout.align(parley_align, AlignmentOptions::default());
 
 				let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
 				if needs_layer {
@@ -2780,12 +2780,12 @@ impl Render for List<String> {
 					ensure_fonts_registered(font_ctx);
 					let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 					builder.push_default(StyleProperty::FontSize(font_size as f32));
-					builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+					builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(Cow::Borrowed(font_family.as_str())))));
 					builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 					builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 					let mut layout = builder.build(text);
 					layout.break_all_lines(max_width.map(|w| w as f32));
-					layout.align(max_width.map(|w| w as f32), parley_align, AlignmentOptions::default());
+					layout.align(parley_align, AlignmentOptions::default());
 					let w = max_width.unwrap_or_else(|| layout.width() as f64);
 					let h = max_height.unwrap_or_else(|| layout.height() as f64);
 					Some((w, h))
