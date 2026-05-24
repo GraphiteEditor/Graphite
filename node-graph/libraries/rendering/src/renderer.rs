@@ -2456,7 +2456,7 @@ impl Render for List<String> {
 
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(parley::style::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 
@@ -2632,7 +2632,7 @@ impl Render for List<String> {
 
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(parley::style::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 
@@ -2780,7 +2780,7 @@ impl Render for List<String> {
 					ensure_fonts_registered(font_ctx);
 					let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 					builder.push_default(StyleProperty::FontSize(font_size as f32));
-					builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(parley::style::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+					builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 					builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 					builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 					let mut layout = builder.build(text);
