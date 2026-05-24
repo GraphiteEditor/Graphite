@@ -1597,7 +1597,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		});
 
 		if let Some(image) = image {
-			let hash = document.embedded_resources.store(graphene_std::application_io::Resource::new(image.to_png()));
+			let hash = document.embedded_resources.store(graphene_std::application_io::resource::Resource::new(image.to_png()));
 
 			let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);

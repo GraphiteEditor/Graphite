@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use graph_craft::application_io::ResourceHash;
+use graph_craft::application_io::resource::ResourceHash;
 
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;

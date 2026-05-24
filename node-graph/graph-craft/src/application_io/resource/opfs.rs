@@ -1,4 +1,4 @@
-use graphene_application_io::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
+use graphene_application_io::resource::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use js_sys::Uint8Array;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::pin::Pin;

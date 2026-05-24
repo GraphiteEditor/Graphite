@@ -1910,6 +1910,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam",
+ "graphene-resource",
  "log",
  "serde",
  "text-nodes",
@@ -1987,6 +1988,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "graphene-resource"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "core-types",
+ "dyn-any",
+ "serde",
+ "url",
+ "web-sys",
 ]
 
 [[package]]

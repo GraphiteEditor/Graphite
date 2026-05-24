@@ -4,18 +4,13 @@ use wgpu_executor::WgpuExecutor;
 
 pub mod resource;
 
-pub use graphene_application_io::{ApplicationIo, LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
-pub use resource::HashMapResourceStorage;
-#[cfg(not(target_family = "wasm"))]
-pub use resource::mmap::MmapResourceStorage;
-#[cfg(target_family = "wasm")]
-pub use resource::opfs::OpfsResourceStorage;
+pub use graphene_application_io::ApplicationIo;
 
 #[derive(Default)]
 pub struct PlatformApplicationIo {
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
-	resources: Option<Box<dyn LoadResource>>,
+	resources: Option<Box<dyn resource::LoadResource>>,
 }
 
 impl PlatformApplicationIo {
@@ -49,7 +44,7 @@ impl PlatformApplicationIo {
 		}
 	}
 
-	pub fn inject_resource_proxy(&mut self, resources: Box<dyn LoadResource>) {
+	pub fn inject_resource_proxy(&mut self, resources: Box<dyn resource::LoadResource>) {
 		self.resources = Some(resources);
 	}
 }
@@ -65,7 +60,7 @@ impl ApplicationIo for PlatformApplicationIo {
 		self.gpu_executor.as_ref()
 	}
 
-	fn load_resource(&self, hash: ResourceHash) -> graphene_application_io::ResourceFuture {
+	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture {
 		self.resources.as_ref().expect("Resource storage not initialized").load(hash)
 	}
 }

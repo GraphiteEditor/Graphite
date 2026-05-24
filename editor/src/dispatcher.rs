@@ -6,7 +6,7 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
-use graph_craft::application_io::ResourceStorage;
+use graph_craft::application_io::resource::ResourceStorage;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
