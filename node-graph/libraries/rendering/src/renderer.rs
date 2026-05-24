@@ -28,7 +28,7 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
-use parley::{AlignmentOptions, FontContext, FontFamily, FontStack, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use skrifa::GlyphId;
 use skrifa::MetadataProvider;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -2456,7 +2456,7 @@ impl Render for List<String> {
 
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(parley::style::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 
@@ -2632,7 +2632,7 @@ impl Render for List<String> {
 
 				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+				builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(parley::style::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 
@@ -2780,7 +2780,7 @@ impl Render for List<String> {
 					ensure_fonts_registered(font_ctx);
 					let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
 					builder.push_default(StyleProperty::FontSize(font_size as f32));
-					builder.push_default(StyleProperty::FontStack(FontStack::Single(FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
+					builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(parley::style::FontFamily::Named(Cow::Borrowed(font_family.as_str())))));
 					builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
 					builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
 					let mut layout = builder.build(text);
