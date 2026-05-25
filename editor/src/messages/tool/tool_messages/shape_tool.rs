@@ -16,6 +16,7 @@ use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
 use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
+use crate::messages::tool::common_functionality::shapes::heart_shape::Heart;
 use crate::messages::tool::common_functionality::shapes::line_shape::LineToolData;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, clicked_on_shape_endpoints, transform_cage_overlays};
@@ -212,6 +213,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
+		MenuListEntry::new("Heart").label("Heart").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Heart),
+			}
+			.into()
+		}),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_instance()
 }
@@ -347,6 +354,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 		(spiral::IDENTIFIER, ShapeType::Spiral),
 		(grid::IDENTIFIER, ShapeType::Grid),
 		(arrow::IDENTIFIER, ShapeType::Arrow),
+		(heart::IDENTIFIER, ShapeType::Heart),
 	]
 	.into_iter()
 	.find_map(|(id, shape)| layer_view.upstream_node_id_from_name(&proto(id)).map(|_| shape)) else {
@@ -430,7 +438,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 				changed = true;
 			}
 		}
-		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle => {}
+		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle | ShapeType::Heart => {}
 	}
 
 	changed
@@ -1116,7 +1124,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Heart => {
 						tool_data.data.start(document, input, viewport);
 					}
 					ShapeType::Arrow | ShapeType::Line => {
@@ -1139,6 +1147,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Arrow => Arrow::create_node(tool_options.arrow_shaft_width, tool_options.arrow_head_width, tool_options.arrow_head_length),
+					ShapeType::Heart => Heart::create_node(),
 					ShapeType::Line => Line::create_node(),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
@@ -1150,7 +1159,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Heart => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -1212,6 +1221,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Heart => Heart::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
@@ -1480,13 +1490,20 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
+				ShapeType::Heart => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Heart"),
+					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 			};
 			HintData(hint_groups)
 		}
 		ShapeToolFsmState::Drawing(shape) => {
 			let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
 			let tool_hint_group = match shape {
-				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc | ShapeType::Heart => {
+					HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")])
+				}
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
