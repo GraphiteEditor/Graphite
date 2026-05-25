@@ -2,7 +2,10 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeDyn, AttributeValueDyn, Item, List, ListDyn};
 use core_types::registry::types::{Angle, SignedInteger};
 use core_types::uuid::NodeId;
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{
+	ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll,
+	OwnedContextImpl,
+};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -703,4 +706,32 @@ fn colors_to_gradient<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[imp
 		color: row.into_element(),
 	});
 	List::new_from_element(GradientStops::new(colors))
+}
+
+/// Constructs a gradient with gradient stops, gradient type, spread method, and spatial control geometry as attributes.
+#[node_macro::node(category("Color"))]
+fn gradient<T: IntoGraphicList + 'n + Send + Clone>(
+	_: impl Ctx,
+	_primary: (),
+	#[implementations(List<GradientStops>, List<Graphic>)] gradient: T,
+	gradient_type: GradientType,
+	spread_method: GradientSpreadMethod,
+	control_geometry: DAffine2,
+) -> List<GradientStops> {
+	let mut gradient: List<GradientStops> = gradient.into_flattened_list();
+
+	for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
+		*value = gradient_type;
+	}
+
+	for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+		*value = spread_method;
+	}
+
+	// TODO: allow using a line vector as a control geometry
+	for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+		*value = control_geometry;
+	}
+
+	gradient
 }

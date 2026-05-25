@@ -1,13 +1,13 @@
 //! Contains stylistic options for SVG elements.
 
 pub use crate::gradient::*;
-use core_types::ATTR_OPACITY;
-use core_types::Color;
 use core_types::color::{Alpha, SRGBA8};
 use core_types::list::List;
 use core_types::transform::Transform;
+use core_types::{ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::DAffine2;
+use glam::DVec2;
 use std::f64::consts::{PI, TAU};
 
 /// Describes the fill of a layer.
@@ -143,9 +143,16 @@ impl From<List<Color>> for Fill {
 
 impl From<List<GradientStops>> for Fill {
 	fn from(gradient: List<GradientStops>) -> Fill {
+		let gradient_type = gradient.attribute_cloned_or_default::<GradientType>(ATTR_GRADIENT_TYPE, 0);
+		let spread_method = gradient.attribute_cloned_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD, 0);
+		let transform = gradient.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0);
+
 		Fill::Gradient(Gradient {
 			stops: gradient.element(0).cloned().unwrap_or_default(),
-			..Default::default()
+			gradient_type,
+			spread_method,
+			start: transform.transform_point2(DVec2::ZERO),
+			end: transform.transform_point2(DVec2::X),
 		})
 	}
 }
