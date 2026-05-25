@@ -20,10 +20,10 @@ use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
-use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::ContextDependencies;
+use graphene_std::application_io::resource::ResourceId;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
@@ -511,7 +511,7 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceHash>) {
+	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceId>) {
 		collect_network_resources(self.document_network(), target);
 	}
 
@@ -6774,13 +6774,13 @@ pub enum TransactionStatus {
 	Finished,
 }
 
-fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceHash>) {
+fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
 	for node in network.nodes.values() {
 		for input in &node.inputs {
 			if let NodeInput::Value { tagged_value, .. } = input
-				&& let TaggedValue::Resource(hash) = &**tagged_value
+				&& let TaggedValue::Resource(id) = &**tagged_value
 			{
-				out.insert(*hash);
+				out.insert(*id);
 			}
 		}
 		if let DocumentNodeImplementation::Network(nested) = &node.implementation {

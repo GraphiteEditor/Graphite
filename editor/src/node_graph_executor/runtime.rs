@@ -1,6 +1,7 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -42,6 +43,7 @@ pub struct NodeRuntime {
 	update_thumbnails: bool,
 
 	editor_api: Arc<PlatformEditorApi>,
+	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
@@ -76,6 +78,7 @@ pub enum GraphRuntimeRequest {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
+	pub(super) resources: ResourceRegistry,
 	/// Full path from the root network to the node that should be temporarily inspected during execution.
 	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
 	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
@@ -127,6 +130,7 @@ impl NodeRuntime {
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
+			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
 
 			editor_api: PlatformEditorApi {
@@ -226,17 +230,23 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, node_to_inspect }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+					mut network,
+					resources,
+					node_to_inspect,
+				}) => {
 					// Insert the monitor node to manage the inspection
 					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
 
 					self.old_graph = Some(network.clone());
+					self.resources = resources;
 
 					self.node_graph_errors.clear();
 					let result = self.update_network(network).await;
-					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.update_thumbnails = true;
+
+					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
 				}
@@ -357,7 +367,7 @@ impl NodeRuntime {
 	}
 
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		preprocessor::expand_network(&mut graph, &self.substitutions);
+		preprocessor::expand_network(&mut graph, &self.substitutions, &self.resources);
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 

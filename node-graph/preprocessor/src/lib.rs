@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
@@ -9,19 +10,19 @@ use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 
-pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>) {
-	replace_resource_inputs(network);
+pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>, resources: &ResourceRegistry) {
+	replace_resource_inputs(network, resources);
 	expand_network_inner(network, substitutions);
 }
 
 /// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-fn replace_resource_inputs(network: &mut NodeNetwork) {
+fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegistry) {
 	let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
 	let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 	for node in network.nodes.values_mut() {
 		if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-			replace_resource_inputs(nested);
+			replace_resource_inputs(nested, resources);
 			continue;
 		}
 
@@ -31,12 +32,14 @@ fn replace_resource_inputs(network: &mut NodeNetwork) {
 
 		for input in node.inputs.iter_mut() {
 			let NodeInput::Value { tagged_value, .. } = input else { continue };
-			let TaggedValue::Resource(hash) = **tagged_value else { continue };
+			let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
+
+			let hash = resources.hash(&resource_id).unwrap_or_default();
 
 			let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
 				let id = NodeId::new();
 				let resource_node = DocumentNode {
-					inputs: vec![NodeInput::value(TaggedValue::Resource(hash), false), NodeInput::scope("editor-api")],
+					inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
 					implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
 					..Default::default()
 				};

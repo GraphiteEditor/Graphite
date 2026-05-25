@@ -25,6 +25,7 @@ use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
@@ -37,6 +38,7 @@ use std::cmp::Ordering;
 #[derive(Debug, ExtractField)]
 pub struct NodeGraphMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub resources: &'a mut ResourceRegistry,
 	pub selection_network_path: &'a [NodeId],
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub document_id: DocumentId,
@@ -108,6 +110,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, context: NodeGraphMessageContext<'a>) {
 		let NodeGraphMessageContext {
 			network_interface,
+			resources,
 			selection_network_path,
 			breadcrumb_network_path,
 			document_id,
@@ -257,7 +260,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 			}
 			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
-				let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) else {
+				let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) else {
 					return;
 				};
 				modify_inputs.create_node(&node_type);

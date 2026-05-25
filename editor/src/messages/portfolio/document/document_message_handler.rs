@@ -19,7 +19,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::embedded_resources::EmbeddedResources;
+use crate::messages::portfolio::document::utility_types::embedded_resources::{EmbeddedResourceData, EmbeddedResources};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::{CachedData, PanelType};
@@ -30,11 +30,11 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
+use graphene_std::application_io::resource::{DataSource, ResourceId, ResourceInfo};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
@@ -110,9 +110,9 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
-	/// Resources embedded in the document. Only propagated if saving to an external file and never for autosaved documents.
-	#[serde(rename = "resources", default, skip_serializing_if = "EmbeddedResources::is_empty")]
-	pub embedded_resources: EmbeddedResources,
+	/// Resources embedded in the document.
+	#[serde(default, skip_serializing_if = "EmbeddedResources::is_empty")]
+	pub resources: EmbeddedResources,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -175,7 +175,7 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
-			embedded_resources: EmbeddedResources::default(),
+			resources: EmbeddedResources::default(),
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
@@ -259,6 +259,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses,
 					NodeGraphMessageContext {
 						network_interface: &mut self.network_interface,
+						resources: &mut self.resources.registry,
 						selection_network_path: &self.selection_network_path,
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
@@ -276,6 +277,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GraphOperation(message) => {
 				let context = GraphOperationMessageContext {
 					network_interface: &mut self.network_interface,
+					resources: &mut self.resources.registry,
 					collapsed: &mut self.collapsed,
 					node_graph: &mut self.node_graph_handler,
 				};
@@ -926,22 +928,33 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				let resource_hashes = Vec::from_iter(self.used_resources(false)).into_boxed_slice();
-				let resources = resources.resources();
+				let used_resources = self.used_resources(false);
+
+				let embedded_resource_hashes = Vec::from_iter(used_resources.iter().filter_map(|id| match self.resources.registry.info(id) {
+					Some(ResourceInfo { hash: Some(hash), sources, .. }) if sources.contains(&DataSource::Embedded) => Some(hash),
+					_ => None,
+				}))
+				.into_boxed_slice();
+
 				let mut document = self.clone();
+
+				document.resources.registry.garbage_collect(used_resources.as_ref());
+
+				let resources_load_handle = resources.resources();
+
 				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 
 				responses.add(FrontendMessage::Await {
 					future: FrontendMessageFuture::new(async move {
-						let loads = resource_hashes
+						let loads = embedded_resource_hashes
 							.into_iter()
 							.map(|hash| {
-								let resource = resources.load(hash);
+								let resource = resources_load_handle.load(hash);
 								async move { resource.await.map(|resource| (hash, resource)) }
 							})
 							.collect::<Vec<_>>();
 
-						document.embedded_resources = EmbeddedResources::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
+						document.resources.embedded = EmbeddedResourceData::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
 						let content = document.serialize_document();
 
 						FrontendMessage::TriggerSaveDocument {
@@ -2443,7 +2456,7 @@ impl DocumentMessageHandler {
 				let insert_index = parent.children(self.metadata()).position(|c| c == layer).unwrap_or(0);
 
 				let new_layer_id = NodeId::new();
-				let new_layer = ModifyInputsContext::new(&mut self.network_interface, responses).create_layer(new_layer_id);
+				let new_layer = ModifyInputsContext::new(&mut self.network_interface, &mut self.resources.registry, responses).create_layer(new_layer_id);
 				self.network_interface.move_layer_to_stack(new_layer, parent, insert_index, &[]);
 
 				// Copy the original layer's stored name so the new layer shares it
@@ -3472,14 +3485,19 @@ impl DocumentMessageHandler {
 		self.graph_view_overlay_open
 	}
 
-	pub fn used_resources(&self, include_history: bool) -> HashSet<ResourceHash> {
+	pub fn garbage_collect_resources(&mut self) {
+		let used_resources = self.used_resources(true);
+		self.resources.registry.garbage_collect(&used_resources);
+	}
+
+	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
 		if include_history {
 			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
 			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
 		}
-		resources
+		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
 	}
 }
 

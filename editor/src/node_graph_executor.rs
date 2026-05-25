@@ -113,8 +113,14 @@ impl NodeGraphExecutor {
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
+		let resources = document.resources.registry.clone();
+
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+				network,
+				resources,
+				node_to_inspect: Vec::new(),
+			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
@@ -128,8 +134,10 @@ impl NodeGraphExecutor {
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 
+			let resources = document.resources.registry.clone();
+
 			self.runtime_io
-				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
 
@@ -237,6 +245,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+		let resources = document.resources.registry.clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
 			graphene_std::application_io::ExportFormat::Svg
@@ -278,7 +287,11 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: Vec::new() }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+				network,
+				resources,
+				node_to_inspect: Vec::new(),
+			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((

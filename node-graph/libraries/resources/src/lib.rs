@@ -22,7 +22,7 @@ pub trait ResourceStorage: LoadResource {
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ResourceId(pub u64);
+pub struct ResourceId(u64);
 
 impl ResourceId {
 	pub fn new() -> Self {
@@ -189,7 +189,7 @@ impl CacheHash for ResourceHash {
 pub struct ResourceInfo {
 	pub id: ResourceId,
 	pub hash: Option<ResourceHash>,
-	pub inputs: DataSources,
+	pub sources: DataSources,
 }
 
 pub type DataSources = Box<[DataSource]>;
@@ -230,7 +230,7 @@ impl ResourceRegistry {
 		self.contains(id).then(|| ResourceInfo {
 			id: *id,
 			hash: self.hashes.get(id).copied(),
-			inputs: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
+			sources: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
 		})
 	}
 
@@ -251,7 +251,7 @@ impl ResourceRegistry {
 		Some(ResourceInfo {
 			id: *id,
 			hash,
-			inputs: sources.unwrap_or_default().into_boxed_slice(),
+			sources: sources.unwrap_or_default().into_boxed_slice(),
 		})
 	}
 
@@ -265,5 +265,15 @@ impl ResourceRegistry {
 
 	pub fn unresolved(&self) -> impl Iterator<Item = (ResourceId, &[DataSource])> + '_ {
 		self.sources.iter().filter(|(id, _)| !self.hashes.contains_key(id)).map(|(id, sources)| (*id, sources.as_slice()))
+	}
+
+	pub fn used_hashes(&self) -> impl Iterator<Item = ResourceHash> + '_ {
+		self.hashes.values().copied()
+	}
+
+	pub fn garbage_collect(&mut self, used: &[ResourceId]) {
+		let used_set: std::collections::HashSet<ResourceId> = used.iter().copied().collect();
+		self.sources.retain(|id, _| used_set.contains(id));
+		self.hashes.retain(|id, _| used_set.contains(id));
 	}
 }
