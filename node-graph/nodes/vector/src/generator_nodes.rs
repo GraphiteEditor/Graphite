@@ -247,7 +247,7 @@ fn heart(
 	#[hard_min(0.)]
 	#[hard_max(1.2)]
 	taper_length: f64,
-) -> Table<Vector> {
+) -> List<Vector> {
 	let cleavage_angle = cleavage_angle.to_radians();
 	let point_sharpness = point_sharpness.to_radians();
 	let shoulder_tilt = shoulder_tilt.to_radians();
@@ -280,7 +280,7 @@ fn heart(
 	]
 	.to_vec();
 
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new(manipulator_groups, true)))
+	List::new_from_element(Vector::from_subpath(subpath::Subpath::new(manipulator_groups, true)))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
