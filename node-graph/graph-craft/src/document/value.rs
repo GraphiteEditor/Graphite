@@ -396,7 +396,7 @@ tagged_value! {
 	Footprint(Footprint),
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
-	Resource(graphene_application_io::ResourceHash),
+	Resource(graphene_application_io::resource::ResourceHash),
 	// ==========
 	// ENUM TYPES
 	// ==========

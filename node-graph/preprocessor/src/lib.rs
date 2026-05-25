@@ -16,7 +16,7 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 
 /// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
 fn replace_resource_inputs(network: &mut NodeNetwork) {
-	let mut hash_to_node_id: HashMap<application_io::ResourceHash, NodeId> = HashMap::new();
+	let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
 	let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 	for node in network.nodes.values_mut() {

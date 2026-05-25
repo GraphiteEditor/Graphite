@@ -1,6 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use graph_craft::application_io::{Resource, ResourceHash};
+use graph_craft::application_io::resource::{Resource, ResourceHash};
 use std::collections::HashMap;
 use std::fmt;
 

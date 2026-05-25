@@ -1,6 +1,7 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
-use graph_craft::application_io::{PlatformApplicationIo, ResourceStorage};
+use graph_craft::application_io::PlatformApplicationIo;
+use graph_craft::application_io::resource::ResourceStorage;
 pub use graphene_std::uuid::*;
 use std::sync::OnceLock;
 

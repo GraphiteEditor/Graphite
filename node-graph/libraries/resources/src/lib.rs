@@ -1,6 +1,7 @@
-use core_types::CacheHash;
 use core_types::resource::Resource;
+use core_types::{CacheHash, graphene_hash};
 use dyn_any::DynAny;
+use std::collections::HashMap;
 use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
@@ -16,6 +17,23 @@ pub trait ResourceStorage: LoadResource {
 	fn store(&mut self, data: &[u8]) -> ResourceHash;
 	fn contains(&mut self, hash: &ResourceHash) -> bool;
 	fn garbage_collect(&mut self, used: &[ResourceHash]);
+}
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ResourceId(pub u64);
+
+impl ResourceId {
+	pub fn new() -> Self {
+		Self(core_types::uuid::generate_uuid())
+	}
+}
+
+impl std::fmt::Display for ResourceId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
 }
 
 /// Blake3 content hash of a resource, represented as 32 bytes
@@ -164,5 +182,88 @@ impl<'de> serde::Deserialize<'de> for ResourceHash {
 impl CacheHash for ResourceHash {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		core::hash::Hash::hash(self, state);
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct ResourceInfo {
+	pub id: ResourceId,
+	pub hash: Option<ResourceHash>,
+	pub inputs: DataSources,
+}
+
+pub type DataSources = Box<[DataSource]>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DataSource {
+	Embedded,
+	Url(url::Url),
+	Font { family: String, style: Option<String> },
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ResourceRegistry {
+	hashes: HashMap<ResourceId, ResourceHash>,
+	sources: HashMap<ResourceId, Vec<DataSource>>,
+}
+
+impl ResourceRegistry {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.hashes.is_empty() && self.sources.is_empty()
+	}
+
+	pub fn contains(&self, id: &ResourceId) -> bool {
+		self.hashes.contains_key(id) || self.sources.contains_key(id)
+	}
+
+	pub fn ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
+		self.hashes.keys().chain(self.sources.keys().filter(|id| !self.hashes.contains_key(id))).copied()
+	}
+
+	pub fn info(&self, id: &ResourceId) -> Option<ResourceInfo> {
+		self.contains(id).then(|| ResourceInfo {
+			id: *id,
+			hash: self.hashes.get(id).copied(),
+			inputs: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
+		})
+	}
+
+	pub fn push_source_back(&mut self, id: &ResourceId, source: DataSource) {
+		self.sources.entry(*id).or_default().push(source);
+	}
+
+	pub fn push_source_front(&mut self, id: &ResourceId, source: DataSource) {
+		self.sources.entry(*id).or_default().insert(0, source);
+	}
+
+	pub fn delete(&mut self, id: &ResourceId) -> Option<ResourceInfo> {
+		let hash = self.hashes.remove(id);
+		let sources = self.sources.remove(id);
+		if hash.is_none() && sources.is_none() {
+			return None;
+		}
+		Some(ResourceInfo {
+			id: *id,
+			hash,
+			inputs: sources.unwrap_or_default().into_boxed_slice(),
+		})
+	}
+
+	pub fn resolve(&mut self, id: &ResourceId, hash: ResourceHash) -> Option<ResourceHash> {
+		self.hashes.insert(*id, hash)
+	}
+
+	pub fn hash(&self, id: &ResourceId) -> Option<ResourceHash> {
+		self.hashes.get(id).copied()
+	}
+
+	pub fn unresolved(&self) -> impl Iterator<Item = (ResourceId, &[DataSource])> + '_ {
+		self.sources.iter().filter(|(id, _)| !self.hashes.contains_key(id)).map(|(id, sources)| (*id, sources.as_slice()))
 	}
 }

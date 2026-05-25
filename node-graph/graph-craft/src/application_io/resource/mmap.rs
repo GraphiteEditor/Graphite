@@ -1,4 +1,4 @@
-use graphene_application_io::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
+use graphene_application_io::resource::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use mmap_io::mmap::{MemoryMappedFile, MmapMode};
 use std::collections::HashMap;
 use std::fs;

@@ -1,5 +1,5 @@
 use crate::messages::prelude::*;
-use graph_craft::application_io::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
+use graph_craft::application_io::resource::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
@@ -48,7 +48,7 @@ impl Default for ResourceMessageHandler {
 	#[cfg(test)]
 	fn default() -> Self {
 		Self {
-			storage: Some(Arc::new(RwLock::new(Box::new(graph_craft::application_io::HashMapResourceStorage::new())))),
+			storage: Some(Arc::new(RwLock::new(Box::new(graph_craft::application_io::resource::HashMapResourceStorage::new())))),
 		}
 	}
 }

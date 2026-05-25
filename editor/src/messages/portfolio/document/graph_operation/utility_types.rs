@@ -300,7 +300,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.default_node_template();
 
 		let png_bytes: std::sync::Arc<[u8]> = image.to_png().into();
-		let hash = graphene_std::application_io::ResourceHash::from(png_bytes.as_ref());
+		let hash = graphene_std::application_io::resource::ResourceHash::from(png_bytes.as_ref());
 		self.responses.add(ResourceMessage::Store { data: png_bytes });
 
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)

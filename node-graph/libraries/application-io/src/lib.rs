@@ -9,9 +9,10 @@ use std::time::Duration;
 use text_nodes::FontCache;
 use vector_types::vector::style::RenderMode;
 
-pub mod resource;
-pub use core_types::resource::Resource;
-pub use resource::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
+pub mod resource {
+	pub use core_types::resource::*;
+	pub use graphene_resource::*;
+}
 
 #[cfg(feature = "wgpu")]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]
@@ -49,7 +50,7 @@ pub trait ApplicationIo {
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
-	fn load_resource(&self, hash: ResourceHash) -> resource::ResourceFuture;
+	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture;
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
@@ -59,7 +60,7 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 		(**self).gpu_executor()
 	}
 
-	fn load_resource(&self, hash: ResourceHash) -> resource::ResourceFuture {
+	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture {
 		(**self).load_resource(hash)
 	}
 }

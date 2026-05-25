@@ -23,8 +23,6 @@ use editor::messages::portfolio::document::utility_types::network_interface::Imp
 use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
-#[cfg(all(not(feature = "native"), target_family = "wasm"))]
-use graph_craft::application_io::OpfsResourceStorage;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::graphene_hash::CacheHashWrapper;
@@ -75,6 +73,7 @@ impl EditorWrapper {
 	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
 		use graph_craft::application_io::PlatformApplicationIo;
+		use graph_craft::application_io::resource::*;
 
 		let host = match platform.as_str() {
 			"Linux" => Host::Linux,
@@ -83,11 +82,11 @@ impl EditorWrapper {
 			_ => unreachable!(),
 		};
 
-		let storage: Box<dyn graph_craft::application_io::ResourceStorage> = match OpfsResourceStorage::load("resources").await {
+		let storage: Box<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
 			Ok(storage) => Box::new(storage),
 			Err(error) => {
 				log::error!("Failed to open OPFS resource storage, falling back to in-memory: {error:?}");
-				Box::new(graph_craft::application_io::HashMapResourceStorage::new())
+				Box::new(graph_craft::application_io::resource::HashMapResourceStorage::new())
 			}
 		};
 

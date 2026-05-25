@@ -1,11 +1,15 @@
-#[cfg(not(target_family = "wasm"))]
-pub mod mmap;
-#[cfg(target_family = "wasm")]
-pub mod opfs;
-
-use graphene_application_io::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+pub use graphene_application_io::resource::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
+#[cfg(not(target_family = "wasm"))]
+pub mod mmap;
+#[cfg(not(target_family = "wasm"))]
+pub use mmap::MmapResourceStorage;
+#[cfg(target_family = "wasm")]
+pub mod opfs;
+#[cfg(target_family = "wasm")]
+pub use opfs::OpfsResourceStorage;
 
 #[derive(Debug, Default)]
 pub struct HashMapResourceStorage {
