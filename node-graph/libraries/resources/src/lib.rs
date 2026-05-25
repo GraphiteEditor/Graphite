@@ -186,27 +186,28 @@ impl CacheHash for ResourceHash {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct ResourceInfo {
 	pub id: ResourceId,
 	pub hash: Option<ResourceHash>,
-	pub inputs: ResourceInputs,
+	pub inputs: DataSources,
 }
 
-pub type ResourceInputs = Box<[ResourceInput]>;
+pub type DataSources = Box<[DataSource]>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ResourceInput {
+pub enum DataSource {
 	Embedded,
 	Url(url::Url),
 	Font { family: String, style: Option<String> },
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceRegistry {
-	ids: std::collections::HashSet<ResourceId>,
-	hashes: std::collections::HashMap<ResourceId, ResourceHash>,
-	sources: std::collections::HashMap<ResourceId, Vec<ResourceInput>>,
+	hashes: HashMap<ResourceId, ResourceHash>,
+	sources: HashMap<ResourceId, Vec<DataSource>>,
 }
 
 impl ResourceRegistry {
@@ -214,8 +215,20 @@ impl ResourceRegistry {
 		Self::default()
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.hashes.is_empty() && self.sources.is_empty()
+	}
+
+	pub fn contains(&self, id: &ResourceId) -> bool {
+		self.hashes.contains_key(id) || self.sources.contains_key(id)
+	}
+
+	pub fn ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
+		self.hashes.keys().chain(self.sources.keys().filter(|id| !self.hashes.contains_key(id))).copied()
+	}
+
 	pub fn info(&self, id: &ResourceId) -> Option<ResourceInfo> {
-		self.ids.contains(id).then(|| ResourceInfo {
+		self.contains(id).then(|| ResourceInfo {
 			id: *id,
 			hash: self.hashes.get(id).copied(),
 			inputs: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
@@ -226,21 +239,24 @@ impl ResourceRegistry {
 		self.hashes.insert(*id, *hash)
 	}
 
-	pub fn push_input_back(&mut self, id: &ResourceId, input: ResourceInput) {
-		let sources = self.sources.entry(*id).or_default();
-		sources.push(input);
+	pub fn push_source_back(&mut self, id: &ResourceId, source: DataSource) {
+		self.sources.entry(*id).or_default().push(source);
 	}
 
-	pub fn push_input_front(&mut self, id: &ResourceId, input: ResourceInput) {
-		let sources = self.sources.entry(*id).or_default();
-		sources.insert(0, input);
+	pub fn push_source_front(&mut self, id: &ResourceId, source: DataSource) {
+		self.sources.entry(*id).or_default().insert(0, source);
 	}
 
 	pub fn delete(&mut self, id: &ResourceId) -> Option<ResourceInfo> {
-		self.ids.remove(id).then(|| ResourceInfo {
+		let hash = self.hashes.remove(id);
+		let sources = self.sources.remove(id);
+		if hash.is_none() && sources.is_none() {
+			return None;
+		}
+		Some(ResourceInfo {
 			id: *id,
-			hash: self.hashes.remove(id),
-			inputs: self.sources.remove(id).unwrap_or_default().into_boxed_slice(),
+			hash,
+			inputs: sources.unwrap_or_default().into_boxed_slice(),
 		})
 	}
 
@@ -252,13 +268,7 @@ impl ResourceRegistry {
 		self.hashes.get(id).copied()
 	}
 
-	pub fn unresolved(&self) -> HashMap<ResourceId, ResourceInputs> {
-		let mut result = HashMap::new();
-		for id in &self.ids {
-			if !self.hashes.contains_key(id) {
-				result.insert(*id, self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice());
-			}
-		}
-		result
+	pub fn unresolved(&self) -> impl Iterator<Item = (ResourceId, &[DataSource])> + '_ {
+		self.sources.iter().filter(|(id, _)| !self.hashes.contains_key(id)).map(|(id, sources)| (*id, sources.as_slice()))
 	}
 }
