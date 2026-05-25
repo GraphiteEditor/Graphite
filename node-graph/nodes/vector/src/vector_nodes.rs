@@ -25,6 +25,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pa
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
+use vector_types::vector::algorithms::util::pathseg_tangent;
 use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
@@ -331,6 +332,164 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	}
 
 	result_list
+}
+
+fn averaged_tangent(incoming: DVec2, outgoing: DVec2) -> DVec2 {
+	let incoming = incoming.normalize_or_zero();
+	let outgoing = outgoing.normalize_or_zero();
+	let bisector = incoming + outgoing;
+	bisector.normalize_or(outgoing).normalize_or(DVec2::X)
+}
+
+fn transformed_marker_items<I: Clone>(marker: &List<I>, transform: DAffine2) -> impl Iterator<Item = Item<I>> + '_ {
+	(0..marker.len()).filter_map(move |row_index| {
+		let mut row = marker.clone_item(row_index)?;
+		let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+		row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
+		Some(row)
+	})
+}
+
+struct MarkerVertex {
+	position: DVec2,
+	incoming: Option<DVec2>,
+	outgoing: Option<DVec2>,
+}
+
+impl MarkerVertex {
+	fn start(segment: PathSeg) -> Self {
+		Self {
+			position: point_to_dvec2(segment.start()),
+			incoming: None,
+			outgoing: Some(pathseg_tangent(segment, 0.)),
+		}
+	}
+
+	fn middle(incoming: PathSeg, outgoing: PathSeg) -> Self {
+		Self {
+			position: point_to_dvec2(incoming.end()),
+			incoming: Some(pathseg_tangent(incoming, 1.)),
+			outgoing: Some(pathseg_tangent(outgoing, 0.)),
+		}
+	}
+
+	fn end(segment: PathSeg) -> Self {
+		Self {
+			position: point_to_dvec2(segment.end()),
+			incoming: Some(pathseg_tangent(segment, 1.)),
+			outgoing: None,
+		}
+	}
+
+	fn tangent(&self, is_start: bool, is_end: bool) -> DVec2 {
+		match (is_start, is_end, self.incoming, self.outgoing) {
+			(true, _, _, Some(outgoing)) => outgoing,
+			(_, true, Some(incoming), _) => incoming,
+			(_, _, Some(incoming), Some(outgoing)) => averaged_tangent(incoming, outgoing),
+			(_, _, Some(incoming), None) => incoming,
+			(_, _, None, Some(outgoing)) => outgoing,
+			(_, _, None, None) => DVec2::X,
+		}
+	}
+}
+
+struct MarkerPlacement {
+	start: bool,
+	mid: bool,
+	end: bool,
+	scale: f64,
+	auto_orient: bool,
+	angle_offset: f64,
+}
+
+impl MarkerPlacement {
+	fn includes(&self, index: usize, last_index: usize) -> bool {
+		let is_start = index == 0;
+		let is_end = index == last_index;
+		(is_start && self.start) || (is_end && self.end) || (!is_start && !is_end && self.mid)
+	}
+
+	fn transform(&self, index: usize, last_index: usize, vertex: &MarkerVertex) -> DAffine2 {
+		let tangent = vertex.tangent(index == 0, index == last_index);
+		let angle = if self.auto_orient { tangent.y.atan2(tangent.x) } else { 0. };
+
+		DAffine2::from_scale_angle_translation(DVec2::splat(self.scale), angle + self.angle_offset.to_radians(), vertex.position)
+	}
+}
+
+fn marker_vertices_for_bezpath(bezpath: &BezPath, path_transform: DAffine2) -> Vec<MarkerVertex> {
+	let mut bezpath = bezpath.clone();
+	bezpath.apply_affine(Affine::new(path_transform.to_cols_array()));
+
+	let segments: Vec<PathSeg> = bezpath.segments().collect();
+	let Some((&first, _)) = segments.split_first() else { return Vec::new() };
+	let Some(&last) = segments.last() else { return Vec::new() };
+
+	std::iter::once(MarkerVertex::start(first))
+		.chain(segments.windows(2).map(|segments| MarkerVertex::middle(segments[0], segments[1])))
+		.chain(std::iter::once(MarkerVertex::end(last)))
+		.collect()
+}
+
+/// Places marker artwork at the start, middle, and end vertices of a path, following SVG marker placement semantics.
+#[node_macro::node(name("Attach Markers"), category("Repeat"), path(core_types::vector))]
+async fn attach_markers<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	/// The path whose vertices receive marker artwork.
+	path: List<Vector>,
+	/// Artwork to be copied and attached at path vertices.
+	#[expose]
+	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Color>, List<GradientStops>)]
+	marker: List<I>,
+	/// Place the marker at the first vertex of each subpath.
+	#[default(true)]
+	start: bool,
+	/// Place the marker at each interior vertex of each subpath.
+	#[default(false)]
+	mid: bool,
+	/// Place the marker at the last vertex of each subpath.
+	#[default(true)]
+	end: bool,
+	/// Marker scale multiplier.
+	#[default(1)]
+	#[range((0., 10.))]
+	#[unit("x")]
+	scale: Multiplier,
+	/// Rotate markers to follow the path direction.
+	#[default(true)]
+	auto_orient: bool,
+	/// Additional marker rotation in degrees.
+	#[range((-360., 360.))]
+	angle_offset: Angle,
+) -> List<I> {
+	let placement = MarkerPlacement {
+		start,
+		mid,
+		end,
+		scale,
+		auto_orient,
+		angle_offset,
+	};
+
+	path.into_iter()
+		.flat_map(|row| {
+			let mut row_markers = Vec::new();
+			let path_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+			for bezpath in row.element().stroke_bezpath_iter() {
+				let vertices = marker_vertices_for_bezpath(&bezpath, path_transform);
+				let last_index = vertices.len().saturating_sub(1);
+
+				for (index, vertex) in vertices.into_iter().enumerate() {
+					if placement.includes(index, last_index) {
+						let transform = placement.transform(index, last_index, &vertex);
+						row_markers.extend(transformed_marker_items(&marker, transform));
+					}
+				}
+			}
+			row_markers
+		})
+		.collect()
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
