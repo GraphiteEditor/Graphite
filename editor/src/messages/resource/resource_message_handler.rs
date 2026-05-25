@@ -48,7 +48,7 @@ impl Default for ResourceMessageHandler {
 	#[cfg(test)]
 	fn default() -> Self {
 		Self {
-			storage: Some(Arc::new(RwLock::new(Box::new(graph_craft::application_io::HashMapResourceStorage::new())))),
+			storage: Some(Arc::new(RwLock::new(Box::new(graph_craft::application_io::resource::HashMapResourceStorage::new())))),
 		}
 	}
 }

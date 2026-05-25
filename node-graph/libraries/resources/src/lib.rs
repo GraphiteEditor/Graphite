@@ -21,7 +21,6 @@ pub trait ResourceStorage: LoadResource {
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceId(pub u64);
 
@@ -233,10 +232,6 @@ impl ResourceRegistry {
 			hash: self.hashes.get(id).copied(),
 			inputs: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
 		})
-	}
-
-	pub fn set_hash(&mut self, id: &ResourceId, hash: &ResourceHash) -> Option<ResourceHash> {
-		self.hashes.insert(*id, *hash)
 	}
 
 	pub fn push_source_back(&mut self, id: &ResourceId, source: DataSource) {
