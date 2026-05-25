@@ -72,12 +72,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		document_serialized_content: String,
 	},
-	// TODO: Eventually remove this document upgrade code
-	ShowFailedToLoadDocumentsDialog,
-	// TODO: Eventually remove this document upgrade code
-	DiscardFailedToLoadDocuments,
-	// TODO: Eventually remove this document upgrade code
-	DownloadFailedToLoadDocuments,
 	MoveAllPanelTabs {
 		source_group: PanelGroupId,
 		target_group: PanelGroupId,

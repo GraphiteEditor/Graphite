@@ -221,7 +221,6 @@ lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "e
 scraper = "0.25"
 linesweeper = "0.3"
 smallvec = "1.13.2"
-zip = { version = "8", default-features = false }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
