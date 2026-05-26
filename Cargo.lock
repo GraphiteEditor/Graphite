@@ -4031,12 +4031,9 @@ dependencies = [
  "log",
  "node-macro",
  "smallvec",
-<<<<<<< HEAD
  "text-nodes",
-=======
  "tokio",
  "vector-nodes",
->>>>>>> 37cb31e45 (Add tests for boolean operations)
  "vector-types",
 ]
 
