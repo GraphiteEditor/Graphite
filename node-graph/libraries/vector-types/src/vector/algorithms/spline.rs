@@ -21,7 +21,7 @@ pub fn solve_spline_first_handle_open(points: &[DVec2]) -> Vec<DVec2> {
 
 	let mut c = vec![DVec2::new(1., 1.); len_points];
 
-	// 'd' is the the second point in a cubic bezier, which is what we solve for
+	// 'd' is the second point in a cubic bezier, which is what we solve for
 	let mut d = vec![DVec2::ZERO; len_points];
 
 	d[0] = DVec2::new(2. * points[1].x + points[0].x, 2. * points[1].y + points[0].y);

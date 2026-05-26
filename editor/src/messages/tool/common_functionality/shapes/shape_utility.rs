@@ -491,7 +491,7 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
 
-/// Check if the the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
+/// Check if the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
 pub fn inside_star(viewport: DAffine2, n: u32, radius1: f64, radius2: f64, mouse_position: DVec2) -> bool {
 	let mut paths = Vec::new();
 
@@ -520,7 +520,7 @@ pub fn inside_star(viewport: DAffine2, n: u32, radius1: f64, radius2: f64, mouse
 	winding != 0
 }
 
-/// Check if the the cursor is inside the geometric polygon shape made by the Polygon node without any upstream node modifications
+/// Check if the cursor is inside the geometric polygon shape made by the Polygon node without any upstream node modifications
 pub fn inside_polygon(viewport: DAffine2, n: u32, radius: f64, mouse_position: DVec2) -> bool {
 	let mut paths = Vec::new();
 
