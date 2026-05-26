@@ -11,7 +11,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	let mut network = load_from_name(name);
 	let editor_api = std::sync::Arc::new(EditorApi::default());
 	let substitutions = preprocessor::generate_node_substitutions();
-	preprocessor::expand_network(&mut network, &substitutions);
+	preprocessor::expand_network(&mut network, &substitutions, &ResourceRegistry::default()).unwrap();
 	let network = wrap_network_in_scope(network, editor_api);
 	let proto_network = compile(network);
 	let executor = block_on(DynamicExecutor::new(proto_network.clone())).unwrap();

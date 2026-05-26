@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use graph_craft::application_io::resource::ResourceRegistry;
+use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
@@ -10,19 +10,20 @@ use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 
-pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>, resources: &ResourceRegistry) {
-	replace_resource_inputs(network, resources);
+pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
+	replace_resource_inputs(network, resources)?;
 	expand_network_inner(network, substitutions);
+	Ok(())
 }
 
 /// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegistry) {
+fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegistry) -> Result<(), PreprocessorError> {
 	let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
 	let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 	for node in network.nodes.values_mut() {
 		if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-			replace_resource_inputs(nested, resources);
+			replace_resource_inputs(nested, resources)?;
 			continue;
 		}
 
@@ -34,7 +35,9 @@ fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegist
 			let NodeInput::Value { tagged_value, .. } = input else { continue };
 			let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
 
-			let hash = resources.hash(&resource_id).unwrap_or_default();
+			let Some(hash) = resources.hash(&resource_id) else {
+				return Err(PreprocessorError::ResourceNotFound(resource_id));
+			};
 
 			let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
 				let id = NodeId::new();
@@ -54,6 +57,8 @@ fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegist
 	for (id, node) in new_resource_nodes {
 		network.nodes.insert(id, node);
 	}
+
+	Ok(())
 }
 
 fn expand_network_inner(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>) {
@@ -243,4 +248,17 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			NodeInput::value(TaggedValue::None, true)
 		})
 		.collect()
+}
+
+#[derive(Debug)]
+pub enum PreprocessorError {
+	ResourceNotFound(ResourceId),
+}
+
+impl std::fmt::Display for PreprocessorError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
+		}
+	}
 }
