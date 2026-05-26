@@ -460,7 +460,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
 					if let Some(resources) = &info.resources {
-						used_resources.extend(resources.used_hashes());
+						used_resources.extend(resources.iter().cloned());
 					} else {
 						responses.add(PersistentStateMessage::ReadDocument { document_id: *id });
 						return;
@@ -2078,7 +2078,7 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
-				resources: Some(document.resources.registry.clone()),
+				resources: Some(document.resources.registry.used_hashes().collect::<Vec<_>>().into_boxed_slice()),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()

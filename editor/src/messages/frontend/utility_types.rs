@@ -1,9 +1,9 @@
-use graph_craft::application_io::resource::ResourceRegistry;
-use serde_json::Value;
 use std::future::{Future, IntoFuture};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+
+use graph_craft::application_io::resource::ResourceHash;
 
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
@@ -14,9 +14,9 @@ use crate::messages::prelude::*;
 pub struct DocumentInfo {
 	pub id: DocumentId,
 	pub name: String,
-	#[serde(deserialize_with = "ok_or_default")]
+	#[serde(default)]
 	#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
-	pub resources: Option<ResourceRegistry>,
+	pub resources: Option<Box<[ResourceHash]>>,
 	#[serde(default)]
 	pub path: Option<PathBuf>,
 	pub is_saved: bool,
@@ -112,13 +112,4 @@ impl IntoFuture for FrontendMessageFuture {
 			.take()
 			.expect("FrontendMessageFuture can only be awaited once")
 	}
-}
-
-fn ok_or_default<'de, T, D>(deserializer: D) -> Result<T, D::Error>
-where
-	T: serde::Deserialize<'de> + Default,
-	D: serde::Deserializer<'de>,
-{
-	let v: Value = serde::Deserialize::deserialize(deserializer)?;
-	Ok(T::deserialize(v).unwrap_or_default())
 }
