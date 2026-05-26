@@ -1038,8 +1038,8 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 }
 
 pub fn document_migration_replace_resources_referenced_by_hash(document_serialized_content: String) -> (String, HashMap<ResourceHash, ResourceId>) {
-	fn collect_resources_referenced_by_hash(s: &str) -> Vec<(ResourceHash, Range<usize>)> {
-		let mut out = Vec::new();
+	fn collect_resources_referenced_by_hash(s: &str) -> HashMap<ResourceHash, Vec<Range<usize>>> {
+		let mut out: HashMap<ResourceHash, Vec<Range<usize>>> = HashMap::new();
 		let mut offset = 0;
 
 		while let Some(i) = s[offset..].find("\"Resource\":") {
@@ -1060,7 +1060,7 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 						&& hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 						&& let Ok(hash) = hash.parse::<ResourceHash>()
 					{
-						out.push((hash, q0..q1 + 1));
+						out.entry(hash).or_default().push(q0..q1 + 1);
 					}
 				}
 
@@ -1075,28 +1075,59 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 
 	let resources_by_hash = collect_resources_referenced_by_hash(&document_serialized_content);
 
-	// Require each referenced hash to also appear as an embedded resource map key (at least 2 occurrences).
-	if resources_by_hash.is_empty() || !resources_by_hash.iter().all(|(hash, _)| document_serialized_content.matches(&hash.to_string()).count() >= 2) {
+	// Require each referenced hash to also appear as an embedded resource map key (more than ranges.len() occurrences).
+	if resources_by_hash.is_empty()
+		|| !resources_by_hash
+			.iter()
+			.all(|(hash, ranges)| document_serialized_content.matches(&hash.to_string()).count() > ranges.len())
+	{
 		return (document_serialized_content, HashMap::new());
 	}
 
+	// Assign a new ResourceId for each hash
 	let mut hash_to_id: HashMap<ResourceHash, ResourceId> = HashMap::new();
-	for (hash, _) in &resources_by_hash {
+	for hash in resources_by_hash.keys() {
 		#[allow(clippy::unwrap_or_default)]
 		hash_to_id.entry(*hash).or_insert_with(ResourceId::new);
 	}
 
-	// Rewrite each reference site from right to left so earlier byte ranges stay valid as the string mutates.
-	// `ResourceId(pub u64)` derives Serialize on the newtype, so the post-migration JSON form of `"Resource"` is a bare integer.
-	let mut output = document_serialized_content;
-	let mut sites = resources_by_hash;
-	sites.sort_by(|a, b| b.1.start.cmp(&a.1.start));
-	for (hash, range) in &sites {
-		let id = hash_to_id[hash];
-		output.replace_range(range.clone(), &id.to_string());
-	}
+	let mut replacements = resources_by_hash
+		.into_iter()
+		.flat_map(|(hash, ranges)| {
+			let id = hash_to_id[&hash];
+			ranges.into_iter().map(move |range| (range, id))
+		})
+		.collect::<Vec<_>>();
+	replacements.sort_by_key(|(range, _)| range.start);
 
-	(output, hash_to_id)
+	// Each range is 66 bytes (64 hex + 2 quotes) and a ResourceId serializes to at most 20 ASCII digits,
+	// so the output is strictly shorter. We can rewrite the buffer in place by shifting each gap leftward with
+	// `copy_within` and overwriting the freed tail bytes with the ID.
+	let mut bytes = document_serialized_content.into_bytes();
+	let mut read = 0;
+	let mut write = 0;
+	let mut id_str = String::with_capacity(20);
+	for (range, id) in replacements {
+		bytes.copy_within(read..range.start, write);
+		write += range.start - read;
+
+		id_str.clear();
+		use std::fmt::Write;
+		let _ = write!(id_str, "{id}");
+		bytes[write..write + id_str.len()].copy_from_slice(id_str.as_bytes());
+		write += id_str.len();
+
+		read = range.end;
+	}
+	let total = bytes.len();
+	let tail = total - read;
+	bytes.copy_within(read..total, write);
+	write += tail;
+	bytes.truncate(write);
+
+	let out = String::from_utf8(bytes).expect("in-place hash-to-ID rewrite produced invalid UTF-8");
+
+	(out, hash_to_id)
 }
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
