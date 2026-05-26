@@ -5,18 +5,18 @@ use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Clone, Default, Debug, serde::Serialize)]
-pub struct EmbeddedResources {
+pub struct DocumentResources {
 	pub registry: ResourceRegistry,
-	pub embedded: EmbeddedResourceData,
+	pub embedded: EmbeddedResource,
 }
 
-impl EmbeddedResources {
+impl DocumentResources {
 	pub fn is_empty(&self) -> bool {
 		self.registry.is_empty() && self.embedded.is_empty()
 	}
 }
 
-impl<'de> serde::Deserialize<'de> for EmbeddedResources {
+impl<'de> serde::Deserialize<'de> for DocumentResources {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		enum Key {
 			Registry,
@@ -40,14 +40,14 @@ impl<'de> serde::Deserialize<'de> for EmbeddedResources {
 		}
 
 		impl<'de> serde::de::Visitor<'de> for EmbeddedResourcesVisitor {
-			type Value = EmbeddedResources;
+			type Value = DocumentResources;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an EmbeddedResources struct or a legacy EmbeddedResourceData map")
 			}
 
 			fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-				let mut output = EmbeddedResources::default();
+				let mut output = DocumentResources::default();
 
 				while let Some(key) = map.next_key::<Key>()? {
 					match key {
@@ -79,11 +79,11 @@ impl<'de> serde::Deserialize<'de> for EmbeddedResources {
 }
 
 #[derive(Clone, Default, Debug, PartialEq)]
-pub struct EmbeddedResourceData {
+pub struct EmbeddedResource {
 	resources: HashMap<ResourceHash, Resource>,
 }
 
-impl EmbeddedResourceData {
+impl EmbeddedResource {
 	pub fn is_empty(&self) -> bool {
 		self.resources.is_empty()
 	}
@@ -95,7 +95,7 @@ impl EmbeddedResourceData {
 	}
 }
 
-impl FromIterator<(ResourceHash, Resource)> for EmbeddedResourceData {
+impl FromIterator<(ResourceHash, Resource)> for EmbeddedResource {
 	fn from_iter<T: IntoIterator<Item = (ResourceHash, Resource)>>(iter: T) -> Self {
 		Self {
 			resources: iter.into_iter().collect(),
@@ -103,7 +103,7 @@ impl FromIterator<(ResourceHash, Resource)> for EmbeddedResourceData {
 	}
 }
 
-impl IntoIterator for EmbeddedResourceData {
+impl IntoIterator for EmbeddedResource {
 	type Item = (ResourceHash, Resource);
 	type IntoIter = std::collections::hash_map::IntoIter<ResourceHash, Resource>;
 
@@ -112,7 +112,7 @@ impl IntoIterator for EmbeddedResourceData {
 	}
 }
 
-impl serde::Serialize for EmbeddedResourceData {
+impl serde::Serialize for EmbeddedResource {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		use serde::ser::SerializeMap;
 
@@ -130,14 +130,14 @@ impl serde::Serialize for EmbeddedResourceData {
 	}
 }
 
-impl<'de> serde::Deserialize<'de> for EmbeddedResourceData {
+impl<'de> serde::Deserialize<'de> for EmbeddedResource {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		struct EmbeddedResourcesVisitor {
 			human_readable: bool,
 		}
 
 		impl<'de> serde::de::Visitor<'de> for EmbeddedResourcesVisitor {
-			type Value = EmbeddedResourceData;
+			type Value = EmbeddedResource;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("a map of ResourceHash to resource bytes")
@@ -156,7 +156,7 @@ impl<'de> serde::Deserialize<'de> for EmbeddedResourceData {
 					};
 					resources.insert(hash, resource);
 				}
-				Ok(EmbeddedResourceData { resources })
+				Ok(EmbeddedResource { resources })
 			}
 		}
 

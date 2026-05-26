@@ -19,9 +19,9 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::embedded_resources::{EmbeddedResourceData, EmbeddedResources};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::resources::{DocumentResources, EmbeddedResource};
 use crate::messages::portfolio::utility_types::{CachedData, PanelType};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -111,8 +111,8 @@ pub struct DocumentMessageHandler {
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
 	/// Resources embedded in the document.
-	#[serde(default, skip_serializing_if = "EmbeddedResources::is_empty")]
-	pub resources: EmbeddedResources,
+	#[serde(default, skip_serializing_if = "DocumentResources::is_empty")]
+	pub resources: DocumentResources,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -175,7 +175,7 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
-			resources: EmbeddedResources::default(),
+			resources: DocumentResources::default(),
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
@@ -954,7 +954,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							})
 							.collect::<Vec<_>>();
 
-						document.resources.embedded = EmbeddedResourceData::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
+						document.resources.embedded = EmbeddedResource::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
 						let content = document.serialize_document();
 
 						FrontendMessage::TriggerSaveDocument {
