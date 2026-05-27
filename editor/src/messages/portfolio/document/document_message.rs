@@ -37,6 +37,8 @@ pub enum DocumentMessage {
 	PropertiesPanel(PropertiesPanelMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
+	#[child]
+	Resource(ResourceMessage),
 
 	// Messages
 	AlignSelectedLayers {

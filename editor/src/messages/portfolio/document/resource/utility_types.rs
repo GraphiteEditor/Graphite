@@ -1,82 +1,8 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use graph_craft::application_io::resource::{Resource, ResourceHash, ResourceRegistry};
+use graph_craft::application_io::resource::{Resource, ResourceHash};
 use std::collections::HashMap;
 use std::fmt;
-
-#[derive(Clone, Default, Debug, serde::Serialize)]
-pub struct DocumentResources {
-	pub registry: ResourceRegistry,
-	pub embedded: EmbeddedResource,
-}
-
-impl DocumentResources {
-	pub fn is_empty(&self) -> bool {
-		self.registry.is_empty() && self.embedded.is_empty()
-	}
-}
-
-impl<'de> serde::Deserialize<'de> for DocumentResources {
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		enum Key {
-			Registry,
-			Embedded,
-			Hash(ResourceHash),
-		}
-
-		impl<'de> serde::Deserialize<'de> for Key {
-			fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-				let raw = String::deserialize(deserializer)?;
-				Ok(match raw.as_str() {
-					"registry" => Key::Registry,
-					"embedded" => Key::Embedded,
-					_ => Key::Hash(raw.parse().map_err(serde::de::Error::custom)?),
-				})
-			}
-		}
-
-		struct EmbeddedResourcesVisitor {
-			human_readable: bool,
-		}
-
-		impl<'de> serde::de::Visitor<'de> for EmbeddedResourcesVisitor {
-			type Value = DocumentResources;
-
-			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-				formatter.write_str("an EmbeddedResources struct or a legacy EmbeddedResourceData map")
-			}
-
-			fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-				let mut output = DocumentResources::default();
-
-				while let Some(key) = map.next_key::<Key>()? {
-					match key {
-						Key::Registry => output.registry = map.next_value()?,
-						Key::Embedded => output.embedded = map.next_value()?,
-						Key::Hash(hash) => {
-							let bytes = if self.human_readable {
-								let encoded: String = map.next_value()?;
-								BASE64.decode(&encoded).map_err(serde::de::Error::custom)?
-							} else {
-								let raw: serde_bytes::ByteBuf = map.next_value()?;
-								raw.into_vec()
-							};
-							let data_hash = output.embedded.store(Resource::new(bytes));
-							if data_hash != hash {
-								return Err(serde::de::Error::custom(format!("EmbeddedResource hash mismatch: expected {hash}, got {data_hash}")));
-							}
-						}
-					}
-				}
-
-				Ok(output)
-			}
-		}
-
-		let human_readable = deserializer.is_human_readable();
-		deserializer.deserialize_map(EmbeddedResourcesVisitor { human_readable })
-	}
-}
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct EmbeddedResource {
