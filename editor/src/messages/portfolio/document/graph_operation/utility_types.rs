@@ -309,7 +309,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.resources.push_source_back(&resource_id, DataSource::Embedded);
 		self.resources.resolve(&resource_id, hash);
 
-		self.responses.add(ResourceMessage::Store { data: png_bytes });
+		self.responses.add(ResourceStorageMessage::Store { data: png_bytes });
 
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")

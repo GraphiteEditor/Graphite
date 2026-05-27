@@ -32,7 +32,7 @@ pub struct DispatcherMessageHandlers {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
-	pub(crate) resource_message_handler: ResourceMessageHandler,
+	pub(crate) resource_storage_message_handler: ResourceStorageMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
 }
@@ -40,7 +40,7 @@ pub struct DispatcherMessageHandlers {
 impl DispatcherMessageHandlers {
 	pub fn with_resource_storage(resource_storage: Box<dyn ResourceStorage>) -> Self {
 		Self {
-			resource_message_handler: ResourceMessageHandler::new(resource_storage),
+			resource_storage_message_handler: ResourceStorageMessageHandler::new(resource_storage),
 			..Self::default()
 		}
 	}
@@ -89,7 +89,7 @@ const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsid
 impl Dispatcher {
 	pub fn new(resource_storage: Box<dyn ResourceStorage>) -> Self {
 		let mut s = Self::default();
-		s.message_handlers.resource_message_handler = ResourceMessageHandler::new(resource_storage);
+		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
 		s
 	}
 
@@ -228,8 +228,8 @@ impl Dispatcher {
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
-				Message::Resource(message) => {
-					self.message_handlers.resource_message_handler.process_message(message, &mut queue, ResourceMessageContext {});
+				Message::ResourceStorage(message) => {
+					self.message_handlers.resource_storage_message_handler.process_message(message, &mut queue, ResourceStorageMessageContext {});
 				}
 				Message::Portfolio(message) => {
 					self.message_handlers.portfolio_message_handler.process_message(
@@ -243,7 +243,7 @@ impl Dispatcher {
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
 							viewport: &self.message_handlers.viewport_message_handler,
-							resources: &self.message_handlers.resource_message_handler,
+							resource_storage: &self.message_handlers.resource_storage_message_handler,
 						},
 					);
 				}

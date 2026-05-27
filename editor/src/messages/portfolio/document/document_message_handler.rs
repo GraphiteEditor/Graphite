@@ -61,7 +61,7 @@ pub struct DocumentMessageContext<'a> {
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
-	pub resources: &'a ResourceMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -207,7 +207,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
-			resources,
+			resource_storage,
 		} = context;
 
 		match message {
@@ -940,7 +940,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				document.resources.registry.garbage_collect(used_resources.as_ref());
 
-				let resources_load_handle = resources.resources();
+				let resources_load_handle = resource_storage.resources();
 
 				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 

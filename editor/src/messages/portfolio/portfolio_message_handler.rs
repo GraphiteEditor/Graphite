@@ -49,7 +49,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
-	pub resources: &'a ResourceMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -88,7 +88,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
-			resources,
+			resource_storage,
 		} = context;
 
 		match message {
@@ -105,7 +105,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						resources,
+						resource_storage,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -175,7 +175,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						resources,
+						resource_storage,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -470,7 +470,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.used_hashes());
 				}
-				responses.add(ResourceMessage::GarbageCollect {
+				responses.add(ResourceStorageMessage::GarbageCollect {
 					used: Vec::from_iter(used_resources).into_boxed_slice(),
 				});
 			}
@@ -932,7 +932,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						log::error!("Resource hash mismatch for resource with hash {hash}");
 						return;
 					}
-					responses.add(ResourceMessage::Store { data });
+					responses.add(ResourceStorageMessage::Store { data });
 
 					// TODO: Eventually remove this document upgrade code
 					// Register any resources that were previously referenced by hash
