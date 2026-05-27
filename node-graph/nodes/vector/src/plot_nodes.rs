@@ -9,6 +9,13 @@ use math_parser::value::Value;
 use std::collections::{HashMap, HashSet};
 use vector_types::subpath;
 
+struct PlotBounds {
+	x_min: f64,
+	x_max: f64,
+	y_min: f64,
+	y_max: f64,
+}
+
 struct PlotContext<'a> {
 	values: &'a HashMap<String, f64>,
 }
@@ -51,47 +58,42 @@ fn function_plot(
 	#[default(true)]
 	auto_close: bool,
 ) -> List<Vector> {
-	let mut list = List::new();
-
-	let (x_node, _unit) = match ast::Node::try_parse_from_str(&x_expression) {
-		Ok(expr) => expr,
-		Err(e) => {
-			warn!("Invalid expression: `{x_expression}`\n{e:?}");
-			return list;
-		}
+	let (x_node, y_node, variable_name) = match parse_plot_expressions(&x_expression, &y_expression) {
+		Some(result) => result,
+		None => return List::new(),
 	};
 
-	let (y_node, _unit) = match ast::Node::try_parse_from_str(&y_expression) {
-		Ok(expr) => expr,
-		Err(e) => {
-			warn!("Invalid expression: `{y_expression}`\n{e:?}");
-			return list;
-		}
+	let (mut anchor_positions, bounds) = match sample_plot_curve(&x_node, &y_node, &variable_name, parameter_min_value, parameter_max_value, sample_count) {
+		Some(result) => result,
+		None => return List::new(),
 	};
 
-	let mut x_vars = HashSet::new();
-	collect_variables(&x_node, &mut x_vars);
+	transform_plot_positions(&mut anchor_positions, &bounds, width, height);
 
-	if x_vars.len() > 1 {
-		warn!("Currently at most one variable is supported");
-		return list;
+	let mut closed = false;
+
+	if auto_close && let (Some(first), Some(last)) = (anchor_positions.first(), anchor_positions.last()) {
+		let distance = first.distance(*last);
+
+		closed = distance < 1.;
+		if closed {
+			anchor_positions.pop();
+		}
 	}
 
-	let mut y_vars = HashSet::new();
-	collect_variables(&y_node, &mut y_vars);
+	let shape = Vector::from_subpath(subpath::Subpath::from_anchors(anchor_positions, closed));
 
-	if x_vars != y_vars {
-		warn!("X and Y expressions must use the same variables");
-		return list;
-	}
+	List::new_from_element(shape)
+}
 
-	let mut values: HashMap<String, f64> = HashMap::new();
-	let variable_name = x_vars.iter().next().unwrap().clone();
-	values.insert(variable_name.clone(), 0.);
+fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str, parameter_min_value: f64, parameter_max_value: f64, sample_count: u32) -> Option<(Vec<DVec2>, PlotBounds)> {
+	let mut values = HashMap::<String, f64>::new();
+	values.insert(variable_name.to_string(), 0.);
 
 	let interval = (parameter_max_value - parameter_min_value) / sample_count as f64;
 
 	let mut anchor_positions = Vec::<DVec2>::new();
+
 	let mut x_min = 0.;
 	let mut x_max = 0.;
 	let mut y_min = 0.;
@@ -100,7 +102,7 @@ fn function_plot(
 	for i in 0..=sample_count {
 		let t = parameter_min_value + i as f64 * interval;
 
-		if let Some(value) = values.get_mut(&variable_name) {
+		if let Some(value) = values.get_mut(variable_name) {
 			*value = t;
 		}
 
@@ -110,7 +112,7 @@ fn function_plot(
 			Ok(value) => value,
 			Err(e) => {
 				warn!("Expression evaluation error: {e:?}");
-				return list;
+				return None;
 			}
 		};
 
@@ -118,7 +120,7 @@ fn function_plot(
 			Ok(value) => value,
 			Err(e) => {
 				warn!("Expression evaluation error: {e:?}");
-				return list;
+				return None;
 			}
 		};
 
@@ -126,14 +128,15 @@ fn function_plot(
 			Some(v) => v,
 			None => {
 				warn!("Complex values are currently unsupported");
-				return list;
+				return None;
 			}
 		};
+
 		let y_value = match y_value.as_real() {
 			Some(v) => v,
 			None => {
 				warn!("Complex values are currently unsupported");
-				return list;
+				return None;
 			}
 		};
 
@@ -156,36 +159,65 @@ fn function_plot(
 		anchor_positions.push(DVec2::new(x_value, y_value));
 	}
 
-	let x_scale = width / (x_max - x_min);
-	let y_scale = height / (y_max - y_min);
+	Some((anchor_positions, PlotBounds { x_min, x_max, y_min, y_max }))
+}
+
+fn transform_plot_positions(anchor_positions: &mut [DVec2], bounds: &PlotBounds, width: f64, height: f64) {
+	let x_scale = width / (bounds.x_max - bounds.x_min).max(f64::EPSILON);
+	let y_scale = height / (bounds.y_max - bounds.y_min).max(f64::EPSILON);
 
 	let scale = x_scale.min(y_scale);
 
-	let curve_width = (x_max - x_min) * scale;
-	let curve_height = (y_max - y_min) * scale;
+	let curve_width = (bounds.x_max - bounds.x_min) * scale;
+	let curve_height = (bounds.y_max - bounds.y_min) * scale;
 
-	let x_offset = (width - curve_width) / 2.; // For centering the curve
+	let x_offset = (width - curve_width) / 2.;
 	let y_offset = (height - curve_height) / 2.;
 
-	for anchor_position in &mut anchor_positions {
-		anchor_position.x = (anchor_position.x - x_min) * scale + x_offset;
-		anchor_position.y = (y_max - anchor_position.y) * scale + y_offset;
+	for anchor_position in anchor_positions {
+		anchor_position.x = (anchor_position.x - bounds.x_min) * scale + x_offset;
+		anchor_position.y = (bounds.y_max - anchor_position.y) * scale + y_offset;
+	}
+}
+
+fn parse_plot_expressions(x_expression: &str, y_expression: &str) -> Option<(ast::Node, ast::Node, String)> {
+	let (x_node, x_vars) = parse_expression(x_expression)?;
+	let (y_node, y_vars) = parse_expression(y_expression)?;
+
+	if x_vars != y_vars {
+		warn!("X and Y expressions must use the same variables");
+		return None;
 	}
 
-	let mut closed = false;
-
-	if auto_close && let (Some(first), Some(last)) = (anchor_positions.first(), anchor_positions.last()) {
-		let distance = first.distance(*last);
-
-		closed = distance < 1.;
-		if closed {
-			anchor_positions.pop();
+	let variable_name = match x_vars.iter().next() {
+		Some(name) => name.clone(),
+		None => {
+			warn!("At least one variable is required");
+			return None;
 		}
+	};
+
+	Some((x_node, y_node, variable_name))
+}
+
+fn parse_expression(expression: &str) -> Option<(ast::Node, HashSet<String>)> {
+	let (node, _unit) = match ast::Node::try_parse_from_str(expression) {
+		Ok(expr) => expr,
+		Err(e) => {
+			warn!("Invalid expression: `{expression}`\n{e:?}");
+			return None;
+		}
+	};
+
+	let mut variables = HashSet::new();
+	collect_variables(&node, &mut variables);
+
+	if variables.len() > 1 {
+		warn!("Currently at most one variable is supported");
+		return None;
 	}
 
-	let shape = Vector::from_subpath(subpath::Subpath::from_anchors(anchor_positions, closed));
-
-	List::new_from_element(shape)
+	Some((node, variables))
 }
 
 fn collect_variables(node: &ast::Node, vars: &mut HashSet<String>) {
