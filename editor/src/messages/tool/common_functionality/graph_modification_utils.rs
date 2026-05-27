@@ -271,6 +271,44 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * center)
 }
 
+/// Determine the input connector where the gradient chain enters the layer.
+/// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
+pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
+	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
+		InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<Fill>::INDEX)
+	} else {
+		InputConnector::node(layer.to_node(), 1)
+	}
+}
+
+/// Try to find a "Gradient" node that is connected to a "Fill" node, or to a layer directly.
+pub fn get_upstream_gradient_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	network_interface
+		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::UpstreamFlow)
+		.skip(1)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::graphic_nodes::gradient::IDENTIFIER)))
+}
+
+/// Try to find a "Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
+pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	network_interface
+		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::UpstreamFlow)
+		.skip(1)
+		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
+		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)))
+}
+
+/// Get the node connected to Fill's fill input, if any.
+pub fn get_fill_input_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
+	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+	let NodeInput::Node { node_id, .. } = fill_node.inputs.get(graphene_std::vector::fill::FillInput::<Fill>::INDEX)? else {
+		return None;
+	};
+	Some(*node_id)
+}
+
 /// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;
@@ -284,11 +322,15 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))?;
-	let TaggedValue::Gradient(stops) = inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
+	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
+	let TaggedValue::Gradient(stops) = gradient_value_node.inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(stops.clone())
+}
+
+pub fn has_gradient_node_or_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+	get_gradient_stops(layer, network_interface).is_some() || get_upstream_gradient_node_id(layer, network_interface).is_some()
 }
 
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<GradientStops>`
@@ -298,7 +340,8 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
 	let metadata = network_interface.document_metadata();
-	let is_gradient_list = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER));
+	let is_gradient_list = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))
+		|| is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::graphic_nodes::gradient::IDENTIFIER));
 	if is_gradient_list {
 		return metadata
 			.upstream_footprints
