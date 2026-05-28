@@ -341,6 +341,27 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors(anchors, true)
 	}
 
+	pub fn new_teardrop(center: DVec2, radius: f64, spike_radius: f64) -> Self {
+		let radius = radius.abs();
+		let spike_radius = spike_radius.max(0.0);
+
+		let tip = center + DVec2::new(0.0, -spike_radius);
+		let left = center + DVec2::new(-radius, 0.0);
+		let right = center + DVec2::new(radius, 0.0);
+		let bottom = center + DVec2::new(0.0, radius);
+
+		let handle_offset = radius * HANDLE_OFFSET_FACTOR;
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(tip, None, None),
+			ManipulatorGroup::new(right, Some(right - handle_offset * DVec2::Y), Some(right + handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(bottom, Some(bottom + handle_offset * DVec2::X), Some(bottom - handle_offset * DVec2::X)),
+			ManipulatorGroup::new(left, Some(left + handle_offset * DVec2::Y), Some(left - handle_offset * DVec2::Y)),
+		];
+
+		Subpath::new(manipulator_groups, true)
+	}
+
 	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
