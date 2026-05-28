@@ -468,7 +468,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
-					used_resources.extend(document.resources.registry.used_hashes());
+					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
 				}
 				responses.add(ResourceStorageMessage::GarbageCollect {
 					used: Vec::from_iter(used_resources).into_boxed_slice(),
@@ -2078,7 +2078,7 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
-				resources: Some(document.resources.registry.used_hashes().collect::<Vec<_>>().into_boxed_slice()),
+				resources: Some(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()).collect::<Vec<_>>().into_boxed_slice()),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()

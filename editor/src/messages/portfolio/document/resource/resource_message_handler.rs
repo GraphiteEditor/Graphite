@@ -2,7 +2,7 @@ use crate::messages::portfolio::document::resource::utility_types::EmbeddedResou
 use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use graph_craft::application_io::resource::{Resource, ResourceHash, ResourceRegistry};
+use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceInfo, ResourceRegistry};
 
 #[derive(ExtractField)]
 pub struct ResourceMessageContext {}
@@ -29,6 +29,32 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessage
 impl ResourceMessageHandler {
 	pub fn is_empty(&self) -> bool {
 		self.registry.is_empty() && self.embedded.is_empty()
+	}
+
+	pub async fn embed_resources(&mut self, resources_load_handle: Box<dyn LoadResource>) {
+		let embedded = self
+			.registry
+			.resolved()
+			.filter(|info| info.sources.contains(&DataSource::Embedded))
+			.filter_map(|info| {
+				if let Some(hash) = info.hash {
+					let resource = resources_load_handle.load(*hash);
+					Some(async move { resource.await.map(|resource| (*hash, resource)) })
+				} else {
+					None
+				}
+			})
+			.collect::<Vec<_>>();
+
+		self.embedded = EmbeddedResource::from_iter(futures::future::join_all(embedded).await.into_iter().flatten());
+	}
+
+	pub fn garbage_collect(&mut self, used: &[ResourceId]) {
+		let used = HashSet::<ResourceId>::from_iter(used.iter().cloned());
+		let unused = self.registry.ids().filter(|id| !used.contains(id)).collect::<Vec<_>>();
+		unused.into_iter().for_each(|id| {
+			self.registry.delete(&id);
+		});
 	}
 }
 

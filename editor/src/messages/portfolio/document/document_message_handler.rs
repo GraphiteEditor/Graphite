@@ -934,15 +934,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				let used_resources = self.used_resources(false);
 
-				let embedded_resource_hashes = Vec::from_iter(used_resources.iter().filter_map(|id| match self.resources.registry.info(id) {
-					Some(ResourceInfo { hash: Some(hash), sources, .. }) if sources.contains(&DataSource::Embedded) => Some(hash),
-					_ => None,
-				}))
-				.into_boxed_slice();
-
 				let mut document = self.clone();
 
-				document.resources.registry.garbage_collect(used_resources.as_ref());
+				document.resources.garbage_collect(used_resources.as_ref());
 
 				let resources_load_handle = resource_storage.resources();
 
@@ -950,15 +944,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(FrontendMessage::Await {
 					future: FrontendMessageFuture::new(async move {
-						let loads = embedded_resource_hashes
-							.into_iter()
-							.map(|hash| {
-								let resource = resources_load_handle.load(hash);
-								async move { resource.await.map(|resource| (hash, resource)) }
-							})
-							.collect::<Vec<_>>();
+						document.resources.embed_resources(resources_load_handle).await;
 
-						document.resources.embedded = EmbeddedResource::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
 						let content = document.serialize_document();
 
 						FrontendMessage::TriggerSaveDocument {
@@ -3491,7 +3478,7 @@ impl DocumentMessageHandler {
 
 	pub fn garbage_collect_resources(&mut self) {
 		let used_resources = self.used_resources(true);
-		self.resources.registry.garbage_collect(&used_resources);
+		self.resources.garbage_collect(&used_resources);
 	}
 
 	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
