@@ -2,7 +2,7 @@ use crate::messages::portfolio::document::resource::utility_types::EmbeddedResou
 use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceInfo, ResourceRegistry};
+use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
 
 #[derive(ExtractField)]
 pub struct ResourceMessageContext {}

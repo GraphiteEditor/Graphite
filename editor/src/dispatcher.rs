@@ -229,7 +229,9 @@ impl Dispatcher {
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::ResourceStorage(message) => {
-					self.message_handlers.resource_storage_message_handler.process_message(message, &mut queue, ResourceStorageMessageContext {});
+					self.message_handlers
+						.resource_storage_message_handler
+						.process_message(message, &mut queue, ResourceStorageMessageContext {});
 				}
 				Message::Portfolio(message) => {
 					self.message_handlers.portfolio_message_handler.process_message(

@@ -18,7 +18,6 @@ use crate::messages::portfolio::document::node_graph::utility_types::FrontendGra
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
-use crate::messages::portfolio::document::resource::utility_types::EmbeddedResource;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
@@ -34,7 +33,7 @@ use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_std::application_io::resource::{DataSource, ResourceId, ResourceInfo};
+use graphene_std::application_io::resource::ResourceId;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
