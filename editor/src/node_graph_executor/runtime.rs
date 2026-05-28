@@ -243,10 +243,9 @@ impl NodeRuntime {
 
 					self.node_graph_errors.clear();
 					let result = self.update_network(network).await;
+					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.update_thumbnails = true;
-
-					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
 				}

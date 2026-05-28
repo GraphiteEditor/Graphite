@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Clone, Default, Debug, PartialEq)]
-pub struct EmbeddedResource {
+pub struct EmbeddedResources {
 	resources: HashMap<ResourceHash, Resource>,
 }
 
-impl EmbeddedResource {
+impl EmbeddedResources {
 	pub fn is_empty(&self) -> bool {
 		self.resources.is_empty()
 	}
@@ -21,7 +21,7 @@ impl EmbeddedResource {
 	}
 }
 
-impl FromIterator<(ResourceHash, Resource)> for EmbeddedResource {
+impl FromIterator<(ResourceHash, Resource)> for EmbeddedResources {
 	fn from_iter<T: IntoIterator<Item = (ResourceHash, Resource)>>(iter: T) -> Self {
 		Self {
 			resources: iter.into_iter().collect(),
@@ -29,7 +29,7 @@ impl FromIterator<(ResourceHash, Resource)> for EmbeddedResource {
 	}
 }
 
-impl IntoIterator for EmbeddedResource {
+impl IntoIterator for EmbeddedResources {
 	type Item = (ResourceHash, Resource);
 	type IntoIter = std::collections::hash_map::IntoIter<ResourceHash, Resource>;
 
@@ -38,7 +38,7 @@ impl IntoIterator for EmbeddedResource {
 	}
 }
 
-impl serde::Serialize for EmbeddedResource {
+impl serde::Serialize for EmbeddedResources {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		use serde::ser::SerializeMap;
 
@@ -56,14 +56,14 @@ impl serde::Serialize for EmbeddedResource {
 	}
 }
 
-impl<'de> serde::Deserialize<'de> for EmbeddedResource {
+impl<'de> serde::Deserialize<'de> for EmbeddedResources {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		struct EmbeddedResourcesVisitor {
 			human_readable: bool,
 		}
 
 		impl<'de> serde::de::Visitor<'de> for EmbeddedResourcesVisitor {
-			type Value = EmbeddedResource;
+			type Value = EmbeddedResources;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("a map of ResourceHash to resource bytes")
@@ -82,7 +82,7 @@ impl<'de> serde::Deserialize<'de> for EmbeddedResource {
 					};
 					resources.insert(hash, resource);
 				}
-				Ok(EmbeddedResource { resources })
+				Ok(EmbeddedResources { resources })
 			}
 		}
 

@@ -6,12 +6,11 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
+use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
-use graphene_std::application_io::resource::{DataSource, ResourceId};
-use graphene_std::platform_application_io::ResourceHash;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
@@ -1258,8 +1257,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	for (node_id, node, network_path) in &nodes {
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
-
-	// Convert ResourceHash
 }
 
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
@@ -1695,7 +1692,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		});
 
 		if let Some(image) = image {
-			let hash = document.resources.embedded.store(graphene_std::application_io::resource::Resource::new(image.to_png()));
+			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
 
 			let resource_id = ResourceId::new();
 			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);

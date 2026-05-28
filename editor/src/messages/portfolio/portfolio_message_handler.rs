@@ -26,10 +26,9 @@ use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceHash;
+use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::application_io::resource::DataSource;
 use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::BezierHandles;
@@ -460,7 +459,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
 					if let Some(resources) = &info.resources {
-						used_resources.extend(resources.iter().cloned());
+						used_resources.extend(resources.iter());
 					} else {
 						responses.add(PersistentStateMessage::ReadDocument { document_id: *id });
 						return;

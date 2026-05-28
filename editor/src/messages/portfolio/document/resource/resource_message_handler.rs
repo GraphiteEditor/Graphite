@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::resource::utility_types::EmbeddedResource;
+use crate::messages::portfolio::document::resource::utility_types::EmbeddedResources;
 use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -10,7 +10,7 @@ pub struct ResourceMessageContext {}
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, ExtractField)]
 pub struct ResourceMessageHandler {
 	pub registry: ResourceRegistry,
-	pub embedded: EmbeddedResource,
+	pub embedded: EmbeddedResources,
 }
 
 #[message_handler_data]
@@ -46,7 +46,7 @@ impl ResourceMessageHandler {
 			})
 			.collect::<Vec<_>>();
 
-		self.embedded = EmbeddedResource::from_iter(futures::future::join_all(embedded).await.into_iter().flatten());
+		self.embedded = EmbeddedResources::from_iter(futures::future::join_all(embedded).await.into_iter().flatten());
 	}
 
 	pub fn garbage_collect(&mut self, used: &[ResourceId]) {

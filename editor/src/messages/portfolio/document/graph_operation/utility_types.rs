@@ -4,11 +4,10 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceRegistry;
+use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
-use graphene_std::application_io::resource::{DataSource, ResourceId};
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::list::List;
 use graphene_std::raster::BlendMode;
@@ -304,7 +303,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.default_node_template();
 
 		let png_bytes: std::sync::Arc<[u8]> = image.to_png().into();
-		let hash = graphene_std::application_io::resource::ResourceHash::from(png_bytes.as_ref());
+		let hash = ResourceHash::from(png_bytes.as_ref());
 		let resource_id = ResourceId::new();
 		self.resources.push_source_back(&resource_id, DataSource::Embedded);
 		self.resources.resolve(&resource_id, hash);

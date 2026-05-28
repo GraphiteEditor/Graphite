@@ -29,11 +29,11 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_std::application_io::resource::ResourceId;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
 use graphene_std::raster::BlendMode;
@@ -925,34 +925,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				let used_resources = self.used_resources(false);
-
 				let mut document = self.clone();
-
-				document.resources.garbage_collect(used_resources.as_ref());
-
 				let resources_load_handle = resource_storage.resources();
-
-				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 
 				responses.add(FrontendMessage::Await {
 					future: FrontendMessageFuture::new(async move {
+						document.resources.garbage_collect(document.used_resources(false).as_ref());
 						document.resources.embed_resources(resources_load_handle).await;
 
-						let content = document.serialize_document();
+						let content = document.serialize_document().into_bytes().into();
 
 						FrontendMessage::TriggerSaveDocument {
 							document_id,
 							name,
 							path,
 							folder,
-							content: content.into_bytes().into(),
+							content,
 						}
 					}),
 				});
