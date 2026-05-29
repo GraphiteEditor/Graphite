@@ -1094,7 +1094,8 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 	// Overwrite each hash in place with its ID and pad the leftover bytes with spaces, which JSON deserialization discards.
 	let mut bytes = document_serialized_content.into_bytes();
 	for (hash, ranges) in &resources_by_hash {
-		let id_bytes = format!("{}", hash_to_id[hash]).as_bytes();
+		let id_str = format!("{}", hash_to_id[hash]);
+		let id_bytes = id_str.as_bytes();
 		for range in ranges {
 			bytes[range.start..range.start + id_bytes.len()].copy_from_slice(id_bytes);
 			bytes[range.start + id_bytes.len()..range.end].fill(b' ');
