@@ -15,9 +15,14 @@ pub struct ResourceMessageHandler {
 
 #[message_handler_data]
 impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessageHandler {
-	fn process_message(&mut self, message: ResourceMessage, _responses: &mut VecDeque<Message>, _context: ResourceMessageContext) {
+	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, _context: ResourceMessageContext) {
 		match message {
-			ResourceMessage::Noop => {}
+			ResourceMessage::StoreEmbedded { resource_id, data } => {
+				let hash = ResourceHash::from(data.as_ref());
+				self.registry.push_source_back(&resource_id, DataSource::Embedded);
+				self.registry.resolve(&resource_id, hash);
+				responses.add(ResourceStorageMessage::Store { data });
+			}
 		}
 	}
 

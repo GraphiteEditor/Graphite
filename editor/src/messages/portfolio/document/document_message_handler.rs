@@ -258,7 +258,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses,
 					NodeGraphMessageContext {
 						network_interface: &mut self.network_interface,
-						resources: &mut self.resources.registry,
 						selection_network_path: &self.selection_network_path,
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
@@ -276,7 +275,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GraphOperation(message) => {
 				let context = GraphOperationMessageContext {
 					network_interface: &mut self.network_interface,
-					resources: &mut self.resources.registry,
 					collapsed: &mut self.collapsed,
 					node_graph: &mut self.node_graph_handler,
 				};
@@ -2441,7 +2439,7 @@ impl DocumentMessageHandler {
 				let insert_index = parent.children(self.metadata()).position(|c| c == layer).unwrap_or(0);
 
 				let new_layer_id = NodeId::new();
-				let new_layer = ModifyInputsContext::new(&mut self.network_interface, &mut self.resources.registry, responses).create_layer(new_layer_id);
+				let new_layer = ModifyInputsContext::new(&mut self.network_interface, responses).create_layer(new_layer_id);
 				self.network_interface.move_layer_to_stack(new_layer, parent, insert_index, &[]);
 
 				// Copy the original layer's stored name so the new layer shares it

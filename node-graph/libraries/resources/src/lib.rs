@@ -219,9 +219,9 @@ impl ResourceRegistry {
 		self.hashes.keys().chain(self.sources.keys().filter(|id| !self.hashes.contains_key(id))).copied()
 	}
 
-	pub fn info<'a>(&'a self, id: &'a ResourceId) -> Option<ResourceInfo<'a>> {
+	pub fn info(&self, id: &ResourceId) -> Option<ResourceInfo<'_>> {
 		self.contains(id).then(|| ResourceInfo {
-			id,
+			id: *id,
 			hash: self.hashes.get(id),
 			sources: self.sources.get(id).map(|sources| sources.as_slice()).unwrap_or(&[]),
 		})
@@ -260,7 +260,7 @@ impl ResourceRegistry {
 
 #[derive(Clone, Debug)]
 pub struct ResourceInfo<'a> {
-	pub id: &'a ResourceId,
+	pub id: ResourceId,
 	pub hash: Option<&'a ResourceHash>,
 	pub sources: &'a [DataSource],
 }

@@ -8,7 +8,6 @@ use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::descriptor;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::list::List;
@@ -21,7 +20,6 @@ use graphene_std::{Artboard, Color};
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
-	pub resources: &'a mut ResourceRegistry,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
 }
@@ -34,57 +32,57 @@ pub struct GraphOperationMessageHandler {}
 #[message_handler_data]
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, context: GraphOperationMessageContext) {
-		let GraphOperationMessageContext { network_interface, resources, .. } = context;
+		let GraphOperationMessageContext { network_interface, .. } = context;
 
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.fill_set(fill);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_fill_set(fill);
 				}
 			}
 			GraphOperationMessage::GradientStopsSet { layer, stops } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_stops_set(stops);
 				}
 			}
 			GraphOperationMessage::GradientLineSet { layer, start, end } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_line_set(start, end);
 				}
 			}
 			GraphOperationMessage::GradientTypeSet { layer, gradient_type } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_type_set(gradient_type);
 				}
 			}
 			GraphOperationMessage::GradientSpreadMethodSet { layer, spread_method } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.gradient_spread_method_set(spread_method);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_set(opacity);
 				}
 			}
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
 			GraphOperationMessage::ClipModeToggle { layer } => {
 				let clip_mode = get_clip_mode(layer, network_interface);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.stroke_set(stroke);
 				}
 			}
@@ -95,7 +93,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				skip_rerender,
 			} => {
 				let parent_transform = network_interface.document_metadata().downstream_transform_to_viewport(layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_change_with_parent(transform, transform_in, parent_transform, skip_rerender);
 				}
 			}
@@ -105,7 +103,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				transform_in,
 				skip_rerender,
 			} => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_set(transform, transform_in, skip_rerender);
 				}
 			}
@@ -114,12 +112,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					log::error!("Cannot run Vector on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.vector_modify(modification_type);
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.brush_modify(strokes);
 				}
 			}
@@ -137,7 +135,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				background,
 				clip,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
 				let artboard_layer = modify_inputs.create_artboard(id, location, dimensions, background, clip);
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
@@ -188,7 +186,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_image_data(image, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -201,7 +199,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				blend_count,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 
 				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided
@@ -268,7 +266,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				network_interface.shift_node(&children_id, IVec2::new(-10, 3), &[]);
 			}
 			GraphOperationMessage::NewBooleanOperationLayer { id, operation, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_boolean_data(operation, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -280,7 +278,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 
 				if !nodes.is_empty() {
@@ -300,14 +298,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewColorFillLayer { node_id, color, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(node_id);
 				modify_inputs.insert_color_value(color, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_vector(subpaths, layer, true, true, true);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
@@ -321,14 +319,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
 				modify_inputs.insert_text(text, font, typesetting, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, resources, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
@@ -367,7 +365,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						},
 					);
 
-					let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 					modify_inputs.create_layer(node_id);
 
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -436,7 +434,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						return;
 					}
 				};
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, resources, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
 				// The placement transform positions the root group in document space.
 				// When centering (paste at cursor/viewport), shift so the SVG is centered at the transform origin.

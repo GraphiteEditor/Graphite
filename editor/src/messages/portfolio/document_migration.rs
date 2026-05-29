@@ -1090,39 +1090,16 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 		hash_to_id.entry(*hash).or_insert_with(ResourceId::new);
 	}
 
-	let mut replacements = resources_by_hash
-		.into_iter()
-		.flat_map(|(hash, ranges)| {
-			let id = hash_to_id[&hash];
-			ranges.into_iter().map(move |range| (range, id))
-		})
-		.collect::<Vec<_>>();
-	replacements.sort_by_key(|(range, _)| range.start);
-
-	// Each range is 66 bytes (64 hex + 2 quotes) and a ResourceId serializes to at most 20 ASCII digits,
-	// so the output is strictly shorter. We can rewrite the buffer in place by shifting each gap leftward with
-	// `copy_within` and overwriting the freed tail bytes with the ID.
+	// Each range is 66 bytes (64 hex + 2 quotes) and a ResourceId serializes to at most 20 ASCII digits, so the ID always fits.
+	// Overwrite each hash in place with its ID and pad the leftover bytes with spaces, which JSON deserialization discards.
 	let mut bytes = document_serialized_content.into_bytes();
-	let mut read = 0;
-	let mut write = 0;
-	let mut id_str = String::with_capacity(20);
-	for (range, id) in replacements {
-		bytes.copy_within(read..range.start, write);
-		write += range.start - read;
-
-		id_str.clear();
-		use std::fmt::Write;
-		let _ = write!(id_str, "{id}");
-		bytes[write..write + id_str.len()].copy_from_slice(id_str.as_bytes());
-		write += id_str.len();
-
-		read = range.end;
+	for (hash, ranges) in &resources_by_hash {
+		let id_bytes = format!("{}", hash_to_id[hash]).as_bytes();
+		for range in ranges {
+			bytes[range.start..range.start + id_bytes.len()].copy_from_slice(id_bytes);
+			bytes[range.start + id_bytes.len()..range.end].fill(b' ');
+		}
 	}
-	let total = bytes.len();
-	let tail = total - read;
-	bytes.copy_within(read..total, write);
-	write += tail;
-	bytes.truncate(write);
 
 	let out = String::from_utf8(bytes).expect("in-place hash-to-ID rewrite produced invalid UTF-8");
 

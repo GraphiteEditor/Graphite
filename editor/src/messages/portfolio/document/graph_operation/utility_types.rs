@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
@@ -29,7 +29,6 @@ pub enum TransformIn {
 // Should only be used by GraphOperationMessage, since it only affects the document network.
 pub struct ModifyInputsContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
-	pub resources: &'a mut ResourceRegistry,
 	pub responses: &'a mut VecDeque<Message>,
 	// Cannot be LayerNodeIdentifier::ROOT_PARENT
 	pub layer_node: Option<LayerNodeIdentifier>,
@@ -39,22 +38,21 @@ pub struct ModifyInputsContext<'a> {
 
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
-	pub fn new(network_interface: &'a mut NodeNetworkInterface, resources: &'a mut ResourceRegistry, responses: &'a mut VecDeque<Message>) -> Self {
+	pub fn new(network_interface: &'a mut NodeNetworkInterface, responses: &'a mut VecDeque<Message>) -> Self {
 		Self {
 			network_interface,
-			resources,
 			responses,
 			layer_node: None,
 			import: false,
 		}
 	}
 
-	pub fn new_with_layer(layer: LayerNodeIdentifier, network_interface: &'a mut NodeNetworkInterface, resources: &'a mut ResourceRegistry, responses: &'a mut VecDeque<Message>) -> Option<Self> {
+	pub fn new_with_layer(layer: LayerNodeIdentifier, network_interface: &'a mut NodeNetworkInterface, responses: &'a mut VecDeque<Message>) -> Option<Self> {
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("LayerNodeIdentifier::ROOT_PARENT should not be used in ModifyInputsContext::new_with_layer");
 			return None;
 		}
-		let mut document = Self::new(network_interface, resources, responses);
+		let mut document = Self::new(network_interface, responses);
 		document.layer_node = Some(layer);
 		Some(document)
 	}
@@ -302,13 +300,11 @@ impl<'a> ModifyInputsContext<'a> {
 			.expect("Transform node does not exist")
 			.default_node_template();
 
-		let png_bytes: std::sync::Arc<[u8]> = image.to_png().into();
-		let hash = ResourceHash::from(png_bytes.as_ref());
 		let resource_id = ResourceId::new();
-		self.resources.push_source_back(&resource_id, DataSource::Embedded);
-		self.resources.resolve(&resource_id, hash);
-
-		self.responses.add(ResourceStorageMessage::Store { data: png_bytes });
+		self.responses.add(ResourceMessage::StoreEmbedded {
+			resource_id,
+			data: image.to_png().into(),
+		});
 
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")
