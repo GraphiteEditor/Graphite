@@ -19,7 +19,6 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::embedded_resources::EmbeddedResources;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::{CachedData, PanelType};
@@ -30,7 +29,7 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceHash;
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
 use graph_craft::descriptor;
 use graph_craft::document::value::TaggedValue;
@@ -61,7 +60,7 @@ pub struct DocumentMessageContext<'a> {
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
-	pub resources: &'a ResourceMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -88,6 +87,9 @@ pub struct DocumentMessageHandler {
 	//
 	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
 	pub network_interface: NodeNetworkInterface,
+	/// Resources embedded in the document.
+	#[serde(default, skip_serializing_if = "ResourceMessageHandler::is_empty")]
+	pub resources: ResourceMessageHandler,
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
@@ -110,9 +112,6 @@ pub struct DocumentMessageHandler {
 	pub graph_view_overlay_open: bool,
 	/// The current opacity of the faded node graph background that covers up the artwork.
 	pub graph_fade_artwork_percentage: f64,
-	/// Resources embedded in the document. Only propagated if saving to an external file and never for autosaved documents.
-	#[serde(rename = "resources", default, skip_serializing_if = "EmbeddedResources::is_empty")]
-	pub embedded_resources: EmbeddedResources,
 
 	// =============================================
 	// Fields omitted from the saved document format
@@ -166,6 +165,7 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network_interface: default_document_network_interface(),
+			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -175,7 +175,6 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			graph_fade_artwork_percentage: 80.,
-			embedded_resources: EmbeddedResources::default(),
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
@@ -207,7 +206,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
-			resources,
+			resource_storage,
 		} = context;
 
 		match message {
@@ -281,6 +280,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
 				graph_operation_message_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::Resource(message) => {
+				let context = ResourceMessageContext {};
+				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				let axis = match axis {
@@ -920,36 +923,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
+				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
 				let path = if let DocumentMessage::SaveDocumentAs = message { None } else { self.path.clone() };
 				if path.is_some() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
 
-				let resource_hashes = Vec::from_iter(self.used_resources(false)).into_boxed_slice();
-				let resources = resources.resources();
 				let mut document = self.clone();
-				let name = format!("{}.{}", self.name.clone(), FILE_EXTENSION);
+				let resources_load_handle = resource_storage.resources();
 
 				responses.add(FrontendMessage::Await {
 					future: FrontendMessageFuture::new(async move {
-						let loads = resource_hashes
-							.into_iter()
-							.map(|hash| {
-								let resource = resources.load(hash);
-								async move { resource.await.map(|resource| (hash, resource)) }
-							})
-							.collect::<Vec<_>>();
+						document.resources.garbage_collect(document.used_resources(false).as_ref());
+						document.resources.embed_resources(resources_load_handle).await;
 
-						document.embedded_resources = EmbeddedResources::from_iter(futures::future::join_all(loads).await.into_iter().flatten());
-						let content = document.serialize_document();
+						let content = document.serialize_document().into_bytes().into();
 
 						FrontendMessage::TriggerSaveDocument {
 							document_id,
 							name,
 							path,
 							folder,
-							content: content.into_bytes().into(),
+							content,
 						}
 					}),
 				});
@@ -3472,14 +3468,19 @@ impl DocumentMessageHandler {
 		self.graph_view_overlay_open
 	}
 
-	pub fn used_resources(&self, include_history: bool) -> HashSet<ResourceHash> {
+	pub fn garbage_collect_resources(&mut self) {
+		let used_resources = self.used_resources(true);
+		self.resources.garbage_collect(&used_resources);
+	}
+
+	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
 		if include_history {
 			self.document_undo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
 			self.document_redo_history.iter().for_each(|interface| interface.collect_used_resources(&mut resources));
 		}
-		resources
+		resources.into_iter().collect::<Vec<_>>().into_boxed_slice()
 	}
 }
 

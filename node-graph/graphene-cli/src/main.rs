@@ -4,6 +4,7 @@ use clap::{Args, Parser, Subcommand};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::application_io::EditorPreferences;
+use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
@@ -244,7 +245,7 @@ fn compile_graph(document_string: String, editor_api: Arc<PlatformEditorApi>) ->
 	fix_nodes(&mut network);
 
 	let substitutions = preprocessor::generate_node_substitutions();
-	preprocessor::expand_network(&mut network, &substitutions);
+	preprocessor::expand_network(&mut network, &substitutions, &ResourceRegistry::default()).expect("Failed to expand network"); // TODO: actually load the resources from the document
 
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 

@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DVec2, IVec2};
+use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::descriptor;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
@@ -16,6 +17,7 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::ops::Range;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
@@ -1034,6 +1036,77 @@ pub fn document_migration_reset_node_definition(document_serialized_content: &st
 	false
 }
 
+pub fn document_migration_replace_resources_referenced_by_hash(document_serialized_content: String) -> (String, HashMap<ResourceHash, ResourceId>) {
+	fn collect_resources_referenced_by_hash(s: &str) -> HashMap<ResourceHash, Vec<Range<usize>>> {
+		let mut out: HashMap<ResourceHash, Vec<Range<usize>>> = HashMap::new();
+		let mut offset = 0;
+
+		while let Some(i) = s[offset..].find("\"Resource\":") {
+			let abs = offset + i + 11; // pos after `"Resource":`
+			offset = abs;
+
+			if let Some(j) = s[offset..].find('}') {
+				let chunk_start = offset;
+				let chunk = &s[chunk_start..chunk_start + j];
+
+				let quotes: Vec<_> = chunk.match_indices('"').collect();
+				if quotes.len() == 2 {
+					let q0 = chunk_start + quotes[0].0;
+					let q1 = chunk_start + quotes[1].0;
+					let hash = &s[q0 + 1..q1];
+
+					if hash.len() == 64
+						&& hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+						&& let Ok(hash) = hash.parse::<ResourceHash>()
+					{
+						out.entry(hash).or_default().push(q0..q1 + 1);
+					}
+				}
+
+				offset = chunk_start + j + 1;
+			} else {
+				break;
+			}
+		}
+
+		out
+	}
+
+	let resources_by_hash = collect_resources_referenced_by_hash(&document_serialized_content);
+
+	// Require each referenced hash to also appear as an embedded resource map key (more than ranges.len() occurrences).
+	if resources_by_hash.is_empty()
+		|| !resources_by_hash
+			.iter()
+			.all(|(hash, ranges)| document_serialized_content.matches(&hash.to_string()).count() > ranges.len())
+	{
+		return (document_serialized_content, HashMap::new());
+	}
+
+	// Assign a new ResourceId for each hash
+	let mut hash_to_id: HashMap<ResourceHash, ResourceId> = HashMap::new();
+	for hash in resources_by_hash.keys() {
+		#[allow(clippy::unwrap_or_default)]
+		hash_to_id.entry(*hash).or_insert_with(ResourceId::new);
+	}
+
+	// Each range is 66 bytes (64 hex + 2 quotes) and a ResourceId serializes to at most 20 ASCII digits, so the ID always fits.
+	// Overwrite each hash in place with its ID and pad the leftover bytes with spaces, which JSON deserialization discards.
+	let mut bytes = document_serialized_content.into_bytes();
+	for (hash, ranges) in &resources_by_hash {
+		let id_str = format!("{}", hash_to_id[hash]);
+		let id_bytes = id_str.as_bytes();
+		for range in ranges {
+			bytes[range.start..range.start + id_bytes.len()].copy_from_slice(id_bytes);
+			bytes[range.start + id_bytes.len()..range.end].fill(b' ');
+		}
+	}
+
+	let out = String::from_utf8(bytes).expect("in-place hash-to-ID rewrite produced invalid UTF-8");
+
+	(out, hash_to_id)
+}
+
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 
@@ -1597,14 +1670,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		});
 
 		if let Some(image) = image {
-			let hash = document.embedded_resources.store(graphene_std::application_io::resource::Resource::new(image.to_png()));
+			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
+
+			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);
+			document.resources.registry.resolve(&resource_id, hash);
 
 			let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
 			document
 				.network_interface
-				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Resource(hash), false), network_path);
+				.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
 		}
 	}
 

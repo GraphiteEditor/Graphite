@@ -27,11 +27,12 @@ pub use crate::messages::portfolio::document::navigation::{NavigationMessage, Na
 pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, NodeGraphMessageDiscriminant, NodeGraphMessageHandler};
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageContext, OverlaysMessageDiscriminant, OverlaysMessageHandler};
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
+pub use crate::messages::portfolio::document::resource::{ResourceMessage, ResourceMessageContext, ResourceMessageDiscriminant, ResourceMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageContext, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageDiscriminant, PersistentStateMessageHandler};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageContext, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
-pub use crate::messages::resource::{ResourceMessage, ResourceMessageContext, ResourceMessageDiscriminant, ResourceMessageHandler};
+pub use crate::messages::resource_storage::{ResourceStorageMessage, ResourceStorageMessageContext, ResourceStorageMessageDiscriminant, ResourceStorageMessageHandler};
 pub use crate::messages::tool::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};
 pub use crate::messages::tool::{ToolMessage, ToolMessageContext, ToolMessageDiscriminant, ToolMessageHandler};
 pub use crate::messages::viewport::{ViewportMessage, ViewportMessageDiscriminant, ViewportMessageHandler};

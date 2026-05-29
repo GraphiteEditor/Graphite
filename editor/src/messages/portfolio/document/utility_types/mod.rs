@@ -1,6 +1,5 @@
 pub mod clipboards;
 pub mod document_metadata;
-pub mod embedded_resources;
 pub mod error;
 pub mod misc;
 pub mod network_interface;

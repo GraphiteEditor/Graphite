@@ -22,7 +22,7 @@ pub trait ResourceStorage: LoadResource {
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ResourceId(pub u64);
+pub struct ResourceId(u64);
 
 impl ResourceId {
 	pub fn new() -> Self {
@@ -185,13 +185,6 @@ impl CacheHash for ResourceHash {
 	}
 }
 
-#[derive(Clone, Debug)]
-pub struct ResourceInfo {
-	pub id: ResourceId,
-	pub hash: Option<ResourceHash>,
-	pub inputs: DataSources,
-}
-
 pub type DataSources = Box<[DataSource]>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -226,11 +219,11 @@ impl ResourceRegistry {
 		self.hashes.keys().chain(self.sources.keys().filter(|id| !self.hashes.contains_key(id))).copied()
 	}
 
-	pub fn info(&self, id: &ResourceId) -> Option<ResourceInfo> {
+	pub fn info(&self, id: &ResourceId) -> Option<ResourceInfo<'_>> {
 		self.contains(id).then(|| ResourceInfo {
 			id: *id,
-			hash: self.hashes.get(id).copied(),
-			inputs: self.sources.get(id).cloned().unwrap_or_default().into_boxed_slice(),
+			hash: self.hashes.get(id),
+			sources: self.sources.get(id).map(|sources| sources.as_slice()).unwrap_or(&[]),
 		})
 	}
 
@@ -242,17 +235,10 @@ impl ResourceRegistry {
 		self.sources.entry(*id).or_default().insert(0, source);
 	}
 
-	pub fn delete(&mut self, id: &ResourceId) -> Option<ResourceInfo> {
+	pub fn delete(&mut self, id: &ResourceId) -> bool {
 		let hash = self.hashes.remove(id);
 		let sources = self.sources.remove(id);
-		if hash.is_none() && sources.is_none() {
-			return None;
-		}
-		Some(ResourceInfo {
-			id: *id,
-			hash,
-			inputs: sources.unwrap_or_default().into_boxed_slice(),
-		})
+		!(hash.is_none() && sources.is_none())
 	}
 
 	pub fn resolve(&mut self, id: &ResourceId, hash: ResourceHash) -> Option<ResourceHash> {
@@ -263,7 +249,18 @@ impl ResourceRegistry {
 		self.hashes.get(id).copied()
 	}
 
-	pub fn unresolved(&self) -> impl Iterator<Item = (ResourceId, &[DataSource])> + '_ {
-		self.sources.iter().filter(|(id, _)| !self.hashes.contains_key(id)).map(|(id, sources)| (*id, sources.as_slice()))
+	pub fn unresolved(&self) -> impl Iterator<Item = ResourceInfo<'_>> + '_ {
+		self.sources.keys().filter(|id| !self.hashes.contains_key(id)).filter_map(|id| self.info(id))
 	}
+
+	pub fn resolved(&self) -> impl Iterator<Item = ResourceInfo<'_>> + '_ {
+		self.hashes.keys().filter_map(|id| self.info(id))
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct ResourceInfo<'a> {
+	pub id: ResourceId,
+	pub hash: Option<&'a ResourceHash>,
+	pub sources: &'a [DataSource],
 }

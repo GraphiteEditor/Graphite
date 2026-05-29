@@ -1557,7 +1557,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// Only disconnect inputs to non selected nodes
 						if network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
-							.is_some_and(|connector| connector.node_id().map_or(true, |node_id| !all_selected_nodes.contains(&node_id)))
+							.is_some_and(|connector| connector.node_id().is_none_or(|node_id| !all_selected_nodes.contains(&node_id)))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}

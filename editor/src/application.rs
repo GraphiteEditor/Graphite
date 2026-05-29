@@ -30,7 +30,7 @@ impl Editor {
 		};
 
 		let mut application_io = PlatformApplicationIo::default();
-		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_message_handler.resources());
+		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_storage_message_handler.resources());
 		runtime.replace_application_io(application_io);
 
 		(editor, runtime)
@@ -47,7 +47,7 @@ impl Editor {
 	}
 
 	pub fn replace_application_io(&mut self, mut application_io: PlatformApplicationIo) {
-		application_io.inject_resource_proxy(self.dispatcher.message_handlers.resource_message_handler.resources());
+		application_io.inject_resource_proxy(self.dispatcher.message_handlers.resource_storage_message_handler.resources());
 		crate::node_graph_executor::replace_application_io(application_io)
 	}
 }

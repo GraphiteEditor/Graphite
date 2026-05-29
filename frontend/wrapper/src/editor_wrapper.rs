@@ -9,7 +9,7 @@ use crate::EDITOR;
 #[cfg(not(feature = "native"))]
 use crate::helpers::poll_node_graph_evaluation;
 use crate::helpers::{auto_save_all_documents, calculate_hash, render_image_data_to_canvases, request_animation_frame, set_timeout, translate_key, wrapper};
-use crate::{EDITOR_HAS_CRASHED, EDITOR_WRAPPER, Error, FRONTEND_READY, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
+use crate::{EDITOR_HAS_CRASHED, Error, FRONTEND_READY, MESSAGE_BUFFER};
 #[cfg(not(feature = "native"))]
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::application::{Editor, Environment, Host, Platform};
@@ -53,7 +53,10 @@ impl EditorWrapper {
 		self.send_frontend_message_to_js(message);
 	}
 
+	#[cfg(any(feature = "native", target_family = "wasm"))]
 	fn initialize_wrapper(frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use crate::{EDITOR_WRAPPER, PANIC_DIALOG_MESSAGE_CALLBACK};
+
 		let panic_callback = frontend_message_handler_callback.clone();
 		let editor_wrapper = EditorWrapper { frontend_message_handler_callback };
 		if EDITOR_WRAPPER.with(|wrapper| wrapper.lock().ok().map(|mut guard| *guard = Some(editor_wrapper.clone()))).is_none() {

@@ -15,11 +15,11 @@ impl LoadResource for ResourcesHandle {
 }
 
 #[derive(ExtractField)]
-pub struct ResourceMessageHandler {
+pub struct ResourceStorageMessageHandler {
 	storage: Option<Arc<RwLock<Box<dyn ResourceStorage>>>>,
 }
 
-impl ResourceMessageHandler {
+impl ResourceStorageMessageHandler {
 	pub fn new(resource_storage: Box<dyn ResourceStorage>) -> Self {
 		Self {
 			storage: Some(Arc::new(RwLock::new(resource_storage))),
@@ -33,13 +33,13 @@ impl ResourceMessageHandler {
 	}
 }
 
-impl std::fmt::Debug for ResourceMessageHandler {
+impl std::fmt::Debug for ResourceStorageMessageHandler {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("ResourceMessageHandler").finish_non_exhaustive()
+		f.debug_struct("ResourceStorageMessageHandler").finish_non_exhaustive()
 	}
 }
 
-impl Default for ResourceMessageHandler {
+impl Default for ResourceStorageMessageHandler {
 	#[cfg(not(test))]
 	fn default() -> Self {
 		Self { storage: None }
@@ -54,11 +54,11 @@ impl Default for ResourceMessageHandler {
 }
 
 #[derive(ExtractField)]
-pub struct ResourceMessageContext {}
+pub struct ResourceStorageMessageContext {}
 
 #[message_handler_data]
-impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessageHandler {
-	fn process_message(&mut self, message: ResourceMessage, _responses: &mut VecDeque<Message>, _context: ResourceMessageContext) {
+impl MessageHandler<ResourceStorageMessage, ResourceStorageMessageContext> for ResourceStorageMessageHandler {
+	fn process_message(&mut self, message: ResourceStorageMessage, _responses: &mut VecDeque<Message>, _context: ResourceStorageMessageContext) {
 		let Some(storage) = &self.storage else {
 			log::error!("Received resource message but storage is not initialized");
 			return;
@@ -66,14 +66,14 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessage
 		let mut storage = storage.write().unwrap();
 
 		match message {
-			ResourceMessage::Store { data } => {
+			ResourceStorageMessage::Store { data } => {
 				let _hash = storage.store(data.as_ref());
 			}
-			ResourceMessage::GarbageCollect { used } => {
+			ResourceStorageMessage::GarbageCollect { used } => {
 				storage.garbage_collect(&used);
 			}
 		}
 	}
 
-	advertise_actions!(ResourceMessageDiscriminant;);
+	advertise_actions!(ResourceStorageMessageDiscriminant;);
 }

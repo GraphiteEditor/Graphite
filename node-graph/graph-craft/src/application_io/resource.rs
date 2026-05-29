@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-pub use graphene_application_io::resource::{LoadResource, Resource, ResourceFuture, ResourceHash, ResourceStorage};
+pub use graphene_application_io::resource::*;
 #[cfg(not(target_family = "wasm"))]
 pub mod mmap;
 #[cfg(not(target_family = "wasm"))]

@@ -26,7 +26,7 @@ use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceHash;
+use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
@@ -48,7 +48,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
-	pub resources: &'a ResourceMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -87,7 +87,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
-			resources,
+			resource_storage,
 		} = context;
 
 		match message {
@@ -104,7 +104,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						resources,
+						resource_storage,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -174,7 +174,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						resources,
+						resource_storage,
 						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
 						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
 						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
@@ -465,10 +465,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						return;
 					}
 				}
-				for document in self.documents.values() {
-					used_resources.extend(document.used_resources(true));
+				for document in self.documents.values_mut() {
+					document.garbage_collect_resources();
+					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
 				}
-				responses.add(ResourceMessage::GarbageCollect {
+				responses.add(ResourceStorageMessage::GarbageCollect {
 					used: Vec::from_iter(used_resources).into_boxed_slice(),
 				});
 			}
@@ -873,6 +874,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let reset_node_definitions_on_open = reset_node_definitions_on_open || document_migration_reset_node_definition(&document_serialized_content);
 				// Upgrade the document being opened with string replacements on the original JSON
 				let document_serialized_content = document_migration_string_preprocessing(document_serialized_content);
+				// Upgrade resources from being referend by hash to beeing referened by ID
+				let (document_serialized_content, resource_hash_to_id_migration_map) = document_migration_replace_resources_referenced_by_hash(document_serialized_content);
 
 				// Deserialize the document
 				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content);
@@ -922,13 +925,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
 				// Load the document's embedded resources into the resource storage
-				std::mem::take(&mut document.embedded_resources).into_iter().for_each(|(hash, resource)| {
+				std::mem::take(&mut document.resources.embedded).into_iter().for_each(|(hash, resource)| {
 					let data: Arc<[u8]> = Arc::from(resource.as_ref());
 					if ResourceHash::from(data.as_ref()) != hash {
 						log::error!("Resource hash mismatch for resource with hash {hash}");
 						return;
 					}
-					responses.add(ResourceMessage::Store { data });
+					responses.add(ResourceStorageMessage::Store { data });
+
+					// TODO: Eventually remove this document upgrade code
+					// Register any resources that were previously referenced by hash
+					if let Some(id) = resource_hash_to_id_migration_map.get(&hash)
+						&& !document.resources.registry.contains(id)
+					{
+						document.resources.registry.resolve(id, hash);
+						document.resources.registry.push_source_back(id, DataSource::Embedded);
+					}
 				});
 
 				// Ensure each node has the metadata for its inputs
@@ -2065,7 +2077,7 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
-				resources: Some(document.used_resources(false).into_iter().collect()),
+				resources: Some(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()).collect::<Vec<_>>().into_boxed_slice()),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()

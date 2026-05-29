@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete, descriptor};
@@ -299,13 +300,15 @@ impl<'a> ModifyInputsContext<'a> {
 			.expect("Transform node does not exist")
 			.default_node_template();
 
-		let png_bytes: std::sync::Arc<[u8]> = image.to_png().into();
-		let hash = graphene_std::application_io::resource::ResourceHash::from(png_bytes.as_ref());
-		self.responses.add(ResourceMessage::Store { data: png_bytes });
+		let resource_id = ResourceId::new();
+		self.responses.add(ResourceMessage::StoreEmbedded {
+			resource_id,
+			data: image.to_png().into(),
+		});
 
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::Resource(hash), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
 
 		let image_node_id = NodeId::new();
 		self.network_interface.insert_node(image_node_id, image_node, &[]);
