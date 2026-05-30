@@ -482,7 +482,7 @@
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
-					classes={{ open: openChildValue === entry.value, active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
+					classes={{ open: openChildValue === entry.value, active: entry.value === highlighted?.value, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					tooltipLabel={entry.tooltipLabel}
 					tooltipDescription={entry.tooltipDescription}
