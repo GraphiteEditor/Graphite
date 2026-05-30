@@ -97,7 +97,7 @@
 			await tick();
 
 			const flattened = filteredEntries.flat();
-			const highlightedFound = highlighted?.label && flattened.map((entry) => entry.label).includes(highlighted.label);
+			const highlightedFound = highlighted?.value && flattened.map((entry) => entry.value).includes(highlighted.value);
 			const newHighlighted = highlightedFound ? highlighted : flattened[0];
 			setHighlighted(newHighlighted);
 		}
@@ -335,7 +335,7 @@
 		if ((menuOpen || interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
 			let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
 			if (highlighted) {
-				const index = highlighted ? flatEntries.map((entry) => entry.label).indexOf(highlighted.label) : 0;
+				const index = highlighted ? flatEntries.map((entry) => entry.value).indexOf(highlighted.value) : 0;
 				newIndex = index + (e.key === "ArrowUp" ? -1 : 1);
 
 				// Interactive dropdowns should lock at the end whereas other dropdowns should loop
