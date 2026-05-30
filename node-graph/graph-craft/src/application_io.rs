@@ -60,7 +60,7 @@ impl ApplicationIo for PlatformApplicationIo {
 		self.gpu_executor.as_ref()
 	}
 
-	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture {
+	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {
 		self.resources.as_ref().expect("Resource storage not initialized").load(hash)
 	}
 }

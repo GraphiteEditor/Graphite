@@ -47,7 +47,7 @@ pub trait ApplicationIo {
 	fn gpu_executor(&self) -> Option<&Self::Executor> {
 		None
 	}
-	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture;
+	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_>;
 }
 
 impl<T: ApplicationIo> ApplicationIo for &T {
@@ -57,7 +57,7 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 		(**self).gpu_executor()
 	}
 
-	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture {
+	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {
 		(**self).load_resource(hash)
 	}
 }

@@ -50,7 +50,7 @@ impl OpfsResourceStorage {
 }
 
 impl LoadResource for OpfsResourceStorage {
-	fn load(&self, hash: ResourceHash) -> ResourceFuture {
+	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {
 		let inner = self.inner.clone();
 
 		{
@@ -74,7 +74,7 @@ impl LoadResource for OpfsResourceStorage {
 }
 
 impl ResourceStorage for OpfsResourceStorage {
-	fn store(&mut self, data: &[u8]) -> ResourceHash {
+	fn store(&self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		let mut guard = self.inner.lock().unwrap();
 
@@ -95,12 +95,12 @@ impl ResourceStorage for OpfsResourceStorage {
 		hash
 	}
 
-	fn contains(&mut self, hash: &ResourceHash) -> bool {
+	fn contains(&self, hash: &ResourceHash) -> bool {
 		let guard = self.inner.lock().unwrap();
 		guard.cache.contains_key(hash) || guard.on_disk.contains(hash)
 	}
 
-	fn garbage_collect(&mut self, used: &[ResourceHash]) {
+	fn garbage_collect(&self, used: &[ResourceHash]) {
 		let used: HashSet<ResourceHash> = used.iter().copied().collect();
 		let mut guard = self.inner.lock().unwrap();
 

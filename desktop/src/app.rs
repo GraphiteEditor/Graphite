@@ -99,7 +99,7 @@ impl App {
 		let wake = std::sync::Arc::new(move || {
 			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
 		});
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage), wgpu_context.clone(), wake);
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), std::sync::Arc::new(resource_storage), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,

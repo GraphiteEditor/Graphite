@@ -216,15 +216,15 @@ impl CacheHash for ResourceHash {
 }
 
 pub trait LoadResource: Send + Sync {
-	fn load(&self, hash: ResourceHash) -> ResourceFuture;
+	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_>;
 }
 
-pub type ResourceFuture = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'static>>;
+pub type ResourceFuture<'a> = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'a>>;
 
 pub trait ResourceStorage: LoadResource {
-	fn store(&mut self, data: &[u8]) -> ResourceHash;
-	fn contains(&mut self, hash: &ResourceHash) -> bool;
-	fn garbage_collect(&mut self, used: &[ResourceHash]);
+	fn store(&self, data: &[u8]) -> ResourceHash;
+	fn contains(&self, hash: &ResourceHash) -> bool;
+	fn garbage_collect(&self, used: &[ResourceHash]);
 }
 
 #[repr(transparent)]

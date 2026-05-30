@@ -1,29 +1,26 @@
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::{LoadResource, ResourceFuture, ResourceHash, ResourceStorage};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct ResourcesHandle {
-	inner: Arc<RwLock<Box<dyn ResourceStorage>>>,
+	inner: Arc<dyn ResourceStorage>,
 }
 
 impl LoadResource for ResourcesHandle {
-	fn load(&self, hash: ResourceHash) -> ResourceFuture {
-		let guard = self.inner.read().unwrap();
-		guard.load(hash)
+	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {
+		self.inner.load(hash)
 	}
 }
 
 #[derive(ExtractField)]
 pub struct ResourceStorageMessageHandler {
-	storage: Option<Arc<RwLock<Box<dyn ResourceStorage>>>>,
+	storage: Option<Arc<dyn ResourceStorage>>,
 }
 
 impl ResourceStorageMessageHandler {
-	pub fn new(resource_storage: Box<dyn ResourceStorage>) -> Self {
-		Self {
-			storage: Some(Arc::new(RwLock::new(resource_storage))),
-		}
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+		Self { storage: Some(resource_storage) }
 	}
 
 	pub fn resources(&self) -> Box<dyn LoadResource> {
@@ -48,7 +45,7 @@ impl Default for ResourceStorageMessageHandler {
 	#[cfg(test)]
 	fn default() -> Self {
 		Self {
-			storage: Some(Arc::new(RwLock::new(Box::new(graph_craft::application_io::resource::HashMapResourceStorage::new())))),
+			storage: Some(Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new())),
 		}
 	}
 }
@@ -63,7 +60,6 @@ impl MessageHandler<ResourceStorageMessage, ResourceStorageMessageContext> for R
 			log::error!("Received resource message but storage is not initialized");
 			return;
 		};
-		let mut storage = storage.write().unwrap();
 
 		match message {
 			ResourceStorageMessage::Store { data } => {

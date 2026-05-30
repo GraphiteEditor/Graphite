@@ -7,6 +7,7 @@ use crate::messages::preferences::preferences_message_handler::PreferencesMessag
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use graph_craft::application_io::resource::ResourceStorage;
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
@@ -39,7 +40,7 @@ pub struct DispatcherMessageHandlers {
 }
 
 impl DispatcherMessageHandlers {
-	pub fn with_resource_storage(resource_storage: Box<dyn ResourceStorage>) -> Self {
+	pub fn with_resource_storage(resource_storage: Arc<dyn ResourceStorage>) -> Self {
 		Self {
 			resource_storage_message_handler: ResourceStorageMessageHandler::new(resource_storage),
 			..Self::default()
@@ -88,7 +89,7 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Box<dyn ResourceStorage>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
 		s
