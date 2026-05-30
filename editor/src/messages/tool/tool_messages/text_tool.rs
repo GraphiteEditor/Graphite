@@ -253,7 +253,7 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &D
 }
 
 impl ToolRefreshOptions for TextTool {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData) {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>) {
 		// Defer to the SelectionChanged handler which has document context, required for the font/style
 		// dropdowns to bind to the selected text layer's node graph inputs
 		responses.add(TextToolMessage::SelectionChanged);
@@ -303,7 +303,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some((_, font, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface)
+					&& let Some((_, font, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface, context.fonts)
 				{
 					self.options.align = typesetting.align;
 					self.options.font_size = typesetting.font_size;
@@ -326,7 +326,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				// Text tool has no fill checkbox; keep enabled so new text never starts with `None`
 				self.options.fill.enabled = Some(true);
 
-				self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
+				self.send_layout(responses, LayoutTarget::ToolOptions, &context.fonts.font_catalog, context.document);
 				return;
 			}
 			_ => {
@@ -385,7 +385,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::ToolOptions, &context.cached_data.font_catalog, context.document);
+		self.send_layout(responses, LayoutTarget::ToolOptions, &context.fonts.font_catalog, context.document);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -651,14 +651,8 @@ impl Fsm for TextToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext {
-			document,
-			input,
-			cached_data,
-			viewport,
-			..
-		} = transition_data;
-		let font_cache = &cached_data.font_cache;
+		let ToolActionMessageContext { document, input, fonts, viewport, .. } = transition_data;
+		let fonts: &FontsMessageHandler = &**fonts;
 		let fill_color = COLOR_OVERLAY_BLUE_05;
 
 		let ToolMessage::Text(event) = event else { return self };

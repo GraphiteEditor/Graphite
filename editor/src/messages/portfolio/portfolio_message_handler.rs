@@ -99,7 +99,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						cached_data: &self.cached_data,
+						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
@@ -169,7 +169,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						cached_data: &self.cached_data,
+						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,

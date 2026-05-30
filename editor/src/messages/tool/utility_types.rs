@@ -25,7 +25,7 @@ pub struct ToolActionMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub cached_data: &'a CachedData,
+	pub fonts: &'a FontsMessageHandler,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -38,11 +38,11 @@ impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mu
 type Tool = dyn ToolCommon + Send + Sync;
 
 pub trait ToolRefreshOptions {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData);
+	fn refresh_options(&self, responses: &mut VecDeque<Message>);
 }
 
 impl<T: LayoutHolder> ToolRefreshOptions for T {
-	fn refresh_options(&self, responses: &mut VecDeque<Message>, _cached_data: &CachedData) {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>) {
 		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 }

@@ -52,7 +52,7 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub cached_data: &'a CachedData,
+	pub fonts: &'a FontsMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -198,7 +198,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			cached_data,
+			fonts,
 			executor,
 			viewport,
 			current_tool,
@@ -237,7 +237,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
 					executor,
-					cached_data,
+					fonts,
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);

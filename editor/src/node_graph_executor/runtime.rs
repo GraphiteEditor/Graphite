@@ -17,7 +17,6 @@ use graphene_std::ops::Convert;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -71,7 +70,6 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	FontCacheUpdate(FontCache),
 	EditorPreferencesUpdate(EditorPreferences),
 }
 
@@ -134,7 +132,6 @@ impl NodeRuntime {
 			update_thumbnails: true,
 
 			editor_api: PlatformEditorApi {
-				font_cache: FontCache::default(),
 				editor_preferences: Box::new(EditorPreferences::default()),
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
@@ -162,7 +159,6 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) -> Option<ImageTexture> {
-		let mut font = None;
 		let mut preferences = None;
 		let mut graph = None;
 		let mut eyedropper = None;
@@ -186,7 +182,6 @@ impl NodeRuntime {
 						break;
 					}
 				}
-				GraphRuntimeRequest::FontCacheUpdate(_) => font = Some(request),
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}
 		}
@@ -199,27 +194,13 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [font, preferences, graph, eyedropper, execution].into_iter().flatten();
+		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
-				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
-					self.editor_api = PlatformEditorApi {
-						font_cache,
-						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
-						editor_preferences: Box::new(self.editor_preferences.clone()),
-					}
-					.into();
-					if let Some(graph) = self.old_graph.clone() {
-						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
-					}
-				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = PlatformEditorApi {
-						font_cache: self.editor_api.font_cache.clone(),
 						application_io: self.editor_api.application_io.clone(),
 						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
@@ -587,7 +568,6 @@ pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
 		self.editor_api = PlatformEditorApi {
-			font_cache: self.editor_api.font_cache.clone(),
 			application_io: Some(application_io.into()),
 			node_graph_message_sender: Box::new(self.sender.clone()),
 			editor_preferences: Box::new(self.editor_preferences.clone()),

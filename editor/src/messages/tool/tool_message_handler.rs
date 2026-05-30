@@ -19,7 +19,7 @@ pub struct ToolMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub cached_data: &'a CachedData,
+	pub fonts: &'a FontsMessageHandler,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
@@ -40,7 +40,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			document_id,
 			document,
 			input,
-			cached_data,
+			fonts,
 			node_graph,
 			preferences,
 			viewport,
@@ -127,7 +127,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							node_graph,
 							preferences,
 							viewport,
-							cached_data,
+							fonts,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -218,7 +218,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
-				tool_data.tools.get(active_tool).unwrap().refresh_options(responses, cached_data);
+				tool_data.tools.get(active_tool).unwrap().refresh_options(responses);
 
 				// Notify the frontend about the initial active tool
 				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
@@ -235,7 +235,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					node_graph,
 					preferences,
 					viewport,
-					cached_data,
+					fonts,
 				};
 
 				// Set initial hints and cursor
@@ -259,7 +259,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 
-				tool_data.tools.get(&tool_data.active_tool_type).unwrap().refresh_options(responses, cached_data);
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().refresh_options(responses);
 			}
 			ToolMessage::RefreshToolShelf => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -347,7 +347,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							node_graph,
 							preferences,
 							viewport,
-							cached_data,
+							fonts,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if graph_view_overlay_open {

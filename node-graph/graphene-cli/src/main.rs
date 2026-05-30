@@ -11,7 +11,6 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
-use graphene_std::text::FontCache;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -134,7 +133,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		max_render_region_size: EditorPreferences::default().max_render_region_size,
 	};
 	let editor_api = Arc::new(PlatformEditorApi {
-		font_cache: FontCache::default(),
 		application_io: Some(application_io_for_api),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),

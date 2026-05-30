@@ -720,13 +720,7 @@ impl Fsm for SelectToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext {
-			document,
-			input,
-			viewport,
-			cached_data,
-			..
-		} = tool_action_data;
+		let ToolActionMessageContext { document, input, viewport, fonts, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
@@ -751,7 +745,7 @@ impl Fsm for SelectToolFsmState {
 
 						if document.metadata().is_text_layer(layer) {
 							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &cached_data.font_cache);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, fonts);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}

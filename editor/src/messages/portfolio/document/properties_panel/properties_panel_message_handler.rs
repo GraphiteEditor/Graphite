@@ -13,7 +13,7 @@ pub struct PropertiesPanelMessageContext<'a> {
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
 	pub executor: &'a mut NodeGraphExecutor,
-	pub cached_data: &'a CachedData,
+	pub fonts: &'a FontsMessageHandler,
 	pub properties_panel_open: bool,
 }
 
@@ -28,7 +28,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			selection_network_path,
 			document_name,
 			executor,
-			cached_data,
+			fonts,
 			properties_panel_open,
 		} = context;
 
@@ -46,7 +46,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 				}
 
 				let mut node_properties_context = NodePropertiesContext {
-					cached_data,
+					fonts,
 					responses,
 					network_interface,
 					selection_network_path,

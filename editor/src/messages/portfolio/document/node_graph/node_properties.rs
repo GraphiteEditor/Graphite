@@ -823,11 +823,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 
 pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetInstance>, Option<Vec<WidgetInstance>>) {
 	let ParameterWidgetsInfo {
-		cached_data,
-		document_node,
-		node_id,
-		index,
-		..
+		document_node, node_id, index, fonts, ..
 	} = parameter_widgets_info;
 
 	let mut first_widgets = start_widgets(parameter_widgets_info);
@@ -839,11 +835,13 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		return (vec![], None);
 	};
 
-	if let Some(TaggedValue::Font(font)) = &input.as_non_exposed_value() {
+	if let Some(TaggedValue::Resource(resource_id)) = input.as_non_exposed_value() {
+		// The font's family/style live in the resource's `DataSource::Font`, surfaced via the editor's font index.
+		let font = fonts.id_font(resource_id).cloned().unwrap_or_default();
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
-				cached_data
+				fonts
 					.font_catalog
 					.0
 					.iter()
@@ -898,7 +896,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					})
 					.collect::<Vec<_>>(),
 			])
-			.selected_index(cached_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.selected_index(fonts.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
 			.virtual_scrolling(true)
 			.widget_instance(),
 		]);
@@ -908,7 +906,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		second_row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new({
-				cached_data
+				fonts
 					.font_catalog
 					.0
 					.iter()
@@ -946,7 +944,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.unwrap_or_default()
 			})
 			.selected_index(
-				cached_data
+				fonts
 					.font_catalog
 					.0
 					.iter()
@@ -2813,8 +2811,8 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
-	cached_data: &'a CachedData,
 	network_interface: &'a NodeNetworkInterface,
+	fonts: &'a FontsMessageHandler,
 	selection_network_path: &'a [NodeId],
 	document_node: Option<&'a DocumentNode>,
 	node_id: NodeId,
@@ -2836,7 +2834,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
-			cached_data: context.cached_data,
+			fonts: context.fonts,
 			network_interface: context.network_interface,
 			selection_network_path: context.selection_network_path,
 			document_node,

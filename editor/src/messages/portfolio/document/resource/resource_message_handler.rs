@@ -3,24 +3,91 @@ use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
+use graphene_std::text::Font;
 
 #[derive(ExtractField)]
-pub struct ResourceMessageContext {}
+pub struct ResourceMessageContext<'a> {
+	pub document_id: DocumentId,
+	pub fonts: &'a FontsMessageHandler,
+}
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, ExtractField)]
 pub struct ResourceMessageHandler {
 	pub registry: ResourceRegistry,
 	pub embedded: EmbeddedResources,
+	pending_resolves: HashMap<ResourceId, usize>,
 }
 
 #[message_handler_data]
 impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessageHandler {
-	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, _context: ResourceMessageContext) {
+	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, context: ResourceMessageContext) {
+		let ResourceMessageContext { document_id, fonts } = context;
+
 		match message {
 			ResourceMessage::StoreEmbedded { resource_id, data } => {
 				let hash = ResourceHash::from(data.as_ref());
 				self.registry.push_source_back(&resource_id, DataSource::Embedded);
 				self.registry.resolve(&resource_id, hash);
+				responses.add(ResourceStorageMessage::Store { data });
+			}
+			ResourceMessage::Resolve => {
+				for info in self.registry.unresolved() {
+					self.pending_resolves.entry(info.id).or_default();
+					responses.add(ResourceMessage::ResolveStep { resource_id: info.id });
+				}
+			}
+			ResourceMessage::ResolveStep { resource_id } => {
+				if let Some(count) = self.pending_resolves.get_mut(&resource_id) {
+					if let Some(info) = self.registry.info(&resource_id) {
+						if let Some(source) = info.sources.get(*count) {
+							match source {
+								DataSource::Embedded => {
+									log::error!("Resource {resource_id} is embedded but failed to resolve");
+								}
+								DataSource::Url(url) => {
+									responses.add(FrontendMessage::TriggerResolveResource {
+										document_id,
+										resource_id,
+										url: url.to_string(),
+									});
+								}
+								DataSource::Font { family, style } => {
+									if let Some(font_hash) = fonts.cached_hash(family, style) {
+										self.registry.resolve(&resource_id, font_hash.clone());
+									} else if let Some(url) = fonts.cached_url(family, style) {
+										responses.add(FrontendMessage::TriggerResolveResource { document_id, resource_id, url });
+									} else {
+										responses.add(FrontendMessage::TriggerFontCatalogLoad);
+										responses.add(ResourceMessage::ResolveStep { resource_id });
+										return;
+									}
+								}
+							}
+							*count += 1;
+						} else {
+							log::error!("Failed to resolve resource {resource_id}, no more sources to try");
+						}
+					} else {
+						log::error!("Failed to resolve resource {resource_id}, no info found");
+					}
+				}
+			}
+			ResourceMessage::Resolved { resource_id, data } => {
+				let hash = ResourceHash::from(data.as_ref());
+				self.registry.resolve(&resource_id, hash);
+				if let Some(count) = self.pending_resolves.remove(&resource_id) {
+					if let Some(info) = self.registry.info(&resource_id) {
+						if let Some(source) = info.sources.get(count) {
+							if let DataSource::Font { family, style } = source {
+								responses.add(FontsMessage::FontResourceResolved {
+									family: family.clone(),
+									style: style.clone(),
+									hash,
+								});
+							}
+						}
+					}
+				}
 				responses.add(ResourceStorageMessage::Store { data });
 			}
 		}
