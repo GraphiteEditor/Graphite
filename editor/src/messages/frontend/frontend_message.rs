@@ -1,7 +1,7 @@
 use super::IconName;
 use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FrontendMessageFuture};
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -27,13 +27,6 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 #[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
 #[derivative(Debug, PartialEq)]
 pub enum FrontendMessage {
-	Await {
-		#[serde(skip, default)]
-		#[derivative(Debug = "ignore", PartialEq = "ignore")]
-		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
-		future: FrontendMessageFuture,
-	},
-
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
 		title: String,

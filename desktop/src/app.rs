@@ -93,7 +93,13 @@ impl App {
 		});
 
 		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage));
+		let mut desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage));
+
+		// Wake the winit event loop when an editor async future completes.
+		let wake_scheduler = app_event_scheduler.clone();
+		desktop_wrapper.set_async_wake_callback(std::sync::Arc::new(move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(crate::wrapper::make_async_wake_message()));
+		}));
 
 		Self {
 			render_state: None,

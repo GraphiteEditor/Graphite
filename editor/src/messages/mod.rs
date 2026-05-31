@@ -2,6 +2,7 @@
 
 pub mod animation;
 pub mod app_window;
+pub mod async_message;
 pub mod broadcast;
 pub mod clipboard;
 pub mod color_picker;

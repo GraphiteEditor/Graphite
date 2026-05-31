@@ -10,6 +10,8 @@ pub enum Message {
 	#[child]
 	AppWindow(AppWindowMessage),
 	#[child]
+	Async(AsyncMessage),
+	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
 	Clipboard(ClipboardMessage),

@@ -50,6 +50,11 @@ impl Editor {
 		application_io.inject_resource_proxy(self.dispatcher.message_handlers.resource_storage_message_handler.resources());
 		crate::node_graph_executor::replace_application_io(application_io)
 	}
+
+	/// Install the wake callback the async runtime invokes after each spawned future completes.
+	pub fn set_async_wake_callback(&mut self, wake: Wake) {
+		self.dispatcher.message_handlers.async_message_handler.set_wake(wake);
+	}
 }
 
 static ENVIRONMENT: OnceLock<Environment> = OnceLock::new();

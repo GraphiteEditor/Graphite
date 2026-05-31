@@ -5,6 +5,7 @@ pub use crate::utility_types::{DebugMessageTree, MessageData};
 // Message, MessageData, MessageDiscriminant, MessageHandler
 pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscriminant, AnimationMessageHandler};
 pub use crate::messages::app_window::{AppWindowMessage, AppWindowMessageDiscriminant, AppWindowMessageHandler};
+pub use crate::messages::async_message::{AsyncMessage, AsyncMessageContext, AsyncMessageDiscriminant, AsyncMessageHandler, MessageFuture, MessageSpawner, Wake};
 pub use crate::messages::broadcast::event::{EventMessage, EventMessageContext, EventMessageDiscriminant, EventMessageHandler};
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
 pub use crate::messages::clipboard::{ClipboardMessage, ClipboardMessageDiscriminant, ClipboardMessageHandler};
@@ -15,7 +16,7 @@ pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDial
 pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage, NewDocumentDialogMessageDiscriminant, NewDocumentDialogMessageHandler};
 pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageContext, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageContext, DialogMessageDiscriminant, DialogMessageHandler};
-pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant, FrontendMessageFuture};
+pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
 pub use crate::messages::input_mapper::key_mapping::{KeyMappingMessage, KeyMappingMessageContext, KeyMappingMessageDiscriminant, KeyMappingMessageHandler};
 pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageContext, InputMapperMessageDiscriminant, InputMapperMessageHandler};
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageContext, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};

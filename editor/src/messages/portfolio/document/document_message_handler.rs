@@ -933,20 +933,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let mut document = self.clone();
 				let resources_load_handle = resource_storage.resources();
 
-				responses.add(FrontendMessage::Await {
-					future: FrontendMessageFuture::new(async move {
+				responses.add(AsyncMessage::Await {
+					future: MessageFuture::new(async move {
 						document.resources.garbage_collect(document.used_resources(false).as_ref());
 						document.resources.embed_resources(resources_load_handle).await;
 
 						let content = document.serialize_document().into_bytes().into();
 
-						FrontendMessage::TriggerSaveDocument {
+						Message::Frontend(FrontendMessage::TriggerSaveDocument {
 							document_id,
 							name,
 							path,
 							folder,
 							content,
-						}
+						})
 					}),
 				});
 			}

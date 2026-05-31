@@ -108,6 +108,17 @@ pub(crate) async fn poll_node_graph_evaluation() {
 	});
 }
 
+/// Web wake callback: queues a microtask that dispatches [`AsyncMessage::Wake`].
+#[cfg(not(feature = "native"))]
+pub(crate) fn async_wake_callback() -> Wake {
+	use std::sync::Arc;
+	Arc::new(|| {
+		wasm_bindgen_futures::spawn_local(async {
+			wrapper(|wrapper| wrapper.dispatch(AsyncMessage::Wake));
+		});
+	})
+}
+
 pub(crate) fn auto_save_all_documents() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
