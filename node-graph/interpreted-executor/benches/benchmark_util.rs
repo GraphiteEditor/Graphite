@@ -4,6 +4,7 @@ use futures::executor::block_on;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile, load_from_name};
 use graphene_std::application_io::EditorApi;
+use graphene_std::application_io::resource::ResourceRegistry;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 
