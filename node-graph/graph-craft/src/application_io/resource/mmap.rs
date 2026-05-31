@@ -53,7 +53,7 @@ impl MmapResourceStorage {
 
 		let path = self.path_for(hash);
 		let mmap = Self::open_mmap(&path)?;
-		let resource = Resource::new(MmappedBytes(mmap));
+		let resource = Resource::new_unchecked(MmappedBytes(mmap), *hash);
 
 		self.cache.write().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(*hash, resource.clone());
 		Some(resource)

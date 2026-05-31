@@ -4361,6 +4361,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-hash",
+ "graphene-resource",
  "image",
  "kurbo",
  "ndarray",

@@ -1,38 +1,68 @@
-use core_types::resource::Resource;
 use core_types::{CacheHash, graphene_hash};
 use dyn_any::DynAny;
 use std::collections::HashMap;
-use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
+use std::ops::Deref;
 use std::pin::Pin;
+use std::sync::Arc;
 
-pub trait LoadResource: Send + Sync {
-	fn load(&self, hash: ResourceHash) -> ResourceFuture;
+#[derive(Clone, DynAny)]
+pub struct Resource {
+	inner: Arc<dyn AsRef<[u8]> + Send + Sync>,
+	hash: ResourceHash,
 }
 
-pub type ResourceFuture = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'static>>;
+impl Resource {
+	pub fn new<T: AsRef<[u8]> + Send + Sync + 'static>(data: T) -> Self {
+		let hash = ResourceHash::from(data.as_ref());
+		Self { inner: Arc::new(data), hash }
+	}
 
-pub trait ResourceStorage: LoadResource {
-	fn store(&mut self, data: &[u8]) -> ResourceHash;
-	fn contains(&mut self, hash: &ResourceHash) -> bool;
-	fn garbage_collect(&mut self, used: &[ResourceHash]);
-}
+	pub fn new_unchecked<T: AsRef<[u8]> + Send + Sync + 'static>(data: T, hash: ResourceHash) -> Self {
+		Self { inner: Arc::new(data), hash }
+	}
 
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ResourceId(u64);
-
-impl ResourceId {
-	pub fn new() -> Self {
-		Self(core_types::uuid::generate_uuid())
+	pub fn hash(&self) -> ResourceHash {
+		self.hash
 	}
 }
 
-impl std::fmt::Display for ResourceId {
+impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
+	fn from(val: &Resource) -> Self {
+		val.inner.clone()
+	}
+}
+
+impl Deref for Resource {
+	type Target = [u8];
+
+	fn deref(&self) -> &[u8] {
+		(*self.inner).as_ref()
+	}
+}
+
+impl AsRef<[u8]> for Resource {
+	fn as_ref(&self) -> &[u8] {
+		(*self.inner).as_ref()
+	}
+}
+
+impl std::fmt::Debug for Resource {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
+		f.debug_struct("Resource").field("len", &self.len()).finish()
+	}
+}
+
+impl PartialEq for Resource {
+	fn eq(&self, other: &Self) -> bool {
+		self.hash == other.hash
+	}
+}
+
+impl CacheHash for Resource {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.hash.cache_hash(state);
 	}
 }
 
@@ -70,8 +100,8 @@ impl From<&ResourceHash> for String {
 	}
 }
 
-impl fmt::Display for ResourceHash {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for ResourceHash {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(&String::from(self))
 	}
 }
@@ -111,8 +141,8 @@ pub enum ResourceHashParseError {
 	InvalidCharacter { byte: u8, position: usize },
 }
 
-impl fmt::Display for ResourceHashParseError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for ResourceHashParseError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::InvalidLength { found } => write!(f, "resource hash must be 64 hex characters, got {found}"),
 			Self::InvalidCharacter { byte, position } => write!(f, "resource hash contains non-hex byte {byte:#04x} at position {position}"),
@@ -149,7 +179,7 @@ impl<'de> serde::Deserialize<'de> for ResourceHash {
 		impl<'de> serde::de::Visitor<'de> for ResourceHashVisitor {
 			type Value = ResourceHash;
 
-			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+			fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
 				formatter.write_str("a 64-character hex string or 32 raw bytes")
 			}
 
@@ -182,6 +212,35 @@ impl<'de> serde::Deserialize<'de> for ResourceHash {
 impl CacheHash for ResourceHash {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		core::hash::Hash::hash(self, state);
+	}
+}
+
+pub trait LoadResource: Send + Sync {
+	fn load(&self, hash: ResourceHash) -> ResourceFuture;
+}
+
+pub type ResourceFuture = Pin<Box<dyn Future<Output = Option<Resource>> + Send + 'static>>;
+
+pub trait ResourceStorage: LoadResource {
+	fn store(&mut self, data: &[u8]) -> ResourceHash;
+	fn contains(&mut self, hash: &ResourceHash) -> bool;
+	fn garbage_collect(&mut self, used: &[ResourceHash]);
+}
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, graphene_hash::CacheHash, PartialOrd, Ord, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ResourceId(u64);
+
+impl ResourceId {
+	pub fn new() -> Self {
+		Self(core_types::uuid::generate_uuid())
+	}
+}
+
+impl std::fmt::Display for ResourceId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
 	}
 }
 

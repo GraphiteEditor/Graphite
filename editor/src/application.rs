@@ -15,7 +15,7 @@ impl Editor {
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
 		let mut dispatcher = Dispatcher::new(resource_storage);
-		dispatcher.message_handlers.async_message_handler.set_wake(wake);
+		dispatcher.message_handlers.future_message_handler.set_wake(wake);
 		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
 		crate::node_graph_executor::replace_application_io(application_io);
 
