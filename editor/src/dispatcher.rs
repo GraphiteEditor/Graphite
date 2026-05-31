@@ -20,7 +20,7 @@ pub struct Dispatcher {
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
-	pub(crate) async_message_handler: FutureMessageHandler,
+	pub(crate) future_message_handler: FutureMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	clipboard_message_handler: ClipboardMessageHandler,
 	color_picker_message_handler: ColorPickerMessageHandler,
@@ -127,7 +127,7 @@ impl Dispatcher {
 
 		// Drain async results into the queue before processing the new message.
 		let mut async_results = VecDeque::new();
-		self.message_handlers.async_message_handler.drain_results(&mut async_results);
+		self.message_handlers.future_message_handler.drain_results(&mut async_results);
 		if !async_results.is_empty() {
 			Self::schedule_execution(&mut self.message_queues, true, async_results);
 		}
@@ -182,7 +182,7 @@ impl Dispatcher {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Future(message) => {
-					self.message_handlers.async_message_handler.process_message(message, &mut queue, FutureMessageContext {});
+					self.message_handlers.future_message_handler.process_message(message, &mut queue, FutureMessageContext {});
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
