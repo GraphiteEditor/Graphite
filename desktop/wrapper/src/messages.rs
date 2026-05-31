@@ -82,6 +82,7 @@ pub enum DesktopFrontendMessage {
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
+	Wake,
 	Input(InputMessage),
 	FileDialogResult { path: PathBuf, content: Vec<u8>, context: OpenFileDialogContext },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },

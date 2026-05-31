@@ -10,13 +10,16 @@ pub struct Editor {
 }
 
 impl Editor {
-	pub fn new(environment: Environment, uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>) -> Self {
+	pub fn new(environment: Environment, uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>, mut application_io: PlatformApplicationIo, wake: Wake) -> Self {
 		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
-		Self {
-			dispatcher: Dispatcher::new(resource_storage),
-		}
+		let mut dispatcher = Dispatcher::new(resource_storage);
+		dispatcher.message_handlers.async_message_handler.set_wake(wake);
+		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
+		crate::node_graph_executor::replace_application_io(application_io);
+
+		Self { dispatcher }
 	}
 
 	#[cfg(test)]
@@ -44,11 +47,6 @@ impl Editor {
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.dispatcher.poll_node_graph_evaluation(responses)
-	}
-
-	pub fn replace_application_io(&mut self, mut application_io: PlatformApplicationIo) {
-		application_io.inject_resource_proxy(self.dispatcher.message_handlers.resource_storage_message_handler.resources());
-		crate::node_graph_executor::replace_application_io(application_io)
 	}
 }
 

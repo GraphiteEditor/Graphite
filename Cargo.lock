@@ -2152,7 +2152,6 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "dirs",
- "futures",
  "graph-craft",
  "graphene-std",
  "graphite-editor",
@@ -2202,6 +2201,7 @@ dependencies = [
  "usvg",
  "vello",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
  "zip",

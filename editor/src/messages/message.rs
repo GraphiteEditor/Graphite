@@ -24,6 +24,8 @@ pub enum Message {
 	#[child]
 	Frontend(FrontendMessage),
 	#[child]
+	Future(FutureMessage),
+	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
 	KeyMapping(KeyMappingMessage),

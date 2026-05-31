@@ -55,8 +55,13 @@ wgpu-executor = { workspace = true, optional = true }
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
 
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen-futures = { workspace = true }
+
 [dev-dependencies]
 # Workspace dependencies
 env_logger = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true }

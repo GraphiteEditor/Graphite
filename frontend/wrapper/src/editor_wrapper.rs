@@ -93,8 +93,9 @@ impl EditorWrapper {
 			}
 		};
 
-		let mut editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage);
-		editor.replace_application_io(PlatformApplicationIo::new().await);
+		let application_io = PlatformApplicationIo::new().await;
+		let wake = crate::helpers::async_wake_callback();
+		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, application_io, wake);
 
 		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
@@ -145,14 +146,6 @@ impl EditorWrapper {
 
 	// Sends a FrontendMessage to JavaScript
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
-		if let FrontendMessage::Await { future } = message {
-			let wrapper = self.clone();
-			wasm_bindgen_futures::spawn_local(async move {
-				wrapper.send_frontend_message_to_js(future.await);
-			});
-			return;
-		}
-
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(&CacheHashWrapper(image_data));
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);

@@ -9,6 +9,7 @@ pub mod debug;
 pub mod defer;
 pub mod dialog;
 pub mod frontend;
+pub mod future;
 pub mod input_mapper;
 pub mod input_preprocessor;
 pub mod layout;

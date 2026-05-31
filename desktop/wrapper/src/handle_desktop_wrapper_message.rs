@@ -9,6 +9,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		DesktopWrapperMessage::FromWeb(message) => {
 			dispatcher.queue_editor_message(*message);
 		}
+		DesktopWrapperMessage::Wake => {
+			dispatcher.queue_editor_message(EditorMessage::Future(FutureMessage::Wake));
+		}
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}

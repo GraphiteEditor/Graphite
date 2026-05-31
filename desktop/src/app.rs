@@ -93,7 +93,13 @@ impl App {
 		});
 
 		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage));
+
+		// Wake the winit event loop when an editor future completes.
+		let wake_scheduler = app_event_scheduler.clone();
+		let wake = std::sync::Arc::new(move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
+		});
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,
@@ -527,8 +533,6 @@ impl ApplicationHandler for App {
 		}
 
 		self.resize();
-
-		self.desktop_wrapper.init(self.wgpu_context.clone());
 
 		self.startup_time = Some(Instant::now());
 	}
