@@ -10,8 +10,6 @@ pub enum Message {
 	#[child]
 	AppWindow(AppWindowMessage),
 	#[child]
-	Async(AsyncMessage),
-	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
 	Clipboard(ClipboardMessage),
@@ -25,6 +23,8 @@ pub enum Message {
 	Dialog(DialogMessage),
 	#[child]
 	Frontend(FrontendMessage),
+	#[child]
+	Future(FutureMessage),
 	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]

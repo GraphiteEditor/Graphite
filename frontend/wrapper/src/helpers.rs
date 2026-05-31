@@ -108,13 +108,13 @@ pub(crate) async fn poll_node_graph_evaluation() {
 	});
 }
 
-/// Web wake callback: queues a microtask that dispatches [`AsyncMessage::Wake`].
+/// Web wake callback: queues a microtask that dispatches [`FutureMessage::Wake`].
 #[cfg(not(feature = "native"))]
 pub(crate) fn async_wake_callback() -> Wake {
 	use std::sync::Arc;
 	Arc::new(|| {
 		wasm_bindgen_futures::spawn_local(async {
-			wrapper(|wrapper| wrapper.dispatch(AsyncMessage::Wake));
+			wrapper(|wrapper| wrapper.dispatch(FutureMessage::Wake));
 		});
 	})
 }

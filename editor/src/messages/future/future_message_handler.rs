@@ -50,17 +50,17 @@ pub trait MessageSpawner: Send + Sync {
 }
 
 #[derive(ExtractField)]
-pub struct AsyncMessageContext {}
+pub struct FutureMessageContext {}
 
 #[derive(ExtractField)]
-pub struct AsyncMessageHandler {
+pub struct FutureMessageHandler {
 	spawner: Arc<dyn MessageSpawner>,
 	wake: Wake,
 	results_sender: UnboundedSender<Message>,
 	results_receiver: UnboundedReceiver<Message>,
 }
 
-impl AsyncMessageHandler {
+impl FutureMessageHandler {
 	pub fn with_wake(wake: Wake) -> Self {
 		let (results_sender, results_receiver) = unbounded();
 		Self {
@@ -83,32 +83,32 @@ impl AsyncMessageHandler {
 	}
 }
 
-impl Default for AsyncMessageHandler {
+impl Default for FutureMessageHandler {
 	fn default() -> Self {
 		Self::with_wake(noop_wake())
 	}
 }
 
-impl std::fmt::Debug for AsyncMessageHandler {
+impl std::fmt::Debug for FutureMessageHandler {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("AsyncMessageHandler").finish_non_exhaustive()
+		f.debug_struct("FutureMessageHandler").finish_non_exhaustive()
 	}
 }
 
 #[message_handler_data]
-impl MessageHandler<AsyncMessage, AsyncMessageContext> for AsyncMessageHandler {
-	fn process_message(&mut self, message: AsyncMessage, _responses: &mut VecDeque<Message>, _context: AsyncMessageContext) {
+impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandler {
+	fn process_message(&mut self, message: FutureMessage, _responses: &mut VecDeque<Message>, _context: FutureMessageContext) {
 		match message {
-			AsyncMessage::Await { future } => {
+			FutureMessage::Await { future } => {
 				self.spawner.spawn(future.into_future(), self.results_sender.clone(), self.wake.clone());
 			}
-			AsyncMessage::Wake => {
+			FutureMessage::Wake => {
 				// Tick-only message: the dispatcher's top-of-tick drain handles the real work.
 			}
 		}
 	}
 
-	advertise_actions!(AsyncMessageDiscriminant;);
+	advertise_actions!(FutureMessageDiscriminant;);
 }
 
 #[cfg(not(target_family = "wasm"))]

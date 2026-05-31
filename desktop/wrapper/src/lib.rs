@@ -1,7 +1,7 @@
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
-use graphite_editor::messages::prelude::{AsyncMessage, FrontendMessage, Message, Wake};
+use graphite_editor::messages::prelude::{FrontendMessage, FutureMessage, Message, Wake};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
@@ -56,7 +56,7 @@ impl DesktopWrapper {
 
 /// `DesktopWrapperMessage` payload for the editor's async wake callback.
 pub fn make_async_wake_message() -> DesktopWrapperMessage {
-	DesktopWrapperMessage::FromWeb(Box::new(AsyncMessage::Wake.into()))
+	DesktopWrapperMessage::FromWeb(Box::new(FutureMessage::Wake.into()))
 }
 
 pub enum NodeGraphExecutionResult {

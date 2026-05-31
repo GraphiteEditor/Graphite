@@ -20,7 +20,7 @@ pub struct Dispatcher {
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
-	pub(crate) async_message_handler: AsyncMessageHandler,
+	pub(crate) async_message_handler: FutureMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	clipboard_message_handler: ClipboardMessageHandler,
 	color_picker_message_handler: ColorPickerMessageHandler,
@@ -181,8 +181,8 @@ impl Dispatcher {
 				Message::AppWindow(message) => {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
-				Message::Async(message) => {
-					self.message_handlers.async_message_handler.process_message(message, &mut queue, AsyncMessageContext {});
+				Message::Future(message) => {
+					self.message_handlers.async_message_handler.process_message(message, &mut queue, FutureMessageContext {});
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
