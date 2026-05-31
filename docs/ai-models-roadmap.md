@@ -1,6 +1,6 @@
 # AI Models Roadmap
 
-This document tracks AI model disciplines that are relevant to a graphics editing workflow and could be exposed as node graph tools within Graphite. It originated from the brainstorming discussion in issue #1694 and serves as a single reference point for categories under consideration. Nothing here commits to a specific architecture or model; it is a living list to be refined as nodes are designed and implemented.
+This document tracks AI model disciplines that are relevant to a graphics editing workflow and could be exposed as node graph tools within Graphite. It originated from the brainstorming discussion in issue [#1694](https://github.com/GraphiteEditor/Graphite/issues/1694) and serves as a single reference point for categories under consideration. Nothing here commits to a specific architecture or model; it is a living list to be refined as nodes are designed and implemented.
 
 ## Status legend
 
