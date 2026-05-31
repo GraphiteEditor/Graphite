@@ -60,4 +60,4 @@ This document tracks AI model disciplines that are relevant to a graphics editin
 
 ## Notes
 
-These categories are intentionally broad. Some overlap (for example, background removal builds on segmentation and matting) but are listed separately because they map to distinct user-facing tools. Additions and refinements are welcome; see issue #1694 for the original discussion.
+These categories are intentionally broad. Some overlap (for example, background removal builds on segmentation and matting) but are listed separately because they map to distinct user-facing tools. Additions and refinements are welcome; see issue [#1694](https://github.com/GraphiteEditor/Graphite/issues/1694) for the original discussion.
