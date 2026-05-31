@@ -16,6 +16,7 @@ dyn-any = { workspace = true }
 core-types = { workspace = true }
 
 # Workspace dependencies
+blake3 = { workspace = true }
 url = { workspace = true }
 
 # Optional workspace dependencies

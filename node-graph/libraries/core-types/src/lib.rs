@@ -11,7 +11,6 @@ pub mod misc;
 pub mod ops;
 pub mod registry;
 pub mod render_complexity;
-pub mod resource;
 pub mod transform;
 pub mod uuid;
 pub mod value;

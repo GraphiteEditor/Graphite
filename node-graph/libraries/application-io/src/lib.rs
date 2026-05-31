@@ -9,10 +9,7 @@ use std::time::Duration;
 use text_nodes::FontCache;
 use vector_types::vector::style::RenderMode;
 
-pub mod resource {
-	pub use core_types::resource::*;
-	pub use graphene_resource::*;
-}
+pub use graphene_resource as resource;
 
 #[cfg(feature = "wgpu")]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, DynAny)]

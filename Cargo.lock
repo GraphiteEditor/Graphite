@@ -902,7 +902,6 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bitflags 2.11.0",
- "blake3",
  "bytemuck",
  "color",
  "ctor",
@@ -1995,6 +1994,7 @@ dependencies = [
 name = "graphene-resource"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "core-types",
  "dyn-any",
  "serde",
@@ -4361,6 +4361,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-hash",
+ "graphene-resource",
  "image",
  "kurbo",
  "ndarray",

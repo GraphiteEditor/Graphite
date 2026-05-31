@@ -5,11 +5,11 @@ use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBM
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::resource::Resource;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_resource::Resource;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use raster_types::Image;
