@@ -4,7 +4,6 @@ use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
-use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::*;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
 use crate::messages::tool::utility_types::{HintData, ToolType};

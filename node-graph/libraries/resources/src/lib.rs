@@ -26,6 +26,10 @@ impl Resource {
 	pub fn hash(&self) -> ResourceHash {
 		self.hash
 	}
+
+	pub fn empty() -> Self {
+		Self::new([])
+	}
 }
 
 impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {

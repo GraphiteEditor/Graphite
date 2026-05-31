@@ -21,7 +21,7 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
-use crate::messages::portfolio::utility_types::{CachedData, PanelType};
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -52,7 +52,6 @@ use std::time::Duration;
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub fonts: &'a FontsMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -61,6 +60,7 @@ pub struct DocumentMessageContext<'a> {
 	pub properties_panel_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
+	pub fonts: &'a FontsMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -198,7 +198,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		let DocumentMessageContext {
 			document_id,
 			ipp,
-			fonts,
 			executor,
 			viewport,
 			current_tool,
@@ -207,6 +206,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			layers_panel_open,
 			properties_panel_open,
 			resource_storage,
+			fonts,
 		} = context;
 
 		match message {
@@ -233,10 +233,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {
+					executor,
 					network_interface: &mut self.network_interface,
+					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
 					document_name: self.name.as_str(),
-					executor,
 					fonts,
 					properties_panel_open,
 				};
@@ -282,7 +283,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				graph_operation_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Resource(message) => {
-				let context = ResourceMessageContext {};
+				let context = ResourceMessageContext { document_id, fonts };
 				self.resources.process_message(message, responses, context);
 			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
@@ -933,21 +934,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let mut document = self.clone();
 				let resources_load_handle = resource_storage.resources();
 
-				responses.add(FutureMessage::Await {
-					future: MessageFuture::new(async move {
-						document.resources.garbage_collect(document.used_resources(false).as_ref());
-						document.resources.embed_resources(resources_load_handle).await;
+				responses.add(async move {
+					document.resources.collect_garbage(document.used_resources(false).as_ref());
+					document.resources.embed_resources(resources_load_handle).await;
 
-						let content = document.serialize_document().into_bytes().into();
+					let content = document.serialize_document().into_bytes().into();
 
-						Message::Frontend(FrontendMessage::TriggerSaveDocument {
-							document_id,
-							name,
-							path,
-							folder,
-							content,
-						})
-					}),
+					Message::Frontend(FrontendMessage::TriggerSaveDocument {
+						document_id,
+						name,
+						path,
+						folder,
+						content,
+					})
 				});
 			}
 			DocumentMessage::SavedDocument { path } => {
@@ -2658,23 +2657,6 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
-		let mut fonts_to_load = HashSet::new();
-
-		for (_, node, _) in self.document_network().recursive_nodes() {
-			for input in &node.inputs {
-				if let Some(TaggedValue::Font(font)) = input.as_value() {
-					fonts_to_load.insert(font.clone());
-				}
-			}
-		}
-
-		for font in fonts_to_load {
-			responses.add(PortfolioMessage::LoadFontData { font });
-		}
-	}
-
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		let mut snapping_state = self.snapping_state.clone();
 		let mut snapping_state2 = self.snapping_state.clone();
@@ -3470,7 +3452,7 @@ impl DocumentMessageHandler {
 
 	pub fn garbage_collect_resources(&mut self) {
 		let used_resources = self.used_resources(true);
-		self.resources.garbage_collect(&used_resources);
+		self.resources.collect_garbage(&used_resources);
 	}
 
 	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {

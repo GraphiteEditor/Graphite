@@ -3,16 +3,16 @@ use graphene_std::uuid::NodeId;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::utility_types::CachedData;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 #[derive(ExtractField)]
 pub struct PropertiesPanelMessageContext<'a> {
+	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub resources: &'a ResourceMessageHandler,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
-	pub executor: &'a mut NodeGraphExecutor,
 	pub fonts: &'a FontsMessageHandler,
 	pub properties_panel_open: bool,
 }
@@ -24,10 +24,11 @@ pub struct PropertiesPanelMessageHandler {}
 impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> for PropertiesPanelMessageHandler {
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, context: PropertiesPanelMessageContext) {
 		let PropertiesPanelMessageContext {
+			executor,
 			network_interface,
+			resources,
 			selection_network_path,
 			document_name,
-			executor,
 			fonts,
 			properties_panel_open,
 		} = context;
@@ -46,12 +47,13 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 				}
 
 				let mut node_properties_context = NodePropertiesContext {
-					fonts,
 					responses,
+					executor,
 					network_interface,
+					resources,
 					selection_network_path,
 					document_name,
-					executor,
+					fonts,
 				};
 				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
 

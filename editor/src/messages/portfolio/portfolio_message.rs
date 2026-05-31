@@ -51,9 +51,10 @@ pub enum PortfolioMessage {
 	DestroyAllDocuments,
 	EditorPreferences,
 	GarbageCollectResources,
-	LoadDocumentResources {
+	ResolveDocumentResources {
 		document_id: DocumentId,
 	},
+	ResolveResources,
 	LoadPersistedState {
 		state: PersistedState,
 	},

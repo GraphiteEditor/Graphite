@@ -1,47 +1,10 @@
-use graph_craft::application_io::resource::{Resource, ResourceHash};
 use graphene_std::Color;
 use graphene_std::raster::Image;
-use graphene_std::text::{Blob, Font};
-use std::collections::HashMap;
 
 /// Proportional share (0-1) for the document panel's side when splitting adjacent to non-document panels.
 const DOCUMENT_PANEL_SHARE: f64 = 0.8;
 /// Proportional share for each side when neither (or both) contain the document panel.
 const EQUAL_PANEL_SHARE: f64 = 0.5;
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FontCatalogStyle {
-	pub weight: u32,
-	pub italic: bool,
-	pub url: String,
-}
-
-impl FontCatalogStyle {
-	pub fn to_named_style(&self) -> String {
-		let weight = self.weight;
-		let italic = self.italic;
-
-		let named_weight = Font::named_weight(weight);
-		let maybe_italic = if italic { " Italic" } else { "" };
-
-		format!("{named_weight}{maybe_italic} ({weight})")
-	}
-
-	pub fn from_named_style(named_style: &str, url: impl Into<String>) -> FontCatalogStyle {
-		let weight = named_style.split_terminator(['(', ')']).next_back().and_then(|x| x.parse::<u32>().ok()).unwrap_or(400);
-		let italic = named_style.contains("Italic (");
-		FontCatalogStyle { weight, italic, url: url.into() }
-	}
-
-	/// Get the URL for the stylesheet for loading a font preview for this style of the given family name, subsetted to only the letters in the family name.
-	pub fn preview_url(&self, family: impl Into<String>) -> String {
-		let name = family.into().replace(' ', "+");
-		let italic = if self.italic { "ital," } else { "" };
-		let weight = self.weight;
-		format!("https://fonts.googleapis.com/css2?display=swap&family={name}:{italic}wght@{weight}&text={name}")
-	}
-}
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

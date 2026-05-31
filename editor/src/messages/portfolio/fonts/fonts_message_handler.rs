@@ -1,100 +1,116 @@
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::portfolio::fonts::utility_types::{FontCache, FontCatalog};
+use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
+use crate::messages::portfolio::fonts::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
-use graph_craft::document::NodeInput;
-use graph_craft::document::value::TaggedValue;
-use graphene_std::text::Font;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-
-/// Index of the hidden font-resource input on the text node (after the primary `()` and the text string).
-const TEXT_FONT_INPUT_INDEX: usize = 2;
+use graphene_std::text::{Blob, Font};
 
 #[derive(ExtractField)]
 pub struct FontsMessageContext<'a> {
-	pub active_document: &'a DocumentMessageHandler,
+	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
 pub struct FontsMessageHandler {
 	pub font_catalog: FontCatalog,
-	font_to_hash: HashMap<Font, Resource>,
+	font_hashes: HashMap<Font, ResourceHash>,
+	font_data: HashMap<ResourceHash, Resource>,
 }
 
 #[message_handler_data]
 impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandler {
 	fn process_message(&mut self, message: FontsMessage, responses: &mut VecDeque<Message>, context: FontsMessageContext) {
-		let FontsMessageContext { active_document } = context;
+		let FontsMessageContext { resource_storage } = context;
 
 		match message {
+			FontsMessage::CatalogLoaded { catalog } => {
+				self.font_catalog = catalog;
+				responses.add(PortfolioMessage::ResolveResources);
+			}
 			FontsMessage::ResourceResolved { family, style, hash } => {
-				self.font_to_hash.insert(Font::new(family, style), hash.clone());
+				let font = font_from_pair(&family, style.as_deref());
+				self.font_hashes.insert(font, hash);
 			}
 			FontsMessage::Load { family, style, response } => {
-				if let Some(hash) = self.font_to_hash.get(&Font::new(family.clone(), style.clone())) {
-					responses.add(FontsMessage::ResourceResolved { family, style, hash: hash.clone() });
-				} else if let Some(url) = self.font_catalog.cached_url(&family, &style) {
-					responses.add(FrontendMessage::TriggerResolveResource {
-						document_id: active_document.document_id(),
-						resource_id: ResourceId::new(),
-						url,
-					});
-				} else if let Some(response) = response {
-					responses.add(response);
+				let font = self.normalize(font_from_pair(&family, style.as_deref()));
+				let Some(hash) = self.font_hashes.get(&font).copied() else {
+					log::warn!("FontsMessage::Load for {font:?} with no known hash; ignoring");
+					return;
+				};
+				if self.font_data.contains_key(&hash) {
+					responses.add(*response);
+					return;
 				}
+				let loader = resource_storage.resources();
+				responses.add(FutureMessage::Await {
+					future: async move {
+						let resource = loader.load(hash).await;
+						match resource {
+							Some(resource) => Message::Batched {
+								messages: Box::new([FontsMessage::Cached { hash, resource }.into(), *response]),
+							},
+							None => {
+								log::warn!("Storage missing data for font hash {hash}");
+								*response
+							}
+						}
+					}
+					.into(),
+				});
+			}
+			FontsMessage::Cached { hash, resource } => {
+				self.font_data.insert(hash, resource);
 			}
 		}
 	}
 
-	advertise_actions!(FontsMessageDiscriminant;
-	);
+	advertise_actions!(FontsMessageDiscriminant;);
 }
 
-impl FontsMessageHandler {}
+impl FontsMessageHandler {
+	pub fn cached_hash(&self, family: &str, style: Option<&str>) -> Option<ResourceHash> {
+		self.font_hashes.get(&font_from_pair(family, style)).copied()
+	}
 
-/// Editor-side cache of loaded font bytes, keyed by [`Font`] and content-addressed by [`ResourceHash`].
-/// Used for in-editor text measurement and the editable-textbox overlay (the node graph loads fonts through the resource system instead).
-#[derive(Clone, Default)]
-pub struct FontCache {
-	fonts: HashMap<Font, FontCacheEntry>,
-}
+	pub fn cached_url(&self, family: &str, style: Option<&str>) -> Option<String> {
+		self.font_catalog.download_url(family, style)
+	}
 
-#[derive(Clone)]
-struct FontCacheEntry {
-	hash: ResourceHash,
-	data: Resource,
-}
+	pub fn get_blob_or_queue_load(&self, font: &Font, responses: &mut VecDeque<Message>) -> Blob<u8> {
+		let style = Some(font.font_style.as_str());
+		if let Some(hash) = self.font_hashes.get(font) {
+			if let Some(resource) = self.font_data.get(hash) {
+				return Blob::new(resource.into());
+			}
+			responses.add(FontsMessage::Load {
+				family: font.font_family.clone(),
+				style: style.map(str::to_string),
+				response: Message::NoOp.into(),
+			});
+		}
+		FALLBACK_FONT_BLOB.clone()
+	}
 
-impl std::fmt::Debug for FontCache {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("FontCache").field("fonts", &self.fonts.keys().collect::<Vec<_>>()).finish()
+	pub fn id_font(&self, resources: &ResourceMessageHandler, resource_id: ResourceId) -> Option<Font> {
+		let info = resources.registry.info(&resource_id)?;
+		info.sources.iter().find_map(|source| match source {
+			DataSource::Font { family, style } => Some(font_from_pair(family, style.as_deref())),
+			_ => None,
+		})
+	}
+
+	pub fn used_resources(&self) -> impl Iterator<Item = ResourceHash> + '_ {
+		self.font_hashes.values().copied().chain(self.font_data.keys().copied())
+	}
+
+	fn normalize(&self, font: Font) -> Font {
+		match self.font_catalog.find_font_style_in_catalog(&font) {
+			Some(style) => Font::new(font.font_family, style.to_named_style()),
+			None => font,
+		}
 	}
 }
 
-impl FontCache {
-	/// Loaded font bytes as a [`Blob`], or `None` if the font has not been loaded yet.
-	pub fn get_blob(&self, font: &Font) -> Option<Blob<u8>> {
-		self.fonts.get(font).map(|entry| Blob::new((&entry.data).into()))
-	}
-
-	pub fn get_resource(&self, font: &Font) -> Option<Resource> {
-		self.fonts.get(font).map(|entry| entry.data.clone())
-	}
-
-	pub fn hash(&self, font: &Font) -> Option<ResourceHash> {
-		self.fonts.get(font).map(|entry| entry.hash)
-	}
-
-	pub fn contains(&self, font: &Font) -> bool {
-		self.fonts.contains_key(font)
-	}
-
-	pub fn insert(&mut self, font: Font, hash: ResourceHash, data: Resource) {
-		self.fonts.insert(font, FontCacheEntry { hash, data });
-	}
-
-	pub fn used_hashes(&self) -> impl Iterator<Item = ResourceHash> + '_ {
-		self.fonts.values().map(|entry| entry.hash)
-	}
+// TODO: Remove
+fn font_from_pair(family: &str, style: Option<&str>) -> Font {
+	Font::new(family.to_string(), style.unwrap_or("Regular (400)").to_string())
 }

@@ -8,8 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodePersistentMetadata, InputMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata,
 	Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::utility_types::CachedData;
-use crate::messages::prelude::Message;
+use crate::messages::prelude::{FontsMessageHandler, Message, ResourceMessageHandler};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -31,6 +30,7 @@ pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub resources: &'a ResourceMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,

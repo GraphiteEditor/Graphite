@@ -30,6 +30,15 @@ impl MessageFuture {
 	}
 }
 
+impl<T> From<T> for MessageFuture
+where
+	T: Future<Output = Message> + Send + 'static,
+{
+	fn from(future: T) -> Self {
+		Self::new(future)
+	}
+}
+
 impl IntoFuture for MessageFuture {
 	type Output = Message;
 	type IntoFuture = InnerMessageFuture;
@@ -43,6 +52,20 @@ impl IntoFuture for MessageFuture {
 	}
 }
 
+impl From<MessageFuture> for Message {
+	fn from(future: MessageFuture) -> Self {
+		Message::Future(FutureMessage::Await { future })
+	}
+}
+
+impl<T> From<T> for Message
+where
+	T: Future<Output = Message> + Send + 'static,
+{
+	fn from(future: T) -> Self {
+		MessageFuture::new(future).into()
+	}
+}
 /// Platform-specific async-task executor.
 /// Runs `future`, sends the resolved message on `results`, then calls `wake`.
 pub trait MessageSpawner: Send + Sync {

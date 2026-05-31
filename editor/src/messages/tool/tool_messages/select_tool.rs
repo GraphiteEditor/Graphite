@@ -745,7 +745,7 @@ impl Fsm for SelectToolFsmState {
 
 						if document.metadata().is_text_layer(layer) {
 							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, fonts);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, fonts, responses);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}

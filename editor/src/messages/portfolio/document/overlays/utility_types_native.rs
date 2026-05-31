@@ -3,7 +3,8 @@ use crate::consts::{
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
 	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
-use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
+use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
+use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
@@ -14,7 +15,7 @@ use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
-use graphene_std::text::{Font, TextAlign, TypesettingConfig};
+use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::{PointId, SegmentId, Vector};
@@ -1115,21 +1116,16 @@ impl OverlayContextInternal {
 			align: TextAlign::AlignLeft,
 		};
 
-		// Load Source Sans Pro font data
-		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
-		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-
 		// Get text dimensions directly from layout
 		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-		let text_size = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		let text_size = text_context.bounding_box(text, &FALLBACK_FONT_BLOB, typesetting, false);
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
 		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
 
 		// Convert text to vector paths for rendering
-		let text_list = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		let text_list = text_context.to_path(text, &FALLBACK_FONT_BLOB, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
