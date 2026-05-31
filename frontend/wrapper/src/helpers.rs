@@ -109,7 +109,7 @@ pub(crate) async fn poll_node_graph_evaluation() {
 }
 
 /// Web wake callback: queues a microtask that dispatches [`FutureMessage::Wake`].
-#[cfg(not(feature = "native"))]
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 pub(crate) fn async_wake_callback() -> Wake {
 	use std::sync::Arc;
 	Arc::new(|| {

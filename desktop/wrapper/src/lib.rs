@@ -1,7 +1,7 @@
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
-use graphite_editor::messages::prelude::{FrontendMessage, FutureMessage, Message, Wake};
+use graphite_editor::messages::prelude::{FrontendMessage, Message, Wake};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
@@ -24,7 +24,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>, wgpu_context: WgpuContext, wake: Wake) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -35,7 +35,7 @@ impl DesktopWrapper {
 		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 
 		Self {
-			editor: Editor::new(env, uuid_random_seed, resource_storage, application_io, wake),
+			editor: Editor::new(env, uuid_random_seed, resource_storage, application_io, schedule_wake),
 		}
 	}
 
@@ -52,11 +52,6 @@ impl DesktopWrapper {
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
 	}
-}
-
-/// `DesktopWrapperMessage` payload for the editor's async wake callback.
-pub fn make_async_wake_message() -> DesktopWrapperMessage {
-	DesktopWrapperMessage::FromWeb(Box::new(FutureMessage::Wake.into()))
 }
 
 pub enum NodeGraphExecutionResult {

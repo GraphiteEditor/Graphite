@@ -94,10 +94,10 @@ impl App {
 
 		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
 
-		// Wake the winit event loop when an editor async future completes.
+		// Wake the winit event loop when an editor future completes.
 		let wake_scheduler = app_event_scheduler.clone();
 		let wake = std::sync::Arc::new(move || {
-			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(crate::wrapper::make_async_wake_message()));
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
 		});
 		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage), wgpu_context.clone(), wake);
 
