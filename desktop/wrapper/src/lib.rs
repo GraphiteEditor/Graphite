@@ -24,7 +24,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>, wgpu_context: WgpuContext, wake: Wake) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -32,19 +32,11 @@ impl DesktopWrapper {
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
 		let env = Environment { platform: Platform::Desktop, host };
+		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 
 		Self {
-			editor: Editor::new(env, uuid_random_seed, resource_storage),
+			editor: Editor::new(env, uuid_random_seed, resource_storage, application_io, wake),
 		}
-	}
-
-	pub fn init(&mut self, wgpu_context: WgpuContext) {
-		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
-		self.editor.replace_application_io(application_io);
-	}
-
-	pub fn set_async_wake_callback(&mut self, wake: Wake) {
-		self.editor.set_async_wake_callback(wake);
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {

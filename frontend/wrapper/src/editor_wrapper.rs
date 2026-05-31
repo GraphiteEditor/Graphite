@@ -93,9 +93,9 @@ impl EditorWrapper {
 			}
 		};
 
-		let mut editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage);
-		editor.replace_application_io(PlatformApplicationIo::new().await);
-		editor.set_async_wake_callback(crate::helpers::async_wake_callback());
+		let application_io = PlatformApplicationIo::new().await;
+		let wake = crate::helpers::async_wake_callback();
+		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, application_io, wake);
 
 		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
