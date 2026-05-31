@@ -81,7 +81,7 @@ impl ResourceStorage for OpfsResourceStorage {
 		let mut bytes = None;
 		if !guard.cache.contains_key(&hash) {
 			let resource_bytes = Arc::<[u8]>::from(data);
-			guard.cache.insert(hash, Resource::new(resource_bytes.clone()));
+			guard.cache.insert(hash, Resource::new_unchecked(resource_bytes.clone(), hash));
 			bytes = Some(resource_bytes);
 		}
 
@@ -302,7 +302,7 @@ async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<
 		return None;
 	}
 
-	let resource = Resource::new(bytes);
+	let resource = Resource::new_unchecked(bytes, hash);
 	let mut guard = inner.lock().unwrap();
 	if let Some(resource) = guard.cache.get(&hash) {
 		return Some(resource.clone());

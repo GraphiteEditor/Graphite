@@ -42,6 +42,7 @@ lyon_geom = { workspace = true }
 log = { workspace = true }
 base64 = { workspace = true }
 polycool = { workspace = true }
+blake3 = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
