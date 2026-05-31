@@ -56,13 +56,13 @@ impl std::fmt::Debug for Resource {
 
 impl PartialEq for Resource {
 	fn eq(&self, other: &Self) -> bool {
-		self.as_ref() == other.as_ref()
+		self.hash == other.hash
 	}
 }
 
 impl CacheHash for Resource {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.as_ref().hash(state);
+		self.hash.cache_hash(state);
 	}
 }
 
