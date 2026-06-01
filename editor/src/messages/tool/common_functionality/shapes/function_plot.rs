@@ -36,6 +36,14 @@ impl FunctionPlot {
 				return;
 			};
 
+			// We want viewport zoom independent size and 1 scalefactor
+			let document_to_viewport = document
+				.navigation_handler
+				.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
+
+			let start = document_to_viewport.inverse().transform_point2(start);
+			let end = document_to_viewport.inverse().transform_point2(end);
+
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
 				input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
@@ -47,7 +55,7 @@ impl FunctionPlot {
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
 				transform: DAffine2::from_translation(start.midpoint(end)),
-				transform_in: TransformIn::Viewport,
+				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
 		}

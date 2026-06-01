@@ -1,5 +1,5 @@
 use core_types::Ctx;
-use core_types::list::List;
+use core_types::list::{Item, List};
 use glam::DVec2;
 use graphic_types::Vector;
 use log::warn;
@@ -8,6 +8,8 @@ use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::Value;
 use std::collections::{HashMap, HashSet};
 use vector_types::subpath;
+
+type CurveSegment = Vec<DVec2>;
 
 struct PlotBounds {
 	x_min: f64,
@@ -26,7 +28,30 @@ impl ValueProvider for PlotContext<'_> {
 	}
 }
 
-/// Plots a parametric curve.
+/// Plots a parametric curve. Please note that at most 1 variable is supported in the expressions.
+/// You can use the following mathematical functions:
+/// • ** Arithmetic operators **: +, -, *, /, %, ^, !
+/// • **sin**:
+/// • **cos**:
+/// • **tan**:
+/// • **csc**: cosecant, 1/sin(x)
+/// • **sec**: secant, 1/cos(x)
+/// • **cot**: cotangent, 1 / tan(x)
+/// • **invsin**: arcsin
+/// • **invcos**: arccos
+/// • **invtan**: arctan
+/// • **invcsc**: asin(1/x)
+/// • **invsec**: acos(1/x)
+/// • **invcot**: atan(PI/2-x)
+/// • **sqrt**: square root
+
+/// You can use the following mathematical contants:
+/// • **pi**: 3.1415926535
+/// • **tau**: 2*PI
+/// • **e**: Euler's number, 2.7182818284
+/// • **phi**: golden ratio, 1.6180339887
+/// • **G**: gravity acceleration
+///
 #[node_macro::node(category("Vector: Shape"))]
 fn function_plot(
 	_: impl Ctx,
@@ -58,46 +83,57 @@ fn function_plot(
 	#[default(true)]
 	auto_close: bool,
 ) -> List<Vector> {
+	let mut plots = List::new();
 	let (x_node, y_node, variable_name) = match parse_plot_expressions(&x_expression, &y_expression) {
 		Some(result) => result,
-		None => return List::new(),
+		None => return plots,
 	};
 
-	let (mut anchor_positions, bounds) = match sample_plot_curve(&x_node, &y_node, &variable_name, parameter_min_value, parameter_max_value, sample_count) {
+	let (mut segments, bounds) = match sample_plot_curve(&x_node, &y_node, &variable_name, parameter_min_value, parameter_max_value, sample_count) {
 		Some(result) => result,
-		None => return List::new(),
+		None => return plots,
 	};
 
-	fit_plot_to_bounds(&mut anchor_positions, &bounds, width, height);
+	for mut segment_anchors in segments {
+		fit_plot_to_bounds(&mut segment_anchors, &bounds, width, height);
 
-	let mut closed = false;
+		let mut closed = false;
 
-	if auto_close && let (Some(first), Some(last)) = (anchor_positions.first(), anchor_positions.last()) {
-		let distance = first.distance(*last);
+		if auto_close && let (Some(first), Some(last)) = (segment_anchors.first(), segment_anchors.last()) {
+			let distance = first.distance(*last);
 
-		closed = distance < 1.;
-		if closed {
-			anchor_positions.pop();
+			closed = distance < 1.;
+			if closed {
+				segment_anchors.pop();
+			}
+		}
+
+		let shape = Vector::from_subpath(subpath::Subpath::from_anchors(segment_anchors, closed));
+
+		if plots.is_empty() {
+			plots = List::new_from_element(shape);
+		} else {
+			plots.push(Item::new_from_element(shape));
 		}
 	}
 
-	let shape = Vector::from_subpath(subpath::Subpath::from_anchors(anchor_positions, closed));
-
-	List::new_from_element(shape)
+	plots
 }
 
-fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str, parameter_min_value: f64, parameter_max_value: f64, sample_count: u32) -> Option<(Vec<DVec2>, PlotBounds)> {
+fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str, parameter_min_value: f64, parameter_max_value: f64, sample_count: u32) -> Option<(Vec<CurveSegment>, PlotBounds)> {
 	let mut values = HashMap::<String, f64>::new();
 	values.insert(variable_name.to_string(), 0.);
 
 	let interval = (parameter_max_value - parameter_min_value) / (sample_count - 1) as f64;
 
-	let mut anchor_positions = Vec::<DVec2>::new();
+	let mut segments = Vec::new();
+	let mut segment_anchors = Vec::<DVec2>::new();
 
 	let mut x_min = 0.;
 	let mut x_max = 0.;
 	let mut y_min = 0.;
 	let mut y_max = 0.;
+	debug!("sample_plot_curve------");
 
 	for i in 0..sample_count {
 		let t = parameter_min_value + i as f64 * interval;
@@ -124,42 +160,43 @@ fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str
 			}
 		};
 
-		let x_value = match x_value.as_real() {
-			Some(v) => v,
-			None => {
-				warn!("Complex values are currently unsupported");
-				return None;
+		let point = match (x_value.as_real().filter(|v| v.is_finite()), y_value.as_real().filter(|v| v.is_finite())) {
+			(Some(x), Some(y)) => DVec2::new(x, y),
+			_ => {
+				if segment_anchors.len() >= 2 {
+					debug!("new segment");
+					segments.push(segment_anchors);
+					segment_anchors = Vec::new();
+				}
+				continue;
 			}
 		};
 
-		let y_value = match y_value.as_real() {
-			Some(v) => v,
-			None => {
-				warn!("Complex values are currently unsupported");
-				return None;
-			}
-		};
-
-		if i == 0 || x_value < x_min {
-			x_min = x_value;
+		if i == 0 || point.x < x_min {
+			x_min = point.x;
 		}
 
-		if i == 0 || x_value > x_max {
-			x_max = x_value;
+		if i == 0 || point.x > x_max {
+			x_max = point.x;
 		}
 
-		if i == 0 || y_value < y_min {
-			y_min = y_value;
+		if i == 0 || point.y < y_min {
+			y_min = point.y;
 		}
 
-		if i == 0 || y_value > y_max {
-			y_max = y_value;
+		if i == 0 || point.y > y_max {
+			y_max = point.y;
 		}
 
-		anchor_positions.push(DVec2::new(x_value, y_value));
+		segment_anchors.push(point);
 	}
 
-	Some((anchor_positions, PlotBounds { x_min, x_max, y_min, y_max }))
+	if segment_anchors.len() >= 2 {
+		segments.push(segment_anchors);
+	}
+
+	debug!("sample_plot_curve------");
+	Some((segments, PlotBounds { x_min, x_max, y_min, y_max }))
 }
 
 fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &PlotBounds, width: f64, height: f64) {
@@ -168,15 +205,12 @@ fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &PlotBounds, width
 
 	let scale = x_scale.min(y_scale);
 
-	let curve_width = (bounds.x_max - bounds.x_min) * scale;
-	let curve_height = (bounds.y_max - bounds.y_min) * scale;
-
-	let x_offset = (width - curve_width) / 2.;
-	let y_offset = (height - curve_height) / 2.;
+	let x_center = (bounds.x_min + bounds.x_max) / 2.;
+	let y_center = (bounds.y_min + bounds.y_max) / 2.;
 
 	for anchor_position in anchor_positions {
-		anchor_position.x = (anchor_position.x - bounds.x_min) * scale + x_offset;
-		anchor_position.y = (bounds.y_max - anchor_position.y) * scale + y_offset;
+		anchor_position.x = (anchor_position.x - x_center) * scale;
+		anchor_position.y = (y_center - anchor_position.y) * scale;
 	}
 }
 
@@ -184,14 +218,17 @@ fn parse_plot_expressions(x_expression: &str, y_expression: &str) -> Option<(ast
 	let (x_node, x_vars) = parse_expression(x_expression)?;
 	let (y_node, y_vars) = parse_expression(y_expression)?;
 
-	if x_vars != y_vars {
-		warn!("X and Y expressions must use the same variables");
-		return None;
-	}
-
-	let variable_name = match x_vars.iter().next() {
-		Some(name) => name.clone(),
-		None => {
+	let variable_name = match (x_vars.iter().next(), y_vars.iter().next()) {
+		(Some(x), Some(y)) => {
+			if x != y {
+				warn!("X and Y expressions must use the same variable");
+				return None;
+			}
+			x.clone()
+		}
+		(Some(x), None) => x.clone(),
+		(None, Some(y)) => y.clone(),
+		(None, None) => {
 			warn!("At least one variable is required");
 			return None;
 		}
