@@ -27,6 +27,7 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 				responses.add(PortfolioMessage::ResolveResources);
 			}
 			FontsMessage::ResourceResolved { font, hash } => {
+				let font = self.normalize(font);
 				self.font_hashes.insert(font, hash);
 			}
 			FontsMessage::Load { font, response } => {

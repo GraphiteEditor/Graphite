@@ -211,6 +211,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_id,
 					document: document.serialize_document(),
 				});
+				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
 				if let Some(document_id) = self.active_document_id {
@@ -391,8 +392,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::GarbageCollectResources => {
+				if !self.persistent_state.loaded() {
+					// We don't know what can be safely garbage collected
+					return;
+				}
+
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
+					log::info!("Checking resources for unloaded document {:?}: {:?}", info.name, info.resources);
 					if let Some(resources) = &info.resources {
 						used_resources.extend(resources.iter());
 					} else {
@@ -404,9 +411,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
 				}
-				// Fonts loaded earlier in the session may not be referenced by any current document but still need
-				// to survive — the picker can re-assign them at any moment, and re-fetching would cause a render
-				// blank-out while the bytes come back from the network.
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
 					used: Vec::from_iter(used_resources).into_boxed_slice(),

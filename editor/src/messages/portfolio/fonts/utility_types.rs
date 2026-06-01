@@ -54,12 +54,18 @@ impl FontCatalogFamily {
 	/// Finds the closest style to the given weight and italic setting.
 	/// Aims to find the nearest weight while maintaining the italic setting if possible, but italic may change if no other option is available.
 	pub fn closest_style(&self, weight: u32, italic: bool) -> &FontCatalogStyle {
+		static FALLBACK_STYLE: FontCatalogStyle = FontCatalogStyle {
+			weight: 400,
+			italic: false,
+			url: String::new(),
+		};
+
 		self.styles
 			.iter()
 			.map(|style| ((style.weight as i32 - weight as i32).unsigned_abs() + 10000 * (style.italic != italic) as u32, style))
 			.min_by_key(|(distance, _)| *distance)
 			.map(|(_, style)| style)
-			.unwrap_or(&self.styles[0])
+			.unwrap_or(self.styles.first().unwrap_or(&FALLBACK_STYLE))
 	}
 }
 

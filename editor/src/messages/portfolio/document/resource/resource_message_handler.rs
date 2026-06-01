@@ -107,6 +107,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 							return;
 						}
 						responses.add(FrontendMessage::TriggerFontCatalogLoad);
+						self.pending_resolves.remove(&resource_id);
 					}
 				}
 			}
@@ -117,7 +118,10 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					return;
 				};
 				let Some(info) = self.registry.info(&resource_id) else {
-					log::error!("Resolved message for {resource_id} with no registry entry");
+					// ResourceId was removed from registry after resolve started.
+					// This can happen if the document was modified while resolves were in-flight.
+					// Likely safe to ignore for now.
+					// TODO: Consider adding cleaner cancelation for in-flight resolves.
 					return;
 				};
 				let Some(source) = info.sources.get(progress.index).cloned() else {

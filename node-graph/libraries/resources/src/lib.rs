@@ -71,7 +71,7 @@ impl CacheHash for Resource {
 }
 
 /// Blake3 content hash of a resource, represented as 32 bytes
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, DynAny)]
+#[derive(Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord, DynAny)]
 pub struct ResourceHash([u8; 32]);
 
 impl From<&[u8]> for ResourceHash {
@@ -136,6 +136,12 @@ impl std::str::FromStr for ResourceHash {
 		}
 
 		Ok(Self(out))
+	}
+}
+
+impl std::fmt::Debug for ResourceHash {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&String::from(self))
 	}
 }
 
