@@ -987,6 +987,43 @@ impl EditorWrapper {
 // Static functions callable from JavaScript without an Editor instance
 // ====================================================================
 
+/// Build an uncompressed (store-only) ZIP archive from a list of `[filename, bytes]` entries.
+///
+/// Used by the animation export flow on the web build: web APIs cannot offer a multi-file save,
+/// so the frontend packs all frames into a single `.zip` to download. On desktop, individual files
+/// are written to a user-chosen folder instead and this function is unused.
+#[wasm_bindgen(js_name = createZipFromFiles)]
+pub fn create_zip_from_files(entries: js_sys::Array) -> Result<Vec<u8>, JsValue> {
+	use std::io::{Cursor, Write};
+	use zip::write::{SimpleFileOptions, ZipWriter};
+
+	let mut buffer = Cursor::new(Vec::<u8>::new());
+	let mut writer = ZipWriter::new(&mut buffer);
+
+	// Skip compression since raster/SVG payloads are already small or already compressed
+	let options: SimpleFileOptions = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).unix_permissions(0o644);
+
+	for entry in entries.iter() {
+		let pair = entry
+			.dyn_ref::<js_sys::Array>()
+			.ok_or_else(|| JsValue::from_str("createZipFromFiles: each entry must be a [filename, bytes] array"))?;
+
+		let filename = pair.get(0).as_string().ok_or_else(|| JsValue::from_str("createZipFromFiles: filename must be a string"))?;
+		// Defense in depth: callers should already sanitize, but if a stray path separator leaks through,
+		// replace it here so the entry can't become a nested path inside the archive.
+		let safe_filename: String = filename.chars().map(|c| if c == '/' || c == '\\' { '_' } else { c }).collect();
+		let bytes = js_sys::Uint8Array::new(&pair.get(1)).to_vec();
+
+		writer
+			.start_file(safe_filename, options)
+			.map_err(|e| JsValue::from_str(&format!("createZipFromFiles: start_file failed: {e}")))?;
+		writer.write_all(&bytes).map_err(|e| JsValue::from_str(&format!("createZipFromFiles: write_all failed: {e}")))?;
+	}
+
+	writer.finish().map_err(|e| JsValue::from_str(&format!("createZipFromFiles: finish failed: {e}")))?;
+	Ok(buffer.into_inner())
+}
+
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	let value = math_parser::evaluate(expression)

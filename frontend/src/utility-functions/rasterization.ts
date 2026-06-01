@@ -17,18 +17,23 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 	const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
 	const url = URL.createObjectURL(svgBlob);
 
-	// Load the Image from the URL and wait until it's done
+	// Load the Image from the URL and wait until it's done. Reject on error so callers don't hang forever
+	// if the SVG fails to decode (malformed markup, zero-sized viewport with no width/height attrs, etc.).
 	const image = new Image();
 	image.src = url;
-	await new Promise<void>((resolve) => {
-		image.onload = () => resolve();
-	});
+	try {
+		await new Promise<void>((resolve, reject) => {
+			image.onload = () => resolve();
+			image.onerror = () => reject(new Error("Failed to decode SVG for rasterization"));
+		});
 
-	// Draw our SVG to the canvas
-	context?.drawImage(image, 0, 0, width, height);
-
-	// Clean up the SVG blob URL (once the URL is revoked, the SVG blob data itself is garbage collected after `svgBlob` goes out of scope)
-	URL.revokeObjectURL(url);
+		// Draw our SVG to the canvas
+		context?.drawImage(image, 0, 0, width, height);
+	} finally {
+		// Always clean up the SVG blob URL (once the URL is revoked, the SVG blob data itself is garbage
+		// collected after `svgBlob` goes out of scope), even if loading or drawing threw.
+		URL.revokeObjectURL(url);
+	}
 
 	return canvas;
 }

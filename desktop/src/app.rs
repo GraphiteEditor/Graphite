@@ -257,6 +257,12 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::WriteFile { path, content } => {
+				if let Some(parent) = path.parent()
+					&& !parent.as_os_str().is_empty()
+					&& let Err(e) = fs::create_dir_all(parent)
+				{
+					tracing::error!("Failed to create parent directory {}: {}", parent.display(), e);
+				}
 				if let Err(e) = fs::write(&path, content) {
 					tracing::error!("Failed to write file {}: {}", path.display(), e);
 				}

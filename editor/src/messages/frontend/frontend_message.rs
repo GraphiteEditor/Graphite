@@ -1,7 +1,7 @@
 use super::IconName;
 use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage};
+use crate::messages::frontend::utility_types::{DocumentInfo, ExportAnimationFrame, EyedropperPreviewImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -106,6 +106,23 @@ pub enum FrontendMessage {
 		name: String,
 		mime: String,
 		size: (f64, f64),
+	},
+	/// Export one or more animation frames as a bundle.
+	/// On web, the frontend zips the frames into an uncompressed `.zip` and triggers a single download.
+	/// On desktop, the wrapper intercepts this and writes each frame as a separate file to a user-chosen folder.
+	TriggerExportAnimation {
+		/// Base name without the index suffix or extension (e.g. "MyDocument" or "MyDocument - Artboard 1").
+		name: String,
+		/// File extension without leading dot ("png", "jpg", "svg").
+		extension: String,
+		/// MIME type matching the extension (e.g. "image/png").
+		mime: String,
+		/// Pixel size of each rasterized frame, used when the frontend needs to canvas-rasterize from SVG.
+		size: (f64, f64),
+		/// Document folder, used as a default location for the desktop save dialog.
+		folder: Option<PathBuf>,
+		/// One entry per frame, in playback order. Each frame is either an SVG string or pre-encoded bytes.
+		frames: Vec<ExportAnimationFrame>,
 	},
 	TriggerFetchAndOpenDocument {
 		name: String,

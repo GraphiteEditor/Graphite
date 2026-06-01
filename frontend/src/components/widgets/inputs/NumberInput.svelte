@@ -215,9 +215,9 @@
 		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
 	}
 
-	// Removes the trailing "s" from a unit if the quantity is 1.
+	// Removes the "s" suffix from a unit if the quantity is 1.
 	function unPluralize(unit: string, quantity: number): string {
-		if (quantity !== 1 || !unit.endsWith("s")) return unit;
+		if (quantity !== 1 || !unit.endsWith("s") || unit.trim().length < 2) return unit;
 		return unit.slice(0, -1);
 	}
 

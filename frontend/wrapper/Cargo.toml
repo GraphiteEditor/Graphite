@@ -39,6 +39,7 @@ web-sys = { workspace = true }
 ron = { workspace = true }
 serde_json = { workspace = true }
 node-macro = { workspace = true }
+zip = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

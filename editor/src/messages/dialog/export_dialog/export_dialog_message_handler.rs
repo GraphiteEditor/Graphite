@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::frontend::utility_types::{AnimationExport, ExportBounds, FileType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
@@ -16,6 +16,10 @@ pub struct ExportDialogMessageHandler {
 	pub bounds: ExportBounds,
 	pub artboards: HashMap<LayerNodeIdentifier, String>,
 	pub has_selection: bool,
+	pub animated: bool,
+	pub fps: f64,
+	pub start_seconds: f64,
+	pub end_seconds: f64,
 }
 
 impl Default for ExportDialogMessageHandler {
@@ -26,7 +30,29 @@ impl Default for ExportDialogMessageHandler {
 			bounds: Default::default(),
 			artboards: Default::default(),
 			has_selection: false,
+			animated: false,
+			fps: 30.,
+			start_seconds: 0.,
+			end_seconds: 1.,
 		}
+	}
+}
+
+/// Upper bound on how many frames a single animation export will queue. Each frame is rendered then held
+/// in memory until the whole batch ships to the frontend, so we cap to avoid pathological allocations from
+/// large time ranges. Tuned for typical animation lengths (10k frames is ~5.5 min at 30 fps, ~2.8 min at 60 fps).
+pub const ANIMATION_EXPORT_MAX_FRAMES: u32 = 10_000;
+
+impl ExportDialogMessageHandler {
+	fn total_frames(&self) -> u32 {
+		// Sanitize against non-finite values that could otherwise propagate into `Duration::from_secs_f64` and panic.
+		if !self.fps.is_finite() || self.fps <= 0. || !self.start_seconds.is_finite() || !self.end_seconds.is_finite() {
+			return 1;
+		}
+		let duration = (self.end_seconds - self.start_seconds).max(0.);
+		// `ceil` so a duration slightly longer than a frame multiple still gets the trailing frame.
+		let raw = (duration * self.fps).ceil() as i64;
+		raw.clamp(1, ANIMATION_EXPORT_MAX_FRAMES as i64) as u32
 	}
 }
 
@@ -39,6 +65,20 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::FileType { file_type } => self.file_type = file_type,
 			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
+			ExportDialogMessage::Animated { animated } => self.animated = animated,
+			ExportDialogMessage::Fps { fps } => {
+				// Reject non-finite/non-positive values so we never feed NaN or infinity into duration math downstream.
+				self.fps = if fps.is_finite() && fps > 0. { fps } else { 0.001 };
+			}
+			ExportDialogMessage::StartSeconds { start } => {
+				self.start_seconds = if start.is_finite() { start.max(0.) } else { 0. };
+				if self.end_seconds < self.start_seconds {
+					self.end_seconds = self.start_seconds;
+				}
+			}
+			ExportDialogMessage::EndSeconds { end } => {
+				self.end_seconds = if end.is_finite() { end.max(self.start_seconds) } else { self.start_seconds };
+			}
 
 			ExportDialogMessage::Submit => {
 				// Fall back to "All Artwork" if "Selection" was chosen but nothing is currently selected
@@ -52,6 +92,13 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 					ExportBounds::Artboard(layer) => self.artboards.get(&layer).cloned(),
 					_ => None,
 				};
+
+				let animation = self.animated.then(|| AnimationExport {
+					fps: self.fps,
+					start_seconds: self.start_seconds,
+					total_frames: self.total_frames(),
+				});
+
 				responses.add_front(PortfolioMessage::SubmitDocumentExport {
 					name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 					file_type: self.file_type,
@@ -59,6 +106,7 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 					bounds,
 					artboard_name,
 					artboard_count: self.artboards.len(),
+					animation,
 				})
 			}
 		}
@@ -163,6 +211,74 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::row(export_type), LayoutGroup::row(resolution), LayoutGroup::row(export_area)])
+		let animation_checkbox_id = CheckboxId::new();
+		let animation_toggle = vec![
+			TextLabel::new("Animation").table_align(true).min_width(100).for_checkbox(animation_checkbox_id).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			CheckboxInput::new(self.animated)
+				.on_update(|checkbox_input: &CheckboxInput| ExportDialogMessage::Animated { animated: checkbox_input.checked }.into())
+				.for_label(animation_checkbox_id)
+				.widget_instance(),
+		];
+
+		let mut layout_groups = vec![
+			LayoutGroup::row(export_type),
+			LayoutGroup::row(resolution),
+			LayoutGroup::row(export_area),
+			LayoutGroup::row(animation_toggle),
+		];
+
+		if self.animated {
+			let fps_row = vec![
+				TextLabel::new("FPS").table_align(true).min_width(100).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(self.fps))
+					.unit(" fps")
+					.min(0.001)
+					.max(1000.)
+					.increment_step(1.)
+					.on_update(|number_input: &NumberInput| ExportDialogMessage::Fps { fps: number_input.value.unwrap() }.into())
+					.min_width(200)
+					.widget_instance(),
+			];
+
+			let start_row = vec![
+				TextLabel::new("Start").table_align(true).min_width(100).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(self.start_seconds))
+					.unit(" sec")
+					.min(0.)
+					.increment_step(0.1)
+					.on_update(|number_input: &NumberInput| ExportDialogMessage::StartSeconds { start: number_input.value.unwrap() }.into())
+					.min_width(200)
+					.widget_instance(),
+			];
+
+			let end_row = vec![
+				TextLabel::new("End").table_align(true).min_width(100).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(self.end_seconds))
+					.unit(" sec")
+					.min(self.start_seconds)
+					.increment_step(0.1)
+					.on_update(|number_input: &NumberInput| ExportDialogMessage::EndSeconds { end: number_input.value.unwrap() }.into())
+					.min_width(200)
+					.widget_instance(),
+			];
+
+			let frame_count = self.total_frames();
+			let frames_row = vec![
+				TextLabel::new("Frames").table_align(true).min_width(100).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				TextLabel::new(format!("{frame_count} frame{}", if frame_count == 1 { "" } else { "s" })).widget_instance(),
+			];
+
+			layout_groups.push(LayoutGroup::row(fps_row));
+			layout_groups.push(LayoutGroup::row(start_row));
+			layout_groups.push(LayoutGroup::row(end_row));
+			layout_groups.push(LayoutGroup::row(frames_row));
+		}
+
+		Layout(layout_groups)
 	}
 }

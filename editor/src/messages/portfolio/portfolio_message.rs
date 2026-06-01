@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
 use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
-use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
+use crate::messages::frontend::utility_types::{AnimationExport, ExportBounds, FileType, PersistedState};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
@@ -185,6 +185,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		artboard_name: Option<String>,
 		artboard_count: usize,
+		animation: Option<AnimationExport>,
 	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {

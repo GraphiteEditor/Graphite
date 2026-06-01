@@ -6,6 +6,7 @@ import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
 import { rasterizeSVG } from "/src/utility-functions/rasterization";
 import { patchLayout } from "/src/utility-functions/widgets";
+import { createZipFromFiles } from "/wrapper/pkg/graphite_wasm_wrapper";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
@@ -129,6 +130,48 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
+	// TODO: This handler orchestrates rasterization + zipping in JS because PNG/JPG frames arrive as SVG strings
+	// TODO: that need the frontend's canvas-based `rasterizeSVG()` to encode. Once SVG rasterization moves to
+	// TODO: always occur in Rust, the executor can build the .zip itself and emit a single `TriggerSaveFile`,
+	// TODO: matching how PNG/JPG/SVG/.graphite single-file exports work today.
+	subscriptions.subscribeFrontendMessage("TriggerExportAnimation", async (data) => {
+		const { name, extension, mime, size, frames } = data;
+		const isRaster = extension === "png" || extension === "jpg";
+		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
+		const padWidth = Math.max(4, String(frames.length).length);
+
+		// Materialize each frame to bytes, rasterizing SVG via canvas when the destination format is raster.
+		// Any per-frame failure aborts the export rather than silently dropping frames, so the user never gets
+		// a zip with mismatched indices vs. the requested playback range.
+		const entries: [string, Uint8Array][] = [];
+		try {
+			for (let i = 0; i < frames.length; i++) {
+				const frame = frames[i];
+				const filename = `${name}_${String(i + 1).padStart(padWidth, "0")}.${extension}`;
+
+				let bytes: Uint8Array;
+				if ("Bytes" in frame) {
+					bytes = frame.Bytes;
+				} else if (isRaster) {
+					const blob = await rasterizeSVG(frame.Svg, size[0], size[1], mime, backgroundColor);
+					bytes = new Uint8Array(await blob.arrayBuffer());
+				} else {
+					bytes = new TextEncoder().encode(frame.Svg);
+				}
+				entries.push([filename, bytes]);
+			}
+		} catch (error) {
+			editor.errorDialog("Animation export failed", error instanceof Error ? error.message : String(error));
+			return;
+		}
+
+		if (entries.length === 0) return;
+
+		// Build the .zip in Rust (uncompressed store mode); web APIs can only deliver a single download, so the user gets one .zip
+		const zipBytes = createZipFromFiles(entries);
+		downloadFileBlob(`${name}.zip`, new Blob([new Uint8Array(zipBytes)], { type: "application/zip" }));
+	});
+
 	subscriptions.subscribeFrontendMessage("UpdateWorkspacePanelLayout", (data) => {
 		update((state) => {
 			state.panelLayout = data.panelLayout;
@@ -196,6 +239,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
+	subscriptions.unsubscribeFrontendMessage("TriggerExportAnimation");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");

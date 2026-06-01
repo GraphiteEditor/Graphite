@@ -1,3 +1,4 @@
+use graphite_editor::messages::frontend::utility_types::ExportAnimationFrame;
 #[cfg(target_os = "macos")]
 use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use graphite_editor::messages::prelude::FrontendMessage;
@@ -57,6 +58,61 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				default_folder: folder,
 				filters: Vec::new(),
 				context: SaveFileDialogContext::File { content },
+			});
+		}
+		FrontendMessage::TriggerExportAnimation {
+			name,
+			extension,
+			mime,
+			size,
+			folder,
+			frames,
+		} => {
+			// Materialize each frame to bytes; SVG strings are encoded as UTF-8.
+			// Raster-needs-canvas-rasterize frames can't be encoded here without a Rust SVG rasterizer,
+			// so fall through to the frontend zip path in that case.
+			// TODO: This fallback is inconsistent with the desktop folder-save flow for the rest of the animation
+			// export — desktop users will see a .zip download instead of a folder. Once SVG rasterization moves to
+			// Rust (resvg), this fallback can be removed and all frame paths can save into the chosen folder.
+			let mut needs_frontend_rasterization = false;
+			let mut materialized = Vec::with_capacity(frames.len());
+			// Dynamic zero-pad width so files keep sorting in playback order beyond 9,999 frames.
+			let pad_width = frames.len().to_string().len().max(4);
+			let safe_base = graphite_editor::messages::frontend::utility_types::sanitize_filename_component(&name);
+			for (index, frame) in frames.iter().enumerate() {
+				let filename = format!("{safe_base}_{:0pad$}.{extension}", index + 1, pad = pad_width);
+				let bytes = match frame {
+					ExportAnimationFrame::Svg(svg) if extension == "svg" => svg.as_bytes().to_vec(),
+					ExportAnimationFrame::Bytes(bytes) => bytes.to_vec(),
+					ExportAnimationFrame::Svg(_) => {
+						needs_frontend_rasterization = true;
+						break;
+					}
+				};
+				materialized.push((filename, bytes));
+			}
+
+			if needs_frontend_rasterization {
+				return Some(FrontendMessage::TriggerExportAnimation {
+					name,
+					extension,
+					mime,
+					size,
+					folder,
+					frames,
+				});
+			}
+
+			// The dialog name is the folder the frames go into (analogous to the .zip on web).
+			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
+				title: "Save Animation Frames Folder As".to_string(),
+				default_filename: safe_base,
+				default_folder: folder,
+				filters: Vec::new(),
+				context: SaveFileDialogContext::MultipleFiles {
+					files: materialized,
+					expected_extension: extension,
+				},
 			});
 		}
 		FrontendMessage::TriggerVisitLink { url } => {
