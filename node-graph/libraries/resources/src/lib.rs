@@ -242,6 +242,18 @@ impl ResourceId {
 	}
 }
 
+impl From<u64> for ResourceId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl From<ResourceId> for u64 {
+	fn from(id: ResourceId) -> Self {
+		id.0
+	}
+}
+
 impl std::fmt::Display for ResourceId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.0)
