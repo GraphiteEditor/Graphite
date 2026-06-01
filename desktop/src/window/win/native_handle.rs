@@ -225,7 +225,7 @@ unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wpara
 			params.rgrc[0].bottom -= inset;
 		}
 
-		// Return 0 to to tell Windows to skip the default non-client area calculation and drawing.
+		// Return 0 to tell Windows to skip the default non-client area calculation and drawing.
 		return LRESULT(0);
 	}
 

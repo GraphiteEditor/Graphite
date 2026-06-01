@@ -1797,7 +1797,7 @@ impl Render for List<Raster<GPU>> {
 // Since colors and gradients are technically infinitely big, we have to implement
 // workarounds for rendering them correctly in a way which still allows us
 // to cache the intermediate render data (SVG string/Vello scene).
-// For SVG, this is is achived by creating a truly giant rectangle.
+// For SVG, this is achieved by creating a truly giant rectangle.
 // For Vello, we create a layer with a placeholder transform which we
 // later replace with the current viewport transform before each render.
 impl Render for List<Color> {

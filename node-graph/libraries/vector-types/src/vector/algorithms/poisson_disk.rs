@@ -150,7 +150,7 @@ fn target_active_square(active_list_levels: &[ActiveListLevel], rng: &mut impl F
 		return (level, active_square_index_in_level);
 	}
 
-	panic!("index_into_area couldn't be be mapped to a square in any level of the active lists");
+	panic!("index_into_area couldn't be mapped to a square in any level of the active lists");
 }
 
 fn point_not_covered_by_poisson_points(point: DVec2, diameter_squared: f64, points_grid: &AccelerationGrid) -> bool {
