@@ -46,10 +46,10 @@ fn function_plot(
 	#[default(sin(2 * t))]
 	y_expression: String,
 	/// Minimum value for the parameter to evaluate.
-	#[default(-1.)]
+	#[default(0.)]
 	parameter_min_value: f64,
 	/// Maximum value for the parameter to evaluate.
-	#[default(1.)]
+	#[default(6.28318530718)]
 	parameter_max_value: f64,
 	/// How many samples should we take
 	#[default(100)]
@@ -68,7 +68,7 @@ fn function_plot(
 		None => return List::new(),
 	};
 
-	transform_plot_positions(&mut anchor_positions, &bounds, width, height);
+	fit_plot_to_bounds(&mut anchor_positions, &bounds, width, height);
 
 	let mut closed = false;
 
@@ -90,7 +90,7 @@ fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str
 	let mut values = HashMap::<String, f64>::new();
 	values.insert(variable_name.to_string(), 0.);
 
-	let interval = (parameter_max_value - parameter_min_value) / sample_count as f64;
+	let interval = (parameter_max_value - parameter_min_value) / (sample_count - 1) as f64;
 
 	let mut anchor_positions = Vec::<DVec2>::new();
 
@@ -99,7 +99,7 @@ fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str
 	let mut y_min = 0.;
 	let mut y_max = 0.;
 
-	for i in 0..=sample_count {
+	for i in 0..sample_count {
 		let t = parameter_min_value + i as f64 * interval;
 
 		if let Some(value) = values.get_mut(variable_name) {
@@ -162,7 +162,7 @@ fn sample_plot_curve(x_node: &ast::Node, y_node: &ast::Node, variable_name: &str
 	Some((anchor_positions, PlotBounds { x_min, x_max, y_min, y_max }))
 }
 
-fn transform_plot_positions(anchor_positions: &mut [DVec2], bounds: &PlotBounds, width: f64, height: f64) {
+fn fit_plot_to_bounds(anchor_positions: &mut [DVec2], bounds: &PlotBounds, width: f64, height: f64) {
 	let x_scale = width / (bounds.x_max - bounds.x_min).max(f64::EPSILON);
 	let y_scale = height / (bounds.y_max - bounds.y_min).max(f64::EPSILON);
 
