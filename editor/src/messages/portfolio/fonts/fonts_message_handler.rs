@@ -41,20 +41,17 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 					return;
 				}
 				let loader = resource_storage.resources();
-				responses.add(FutureMessage::Await {
-					future: async move {
-						let resource = loader.load(hash).await;
-						match resource {
-							Some(resource) => Message::Batched {
-								messages: Box::new([FontsMessage::Cached { hash, resource }.into(), *response]),
-							},
-							None => {
-								log::warn!("Storage missing data for font hash {hash}");
-								*response
-							}
+				responses.add(async move {
+					let resource = loader.load(hash).await;
+					match resource {
+						Some(resource) => Message::Batched {
+							messages: Box::new([FontsMessage::Cached { hash, resource }.into(), *response]),
+						},
+						None => {
+							log::warn!("Storage missing data for font hash {hash}");
+							*response
 						}
 					}
-					.into(),
 				});
 			}
 			FontsMessage::Cached { hash, resource } => {
