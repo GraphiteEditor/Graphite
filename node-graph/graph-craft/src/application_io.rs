@@ -61,7 +61,13 @@ impl ApplicationIo for PlatformApplicationIo {
 	}
 
 	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {
-		self.resources.as_ref().expect("Resource storage not initialized").load(hash)
+		match self.resources.as_ref() {
+			Some(resources) => resources.load(hash),
+			None => {
+				log::error!("load_resource called before resource storage was initialized");
+				Box::pin(std::future::ready(None))
+			}
+		}
 	}
 }
 
