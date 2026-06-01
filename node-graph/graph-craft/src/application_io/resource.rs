@@ -23,25 +23,25 @@ impl HashMapResourceStorage {
 }
 
 impl LoadResource for HashMapResourceStorage {
-	fn load(&self, hash: ResourceHash) -> ResourceFuture {
+	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {
 		let result = self.resources.lock().unwrap().get(&hash).cloned();
 		Box::pin(async move { result })
 	}
 }
 
 impl ResourceStorage for HashMapResourceStorage {
-	fn store(&mut self, data: &[u8]) -> ResourceHash {
+	fn store(&self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
-		self.resources.get_mut().unwrap().insert(hash, Resource::new(Arc::<[u8]>::from(data)));
+		self.resources.lock().unwrap().insert(hash, Resource::new(Arc::<[u8]>::from(data)));
 		hash
 	}
 
-	fn contains(&mut self, hash: &ResourceHash) -> bool {
-		self.resources.get_mut().unwrap().contains_key(hash)
+	fn contains(&self, hash: &ResourceHash) -> bool {
+		self.resources.lock().unwrap().contains_key(hash)
 	}
 
-	fn garbage_collect(&mut self, used: &[ResourceHash]) {
+	fn garbage_collect(&self, used: &[ResourceHash]) {
 		let used_set: std::collections::HashSet<&ResourceHash> = used.iter().collect();
-		self.resources.get_mut().unwrap().retain(|hash, _| used_set.contains(hash));
+		self.resources.lock().unwrap().retain(|hash, _| used_set.contains(hash));
 	}
 }

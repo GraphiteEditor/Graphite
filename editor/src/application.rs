@@ -3,14 +3,14 @@ use crate::messages::prelude::*;
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 pub use graphene_std::uuid::*;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 pub struct Editor {
 	pub dispatcher: Dispatcher,
 }
 
 impl Editor {
-	pub fn new(environment: Environment, uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>, mut application_io: PlatformApplicationIo, wake: Wake) -> Self {
+	pub fn new(environment: Environment, uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, mut application_io: PlatformApplicationIo, wake: Wake) -> Self {
 		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 

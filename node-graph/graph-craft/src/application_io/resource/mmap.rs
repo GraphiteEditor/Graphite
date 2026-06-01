@@ -61,14 +61,14 @@ impl MmapResourceStorage {
 }
 
 impl LoadResource for MmapResourceStorage {
-	fn load(&self, hash: ResourceHash) -> ResourceFuture {
+	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {
 		let result = self.lookup(&hash);
 		Box::pin(async move { result })
 	}
 }
 
 impl ResourceStorage for MmapResourceStorage {
-	fn store(&mut self, data: &[u8]) -> ResourceHash {
+	fn store(&self, data: &[u8]) -> ResourceHash {
 		let hash = ResourceHash::from(data);
 		let path = self.path_for(&hash);
 
@@ -109,13 +109,13 @@ impl ResourceStorage for MmapResourceStorage {
 		hash
 	}
 
-	fn contains(&mut self, hash: &ResourceHash) -> bool {
-		self.cache.get_mut().unwrap_or_else(|poisoned| poisoned.into_inner()).contains_key(hash) || self.path_for(hash).exists()
+	fn contains(&self, hash: &ResourceHash) -> bool {
+		self.cache.read().unwrap_or_else(|poisoned| poisoned.into_inner()).contains_key(hash) || self.path_for(hash).exists()
 	}
 
-	fn garbage_collect(&mut self, used: &[ResourceHash]) {
+	fn garbage_collect(&self, used: &[ResourceHash]) {
 		let used_set: std::collections::HashSet<ResourceHash> = used.iter().cloned().collect();
-		self.cache.get_mut().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|hash, _| used_set.contains(hash));
+		self.cache.write().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|hash, _| used_set.contains(hash));
 
 		let Ok(top_entries) = fs::read_dir(&self.root) else { return };
 		for top_entry in top_entries.flatten() {

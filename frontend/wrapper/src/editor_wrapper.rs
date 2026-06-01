@@ -85,11 +85,11 @@ impl EditorWrapper {
 			_ => unreachable!(),
 		};
 
-		let storage: Box<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
-			Ok(storage) => Box::new(storage),
+		let storage: std::sync::Arc<dyn ResourceStorage> = match OpfsResourceStorage::load("resources").await {
+			Ok(storage) => std::sync::Arc::new(storage),
 			Err(error) => {
 				log::error!("Failed to open OPFS resource storage, falling back to in-memory: {error:?}");
-				Box::new(graph_craft::application_io::resource::HashMapResourceStorage::new())
+				std::sync::Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new())
 			}
 		};
 

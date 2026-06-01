@@ -4,6 +4,7 @@ use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message, Wake};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
+use std::sync::Arc;
 
 pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
@@ -24,7 +25,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64, resource_storage: Box<dyn ResourceStorage>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
+	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]

@@ -96,10 +96,10 @@ impl App {
 
 		// Wake the winit event loop when an editor future completes.
 		let wake_scheduler = app_event_scheduler.clone();
-		let wake = std::sync::Arc::new(move || {
+		let wake = Arc::new(move || {
 			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
 		});
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Box::new(resource_storage), wgpu_context.clone(), wake);
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,
