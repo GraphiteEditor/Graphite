@@ -19,7 +19,7 @@ thread_local! {
 pub struct TextContext {
 	font_context: FontContext,
 	layout_context: LayoutContext<()>,
-	font_info_cache: HashMap<usize, (FamilyId, FontInfo)>,
+	font_info_cache: HashMap<u64, (FamilyId, FontInfo)>,
 }
 
 impl TextContext {
@@ -33,7 +33,7 @@ impl TextContext {
 
 	/// Get or cache font information for the given font blob.
 	fn get_font_info(&mut self, font_data: &Blob<u8>) -> Option<(String, FontInfo)> {
-		let key = font_data.as_ref().as_ptr() as usize;
+		let key = font_data.id();
 		// Check if we already have the font info cached
 		if let Some((family_id, font_info)) = self.font_info_cache.get(&key)
 			&& let Some(family_name) = self.font_context.collection.family_name(*family_id)
