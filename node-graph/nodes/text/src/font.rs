@@ -37,6 +37,10 @@ impl Font {
 		Self { font_family, font_style }
 	}
 
+	pub fn new_with_default_style(font_family: String) -> Self {
+		Self::new(font_family, core_types::consts::DEFAULT_FONT_STYLE.into())
+	}
+
 	pub fn named_weight(weight: u32) -> &'static str {
 		// From https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight#common_weight_name_mapping
 		match weight {

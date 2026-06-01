@@ -20,10 +20,9 @@ impl FontCatalog {
 		found_style
 	}
 
-	pub fn download_url(&self, family: &str, style: Option<&str>) -> Option<String> {
-		let catalog_family = self.0.iter().find(|catalog_family| catalog_family.name == family)?;
-		let style_name = style.unwrap_or("Regular (400)");
-		let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(style_name, "");
+	pub fn download_url(&self, font: &Font) -> Option<String> {
+		let catalog_family = self.0.iter().find(|catalog_family| catalog_family.name == font.font_family)?;
+		let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
 		Some(catalog_family.closest_style(weight, italic).url.clone())
 	}
 

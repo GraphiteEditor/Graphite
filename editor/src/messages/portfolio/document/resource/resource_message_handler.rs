@@ -3,6 +3,7 @@ use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
+use graphene_std::text::Font;
 
 #[derive(ExtractField)]
 pub struct ResourceMessageContext<'a> {
@@ -88,13 +89,17 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						});
 					}
 					DataSource::Font { family, style } => {
-						if let Some(hash) = fonts.cached_hash(&family, style.as_deref()) {
+						let font = match style {
+							Some(style) => Font::new(family, style),
+							None => Font::new_with_default_style(family),
+						};
+						if let Some(hash) = fonts.cached_hash(&font) {
 							self.registry.resolve(&resource_id, hash);
 							self.pending_resolves.remove(&resource_id);
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							return;
 						}
-						if let Some(url) = fonts.cached_url(&family, style.as_deref()) {
+						if let Some(url) = fonts.cached_url(&font) {
 							responses.add(FrontendMessage::TriggerResolveResource { document_id, resource_id, url });
 							return;
 						}
@@ -125,7 +130,11 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				responses.add(ResourceStorageMessage::Store { data });
 
 				if let DataSource::Font { family, style } = source {
-					responses.add(FontsMessage::ResourceResolved { family, style, hash });
+					let font = match style {
+						Some(style) => Font::new(family, style),
+						None => Font::new_with_default_style(family),
+					};
+					responses.add(FontsMessage::ResourceResolved { font, hash });
 				}
 
 				responses.add(ResourceMessage::Resolve);

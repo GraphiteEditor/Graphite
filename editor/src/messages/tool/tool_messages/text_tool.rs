@@ -556,8 +556,7 @@ impl TextToolData {
 		self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
 
 		responses.add(FontsMessage::Load {
-			family: editing_text.font.font_family.clone(),
-			style: Some(editing_text.font.font_style.clone()),
+			font: editing_text.font.clone(),
 			response: Box::new(NodeGraphMessage::RunDocumentGraph.into()),
 		});
 		responses.add(GraphOperationMessage::NewTextLayer {

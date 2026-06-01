@@ -26,12 +26,11 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 				self.font_catalog = catalog;
 				responses.add(PortfolioMessage::ResolveResources);
 			}
-			FontsMessage::ResourceResolved { family, style, hash } => {
-				let font = font_from_pair(&family, style.as_deref());
+			FontsMessage::ResourceResolved { font, hash } => {
 				self.font_hashes.insert(font, hash);
 			}
-			FontsMessage::Load { family, style, response } => {
-				let font = self.normalize(font_from_pair(&family, style.as_deref()));
+			FontsMessage::Load { font, response } => {
+				let font = self.normalize(font);
 				let Some(hash) = self.font_hashes.get(&font).copied() else {
 					log::warn!("FontsMessage::Load for {font:?} with no known hash; ignoring");
 					return;
@@ -64,23 +63,21 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 }
 
 impl FontsMessageHandler {
-	pub fn cached_hash(&self, family: &str, style: Option<&str>) -> Option<ResourceHash> {
-		self.font_hashes.get(&font_from_pair(family, style)).copied()
+	pub fn cached_hash(&self, font: &Font) -> Option<ResourceHash> {
+		self.font_hashes.get(font).copied()
 	}
 
-	pub fn cached_url(&self, family: &str, style: Option<&str>) -> Option<String> {
-		self.font_catalog.download_url(family, style)
+	pub fn cached_url(&self, font: &Font) -> Option<String> {
+		self.font_catalog.download_url(font)
 	}
 
 	pub fn get_blob_or_queue_load(&self, font: &Font, responses: &mut VecDeque<Message>) -> Blob<u8> {
-		let style = Some(font.font_style.as_str());
 		if let Some(hash) = self.font_hashes.get(font) {
 			if let Some(resource) = self.font_data.get(hash) {
 				return Blob::new(resource.into());
 			}
 			responses.add(FontsMessage::Load {
-				family: font.font_family.clone(),
-				style: style.map(str::to_string),
+				font: font.clone(),
 				response: Message::NoOp.into(),
 			});
 		}
@@ -90,7 +87,10 @@ impl FontsMessageHandler {
 	pub fn id_font(&self, resources: &ResourceMessageHandler, resource_id: ResourceId) -> Option<Font> {
 		let info = resources.registry.info(&resource_id)?;
 		info.sources.iter().find_map(|source| match source {
-			DataSource::Font { family, style } => Some(font_from_pair(family, style.as_deref())),
+			DataSource::Font { family, style } => Some(match style {
+				Some(style) => Font::new(family.clone(), style.clone()),
+				None => Font::new_with_default_style(family.clone()),
+			}),
 			_ => None,
 		})
 	}
@@ -105,9 +105,4 @@ impl FontsMessageHandler {
 			None => font,
 		}
 	}
-}
-
-// TODO: Remove
-fn font_from_pair(family: &str, style: Option<&str>) -> Font {
-	Font::new(family.to_string(), style.unwrap_or("Regular (400)").to_string())
 }
