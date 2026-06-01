@@ -41,6 +41,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			ResourceMessage::AddFont { resource_id, font } => {
 				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
 				let style_name = style.map(|style| style.to_named_style()).unwrap_or_else(|| font.font_style.clone());
+				self.registry.push_source_back(&resource_id, DataSource::Embedded);
 				self.registry.push_source_back(
 					&resource_id,
 					DataSource::Font {
@@ -79,7 +80,9 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 
 				match source {
 					DataSource::Embedded => {
-						log::error!("Resource {resource_id} is embedded but failed to resolve before reaching ResolveStep");
+						// Embedded resources are loaded on document load.
+						// If we get to this point, it means the resource was not embedded and we should try the next source.
+						responses.add(ResourceMessage::ResolveStep { resource_id });
 					}
 					DataSource::Url(url) => {
 						responses.add(FrontendMessage::TriggerResolveResource {
