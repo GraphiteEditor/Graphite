@@ -4,8 +4,8 @@ use crate::consts::{
 	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
-use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
 use core::borrow::Borrow;
