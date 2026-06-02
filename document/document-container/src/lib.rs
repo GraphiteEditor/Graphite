@@ -143,16 +143,17 @@ pub(crate) fn with_trailing_slash(prefix: &str) -> String {
 	if prefix.is_empty() || prefix.ends_with('/') { prefix.to_string() } else { format!("{prefix}/") }
 }
 
-/// Validate that `path` is a relative, container-safe path:
-/// no `..` components, no leading or standalone `.`, no absolute or Windows-prefixed paths, no backslashes.
+/// Validate that `path` names a relative, container-safe file:
+/// non-empty, no `..` components, no leading or standalone `.`, no absolute or Windows-prefixed paths, no backslashes.
 ///
-/// Backends use this to reject paths that could escape the container root,
-/// and archive codecs use it on entry names from untrusted input. Interior `.` segments
-/// (e.g. `a/./b`) are normalized away by `Path::components` before they reach this check.
+/// Backends use this to reject paths that could escape the container root, and archive codecs use it on
+/// entry names from untrusted input. Interior `.` segments (e.g. `a/./b`) are normalized away by
+/// `Path::components` before they reach this check. For listing prefixes, which may name the container
+/// root, use [`validate_prefix`] instead.
 pub fn validate_path(path: &str) -> Result<()> {
 	let invalid = || ContainerError::InvalidPath(path.to_string());
 
-	if path.contains('\\') || path.starts_with('/') {
+	if path.is_empty() || path.contains('\\') || path.starts_with('/') {
 		return Err(invalid());
 	}
 
@@ -170,6 +171,15 @@ pub fn validate_path(path: &str) -> Result<()> {
 		}
 	}
 	Ok(())
+}
+
+/// Validate a listing prefix. Same rules as [`validate_path`], except the container root is also a valid
+/// prefix, named by either the empty string or `.`. Backends pass this to `list`/`list_dirs`.
+pub fn validate_prefix(prefix: &str) -> Result<()> {
+	if prefix.is_empty() || prefix == "." {
+		return Ok(());
+	}
+	validate_path(prefix)
 }
 
 /// Synchronous virtual filesystem of named byte payloads.
@@ -438,7 +448,7 @@ impl AsyncContainer for AnyContainer {
 
 #[cfg(test)]
 mod tests {
-	use super::{ContainerError, validate_path};
+	use super::{ContainerError, validate_path, validate_prefix};
 
 	#[test]
 	fn validate_path_accepts_well_formed() {
@@ -450,9 +460,19 @@ mod tests {
 
 	#[test]
 	fn validate_path_rejects_unsafe() {
-		for bad in ["../escape", "a/../b", ".", "./leading", "/abs", "back\\slash", "C:/win", "\\\\?\\unc"] {
+		for bad in ["", "../escape", "a/../b", ".", "./leading", "/abs", "back\\slash", "C:/win", "\\\\?\\unc"] {
 			let result = validate_path(bad);
 			assert!(matches!(result, Err(ContainerError::InvalidPath(_))), "{bad:?} should be rejected, got {result:?}");
 		}
+	}
+
+	#[test]
+	fn validate_prefix_accepts_root_tokens() {
+		// The container root is a valid listing prefix, named by either the empty string or `.`.
+		for root in ["", ".", "resources", "a/b"] {
+			assert!(validate_prefix(root).is_ok(), "{root:?} should be accepted as a prefix");
+		}
+		// Unsafe prefixes are still rejected, same as paths.
+		assert!(validate_prefix("../escape").is_err());
 	}
 }

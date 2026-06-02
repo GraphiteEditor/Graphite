@@ -1,6 +1,6 @@
 //! OPFS (Origin Private File System) backend for browser wasm.
 
-use crate::{AsyncContainer, ByteHolder, ContainerError, Result, validate_path, with_trailing_slash};
+use crate::{AsyncContainer, ByteHolder, ContainerError, Result, validate_path, validate_prefix, with_trailing_slash};
 use futures::channel::oneshot;
 use js_sys::Uint8Array;
 use std::collections::{HashSet, VecDeque};
@@ -125,13 +125,13 @@ impl AsyncContainer for OpfsBackend {
 	}
 
 	async fn list(&self, prefix: &str) -> Result<Vec<String>> {
-		validate_path(prefix)?;
+		validate_prefix(prefix)?;
 		self.flush().await;
 		list_entries(&self.directory(), prefix, EntryKind::File).await.map_err(js_err)
 	}
 
 	async fn list_dirs(&self, prefix: &str) -> Result<Vec<String>> {
-		validate_path(prefix)?;
+		validate_prefix(prefix)?;
 		self.flush().await;
 		list_entries(&self.directory(), prefix, EntryKind::Directory).await.map_err(js_err)
 	}
@@ -290,9 +290,17 @@ async fn write_file(root: &FileSystemDirectoryHandle, path: &str, bytes: &[u8]) 
 	let handle: FileSystemFileHandle = JsFuture::from(directory.get_file_handle_with_options(name, &options)).await?.dyn_into()?;
 	let writable: FileSystemWritableFileStream = JsFuture::from(handle.create_writable()).await?.dyn_into()?;
 	let stream: WritableStream = writable.clone().unchecked_into();
-	let array = Uint8Array::from(bytes);
 
-	if let Err(error) = JsFuture::from(writable.write_with_js_u8_array(&array)?).await {
+	// Wrap in an async block so any failure, including a synchronous JS throw from `write_with_js_u8_array`,
+	// aborts the stream before returning instead of leaving a dangling locked writable.
+	let write = async {
+		let array = Uint8Array::from(bytes);
+		JsFuture::from(writable.write_with_js_u8_array(&array)?).await?;
+		Ok::<(), JsValue>(())
+	}
+	.await;
+
+	if let Err(error) = write {
 		let _ = JsFuture::from(stream.abort()).await;
 		return Err(error);
 	}
@@ -319,13 +327,17 @@ async fn append_file(root: &FileSystemDirectoryHandle, path: &str, bytes: &[u8])
 	let writable: FileSystemWritableFileStream = JsFuture::from(handle.create_writable_with_options(&writable_options)).await?.dyn_into()?;
 	let stream: WritableStream = writable.clone().unchecked_into();
 
-	if let Err(error) = JsFuture::from(writable.seek_with_f64(offset)?).await {
-		let _ = JsFuture::from(stream.abort()).await;
-		return Err(error);
+	// Wrap in an async block so a synchronous JS throw from `seek_with_f64`/`write_with_js_u8_array`
+	// aborts the stream instead of bypassing the abort via `?`.
+	let seek_and_write = async {
+		JsFuture::from(writable.seek_with_f64(offset)?).await?;
+		let array = Uint8Array::from(bytes);
+		JsFuture::from(writable.write_with_js_u8_array(&array)?).await?;
+		Ok::<(), JsValue>(())
 	}
+	.await;
 
-	let array = Uint8Array::from(bytes);
-	if let Err(error) = JsFuture::from(writable.write_with_js_u8_array(&array)?).await {
+	if let Err(error) = seek_and_write {
 		let _ = JsFuture::from(stream.abort()).await;
 		return Err(error);
 	}
@@ -354,6 +366,9 @@ enum EntryKind {
 }
 
 async fn list_entries(root: &FileSystemDirectoryHandle, prefix: &str, want: EntryKind) -> std::result::Result<Vec<String>, JsValue> {
+	// `.` and the empty string both name the container root.
+	let prefix = if prefix == "." { "" } else { prefix };
+
 	let directory = if prefix.is_empty() {
 		root.clone()
 	} else {

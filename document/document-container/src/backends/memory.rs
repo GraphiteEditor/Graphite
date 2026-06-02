@@ -66,7 +66,7 @@ impl Container for MemoryBackend {
 	}
 
 	fn exists(&self, path: &str) -> bool {
-		self.files.lock().unwrap().contains_key(path)
+		validate_path(path).is_ok() && self.files.lock().unwrap().contains_key(path)
 	}
 
 	fn remove(&self, path: &str) -> Result<()> {

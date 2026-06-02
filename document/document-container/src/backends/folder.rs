@@ -1,6 +1,6 @@
 //! Loose-folder backend.
 
-use crate::{ByteHolder, Container, ContainerError, MmappedBytes, Result, validate_path};
+use crate::{ByteHolder, Container, ContainerError, MmappedBytes, Result, validate_path, validate_prefix};
 use mmap_io::mmap::{MemoryMappedFile, MmapMode};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -37,8 +37,8 @@ impl FolderBackend {
 	}
 
 	fn list_filtered(&self, prefix: &str, want_files: bool) -> Result<Vec<String>> {
-		validate_path(prefix)?;
-		let base = if prefix.is_empty() { self.root.clone() } else { self.root.join(prefix) };
+		validate_prefix(prefix)?;
+		let base = if prefix.is_empty() || prefix == "." { self.root.clone() } else { self.root.join(prefix) };
 		if !base.is_dir() {
 			return Ok(Vec::new());
 		}
@@ -63,6 +63,12 @@ impl Container for FolderBackend {
 		let full = self.resolve(path)?;
 		if !full.is_file() {
 			return Err(ContainerError::NotFound(path.to_string()));
+		}
+
+		// Mmapping a zero-length file is platform-dependent and often fails, so serve empty files as owned
+		// bytes and reserve mmap for files that actually have content.
+		if fs::metadata(&full).map(|metadata| metadata.len() == 0).unwrap_or(false) {
+			return Ok(ByteHolder::Owned(Vec::new()));
 		}
 
 		let file = open_mmap(&full)?;
@@ -143,20 +149,12 @@ impl Container for FolderBackend {
 	}
 }
 
-/// Open a memory-mapped read-only view of `path`, trying huge pages first.
+/// Open a memory-mapped read-only view of `path`, trying huge pages first. Callers must ensure `path`
+/// is non-empty, since mmapping a zero-length file is platform-dependent.
 fn open_mmap(path: &Path) -> Result<MemoryMappedFile> {
-	// The huge-pages builder rejects zero-length files with `ResizeFailed`, so skip it for empty files
-	// and go straight to the plain mapping rather than logging a misleading huge-pages warning.
-	let empty = fs::metadata(path).map(|metadata| metadata.len() == 0).unwrap_or(false);
-	if empty {
-		return MemoryMappedFile::open_ro(path).map_err(|error| ContainerError::Backend(format!("mmap of {path:?} failed: {error}")));
-	}
-
+	// Huge pages are unavailable on many systems, so falling back to a plain read-only mapping is routine.
 	match MemoryMappedFile::builder(path).mode(MmapMode::ReadOnly).huge_pages(true).open() {
 		Ok(file) => Ok(file),
-		Err(error) => {
-			log::warn!("Failed to mmap {path:?} with huge pages, retrying without: {error}");
-			MemoryMappedFile::open_ro(path).map_err(|error| ContainerError::Backend(format!("mmap of {path:?} failed: {error}")))
-		}
+		Err(_) => MemoryMappedFile::open_ro(path).map_err(|error| ContainerError::Backend(format!("mmap of {path:?} failed: {error}"))),
 	}
 }

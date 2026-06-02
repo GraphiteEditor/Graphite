@@ -50,7 +50,14 @@ impl Archive for Xz {
 				});
 			}
 
-			dest.write_sized(&path, size as usize, &mut |buffer| {
+			// Convert fallibly so a 32-bit `usize` (wasm) can never silently truncate the declared size
+			// into a smaller allocation. The cap above keeps this within range today.
+			let size = usize::try_from(size).map_err(|_| ContainerError::SizeLimitExceeded {
+				declared: size,
+				limit: usize::MAX as u64,
+			})?;
+
+			dest.write_sized(&path, size, &mut |buffer| {
 				entry.read_exact(buffer).map_err(ContainerError::Io)?;
 				Ok(())
 			})?;
