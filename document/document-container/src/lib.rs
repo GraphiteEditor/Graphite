@@ -92,6 +92,16 @@ impl MmappedBytes {
 	pub fn path(&self) -> &std::path::Path {
 		self.0.path()
 	}
+
+	/// Probe that the mapped region is sliceable, so callers can surface a real error at read time rather
+	/// than later hitting the `&[]` fallback in [`AsRef::as_ref`], which cannot return an error.
+	pub fn check_readable(&self) -> Result<()> {
+		let len = self.0.len();
+		self.0
+			.as_slice(0, len)
+			.map(|_| ())
+			.map_err(|error| ContainerError::Backend(format!("mmap slice of {:?} failed: {error}", self.0.path())))
+	}
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -137,10 +147,17 @@ pub enum ContainerError {
 
 pub type Result<T> = std::result::Result<T, ContainerError>;
 
-/// Normalize a listing prefix to end with a trailing slash (unless it is empty).
-/// Backends use this so child paths concatenate as `prefix/child` without a double or missing slash.
+/// Normalize a listing prefix to end with a trailing slash (unless it names the container root).
+/// The root (empty string or `.`) normalizes to the empty string, so backends concatenate child paths
+/// as `prefix/child` without a double, missing, or `./`-rooted slash.
 pub(crate) fn with_trailing_slash(prefix: &str) -> String {
-	if prefix.is_empty() || prefix.ends_with('/') { prefix.to_string() } else { format!("{prefix}/") }
+	if prefix.is_empty() || prefix == "." {
+		String::new()
+	} else if prefix.ends_with('/') {
+		prefix.to_string()
+	} else {
+		format!("{prefix}/")
+	}
 }
 
 /// Validate that `path` names a relative, container-safe file:

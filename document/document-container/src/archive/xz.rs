@@ -38,12 +38,15 @@ impl Archive for Xz {
 			if entry.header().entry_type() != tar::EntryType::Regular {
 				continue;
 			}
-			let path = entry.path()?.to_string_lossy().into_owned();
+			// Reject non-UTF8 entry names rather than lossily rewriting them, so the path we store matches
+			// the archive exactly.
+			let path = entry.path()?;
+			let path = path.to_str().ok_or_else(|| ContainerError::Codec(format!("tar: non-UTF8 entry name {path:?}")))?.to_owned();
 			validate_path(&path)?;
 
 			let size = entry.size();
 			total_size = total_size.saturating_add(size);
-			if total_size >= MAX_DECOMPRESSED_SIZE {
+			if total_size > MAX_DECOMPRESSED_SIZE {
 				return Err(ContainerError::SizeLimitExceeded {
 					declared: total_size,
 					limit: MAX_DECOMPRESSED_SIZE,

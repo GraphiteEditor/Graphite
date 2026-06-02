@@ -33,7 +33,9 @@ enum Mutation {
 struct Inner {
 	directory: FileSystemDirectoryHandle,
 	/// Tracks paths currently believed to be on disk (post-pending-writes). Lets `exists_non_blocking`
-	/// answer synchronously since OPFS has no sync existence API.
+	/// answer synchronously since OPFS has no sync existence API. This is an optimistic prediction:
+	/// a path is inserted when a write is queued and stays even if that background write later fails, so
+	/// it can briefly over-report existence. The set is rebuilt from real disk state on the next `open`.
 	on_disk: HashSet<String>,
 	queue: VecDeque<Mutation>,
 	worker_active: bool,

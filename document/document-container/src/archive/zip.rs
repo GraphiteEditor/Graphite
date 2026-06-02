@@ -42,7 +42,7 @@ impl Archive for Zip {
 
 			let size = entry.size();
 			total_size = total_size.saturating_add(size);
-			if total_size >= MAX_DECOMPRESSED_SIZE {
+			if total_size > MAX_DECOMPRESSED_SIZE {
 				return Err(ContainerError::SizeLimitExceeded {
 					declared: total_size,
 					limit: MAX_DECOMPRESSED_SIZE,
