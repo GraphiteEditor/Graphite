@@ -65,15 +65,18 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 
 impl FontsMessageHandler {
 	pub fn cached_hash(&self, font: &Font) -> Option<ResourceHash> {
-		self.font_hashes.get(font).copied()
+		let font = self.normalize(font.clone());
+		self.font_hashes.get(&font).copied()
 	}
 
 	pub fn cached_url(&self, font: &Font) -> Option<String> {
-		self.font_catalog.download_url(font)
+		let font = self.normalize(font.clone());
+		self.font_catalog.download_url(&font)
 	}
 
 	pub fn get_blob_or_queue_load(&self, font: &Font, responses: &mut VecDeque<Message>) -> Blob<u8> {
-		if let Some(hash) = self.font_hashes.get(font) {
+		let font = self.normalize(font.clone());
+		if let Some(hash) = self.font_hashes.get(&font) {
 			if let Some(resource) = self.font_data.get(hash) {
 				return Blob::new(resource.into());
 			}
