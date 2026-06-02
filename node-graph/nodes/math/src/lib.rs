@@ -577,13 +577,20 @@ fn smoothstep<T: num_traits::float::Float>(
 	#[implementations(f64, f32)]
 	#[default(0.)]
 	edge_min: T,
-	/// The upper bound of the input range. Input values above this edge are mapped to 0.
+	/// The upper bound of the input range. Input values above this edge are mapped to 1.
 	#[implementations(f64, f32)]
 	#[default(1.)]
 	edge_max: T,
 ) -> T {
-    let t = ((value - edge_min) / (edge_max - edge_min)).clamp(T::zero(), T::one());
-    t * t * (T::from(3.0).unwrap() - T::from(2.0).unwrap() * t)
+	let divisor = edge_max - edge_min;
+
+	// handle divison by zero
+	if divisor.abs() < T::epsilon() {
+		return if value < edge_min { T::zero() } else { T::one() };
+	}
+
+	let t = ((value - edge_min) / divisor).clamp(T::zero(), T::one());
+	t * t * (T::from(3.0).unwrap() - T::from(2.0).unwrap() * t)
 }
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
