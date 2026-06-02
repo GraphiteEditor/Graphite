@@ -1,6 +1,6 @@
 //! In-memory backend. Useful for tests and as the deserialize target for archive codecs.
 
-use crate::{ByteHolder, Container, ContainerError, Result, validate_path, with_trailing_slash};
+use crate::{ByteHolder, Container, ContainerError, Result, validate_path, validate_prefix, with_trailing_slash};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -39,15 +39,26 @@ impl Container for MemoryBackend {
 	}
 
 	fn list(&self, prefix: &str) -> Result<Vec<String>> {
-		let normalized = with_trailing_slash(prefix);
+		validate_prefix(prefix)?;
 		let files = self.files.lock().unwrap();
+		// A prefix that is itself a stored key names a file, not a directory.
+		if files.contains_key(prefix) {
+			return Err(ContainerError::NotADirectory(prefix.to_string()));
+		}
+
+		let normalized = with_trailing_slash(prefix);
 		let results = files.keys().filter(|path| path.starts_with(&normalized) && !path[normalized.len()..].contains('/')).cloned().collect();
 		Ok(results)
 	}
 
 	fn list_dirs(&self, prefix: &str) -> Result<Vec<String>> {
-		let normalized = with_trailing_slash(prefix);
+		validate_prefix(prefix)?;
 		let files = self.files.lock().unwrap();
+		if files.contains_key(prefix) {
+			return Err(ContainerError::NotADirectory(prefix.to_string()));
+		}
+
+		let normalized = with_trailing_slash(prefix);
 		let mut seen = HashSet::new();
 		let mut results = Vec::new();
 		for path in files.keys() {
@@ -71,6 +82,8 @@ impl Container for MemoryBackend {
 
 	fn remove(&self, path: &str) -> Result<()> {
 		validate_path(path)?;
-		self.files.lock().unwrap().remove(path).map(|_| ()).ok_or_else(|| ContainerError::NotFound(path.to_string()))
+		// Idempotent: removing a missing path is not an error.
+		self.files.lock().unwrap().remove(path);
+		Ok(())
 	}
 }

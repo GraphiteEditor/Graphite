@@ -129,13 +129,13 @@ impl AsyncContainer for OpfsBackend {
 	async fn list(&self, prefix: &str) -> Result<Vec<String>> {
 		validate_prefix(prefix)?;
 		self.flush().await;
-		list_entries(&self.directory(), prefix, EntryKind::File).await.map_err(js_err)
+		list_entries(&self.directory(), prefix, EntryKind::File).await.map_err(|error| list_error(prefix, error))
 	}
 
 	async fn list_dirs(&self, prefix: &str) -> Result<Vec<String>> {
 		validate_prefix(prefix)?;
 		self.flush().await;
-		list_entries(&self.directory(), prefix, EntryKind::Directory).await.map_err(js_err)
+		list_entries(&self.directory(), prefix, EntryKind::Directory).await.map_err(|error| list_error(prefix, error))
 	}
 
 	async fn exists(&self, path: &str) -> bool {
@@ -149,7 +149,12 @@ impl AsyncContainer for OpfsBackend {
 	async fn remove(&self, path: &str) -> Result<()> {
 		validate_path(path)?;
 		self.flush().await;
-		remove_file(&self.directory(), path).await.map_err(js_err)?;
+		// Idempotent: a missing entry is not an error, matching the other backends.
+		if let Err(error) = remove_file(&self.directory(), path).await
+			&& !is_not_found(&error)
+		{
+			return Err(js_err(error));
+		}
 		self.inner.lock().unwrap().on_disk.remove(path);
 		Ok(())
 	}
@@ -433,4 +438,19 @@ async fn enumerate_paths(root: &FileSystemDirectoryHandle, prefix: &str) -> std:
 
 fn is_not_found(error: &JsValue) -> bool {
 	error.dyn_ref::<DomException>().is_some_and(|error| error.name() == "NotFoundError")
+}
+
+/// OPFS raises `TypeMismatchError` when a path segment used as a directory is actually a file.
+fn is_type_mismatch(error: &JsValue) -> bool {
+	error.dyn_ref::<DomException>().is_some_and(|error| error.name() == "TypeMismatchError")
+}
+
+/// Map a listing error: a prefix that names a file becomes [`ContainerError::NotADirectory`], anything
+/// else passes through as a backend error.
+fn list_error(prefix: &str, error: JsValue) -> ContainerError {
+	if is_type_mismatch(&error) {
+		ContainerError::NotADirectory(prefix.to_string())
+	} else {
+		js_err(error)
+	}
 }

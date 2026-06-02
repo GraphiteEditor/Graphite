@@ -33,12 +33,32 @@ impl FolderBackend {
 
 	fn resolve(&self, path: &str) -> Result<PathBuf> {
 		validate_path(path)?;
-		Ok(self.root.join(path))
+		let full = self.root.join(path);
+
+		// `validate_path` blocks `..` and absolute paths, but a symlink stored under the root could still
+		// point outside it. Reject any existing component along the joined path that is a symlink so reads
+		// and writes can't escape the container via one.
+		let mut partial = self.root.clone();
+		for component in Path::new(path).components() {
+			partial.push(component);
+			if let Ok(metadata) = fs::symlink_metadata(&partial)
+				&& metadata.file_type().is_symlink()
+			{
+				return Err(ContainerError::InvalidPath(path.to_string()));
+			}
+		}
+
+		Ok(full)
 	}
 
 	fn list_filtered(&self, prefix: &str, want_files: bool) -> Result<Vec<String>> {
 		validate_prefix(prefix)?;
 		let base = if prefix.is_empty() || prefix == "." { self.root.clone() } else { self.root.join(prefix) };
+
+		// A missing prefix has no entries; a prefix that names a file is a misuse.
+		if base.is_file() {
+			return Err(ContainerError::NotADirectory(prefix.to_string()));
+		}
 		if !base.is_dir() {
 			return Ok(Vec::new());
 		}
@@ -140,10 +160,10 @@ impl Container for FolderBackend {
 
 	fn remove(&self, path: &str) -> Result<()> {
 		let full = self.resolve(path)?;
-		if !full.is_file() {
-			return Err(ContainerError::NotFound(path.to_string()));
+		// Idempotent: a missing file is not an error. Directories are left alone.
+		if full.is_file() {
+			fs::remove_file(full)?;
 		}
-		fs::remove_file(full)?;
 		Ok(())
 	}
 }

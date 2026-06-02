@@ -123,6 +123,9 @@ pub enum ContainerError {
 	#[error("invalid path: {0}")]
 	InvalidPath(String),
 
+	#[error("not a directory: {0}")]
+	NotADirectory(String),
+
 	#[error("I/O error: {0}")]
 	Io(#[from] std::io::Error),
 
@@ -218,18 +221,20 @@ pub trait Container {
 
 	/// List file entries directly under `prefix` (non-recursive).
 	/// Returned paths include the `prefix` (e.g. `list("resources")` returns
-	/// `["resources/abc123", ...]`).
+	/// `["resources/abc123", ...]`). A missing prefix yields an empty list; a prefix that names a
+	/// file (not a directory) is an error.
 	fn list(&self, prefix: &str) -> Result<Vec<String>>;
 
 	/// List subdirectory entries directly under `prefix` (non-recursive).
 	/// Returned names include the `prefix`, without a trailing slash
-	/// (e.g. `list_dirs("")` returns `["resources"]`).
+	/// (e.g. `list_dirs("")` returns `["resources"]`). Same missing/file-prefix semantics as [`Container::list`].
 	fn list_dirs(&self, prefix: &str) -> Result<Vec<String>>;
 
 	/// Whether a file exists at `path`. Directories return `false`.
 	fn exists(&self, path: &str) -> bool;
 
-	/// Remove the file at `path`. Errors if the path does not exist or names a directory.
+	/// Remove the file at `path`. Idempotent: removing a missing path succeeds. Directories are never
+	/// removed (they exist only implicitly as parents of files).
 	fn remove(&self, path: &str) -> Result<()>;
 }
 

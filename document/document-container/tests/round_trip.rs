@@ -45,6 +45,49 @@ fn folder_backend_round_trip() {
 	run_round_trip(backend);
 }
 
+fn run_list_and_remove_semantics<C: Container>(container: C) {
+	container.write("dir/file", b"x").unwrap();
+
+	// Removing a missing path is idempotent.
+	container.remove("dir/missing").unwrap();
+	container.remove("dir/file").unwrap();
+	container.remove("dir/file").unwrap();
+
+	// Listing a missing prefix yields an empty list.
+	assert_eq!(container.list("nonexistent").unwrap(), Vec::<String>::new());
+
+	// Listing a prefix that names a file is an error.
+	container.write("manifest.json", b"{}").unwrap();
+	assert!(matches!(container.list("manifest.json"), Err(ContainerError::NotADirectory(_))));
+	assert!(matches!(container.list_dirs("manifest.json"), Err(ContainerError::NotADirectory(_))));
+}
+
+#[test]
+fn memory_backend_list_and_remove_semantics() {
+	run_list_and_remove_semantics(MemoryBackend::new());
+}
+
+#[test]
+fn folder_backend_list_and_remove_semantics() {
+	let dir = tempfile::tempdir().unwrap();
+	run_list_and_remove_semantics(FolderBackend::create(dir.path()).unwrap());
+}
+
+#[test]
+#[cfg(unix)]
+fn folder_backend_rejects_symlink_escape() {
+	let outside = tempfile::tempdir().unwrap();
+	std::fs::write(outside.path().join("secret"), b"sensitive").unwrap();
+
+	let dir = tempfile::tempdir().unwrap();
+	let backend = FolderBackend::create(dir.path()).unwrap();
+	// A symlink planted inside the root pointing outside it must not be traversable.
+	std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
+
+	let result = backend.read("link/secret");
+	assert!(matches!(result, Err(ContainerError::InvalidPath(_))), "symlink escape should be rejected, got {result:?}");
+}
+
 #[test]
 fn folder_backend_rejects_path_traversal() {
 	let dir = tempfile::tempdir().unwrap();
