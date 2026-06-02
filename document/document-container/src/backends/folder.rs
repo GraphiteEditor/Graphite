@@ -71,9 +71,7 @@ impl Container for FolderBackend {
 			return Ok(ByteHolder::Owned(Vec::new()));
 		}
 
-		let mapped = MmappedBytes::new(open_mmap(&full)?);
-		mapped.check_readable()?;
-		Ok(ByteHolder::Mmapped(mapped))
+		Ok(ByteHolder::Mmapped(MmappedBytes::new(open_mmap(&full)?)?))
 	}
 
 	fn write(&self, path: &str, bytes: &[u8]) -> Result<()> {

@@ -57,7 +57,8 @@ impl ByteHolder {
 	pub fn open_external(path: impl Into<std::path::PathBuf>) -> Result<Self> {
 		let path = path.into();
 		let file = mmap_io::mmap::MemoryMappedFile::open_ro(&path).map_err(|error| ContainerError::Backend(format!("mmap of {path:?} failed: {error}")))?;
-		Ok(ByteHolder::External { path, bytes: MmappedBytes::new(file) })
+		let bytes = MmappedBytes::new(file)?;
+		Ok(ByteHolder::External { path, bytes })
 	}
 }
 
@@ -85,22 +86,17 @@ pub struct MmappedBytes(mmap_io::mmap::MemoryMappedFile);
 
 #[cfg(not(target_family = "wasm"))]
 impl MmappedBytes {
-	pub fn new(file: mmap_io::mmap::MemoryMappedFile) -> Self {
-		Self(file)
+	/// Wrap a mapped file, probing that its region is sliceable so the failure surfaces here rather than
+	/// later degrading to the `&[]` fallback in [`AsRef::as_ref`], which cannot return an error.
+	pub fn new(file: mmap_io::mmap::MemoryMappedFile) -> Result<Self> {
+		let len = file.len();
+		file.as_slice(0, len)
+			.map_err(|error| ContainerError::Backend(format!("mmap slice of {:?} failed: {error}", file.path())))?;
+		Ok(Self(file))
 	}
 
 	pub fn path(&self) -> &std::path::Path {
 		self.0.path()
-	}
-
-	/// Probe that the mapped region is sliceable, so callers can surface a real error at read time rather
-	/// than later hitting the `&[]` fallback in [`AsRef::as_ref`], which cannot return an error.
-	pub fn check_readable(&self) -> Result<()> {
-		let len = self.0.len();
-		self.0
-			.as_slice(0, len)
-			.map(|_| ())
-			.map_err(|error| ContainerError::Backend(format!("mmap slice of {:?} failed: {error}", self.0.path())))
 	}
 }
 
