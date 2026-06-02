@@ -2191,6 +2191,7 @@ dependencies = [
  "num_enum",
  "once_cell",
  "preprocessor",
+ "reqwest",
  "serde",
  "serde_bytes",
  "serde_json",

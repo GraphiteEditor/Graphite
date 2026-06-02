@@ -16,6 +16,7 @@ pub mod layout;
 pub mod menu_bar;
 pub mod message;
 pub mod portfolio;
+pub mod network;
 pub mod preferences;
 pub mod prelude;
 pub mod resource_storage;

@@ -32,6 +32,7 @@ pub struct DispatcherMessageHandlers {
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
+	network_message_handler: NetworkMessageHandler,
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	pub(crate) resource_storage_message_handler: ResourceStorageMessageHandler,
@@ -237,6 +238,9 @@ impl Dispatcher {
 					let context = LayoutMessageContext { action_input_mapping };
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Network(message) => {
+					self.message_handlers.network_message_handler.process_message(message, &mut queue, NetworkMessageContext {});
 				}
 				Message::ResourceStorage(message) => {
 					self.message_handlers
