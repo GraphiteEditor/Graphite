@@ -28,29 +28,59 @@ impl ValueProvider for PlotContext<'_> {
 	}
 }
 
-/// Plots a parametric curve. Please note that at most 1 variable is supported in the expressions.
+/// Plots a parametric curve. Please note that at most one variable is currently supported in the expressions.
+///
+/// You can use the following mathematical operators:
+/// • **Addition**: x + y
+/// • **Subtraction**: x - y
+/// • **Multiplication**: x * y or 2x
+/// • **Division**: x / y
+/// • **Modulo**: x % y
+/// • **Power**: x ^ y
+///
+/// You can use the following trigonometric functions:
+/// • **sin(x)**: sine
+/// • **cos(x)**: cosine
+/// • **tan(x)**: tangent
+/// • **csc(x)**: cosecant, 1 / sin(x)
+/// • **sec(x)**: secant, 1 / cos(x)
+/// • **cot(x)**: cotangent, 1 / tan(x)
+///
+/// You can use the following inverse trigonometric functions:
+/// • **asin(x)**: arcsine
+/// • **acos(x)**: arccosine
+/// • **atan(x)**: arctangent
+/// • **acsc(x)**: inverse cosecant, asin(1 / x)
+/// • **asec(x)**: inverse secant, acos(1 / x)
+/// • **acot(x)**: inverse cotangent, atan(π/2 - x)
+///
 /// You can use the following mathematical functions:
-/// • ** Arithmetic operators **: +, -, *, /, %, ^, !
-/// • **sin**:
-/// • **cos**:
-/// • **tan**:
-/// • **csc**: cosecant, 1/sin(x)
-/// • **sec**: secant, 1/cos(x)
-/// • **cot**: cotangent, 1 / tan(x)
-/// • **invsin**: arcsin
-/// • **invcos**: arccos
-/// • **invtan**: arctan
-/// • **invcsc**: asin(1/x)
-/// • **invsec**: acos(1/x)
-/// • **invcot**: atan(PI/2-x)
-/// • **sqrt**: square root
-
-/// You can use the following mathematical contants:
-/// • **pi**: 3.1415926535
-/// • **tau**: 2*PI
-/// • **e**: Euler's number, 2.7182818284
-/// • **phi**: golden ratio, 1.6180339887
-/// • **G**: gravity acceleration
+/// • **sqrt(x)**: square root
+/// • **abs(x)**: absolute value
+/// • **exp(x)**: exponential function, e^x
+/// • **ln(x)**: natural logarithm
+/// • **log(x)**: base-10 logarithm
+/// • **floor(x)**: round down to the nearest integer
+/// • **ceil(x)**: round up to the nearest integer
+/// • **round(x)**: round to the nearest integer
+/// • **sign(x)**: sign function (-1, 0, or 1)
+///
+/// You can use the following multi-argument functions:
+/// • **min(a, b)**: minimum of two values
+/// • **max(a, b)**: maximum of two values
+/// • **atan2(y, x)**: four-quadrant arctangent
+///
+/// You can use the following hyperbolic functions:
+/// • **sinh(x)**: hyperbolic sine
+/// • **cosh(x)**: hyperbolic cosine
+/// • **tanh(x)**: hyperbolic tangent
+///
+/// You can use the following mathematical constants:
+/// • **pi**: π ≈ 3.141592653589793
+/// • **tau**: τ = 2π
+/// • **e**: Euler's number, ≈ 2.718281828459045
+/// • **phi**: Golden ratio, ≈ 1.618033988749895
+/// • **G**: Standard gravitational acceleration
 ///
 #[node_macro::node(category("Vector: Shape"))]
 fn function_plot(
