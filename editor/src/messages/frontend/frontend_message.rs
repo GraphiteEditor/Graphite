@@ -12,7 +12,6 @@ use crate::messages::portfolio::document::utility_types::wires::{WirePath, WireP
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
-use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::Image;
@@ -110,14 +109,6 @@ pub enum FrontendMessage {
 	TriggerFetchAndOpenDocument {
 		name: String,
 		filename: String,
-	},
-	TriggerFontCatalogLoad,
-	TriggerResolveResource {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		#[serde(rename = "resourceId")]
-		resource_id: ResourceId,
-		url: String,
 	},
 	TriggerPersistenceReadState,
 	TriggerPersistenceReadDocument {

@@ -1,5 +1,5 @@
 use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
-use crate::messages::portfolio::fonts::utility_types::FontCatalog;
+use crate::messages::portfolio::fonts::utility_types::{FONT_LIST_API, FontCatalog};
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graphene_std::text::Font;
@@ -22,6 +22,13 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 		let FontsMessageContext { resource_storage } = context;
 
 		match message {
+			FontsMessage::LoadCatalog => {
+				responses.add(NetworkMessage::request(|client| async move {
+					let Some(bytes) = client.fetch(FONT_LIST_API).await else { return Message::NoOp };
+					let Some(catalog) = FontCatalog::from_api_response(&bytes) else { return Message::NoOp };
+					FontsMessage::CatalogLoaded { catalog }.into()
+				}));
+			}
 			FontsMessage::CatalogLoaded { catalog } => {
 				self.font_catalog = catalog;
 				responses.add(PortfolioMessage::ResolveResources);

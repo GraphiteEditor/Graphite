@@ -80,8 +80,6 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 ];
-// FrontendMessages that should be sent immediately
-const IMMEDIATE_FRONTEND_MESSAGES: &[FrontendMessageDiscriminant] = &[FrontendMessageDiscriminant::TriggerResolveResource, FrontendMessageDiscriminant::TriggerFontCatalogLoad];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
@@ -207,14 +205,7 @@ impl Dispatcher {
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Frontend(message) => {
-					let decreminant = message.to_discriminant();
 					self.responses.push(message);
-
-					// Handle these message immediately by returning early
-					if IMMEDIATE_FRONTEND_MESSAGES.contains(&decreminant) {
-						self.cleanup_queues(false);
-						return;
-					}
 				}
 				Message::InputPreprocessor(message) => {
 					self.message_handlers.input_preprocessor_message_handler.process_message(

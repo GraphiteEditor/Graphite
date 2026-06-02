@@ -4,6 +4,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
 use graphene_std::text::Font;
+use std::sync::Arc;
 
 #[derive(ExtractField)]
 pub struct ResourceMessageContext<'a> {
@@ -85,11 +86,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						responses.add(ResourceMessage::ResolveStep { resource_id });
 					}
 					DataSource::Url(url) => {
-						responses.add(FrontendMessage::TriggerResolveResource {
-							document_id,
-							resource_id,
-							url: url.to_string(),
-						});
+						responses.add(fetch_resource(document_id, resource_id, url.to_string()));
 					}
 					DataSource::Font { family, style } => {
 						let font = match style {
@@ -103,10 +100,10 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 							return;
 						}
 						if let Some(url) = fonts.cached_url(&font) {
-							responses.add(FrontendMessage::TriggerResolveResource { document_id, resource_id, url });
+							responses.add(fetch_resource(document_id, resource_id, url));
 							return;
 						}
-						responses.add(FrontendMessage::TriggerFontCatalogLoad);
+						responses.add(FontsMessage::LoadCatalog);
 						self.pending_resolves.remove(&resource_id);
 					}
 				}
@@ -185,6 +182,21 @@ impl ResourceMessageHandler {
 			self.registry.delete(&id);
 		});
 	}
+}
+
+fn fetch_resource(document_id: DocumentId, resource_id: ResourceId, url: String) -> Message {
+	NetworkMessage::request(move |client| async move {
+		let Some(bytes) = client.fetch(&url).await else { return Message::NoOp };
+		PortfolioMessage::DocumentPassMessage {
+			document_id,
+			message: DocumentMessage::Resource(ResourceMessage::Resolved {
+				resource_id,
+				data: Arc::from(bytes),
+			}),
+		}
+		.into()
+	})
+	.into()
 }
 
 // TODO: Eventually remove this document upgrade code
