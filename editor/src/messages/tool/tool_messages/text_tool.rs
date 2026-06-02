@@ -485,7 +485,7 @@ impl TextToolData {
 	fn set_editing(&self, editable: bool, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			let (align, align_last) = editing_text.typesetting.align.css();
-			let font_data = fonts.get_blob_or_queue_load(&editing_text.font, responses).as_ref().to_vec().into();
+			let font_data = fonts.get_resource_or_queue_load(&editing_text.font, responses).as_ref().to_vec().into();
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
@@ -657,8 +657,8 @@ impl Fsm for TextToolFsmState {
 				let transform = document.metadata().transform_to_viewport(tool_data.layer).to_cols_array();
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform { transform });
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
-					let blob = fonts.get_blob_or_queue_load(&editing_text.font, responses);
-					let far = graphene_std::text::bounding_box(&tool_data.new_text, &blob, editing_text.typesetting, false);
+					let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+					let far = graphene_std::text::bounding_box(&tool_data.new_text, &font_resource, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -702,8 +702,8 @@ impl Fsm for TextToolFsmState {
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
 						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
-							let blob = fonts.get_blob_or_queue_load(&font, responses);
-							if lines_clipping(text.as_str(), &blob, typesetting) {
+							let font_resource = fonts.get_resource_or_queue_load(&font, responses);
+							if lines_clipping(text.as_str(), &font_resource, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
 							}
 						}
@@ -1005,9 +1005,9 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
 				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
-				let blob = fonts.get_blob_or_queue_load(&font, responses);
+				let font_resource = fonts.get_resource_or_queue_load(&font, responses);
 				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
-					font_data: blob.as_ref().to_vec().into(),
+					font_data: font_resource.as_ref().to_vec().into(),
 				});
 
 				TextToolFsmState::Editing

@@ -2,7 +2,7 @@ use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
+use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
@@ -236,7 +236,7 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 	};
 
 	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-	let bounds = text_context.bounding_box(text, &FALLBACK_FONT_BLOB, typesetting, false);
+	let bounds = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
 	bounds.x
 }
 

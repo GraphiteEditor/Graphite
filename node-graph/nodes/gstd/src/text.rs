@@ -1,6 +1,6 @@
 use core_types::Ctx;
 use core_types::list::List;
-use graph_craft::application_io::resource::{Resource, ResourceHash};
+use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
 
@@ -60,8 +60,6 @@ fn text(
 	align: TextAlign,
 	/// Whether to split every letterform into its own vector item. Otherwise, a single vector compound path is produced.
 	separate_glyphs: bool,
-
-	#[data] cache: std::sync::Arc<std::sync::Mutex<Option<(ResourceHash, Blob<u8>)>>>,
 ) -> List<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size: size,
@@ -73,17 +71,5 @@ fn text(
 		align,
 	};
 
-	let font_blob = {
-		let mut cache = cache.lock().unwrap();
-		match cache.as_ref() {
-			Some((cached_hash, cached_blob)) if *cached_hash == font.hash() => cached_blob.clone(),
-			_ => {
-				let new_blob = Blob::new((&font).into());
-				*cache = Some((font.hash(), new_blob.clone()));
-				new_blob
-			}
-		}
-	};
-
-	to_path(&text, &font_blob, typesetting, separate_glyphs)
+	to_path(&text, &font, typesetting, separate_glyphs)
 }

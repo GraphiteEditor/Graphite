@@ -1,8 +1,8 @@
-use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
+use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::portfolio::fonts::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
-use graphene_std::text::{Blob, Font};
+use graphene_std::text::Font;
 
 #[derive(ExtractField)]
 pub struct FontsMessageContext<'a> {
@@ -74,18 +74,18 @@ impl FontsMessageHandler {
 		self.font_catalog.download_url(&font)
 	}
 
-	pub fn get_blob_or_queue_load(&self, font: &Font, responses: &mut VecDeque<Message>) -> Blob<u8> {
+	pub fn get_resource_or_queue_load(&self, font: &Font, responses: &mut VecDeque<Message>) -> Resource {
 		let font = self.normalize(font.clone());
 		if let Some(hash) = self.font_hashes.get(&font) {
 			if let Some(resource) = self.font_data.get(hash) {
-				return Blob::new(resource.into());
+				return resource.clone();
 			}
 			responses.add(FontsMessage::Load {
 				font: font.clone(),
 				response: Message::NoOp.into(),
 			});
 		}
-		FALLBACK_FONT_BLOB.clone()
+		FALLBACK_FONT_RESOURCE.clone()
 	}
 
 	pub fn id_font(&self, resources: &ResourceMessageHandler, resource_id: ResourceId) -> Option<Font> {

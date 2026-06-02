@@ -2,6 +2,7 @@ use super::TypesettingConfig;
 use core::cell::RefCell;
 use core_types::list::List;
 use glam::DVec2;
+use graphene_resource::{Resource, ResourceHash};
 use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
@@ -19,7 +20,7 @@ thread_local! {
 pub struct TextContext {
 	font_context: FontContext,
 	layout_context: LayoutContext<()>,
-	font_info_cache: HashMap<u64, (FamilyId, FontInfo)>,
+	font_info_cache: HashMap<ResourceHash, (FamilyId, FontInfo)>,
 }
 
 impl TextContext {
@@ -31,33 +32,30 @@ impl TextContext {
 		THREAD_TEXT.with_borrow_mut(f)
 	}
 
-	/// Get or cache font information for the given font blob.
-	fn get_font_info(&mut self, font_data: &Blob<u8>) -> Option<(String, FontInfo)> {
-		let key = font_data.id();
-		// Check if we already have the font info cached
-		if let Some((family_id, font_info)) = self.font_info_cache.get(&key)
+	/// Get or cache font information for the given font resource.
+	fn get_font_info(&mut self, font: &Resource) -> Option<(String, FontInfo)> {
+		let hash = font.hash();
+		if let Some((family_id, font_info)) = self.font_info_cache.get(&hash)
 			&& let Some(family_name) = self.font_context.collection.family_name(*family_id)
 		{
 			return Some((family_name.to_string(), font_info.clone()));
 		}
 
-		// Register the font and cache the info
-		let families = self.font_context.collection.register_fonts(font_data.clone(), None);
+		let families = self.font_context.collection.register_fonts(Blob::new(font.into()), None);
 
 		families.first().and_then(|(family_id, fonts_info)| {
 			fonts_info.first().and_then(|font_info| {
 				self.font_context.collection.family_name(*family_id).map(|family_name| {
-					// Cache the font info for future use
-					self.font_info_cache.insert(key, (*family_id, font_info.clone()));
+					self.font_info_cache.insert(hash, (*family_id, font_info.clone()));
 					(family_name.to_string(), font_info.clone())
 				})
 			})
 		})
 	}
 
-	/// Create a text layout from the given font blob and typesetting configuration.
-	fn layout_text(&mut self, text: &str, font_data: &Blob<u8>, typesetting: TypesettingConfig) -> Option<Layout<()>> {
-		let (font_family, font_info) = self.get_font_info(font_data)?;
+	/// Create a text layout from the given font resource and typesetting configuration.
+	fn layout_text(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig) -> Option<Layout<()>> {
+		let (font_family, font_info) = self.get_font_info(font)?;
 
 		const DISPLAY_SCALE: f32 = 1.;
 		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, DISPLAY_SCALE, false);
@@ -81,8 +79,8 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path(&mut self, text: &str, font_data: &Blob<u8>, typesetting: TypesettingConfig, per_glyph_items: bool) -> List<Vector> {
-		let Some(layout) = self.layout_text(text, font_data, typesetting) else {
+	pub fn to_path(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, per_glyph_items: bool) -> List<Vector> {
+		let Some(layout) = self.layout_text(text, font, typesetting) else {
 			return List::new_from_element(Vector::default());
 		};
 
@@ -154,8 +152,8 @@ impl TextContext {
 	}
 
 	/// Calculate the bounding box of text using the specified font and typesetting configuration
-	pub fn bounding_box(&mut self, text: &str, font_data: &Blob<u8>, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
-		let Some(layout) = self.layout_text(text, font_data, typesetting) else {
+	pub fn bounding_box(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
+		let Some(layout) = self.layout_text(text, font, typesetting) else {
 			return DVec2::ZERO;
 		};
 
@@ -173,9 +171,9 @@ impl TextContext {
 	}
 
 	/// Check if text lines are being clipped due to height constraints
-	pub fn lines_clipping(&mut self, text: &str, font_data: &Blob<u8>, typesetting: TypesettingConfig) -> bool {
+	pub fn lines_clipping(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig) -> bool {
 		let Some(max_height) = typesetting.max_height else { return false };
-		let bounds = self.bounding_box(text, font_data, typesetting, true);
+		let bounds = self.bounding_box(text, font, typesetting, true);
 		max_height < bounds.y
 	}
 }

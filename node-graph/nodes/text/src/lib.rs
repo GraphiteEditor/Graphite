@@ -17,7 +17,6 @@ use unicode_segmentation::UnicodeSegmentation;
 // Re-export for convenience
 pub use core_types as gcore;
 pub use font::*;
-pub use parley::fontique::Blob;
 pub use text_context::TextContext;
 pub use to_path::*;
 pub use vector_types;

@@ -5,7 +5,7 @@ use crate::consts::{
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::fonts::FALLBACK_FONT_BLOB;
+use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
 use core::borrow::Borrow;
@@ -1118,14 +1118,14 @@ impl OverlayContextInternal {
 
 		// Get text dimensions directly from layout
 		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-		let text_size = text_context.bounding_box(text, &FALLBACK_FONT_BLOB, typesetting, false);
+		let text_size = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
 		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
 
 		// Convert text to vector paths for rendering
-		let text_list = text_context.to_path(text, &FALLBACK_FONT_BLOB, typesetting, false);
+		let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
