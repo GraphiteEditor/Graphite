@@ -137,8 +137,8 @@ impl Container for FolderBackend {
 
 		let file = MemoryMappedFile::create_rw(&full, size as u64).map_err(|error| ContainerError::Backend(format!("create_rw {full:?} failed: {error}")))?;
 
-		// `create_rw` materializes the full-size file before `fill` runs, so on any failure we remove
-		// the partial file rather than leave a zeroed/half-written remnant behind.
+		// `create_rw` materializes the full-size file before `fill` runs, so remove it on failure rather
+		// than leave a zeroed or half-written remnant.
 		let result = (|| {
 			let mut slice = file
 				.as_slice_mut(0, size as u64)

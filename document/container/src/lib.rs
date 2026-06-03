@@ -159,16 +159,11 @@ pub(crate) fn with_trailing_slash(prefix: &str) -> String {
 	}
 }
 
-/// Validate that `path` names a relative, container-safe file:
-/// non-empty, no `.`/`..` path components, no absolute or Windows-prefixed paths, no backslashes.
-///
-/// Backends use this to reject paths that could escape the container root, and archive codecs use it on
-/// entry names from untrusted input. Dotfile names like `.gitignore` are accepted (the dot is part of the
-/// name); a leading `./` or any `..` segment is rejected as a `Component::CurDir`/`ParentDir`. The path must
-/// also already be canonical: redundant segments (`a//b`, trailing `a/b/`, interior `a/./b`) are rejected on
-/// the raw string so a single file has one identity across backends, which key on that string rather than on
-/// the normalized components. For listing prefixes, which may name the container root, use
-/// [`validate_prefix`] instead.
+/// Validate that `path` names a container-safe file: relative, no `.`/`..` segments, no backslashes,
+/// no redundant separators (`a//b`, `a/b/`). Dotfile names like `.gitignore` are fine. Requiring a canonical
+/// form gives a file one identity across backends, some of which key on the raw string rather than path
+/// components. Used by backends to block container escapes and by archive codecs on untrusted entry names.
+/// For listing prefixes, which may name the container root, use [`validate_prefix`] instead.
 pub fn validate_path(path: &str) -> Result<()> {
 	let invalid = || ContainerError::InvalidPath(path.to_string());
 

@@ -10,10 +10,9 @@ use std::io::{Read, Seek, Write};
 /// Defends against decompression bombs at the cost of refusing legitimately huge archives.
 pub(crate) const MAX_DECOMPRESSED_SIZE: u64 = 4 * 1024 * 1024 * 1024;
 
-/// Fold one entry's declared `size` into the running `total` and return it as a `usize` ready for
-/// `write_sized`. Both codecs route every entry through here so the decompression-bomb cap and the
-/// 32-bit-safe conversion stay defined in one place. Entry sizes are pre-allocated before any bytes
-/// are read, so an over-large declaration is rejected here rather than after committing memory.
+/// Fold one entry's declared `size` into the running `total` and return it as a `usize` for `write_sized`.
+/// Both codecs route entries through here so the decompression-bomb cap and 32-bit-safe conversion live in
+/// one place. `write_sized` pre-allocates the declared size, so an over-large one is rejected before that.
 pub(crate) fn checked_entry_size(total: &mut u64, size: u64) -> Result<usize> {
 	*total = total.saturating_add(size);
 	if *total > MAX_DECOMPRESSED_SIZE {

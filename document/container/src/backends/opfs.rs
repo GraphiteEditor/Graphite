@@ -32,10 +32,9 @@ enum Mutation {
 
 struct Inner {
 	directory: FileSystemDirectoryHandle,
-	/// Tracks paths currently believed to be on disk (post-pending-writes). Lets `exists_non_blocking`
-	/// answer synchronously since OPFS has no sync existence API. This is an optimistic prediction:
-	/// a path is inserted when a write is queued and stays even if that background write later fails, so
-	/// it can briefly over-report existence. The set is rebuilt from real disk state on the next `open`.
+	/// Paths believed to be on disk, letting `exists_non_blocking` answer without OPFS's missing sync API.
+	/// Optimistic: a path is inserted when its write is queued and kept even if that write later fails, so it
+	/// can briefly over-report. Rebuilt from real disk state on the next `open`.
 	on_disk: HashSet<String>,
 	queue: VecDeque<Mutation>,
 	worker_active: bool,
@@ -68,10 +67,9 @@ impl OpfsBackend {
 		self.inner.lock().unwrap().directory.clone()
 	}
 
-	/// Wait until all currently-queued non-blocking mutations have been applied to disk. Used by the
-	/// awaited read paths so they observe queued writes. Plants a barrier at the back of the queue and
-	/// awaits the worker reaching it, rather than draining inline, so the single worker stays the only
-	/// mutator and FIFO order guarantees everything ahead of the barrier is already on disk.
+	/// Wait until all queued non-blocking mutations have hit disk, so awaited reads observe them. Plants a
+	/// barrier at the back of the queue and awaits the worker reaching it; by FIFO order, everything ahead is
+	/// then applied. Draining stays the worker's job so it remains the sole mutator.
 	async fn flush(&self) {
 		let (sender, receiver) = oneshot::channel();
 		{
