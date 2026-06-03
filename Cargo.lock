@@ -5523,6 +5523,7 @@ dependencies = [
  "fancy-regex",
  "glam",
  "graphene-hash",
+ "graphene-resource",
  "log",
  "node-macro",
  "parley",

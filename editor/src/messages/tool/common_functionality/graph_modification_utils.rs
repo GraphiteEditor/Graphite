@@ -431,15 +431,21 @@ pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))
 }
 
-/// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig, bool)> {
+/// Gets properties from the Text node. Resolves the font selection by reading the resource id and lookup via the fonts message handler.
+pub fn get_text<'a>(
+	layer: LayerNodeIdentifier,
+	network_interface: &'a NodeNetworkInterface,
+	fonts: &FontsMessageHandler,
+	resources: &ResourceMessageHandler,
+) -> Option<(&'a String, Font, TypesettingConfig, bool)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?;
 
 	let Some(TaggedValue::String(text)) = &inputs[graphene_std::text::text::TextInput::INDEX].as_value() else {
 		return None;
 	};
-	let Some(TaggedValue::Font(font)) = &inputs[graphene_std::text::text::FontInput::INDEX].as_value() else {
-		return None;
+	let font = match &inputs[graphene_std::text::text::FontInput::INDEX].as_value() {
+		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
+		_ => Font::default(),
 	};
 	let Some(&TaggedValue::F64(font_size)) = inputs[graphene_std::text::text::SizeInput::INDEX].as_value() else {
 		return None;

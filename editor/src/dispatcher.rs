@@ -65,7 +65,6 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitEyedropperPreviewRender),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontDataLoad),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
@@ -80,6 +79,8 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 ];
+// FrontendMessages that should be sent immediately
+const IMMEDIATE_FRONTEND_MESSAGES: &[FrontendMessageDiscriminant] = &[FrontendMessageDiscriminant::TriggerResolveResource, FrontendMessageDiscriminant::TriggerFontCatalogLoad];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
@@ -205,16 +206,13 @@ impl Dispatcher {
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Frontend(message) => {
-					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontDataLoad { .. } | FrontendMessage::TriggerFontCatalogLoad = message {
-						self.responses.push(message);
-						self.cleanup_queues(false);
+					let decreminant = message.to_discriminant();
+					self.responses.push(message);
 
-						// Return early to avoid running the code after the match block
+					// Handle these message immediately by returning early
+					if IMMEDIATE_FRONTEND_MESSAGES.contains(&decreminant) {
+						self.cleanup_queues(false);
 						return;
-					} else {
-						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-						self.responses.push(message);
 					}
 				}
 				Message::InputPreprocessor(message) => {
@@ -325,7 +323,7 @@ impl Dispatcher {
 						document_id,
 						document,
 						input: &self.message_handlers.input_preprocessor_message_handler,
-						cached_data: &self.message_handlers.portfolio_message_handler.cached_data,
+						fonts: &self.message_handlers.portfolio_message_handler.fonts,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
 						viewport: &self.message_handlers.viewport_message_handler,

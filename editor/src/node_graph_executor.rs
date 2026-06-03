@@ -9,7 +9,6 @@ use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingI
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::RenderMetadata;
-use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
@@ -93,10 +92,6 @@ impl NodeGraphExecutor {
 		self.runtime_io.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
-	}
-
-	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {

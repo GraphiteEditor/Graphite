@@ -41,21 +41,21 @@ export function createFontsManager(subscriptions: SubscriptionsRouter, editor: E
 		}
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerFontDataLoad", async (data) => {
-		const { fontFamily, fontStyle } = data.font;
-
+	// Generic URL resolver
+	// TODO(keavon): This is currently only used for fonts, but it could be used for other resources and thus should be moved to a more sesible location
+	subscriptions.subscribeFrontendMessage("TriggerResolveResource", async (data) => {
 		try {
-			if (!data.url) throw new Error("No URL provided for font data load");
+			if (!data.url) throw new Error("No URL provided for resource resolution");
 			const response = await fetch(data.url, abortController ? { signal: abortController.signal } : undefined);
-			if (!response.ok) throw new Error(`Font data request failed with status ${response.status}`);
+			if (!response.ok) throw new Error(`Resource request failed with status ${response.status}`);
 			const buffer = await response.arrayBuffer();
 			const bytes = new Uint8Array(buffer);
 
-			editor.onFontLoad(fontFamily, fontStyle, bytes);
+			editor.onResourceResolved(data.documentId, data.resourceId, bytes);
 		} catch (error) {
 			if (error instanceof DOMException && error.name === "AbortError") return;
 			// eslint-disable-next-line no-console
-			console.error("Failed to load font:", error);
+			console.error("Failed to resolve resource:", error);
 		}
 	});
 }
@@ -66,7 +66,7 @@ export function destroyFontsManager() {
 
 	abortController?.abort();
 	subscriptions.unsubscribeFrontendMessage("TriggerFontCatalogLoad");
-	subscriptions.unsubscribeFrontendMessage("TriggerFontDataLoad");
+	subscriptions.unsubscribeFrontendMessage("TriggerResolveResource");
 }
 
 // Self-accepting HMR: tear down the old instance and re-create with the new module's code

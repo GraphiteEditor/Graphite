@@ -16,7 +16,6 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::list::List;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::text::FontCache;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
@@ -63,17 +62,18 @@ where
 }
 
 /// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
-pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
+pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Quad {
 	// Use the `editor:text_frame` attribute if available (handles multi-item glyphs and the 'Index Elements' node)
 	if let Some(&frame) = document.metadata().text_frames.get(&layer) {
 		return frame * Quad::from_box([DVec2::ZERO, DVec2::ONE]);
 	}
 
 	// Fallback: recompute from text content (e.g. layer hasn't rendered yet)
-	let Some((text, font, typesetting, _)) = get_text(layer, &document.network_interface) else {
+	let Some((text, font, typesetting, _)) = get_text(layer, &document.network_interface, fonts, &document.resources) else {
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
-	let far = graphene_std::text::bounding_box(text, font, font_cache, typesetting, false);
+	let font = fonts.get_resource_or_queue_load(&font, responses);
+	let far = graphene_std::text::bounding_box(text, &font, typesetting, false);
 	Quad::from_box([DVec2::ZERO, far])
 }
 

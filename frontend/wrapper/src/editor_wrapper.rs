@@ -20,7 +20,8 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{DockingSplitDirection, FontCatalog, FontCatalogFamily, PanelGroupId, PanelType};
+use editor::messages::portfolio::fonts::utility_types::{FontCatalog, FontCatalogFamily};
+use editor::messages::portfolio::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -650,14 +651,19 @@ impl EditorWrapper {
 	/// The font catalog has been loaded
 	#[wasm_bindgen(js_name = onFontCatalogLoad)]
 	pub fn on_font_catalog_load(&self, catalog: Vec<FontCatalogFamily>) {
-		self.dispatch(PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(catalog) });
+		self.dispatch(FontsMessage::CatalogLoaded { catalog: FontCatalog::from(catalog) });
 	}
 
-	/// A font has been downloaded
-	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, data: Vec<u8>) -> Result<(), JsValue> {
-		let message = PortfolioMessage::FontLoaded { font_family, font_style, data };
-		self.dispatch(message);
+	/// A requested resource has been resolved by the frontend.
+	#[wasm_bindgen(js_name = onResourceResolved)]
+	pub fn on_resource_resolved(&self, document_id: u64, resource_id: u64, data: Vec<u8>) -> Result<(), JsValue> {
+		self.dispatch(PortfolioMessage::DocumentPassMessage {
+			document_id: DocumentId(document_id),
+			message: DocumentMessage::Resource(ResourceMessage::Resolved {
+				resource_id: resource_id.into(),
+				data: std::sync::Arc::from(data),
+			}),
+		});
 
 		Ok(())
 	}

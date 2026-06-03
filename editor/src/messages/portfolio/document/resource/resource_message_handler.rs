@@ -3,25 +3,149 @@ use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
+use graphene_std::text::Font;
 
 #[derive(ExtractField)]
-pub struct ResourceMessageContext {}
+pub struct ResourceMessageContext<'a> {
+	pub document_id: DocumentId,
+	pub fonts: &'a FontsMessageHandler,
+}
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, ExtractField)]
 pub struct ResourceMessageHandler {
 	pub registry: ResourceRegistry,
 	pub embedded: EmbeddedResources,
+	#[serde(skip)]
+	pending_resolves: HashMap<ResourceId, Option<ResolveProgress>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ResolveProgress {
+	index: usize,
+	source: DataSource,
 }
 
 #[message_handler_data]
-impl MessageHandler<ResourceMessage, ResourceMessageContext> for ResourceMessageHandler {
-	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, _context: ResourceMessageContext) {
+impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMessageHandler {
+	fn process_message(&mut self, message: ResourceMessage, responses: &mut VecDeque<Message>, context: ResourceMessageContext) {
+		let ResourceMessageContext { document_id, fonts } = context;
+
 		match message {
 			ResourceMessage::StoreEmbedded { resource_id, data } => {
 				let hash = ResourceHash::from(data.as_ref());
 				self.registry.push_source_back(&resource_id, DataSource::Embedded);
 				self.registry.resolve(&resource_id, hash);
 				responses.add(ResourceStorageMessage::Store { data });
+				responses.add(ResourceMessage::Resolve);
+			}
+			ResourceMessage::AddFont { resource_id, font } => {
+				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
+				let style_name = style.map(|style| style.to_named_style()).unwrap_or_else(|| font.font_style.clone());
+				self.registry.push_source_back(&resource_id, DataSource::Embedded);
+				self.registry.push_source_back(
+					&resource_id,
+					DataSource::Font {
+						family: font.font_family,
+						style: Some(style_name),
+					},
+				);
+				responses.add(ResourceMessage::Resolve);
+			}
+			ResourceMessage::Resolve => {
+				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
+				for id in unresolved_ids {
+					if self.pending_resolves.contains_key(&id) {
+						continue;
+					}
+					self.pending_resolves.insert(id, None);
+					responses.add(ResourceMessage::ResolveStep { resource_id: id });
+				}
+			}
+			ResourceMessage::ResolveStep { resource_id } => {
+				let Some(progress) = self.pending_resolves.get_mut(&resource_id) else { return };
+
+				let Some(info) = self.registry.info(&resource_id) else {
+					log::error!("ResolveStep for {resource_id}: no registry entry");
+					self.pending_resolves.remove(&resource_id);
+					return;
+				};
+
+				let index = if let Some(progress) = progress { progress.index + 1 } else { 0 };
+				let Some(source) = info.sources.get(index).cloned() else {
+					log::error!("ResolveStep for {resource_id}: no more sources to try");
+					self.pending_resolves.remove(&resource_id);
+					return;
+				};
+				*progress = Some(ResolveProgress { index, source: source.clone() });
+
+				match source {
+					DataSource::Embedded => {
+						// Embedded resources are loaded on document load.
+						// If we get to this point, it means the resource was not embedded and we should try the next source.
+						responses.add(ResourceMessage::ResolveStep { resource_id });
+					}
+					DataSource::Url(url) => {
+						responses.add(FrontendMessage::TriggerResolveResource {
+							document_id,
+							resource_id,
+							url: url.to_string(),
+						});
+					}
+					DataSource::Font { family, style } => {
+						let font = match style {
+							Some(style) => Font::new(family, style),
+							None => Font::new_with_default_style(family),
+						};
+						if let Some(hash) = fonts.cached_hash(&font) {
+							self.registry.resolve(&resource_id, hash);
+							self.pending_resolves.remove(&resource_id);
+							responses.add(NodeGraphMessage::RunDocumentGraph);
+							return;
+						}
+						if let Some(url) = fonts.cached_url(&font) {
+							responses.add(FrontendMessage::TriggerResolveResource { document_id, resource_id, url });
+							return;
+						}
+						responses.add(FrontendMessage::TriggerFontCatalogLoad);
+						self.pending_resolves.remove(&resource_id);
+					}
+				}
+			}
+			ResourceMessage::Resolved { resource_id, data } => {
+				let hash = ResourceHash::from(data.as_ref());
+				let Some(progress) = self.pending_resolves.remove(&resource_id).and_then(|p| p) else {
+					log::error!("Resolved message for {resource_id} with no pending resolve");
+					return;
+				};
+				let Some(info) = self.registry.info(&resource_id) else {
+					// ResourceId was removed from registry after resolve started.
+					// This can happen if the document was modified while resolves were in-flight.
+					// Likely safe to ignore for now.
+					// TODO: Consider adding cleaner cancelation for in-flight resolves.
+					return;
+				};
+				let Some(source) = info.sources.get(progress.index).cloned() else {
+					log::error!("Resolved message for {resource_id} with no current source");
+					return;
+				};
+				if progress.source != source {
+					log::error!("Resolved message for {resource_id} with mismatched source");
+					return;
+				}
+
+				self.registry.resolve(&resource_id, hash);
+				responses.add(ResourceStorageMessage::Store { data });
+
+				if let DataSource::Font { family, style } = source {
+					let font = match style {
+						Some(style) => Font::new(family, style),
+						None => Font::new_with_default_style(family),
+					};
+					responses.add(FontsMessage::ResourceResolved { font, hash });
+				}
+
+				responses.add(ResourceMessage::Resolve);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 		}
 	}
@@ -54,7 +178,7 @@ impl ResourceMessageHandler {
 		self.embedded = EmbeddedResources::from_iter(futures::future::join_all(embedded).await.into_iter().flatten());
 	}
 
-	pub fn garbage_collect(&mut self, used: &[ResourceId]) {
+	pub fn collect_garbage(&mut self, used: &[ResourceId]) {
 		let used = HashSet::<ResourceId>::from_iter(used.iter().cloned());
 		let unused = self.registry.ids().filter(|id| !used.contains(id)).collect::<Vec<_>>();
 		unused.into_iter().for_each(|id| {

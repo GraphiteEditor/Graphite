@@ -1,4 +1,4 @@
-mod font_cache;
+mod font;
 pub mod json;
 mod path_builder;
 pub mod regex;
@@ -16,7 +16,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
 pub use core_types as gcore;
-pub use font_cache::*;
+pub use font::*;
 pub use text_context::TextContext;
 pub use to_path::*;
 pub use vector_types;

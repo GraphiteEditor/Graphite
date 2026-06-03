@@ -2,11 +2,12 @@ use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{Bezier, BezierHandles};
-use graphene_std::text::{Font, FontCache, TextAlign, TextContext, TypesettingConfig};
+use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
@@ -221,16 +222,6 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 	}
 }
 
-// Global lazy initialized font cache and text context
-pub static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
-	let mut font_cache = FontCache::default();
-	// Initialize with the hardcoded font used by overlay text
-	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-	font_cache.insert(font, FONT_DATA.to_vec());
-	font_cache
-});
-
 pub static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub fn text_width(text: &str, font_size: f64) -> f64 {
@@ -244,12 +235,8 @@ pub fn text_width(text: &str, font_size: f64) -> f64 {
 		align: TextAlign::AlignLeft,
 	};
 
-	// Load Source Sans Pro font data
-	// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
-	// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
 	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-	let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+	let bounds = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
 	bounds.x
 }
 

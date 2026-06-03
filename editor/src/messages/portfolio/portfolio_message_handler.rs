@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::{CachedData, PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
+use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
@@ -32,7 +32,6 @@ use graphene_std::Color;
 use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::BezierHandles;
-use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use std::path::PathBuf;
@@ -68,7 +67,7 @@ pub struct PortfolioMessageHandler {
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
-	pub cached_data: CachedData,
+	pub fonts: FontsMessageHandler,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
@@ -99,7 +98,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						cached_data: &self.cached_data,
+						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
@@ -117,6 +116,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					persisted_state: self.persisted_state_snapshot(),
 				};
 				self.persistent_state.process_message(message, responses, context);
+			}
+			PortfolioMessage::Fonts(message) => {
+				let context = FontsMessageContext { resource_storage };
+				self.fonts.process_message(message, responses, context);
 			}
 
 			// Messages
@@ -169,7 +172,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let document_inputs = DocumentMessageContext {
 						document_id,
 						ipp,
-						cached_data: &self.cached_data,
+						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
@@ -208,6 +211,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_id,
 					document: document.serialize_document(),
 				});
+				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
 				if let Some(document_id) = self.active_document_id {
@@ -386,78 +390,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
-			PortfolioMessage::FontCatalogLoaded { catalog } => {
-				self.cached_data.font_catalog = catalog;
-
-				if let Some(document_id) = self.active_document_id {
-					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
-				}
-
-				// Load the default font
-				let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
-				responses.add(PortfolioMessage::LoadFontData { font });
-			}
-			PortfolioMessage::LoadFontData { font } => {
-				if let Some(style) = self.cached_data.font_catalog.find_font_style_in_catalog(&font) {
-					let font = Font::new(font.font_family, style.to_named_style());
-
-					if !self.cached_data.font_cache.loaded_font(&font) {
-						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
-					}
-				}
-			}
-			PortfolioMessage::FontLoaded { font_family, font_style, data } => {
-				let font = Font::new(font_family, font_style);
-				self.cached_data.font_cache.insert(font, data);
-				self.executor.update_font_cache(self.cached_data.font_cache.clone());
-
-				for document_id in self.document_ids.iter() {
-					let node_to_inspect = self.node_to_inspect();
-
-					let Some(document) = self.documents.get_mut(document_id) else {
-						if self.unloaded_documents.contains_key(document_id) {
-							continue;
-						}
-						log::error!("Tried to render non-existent document");
-						continue;
-					};
-
-					let document_to_viewport = document
-						.navigation_handler
-						.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
-					let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-
-					let scale = viewport.scale();
-					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
-					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
-
-					// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
-					// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
-					#[cfg(not(target_family = "wasm"))]
-					responses.add_front(FrontendMessage::UpdateViewportHolePunch {
-						active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
-					});
-
-					if let Ok(message) = self
-						.executor
-						.submit_node_graph_evaluation(document, *document_id, physical_resolution, scale, timing_information, node_to_inspect, true, pointer_position)
-					{
-						responses.add_front(message);
-					}
-				}
-
-				if self.active_document_mut().is_some() {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
-				if current_tool == &ToolType::Text {
-					responses.add(TextToolMessage::RefreshEditingFontData);
-				}
-			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::GarbageCollectResources => {
+				if !self.persistent_state.loaded() {
+					// We don't know what can be safely garbage collected
+					return;
+				}
+
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
+					log::info!("Checking resources for unloaded document {:?}: {:?}", info.name, info.resources);
 					if let Some(resources) = &info.resources {
 						used_resources.extend(resources.iter());
 					} else {
@@ -469,21 +411,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
 				}
+				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
 					used: Vec::from_iter(used_resources).into_boxed_slice(),
 				});
 			}
-			PortfolioMessage::LoadDocumentResources { document_id } => {
-				let catalog = &self.cached_data.font_catalog;
-
-				if catalog.0.is_empty() {
+			PortfolioMessage::ResolveResources => {
+				for document_id in self.document_ids.iter().copied().collect::<Vec<_>>() {
+					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
+				}
+			}
+			PortfolioMessage::ResolveDocumentResources { document_id } => {
+				if self.fonts.font_catalog.is_empty() {
 					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
 					return;
 				}
 
-				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.load_layer_resources(responses);
-				}
+				responses.add(PortfolioMessage::DocumentPassMessage {
+					document_id,
+					message: DocumentMessage::Resource(ResourceMessage::Resolve),
+				});
 			}
 			PortfolioMessage::LoadPersistedState { state } => {
 				if let Some(layout) = state.workspace_layout {
@@ -884,6 +831,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut document = match document {
 					Ok(document) => document,
 					Err(e) => {
+						log::error!("{e}");
 						// TODO: Eventually remove this document upgrade code
 						// TODO: (Only the `if` branch, the `else` branch's manual-open dialog stays)
 						if document_is_auto_saved {
@@ -908,7 +856,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 							self.tick_autosave_load_progress(responses, true);
 						} else {
-							log::error!("{e}");
 							let name = document_name
 								.filter(|n| !n.trim().is_empty())
 								.or_else(|| document_path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()))
@@ -1134,7 +1081,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								added_nodes = true;
 							}
 
-							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							all_new_ids.extend(new_ids.values().cloned());
@@ -1619,7 +1565,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				if !document.is_loaded {
 					document.is_loaded = true;
-					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
 				}
@@ -1664,6 +1610,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					log::error!("Tried to render non-existent document {:?}", document_id);
 					return;
 				};
+
+				// Skip rendering while any resource is still unresolved — the preprocessor would otherwise fail with
+				// `ResourceNotFound`. `ResourceMessage::Resolved` queues `RunDocumentGraph` once each id resolves,
+				// so the render fires automatically once the registry is complete.
+				if document.resources.registry.unresolved().next().is_some() {
+					return;
+				}
 
 				let document_to_viewport = document
 					.navigation_handler
