@@ -3,11 +3,9 @@ use super::persistent_state::PersistentStateMessage;
 use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::raster::Image;
-use graphene_std::text::Font;
 use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
@@ -16,6 +14,8 @@ pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	Fonts(FontsMessage),
 	#[child]
 	PersistentState(PersistentStateMessage),
 
@@ -51,20 +51,10 @@ pub enum PortfolioMessage {
 	DestroyAllDocuments,
 	EditorPreferences,
 	GarbageCollectResources,
-	FontCatalogLoaded {
-		catalog: FontCatalog,
-	},
-	LoadFontData {
-		font: Font,
-	},
-	FontLoaded {
-		font_family: String,
-		font_style: String,
-		data: Vec<u8>,
-	},
-	LoadDocumentResources {
+	ResolveDocumentResources {
 		document_id: DocumentId,
 	},
+	ResolveResources,
 	LoadPersistedState {
 		state: PersistedState,
 	},

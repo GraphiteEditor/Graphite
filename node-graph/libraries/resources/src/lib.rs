@@ -26,6 +26,10 @@ impl Resource {
 	pub fn hash(&self) -> ResourceHash {
 		self.hash
 	}
+
+	pub fn empty() -> Self {
+		Self::new([])
+	}
 }
 
 impl From<&Resource> for Arc<dyn AsRef<[u8]> + Send + Sync> {
@@ -67,7 +71,7 @@ impl CacheHash for Resource {
 }
 
 /// Blake3 content hash of a resource, represented as 32 bytes
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, DynAny)]
+#[derive(Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord, DynAny)]
 pub struct ResourceHash([u8; 32]);
 
 impl From<&[u8]> for ResourceHash {
@@ -132,6 +136,12 @@ impl std::str::FromStr for ResourceHash {
 		}
 
 		Ok(Self(out))
+	}
+}
+
+impl std::fmt::Debug for ResourceHash {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&String::from(self))
 	}
 }
 
@@ -235,6 +245,18 @@ pub struct ResourceId(u64);
 impl ResourceId {
 	pub fn new() -> Self {
 		Self(core_types::uuid::generate_uuid())
+	}
+}
+
+impl From<u64> for ResourceId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl From<ResourceId> for u64 {
+	fn from(id: ResourceId) -> Self {
+		id.0
 	}
 }
 

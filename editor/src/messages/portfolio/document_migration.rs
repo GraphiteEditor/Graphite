@@ -1685,6 +1685,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// Convert text nodes from the old `editor-api` scope + `Font` input to a single font `Resource` input.
+	// The chosen typeface is recorded as a `DataSource::Font` in the document's resource registry and loaded on open.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 13 && matches!(node.inputs.first(), Some(NodeInput::Scope(_))) {
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+
+		if let Some(TaggedValue::Font(font)) = node.inputs.get(2).and_then(|input| input.as_value()) {
+			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(
+				&resource_id,
+				DataSource::Font {
+					family: font.font_family.clone(),
+					style: Some(font.font_style.clone()),
+				},
+			);
+			document
+				.network_interface
+				.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+		}
+	}
+
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
