@@ -86,6 +86,10 @@ fn folder_backend_rejects_symlink_escape() {
 
 	let result = backend.read("link/secret");
 	assert!(matches!(result, Err(ContainerError::InvalidPath(_))), "symlink escape should be rejected, got {result:?}");
+
+	// Listing must reject the symlinked prefix too, not just reads, so it can't leak entry names from outside the root.
+	assert!(matches!(backend.list("link"), Err(ContainerError::InvalidPath(_))), "list through symlink should be rejected");
+	assert!(matches!(backend.list_dirs("link"), Err(ContainerError::InvalidPath(_))), "list_dirs through symlink should be rejected");
 }
 
 #[test]

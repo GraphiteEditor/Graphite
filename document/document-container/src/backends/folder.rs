@@ -33,27 +33,34 @@ impl FolderBackend {
 
 	fn resolve(&self, path: &str) -> Result<PathBuf> {
 		validate_path(path)?;
-		let full = self.root.join(path);
+		self.reject_symlinked_components(path)?;
+		Ok(self.root.join(path))
+	}
 
-		// `validate_path` blocks `..` and absolute paths, but a symlink stored under the root could still
-		// point outside it. Reject any existing component along the joined path that is a symlink so reads
-		// and writes can't escape the container via one.
+	/// Reject any existing component along `root/relative` that is a symlink. `validate_path`/`validate_prefix`
+	/// block `..` and absolute paths, but a symlink stored under the root could still point outside it, so every
+	/// path that gets joined onto the root must pass through here before it is opened or traversed.
+	fn reject_symlinked_components(&self, relative: &str) -> Result<()> {
 		let mut partial = self.root.clone();
-		for component in Path::new(path).components() {
+		for component in Path::new(relative).components() {
 			partial.push(component);
 			if let Ok(metadata) = fs::symlink_metadata(&partial)
 				&& metadata.file_type().is_symlink()
 			{
-				return Err(ContainerError::InvalidPath(path.to_string()));
+				return Err(ContainerError::InvalidPath(relative.to_string()));
 			}
 		}
-
-		Ok(full)
+		Ok(())
 	}
 
 	fn list_filtered(&self, prefix: &str, want_files: bool) -> Result<Vec<String>> {
 		validate_prefix(prefix)?;
-		let base = if prefix.is_empty() || prefix == "." { self.root.clone() } else { self.root.join(prefix) };
+		let base = if prefix.is_empty() || prefix == "." {
+			self.root.clone()
+		} else {
+			self.reject_symlinked_components(prefix)?;
+			self.root.join(prefix)
+		};
 
 		// A missing prefix has no entries; a prefix that names a file is a misuse.
 		if base.is_file() {
