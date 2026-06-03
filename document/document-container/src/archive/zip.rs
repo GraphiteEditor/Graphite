@@ -65,6 +65,14 @@ impl<W: Write + Seek> ArchiveWriter for ZipWriter<W> {
 	}
 }
 
+impl<W: Write + Seek> ZipWriter<W> {
+	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
+	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
+	pub fn finish_into(self) -> Result<W> {
+		self.inner.finish().map_err(zip_err)
+	}
+}
+
 fn zip_err(error: zip::result::ZipError) -> ContainerError {
 	// Preserve a real I/O failure (disk full, etc.) as a structured `Io` so callers can tell it apart from a
 	// corrupt-archive `Codec` error; only the genuinely archive-format errors collapse into `Codec`.

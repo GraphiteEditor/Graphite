@@ -70,11 +70,25 @@ impl<W: Write + Seek> ArchiveWriter for XzWriter<W> {
 	}
 
 	fn finish(mut self) -> Result<()> {
+		self.finish_inner()?;
+		Ok(())
+	}
+}
+
+impl<W: Write + Seek> XzWriter<W> {
+	/// Finish the archive and return the underlying sink, for in-memory archives where the caller
+	/// wants the written bytes (e.g. `Cursor<Vec<u8>>`) back.
+	pub fn finish_into(mut self) -> Result<W> {
+		self.finish_inner()
+	}
+
+	/// Unwind the layered writers in order (flush the tar trailer, then finish xz) and hand back the
+	/// innermost sink. Shared by `finish` and `finish_into`.
+	fn finish_inner(&mut self) -> Result<W> {
 		let mut tar = self.tar.take().ok_or_else(|| ContainerError::Codec("XzWriter already finished".into()))?;
 		tar.finish()?;
 		let xz_writer = tar.into_inner()?;
-		xz_writer.finish().map_err(lzma_err)?;
-		Ok(())
+		xz_writer.finish().map_err(lzma_err)
 	}
 }
 
