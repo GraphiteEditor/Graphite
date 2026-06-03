@@ -60,3 +60,37 @@ pub trait ArchiveWriter {
 	fn write_entry(&mut self, path: &str, bytes: &[u8]) -> Result<()>;
 	fn finish(self) -> Result<()>;
 }
+
+/// Archive container formats distinguishable by their leading magic bytes.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ArchiveFormat {
+	Xz,
+	Zip,
+}
+
+impl ArchiveFormat {
+	/// Sniff the format from the leading magic bytes: xz streams start with `FD 37 7A 58 5A 00`,
+	/// zip archives with `50 4B 03 04` (`PK\x03\x04`). Returns `None` for anything else.
+	pub fn detect(bytes: &[u8]) -> Option<Self> {
+		if bytes.starts_with(&[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]) {
+			Some(Self::Xz)
+		} else if bytes.starts_with(&[0x50, 0x4B, 0x03, 0x04]) {
+			Some(Self::Zip)
+		} else {
+			None
+		}
+	}
+}
+
+/// Deserialize an archive into `dest`, auto-detecting the format from `bytes`' magic header.
+/// Errors if the bytes are neither a recognized xz nor zip archive.
+#[cfg(all(feature = "xz", feature = "zip"))]
+pub fn deserialize_auto<C: Container>(bytes: &[u8], dest: &mut C) -> Result<()> {
+	let source = std::io::Cursor::new(bytes);
+	match ArchiveFormat::detect(bytes) {
+		Some(ArchiveFormat::Xz) => Xz::deserialize(source, dest),
+		Some(ArchiveFormat::Zip) => Zip::deserialize(source, dest),
+		None => Err(ContainerError::Codec("unrecognized archive format (not xz or zip)".into())),
+	}
+}
+
