@@ -1,8 +1,9 @@
 use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
-use crate::messages::portfolio::fonts::utility_types::{FONT_LIST_API, FontCatalog};
+use crate::messages::portfolio::fonts::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graphene_std::text::Font;
+use std::sync::Arc;
 
 #[derive(ExtractField)]
 pub struct FontsMessageContext<'a> {
@@ -11,7 +12,7 @@ pub struct FontsMessageContext<'a> {
 
 #[derive(Debug, Default, ExtractField)]
 pub struct FontsMessageHandler {
-	pub font_catalog: FontCatalog,
+	pub font_catalog: Arc<FontCatalog>,
 	font_hashes: HashMap<Font, ResourceHash>,
 	font_data: HashMap<ResourceHash, Resource>,
 }
@@ -24,13 +25,15 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 		match message {
 			FontsMessage::LoadCatalog => {
 				responses.add(NetworkMessage::request(|client| async move {
-					let Some(bytes) = client.fetch(FONT_LIST_API).await else { return Message::NoOp };
-					let Some(catalog) = FontCatalog::from_api_response(&bytes) else { return Message::NoOp };
+					let Some(catalog) = FontCatalog::load_from_api(&client).await else {
+						log::error!("failed to load font catalog");
+						return Message::NoOp;
+					};
 					FontsMessage::CatalogLoaded { catalog }.into()
 				}));
 			}
 			FontsMessage::CatalogLoaded { catalog } => {
-				self.font_catalog = catalog;
+				self.font_catalog = Arc::new(catalog);
 				responses.add(PortfolioMessage::ResolveResources);
 			}
 			FontsMessage::ResourceResolved { font, hash } => {
@@ -76,11 +79,6 @@ impl FontsMessageHandler {
 		self.font_hashes.get(&font).copied()
 	}
 
-	pub fn cached_url(&self, font: &Font) -> Option<String> {
-		let font = self.normalize(font.clone());
-		self.font_catalog.download_url(&font)
-	}
-
 	pub fn get_resource_or_queue_load(&self, font: &Font, responses: &mut VecDeque<Message>) -> Resource {
 		let font = self.normalize(font.clone());
 		if let Some(hash) = self.font_hashes.get(&font) {
@@ -111,9 +109,6 @@ impl FontsMessageHandler {
 	}
 
 	fn normalize(&self, font: Font) -> Font {
-		match self.font_catalog.find_font_style_in_catalog(&font) {
-			Some(style) => Font::new(font.font_family, style.to_named_style()),
-			None => font,
-		}
+		self.font_catalog.normalize(font)
 	}
 }

@@ -429,7 +429,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				responses.add(PortfolioMessage::DocumentPassMessage {
 					document_id,
-					message: DocumentMessage::Resource(ResourceMessage::Resolve),
+					message: DocumentMessage::Resource(ResourceMessage::ResolveAll),
 				});
 			}
 			PortfolioMessage::LoadPersistedState { state } => {

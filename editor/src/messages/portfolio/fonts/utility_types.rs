@@ -1,7 +1,8 @@
+use crate::messages::network::Client;
 use graphene_std::text::Font;
 use std::collections::HashMap;
 
-pub const FONT_LIST_API: &str = "https://api.graphite.art/font-list";
+const FONT_LIST_API: &str = "https://api.graphite.art/font-list";
 
 #[derive(serde::Deserialize)]
 struct FontListApiResponse {
@@ -16,9 +17,13 @@ struct FontListApiFamily {
 }
 
 impl FontCatalog {
-	/// Parse the response bytes from [`FONT_LIST_API`] into a [`FontCatalog`].
-	pub fn from_api_response(bytes: &[u8]) -> Option<Self> {
-		let response: FontListApiResponse = match serde_json::from_slice(bytes) {
+	pub async fn load_from_api(client: &Client) -> Option<Self> {
+		let Some(bytes) = client.fetch(FONT_LIST_API).await else {
+			log::error!("failed to fetch font catalog from API");
+			return None;
+		};
+
+		let response: FontListApiResponse = match serde_json::from_slice(&bytes) {
 			Ok(response) => response,
 			Err(err) => {
 				log::error!("failed to parse font catalog response: {err}");
@@ -72,6 +77,13 @@ impl FontCatalog {
 		let catalog_family = self.0.iter().find(|catalog_family| catalog_family.name == font.font_family)?;
 		let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
 		Some(catalog_family.closest_style(weight, italic).url.clone())
+	}
+
+	pub fn normalize(&self, font: Font) -> Font {
+		match self.find_font_style_in_catalog(&font) {
+			Some(style) => Font::new(font.font_family, style.to_named_style()),
+			None => font,
+		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = &FontCatalogFamily> {
