@@ -422,11 +422,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::ResolveDocumentResources { document_id } => {
-				if self.fonts.font_catalog.is_empty() {
-					responses.add_front(FontsMessage::LoadCatalog);
-					return;
-				}
-
 				responses.add(PortfolioMessage::DocumentPassMessage {
 					document_id,
 					message: DocumentMessage::Resource(ResourceMessage::ResolveAll),
