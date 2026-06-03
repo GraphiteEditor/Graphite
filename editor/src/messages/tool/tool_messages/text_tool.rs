@@ -292,7 +292,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 
 		if context.fonts.font_catalog.is_empty() {
 			responses.add_front(FontsMessage::LoadCatalog);
-			return;
 		}
 
 		let options = match message {

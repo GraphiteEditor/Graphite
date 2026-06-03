@@ -35,6 +35,8 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 			FontsMessage::CatalogLoaded { catalog } => {
 				self.font_catalog = Arc::new(catalog);
 				responses.add(PortfolioMessage::ResolveResources);
+				responses.add(ToolMessage::RefreshToolOptions);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			FontsMessage::ResourceResolved { font, hash } => {
 				let font = self.normalize(font);
