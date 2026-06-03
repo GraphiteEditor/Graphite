@@ -1,6 +1,6 @@
 //! Zip archive codec.
 
-use crate::archive::{Archive, ArchiveWriter, MAX_DECOMPRESSED_SIZE};
+use crate::archive::{Archive, ArchiveWriter, checked_entry_size};
 use crate::{Container, ContainerError, Result, validate_path};
 use std::io::{Read, Seek, Write};
 
@@ -27,9 +27,8 @@ impl Archive for Zip {
 	fn deserialize<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
 		let mut archive = ZipArchive::new(source).map_err(zip_err)?;
 
-		// Zip headers declare each entry's uncompressed size up front, and `write_sized` pre-allocates
-		// from it before reading bytes. Cap the running total so a malicious archive can't exhaust memory
-		// or disk by claiming a huge size (the xz codec caps its declared total the same way).
+		// Zip headers declare each entry's uncompressed size up front; `checked_entry_size` caps the running
+		// total so a malicious archive can't exhaust memory or disk before any bytes are read.
 		let mut total_size = 0u64;
 
 		for index in 0..archive.len() {
@@ -40,21 +39,7 @@ impl Archive for Zip {
 			let name = entry.name().to_string();
 			validate_path(&name)?;
 
-			let size = entry.size();
-			total_size = total_size.saturating_add(size);
-			if total_size > MAX_DECOMPRESSED_SIZE {
-				return Err(ContainerError::SizeLimitExceeded {
-					declared: total_size,
-					limit: MAX_DECOMPRESSED_SIZE,
-				});
-			}
-
-			// Convert fallibly so a 32-bit `usize` (wasm) can never silently truncate the declared size
-			// into a smaller allocation. The cap above keeps this within range today.
-			let size = usize::try_from(size).map_err(|_| ContainerError::SizeLimitExceeded {
-				declared: size,
-				limit: usize::MAX as u64,
-			})?;
+			let size = checked_entry_size(&mut total_size, entry.size())?;
 
 			dest.write_sized(&name, size, &mut |buffer| {
 				entry.read_exact(buffer).map_err(ContainerError::Io)?;

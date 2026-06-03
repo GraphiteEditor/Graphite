@@ -16,7 +16,7 @@ thiserror = "2.0"
 log = { workspace = true }
 zip = { workspace = true, optional = true, features = ["deflate-flate2-zlib-rs"],  default-features = false}
 lzma-rust2 = { workspace = true, optional = true }
-tar = { version = "0.4", optional = true }
+tar = { version = "0.4", optional = true, default-features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 mmap-io = { workspace = true }

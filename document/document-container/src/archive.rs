@@ -3,12 +3,33 @@
 //! Each codec streams entries in both directions: writers wrap an `io::Write` sink, and
 //! `deserialize` reads from any `io::Read + Seek` source and streams entries into any [`Container`].
 
-use crate::{Container, Result};
+use crate::{Container, ContainerError, Result};
 use std::io::{Read, Seek, Write};
 
 /// Hard cap on the total decompressed size a codec will materialize from one archive.
 /// Defends against decompression bombs at the cost of refusing legitimately huge archives.
 pub(crate) const MAX_DECOMPRESSED_SIZE: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Fold one entry's declared `size` into the running `total` and return it as a `usize` ready for
+/// `write_sized`. Both codecs route every entry through here so the decompression-bomb cap and the
+/// 32-bit-safe conversion stay defined in one place. Entry sizes are pre-allocated before any bytes
+/// are read, so an over-large declaration is rejected here rather than after committing memory.
+pub(crate) fn checked_entry_size(total: &mut u64, size: u64) -> Result<usize> {
+	*total = total.saturating_add(size);
+	if *total > MAX_DECOMPRESSED_SIZE {
+		return Err(ContainerError::SizeLimitExceeded {
+			declared: *total,
+			limit: MAX_DECOMPRESSED_SIZE,
+		});
+	}
+
+	// `usize` is 32-bit on wasm, so convert fallibly to rule out a silent truncation into a smaller
+	// allocation. The cumulative cap above keeps this in range today.
+	usize::try_from(size).map_err(|_| ContainerError::SizeLimitExceeded {
+		declared: size,
+		limit: usize::MAX as u64,
+	})
+}
 
 #[cfg(feature = "zip")]
 mod zip;

@@ -232,7 +232,10 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 				}
 			}
 			Mutation::Delete { path } => {
-				if let Err(error) = remove_file(&directory, &path).await {
+				// Removal is idempotent, so a missing entry is the expected outcome of a redundant delete, not an error.
+				if let Err(error) = remove_file(&directory, &path).await
+					&& !is_not_found(&error)
+				{
 					log::error!("OPFS background delete for {path} failed: {error:?}");
 				}
 			}
