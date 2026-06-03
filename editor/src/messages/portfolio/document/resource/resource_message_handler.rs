@@ -18,6 +18,7 @@ pub struct ResourceMessageContext<'a> {
 pub struct ResourceMessageHandler {
 	pub registry: ResourceRegistry,
 	pub embedded: EmbeddedResources,
+	pending_resolves: HashSet<ResourceId>,
 }
 
 #[message_handler_data]
@@ -49,10 +50,17 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 			ResourceMessage::ResolveAll => {
 				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
 				for id in unresolved_ids {
+					if self.pending_resolves.contains(&id) {
+						continue;
+					}
 					responses.add(ResourceMessage::Resolve { resource_id: id });
 				}
 			}
 			ResourceMessage::Resolve { resource_id } => {
+				if self.pending_resolves.contains(&resource_id) {
+					log::warn!("Already pending resolve for {resource_id}; skipping");
+					return;
+				}
 				let Some(info) = self.registry.info(&resource_id) else {
 					log::error!("Resolve for {resource_id}: no registry entry");
 					return;
@@ -61,6 +69,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					log::warn!("Resource {resource_id} already resolved");
 					return;
 				}
+
+				self.pending_resolves.insert(resource_id);
 
 				let font_catalog = fonts.font_catalog.clone();
 
@@ -129,6 +139,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 								let url = new_font_catalog
 									.and_then(|catalog: FontCatalog| catalog.download_url(&font))
 									.or_else(|| font_catalog.download_url(&font));
+
 								if let Some(url) = url {
 									let url = match Url::parse(&url) {
 										Ok(url) => url,
@@ -147,10 +158,15 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						}
 					}
 					log::error!("Resolve for {resource_id}: all sources exhausted");
-					Message::NoOp
+					PortfolioMessage::DocumentPassMessage {
+						document_id,
+						message: ResourceMessage::ResolveFailed { resource_id }.into(),
+					}
+					.into()
 				}));
 			}
 			ResourceMessage::Resolved { resource_id, source, hash } => {
+				self.pending_resolves.remove(&resource_id);
 				if self.registry.info(&resource_id).is_none() {
 					// Resource was removed from registry after the fetch started; safe to drop the result.
 					return;
@@ -167,6 +183,9 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			ResourceMessage::ResolveFailed { resource_id } => {
+				self.pending_resolves.remove(&resource_id);
 			}
 		}
 	}

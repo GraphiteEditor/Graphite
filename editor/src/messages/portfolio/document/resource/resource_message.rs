@@ -11,4 +11,5 @@ pub enum ResourceMessage {
 	ResolveAll,
 	Resolve { resource_id: ResourceId },
 	Resolved { resource_id: ResourceId, source: DataSource, hash: ResourceHash },
+	ResolveFailed { resource_id: ResourceId },
 }
