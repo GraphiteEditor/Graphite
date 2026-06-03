@@ -207,14 +207,32 @@ fn kick_worker(inner: &Arc<Mutex<Inner>>, guard: &mut Inner) {
 /// Apply every queued mutation to disk, in FIFO order, until the queue is empty, then mark the worker
 /// idle. Spawned once via [`kick_worker`] and runs as the sole mutator; the awaited read paths wait on
 /// a [`Mutation::Barrier`] rather than draining themselves, so there is never more than one drainer.
+///
+/// Consecutive appends to the same path are coalesced into one combined append. Each `createWritable`
+/// on OPFS copies the whole existing file, so appending N frames one at a time is O(N^2) in bytes
+/// copied (every per-op autosave queues one append per hot op). Concatenating a run into a single
+/// append collapses that to one file copy, while staying byte-identical to applying them in order.
 async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 	loop {
+		// Pop the front mutation, coalescing a run of same-path appends behind it into one batch.
 		let (directory, mutation) = {
 			let mut guard = inner.lock().unwrap();
-			let Some(mutation) = guard.queue.pop_front() else {
+			let Some(mut mutation) = guard.queue.pop_front() else {
 				guard.worker_active = false;
 				return;
 			};
+
+			if let Mutation::Append { path, bytes } = &mut mutation {
+				while let Some(Mutation::Append { path: next_path, .. }) = guard.queue.front()
+					&& next_path == path
+				{
+					let Some(Mutation::Append { bytes: next_bytes, .. }) = guard.queue.pop_front() else {
+						unreachable!()
+					};
+					bytes.extend_from_slice(&next_bytes);
+				}
+			}
+
 			(guard.directory.clone(), mutation)
 		};
 
