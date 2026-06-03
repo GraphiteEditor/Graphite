@@ -5,7 +5,7 @@ use core_types::list::List;
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
-	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_OVERLINE, ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_UNDERLINE,
 };
 use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
@@ -50,6 +50,9 @@ pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> List<Ve
 			max_width: strings.attribute_cloned_or::<Option<f64>>(ATTR_MAX_WIDTH, index, defaults.max_width),
 			max_height: strings.attribute_cloned_or::<Option<f64>>(ATTR_MAX_HEIGHT, index, defaults.max_height),
 			align: strings.attribute_cloned_or(ATTR_TEXT_ALIGN, index, defaults.align),
+			underline: strings.attribute_cloned_or(ATTR_UNDERLINE, index, defaults.underline),
+			overline: strings.attribute_cloned_or(ATTR_OVERLINE, index, defaults.overline),
+			strikethrough: strings.attribute_cloned_or(ATTR_STRIKETHROUGH, index, defaults.strikethrough),
 		};
 
 		let vectors = to_path(text, &font, typesetting, separate_glyphs);

@@ -14,8 +14,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD,
-	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_OVERLINE,
+	ATTR_SPREAD_METHOD, ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_UNDERLINE,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -2316,6 +2316,9 @@ fn text_item_size_and_transform(list: &List<String>, index: usize) -> Option<(DV
 	let max_height: Option<f64> = list.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
 	let align: text_nodes::TextAlign = list.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 	let transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+	let underline: bool = list.attribute_cloned_or(ATTR_UNDERLINE, index, false);
+	let overline: bool = list.attribute_cloned_or(ATTR_OVERLINE, index, false);
+	let strikethrough: bool = list.attribute_cloned_or(ATTR_STRIKETHROUGH, index, false);
 
 	let typesetting = text_nodes::TypesettingConfig {
 		font_size,
@@ -2325,6 +2328,9 @@ fn text_item_size_and_transform(list: &List<String>, index: usize) -> Option<(DV
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {
@@ -2416,6 +2422,9 @@ impl Render for List<String> {
 			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
 			let letter_tilt: f64 = self.attribute_cloned_or(ATTR_LETTER_TILT, index, 0.);
 			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
+			let underline: bool = self.attribute_cloned_or(ATTR_UNDERLINE, index, false);
+			let overline: bool = self.attribute_cloned_or(ATTR_OVERLINE, index, false);
+			let strikethrough: bool = self.attribute_cloned_or(ATTR_STRIKETHROUGH, index, false);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 			let typesetting = text_nodes::TypesettingConfig {
@@ -2426,6 +2435,9 @@ impl Render for List<String> {
 				max_width,
 				max_height,
 				align,
+				underline,
+				overline,
+				strikethrough,
 			};
 
 			let mut glyph_paths: Vec<String> = Vec::new();
@@ -2498,6 +2510,9 @@ impl Render for List<String> {
 			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_MAX_HEIGHT, index, None);
 			let letter_tilt: f64 = self.attribute_cloned_or(ATTR_LETTER_TILT, index, 0.);
 			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
+			let underline: bool = self.attribute_cloned_or(ATTR_UNDERLINE, index, false);
+			let overline: bool = self.attribute_cloned_or(ATTR_OVERLINE, index, false);
+			let strikethrough: bool = self.attribute_cloned_or(ATTR_STRIKETHROUGH, index, false);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
@@ -2511,6 +2526,9 @@ impl Render for List<String> {
 				max_width,
 				max_height,
 				align,
+				underline,
+				overline,
+				strikethrough,
 			};
 
 			let affine = Affine::new((transform * item_transform).to_cols_array());
