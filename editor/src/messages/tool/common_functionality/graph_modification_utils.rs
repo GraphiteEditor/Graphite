@@ -508,6 +508,15 @@ pub fn get_text<'a>(
 	let Some(&TaggedValue::TextAlign(align)) = inputs.get(graphene_std::text::text::AlignInput::INDEX)?.as_value() else {
 		return None;
 	};
+	let Some(&TaggedValue::Bool(underline)) = inputs.get(graphene_std::text::text::UnderlineInput::INDEX)?.as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::Bool(overline)) = inputs.get(graphene_std::text::text::OverlineInput::INDEX)?.as_value() else {
+		return None;
+	};
+	let Some(&TaggedValue::Bool(strikethrough)) = inputs.get(graphene_std::text::text::StrikethroughInput::INDEX)?.as_value() else {
+		return None;
+	};
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -517,6 +526,9 @@ pub fn get_text<'a>(
 		max_width: has_max_width.then_some(max_width),
 		max_height: has_max_height.then_some(max_height),
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 	Some((text, font, typesetting))
 }

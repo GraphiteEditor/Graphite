@@ -110,6 +110,10 @@ impl FontsMessageHandler {
 		self.font_hashes.values().copied().chain(self.font_data.keys().copied())
 	}
 
+	pub fn font_data(&self) -> &HashMap<ResourceHash, Resource> {
+		&self.font_data
+	}
+
 	fn normalize(&self, font: Font) -> Font {
 		self.font_catalog.normalize(font)
 	}

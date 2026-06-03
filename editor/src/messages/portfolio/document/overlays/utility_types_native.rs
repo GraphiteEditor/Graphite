@@ -1114,6 +1114,9 @@ impl OverlayContextInternal {
 			max_width: None,
 			max_height: None,
 			align: TextAlign::AlignLeft,
+			underline: false,
+			overline: false,
+			strikethrough: false,
 		};
 
 		// Get text dimensions directly from layout
