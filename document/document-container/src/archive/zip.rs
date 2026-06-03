@@ -66,5 +66,10 @@ impl<W: Write + Seek> ArchiveWriter for ZipWriter<W> {
 }
 
 fn zip_err(error: zip::result::ZipError) -> ContainerError {
-	ContainerError::Codec(format!("zip: {error}"))
+	// Preserve a real I/O failure (disk full, etc.) as a structured `Io` so callers can tell it apart from a
+	// corrupt-archive `Codec` error; only the genuinely archive-format errors collapse into `Codec`.
+	match error {
+		zip::result::ZipError::Io(io) => ContainerError::Io(io),
+		other => ContainerError::Codec(format!("zip: {other}")),
+	}
 }

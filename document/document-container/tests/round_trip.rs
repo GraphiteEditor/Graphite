@@ -102,7 +102,7 @@ fn folder_backend_rejects_symlink_escape() {
 fn folder_backend_rejects_path_traversal() {
 	let dir = tempfile::tempdir().unwrap();
 	let backend = FolderBackend::create(dir.path()).unwrap();
-	for bad in ["../escape", "subdir/../escape", "/abs", "back\\slash"] {
+	for bad in ["../escape", "subdir/../escape", "/abs", "back\\slash", "a//b", "trailing/", "a/./b"] {
 		let result = backend.write(bad, b"nope");
 		assert!(matches!(result, Err(ContainerError::InvalidPath(_))), "expected InvalidPath for {bad:?}, got {result:?}");
 	}

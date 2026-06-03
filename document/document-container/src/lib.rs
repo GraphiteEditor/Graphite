@@ -163,14 +163,24 @@ pub(crate) fn with_trailing_slash(prefix: &str) -> String {
 /// non-empty, no `.`/`..` path components, no absolute or Windows-prefixed paths, no backslashes.
 ///
 /// Backends use this to reject paths that could escape the container root, and archive codecs use it on
-/// entry names from untrusted input. Every component must be `Component::Normal`, so dotfile names like
-/// `.gitignore` are accepted (the dot is part of the name) while a `.` or `..` segment (e.g. `a/./b`) is a
-/// `Component::CurDir`/`ParentDir` and rejected. For listing prefixes, which may name the container root,
-/// use [`validate_prefix`] instead.
+/// entry names from untrusted input. Dotfile names like `.gitignore` are accepted (the dot is part of the
+/// name); a leading `./` or any `..` segment is rejected as a `Component::CurDir`/`ParentDir`. The path must
+/// also already be canonical: redundant segments (`a//b`, trailing `a/b/`, interior `a/./b`) are rejected on
+/// the raw string so a single file has one identity across backends, which key on that string rather than on
+/// the normalized components. For listing prefixes, which may name the container root, use
+/// [`validate_prefix`] instead.
 pub fn validate_path(path: &str) -> Result<()> {
 	let invalid = || ContainerError::InvalidPath(path.to_string());
 
 	if path.is_empty() || path.contains('\\') || path.starts_with('/') {
+		return Err(invalid());
+	}
+
+	// `Path::components` silently folds away `//`, trailing `/`, and interior `.` segments, but backends key
+	// on the raw string, so a non-canonical path would resolve to one file on a path-joining backend yet a
+	// different identity on a string-keyed backend. Reject the redundant segments the component loop below
+	// can't see (it never observes a folded-away `CurDir`/empty segment).
+	if path.split('/').any(|segment| segment.is_empty() || segment == ".") {
 		return Err(invalid());
 	}
 
