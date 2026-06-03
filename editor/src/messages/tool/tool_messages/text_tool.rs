@@ -290,6 +290,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			self.options.fill.fill_choice = Some(solid(context.global_tool_data.primary_color));
 		}
 
+		if context.fonts.font_catalog.is_empty() {
+			responses.add_front(FontsMessage::LoadCatalog);
+			return;
+		}
+
 		let options = match message {
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
@@ -598,14 +603,11 @@ impl TextToolData {
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
 		let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
-		let layers: Vec<LayerNodeIdentifier> = document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).collect();
-		for layer in layers {
+		let text_layers: Vec<_> = document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).collect();
+		text_layers.into_iter().find(|&layer| {
 			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, fonts, responses);
-			if transformed_quad.contains(mouse) {
-				return Some(layer);
-			}
-		}
-		None
+			transformed_quad.contains(mouse)
+		})
 	}
 
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
