@@ -160,12 +160,13 @@ pub(crate) fn with_trailing_slash(prefix: &str) -> String {
 }
 
 /// Validate that `path` names a relative, container-safe file:
-/// non-empty, no `..` components, no leading or standalone `.`, no absolute or Windows-prefixed paths, no backslashes.
+/// non-empty, no `.`/`..` path components, no absolute or Windows-prefixed paths, no backslashes.
 ///
 /// Backends use this to reject paths that could escape the container root, and archive codecs use it on
-/// entry names from untrusted input. Interior `.` segments (e.g. `a/./b`) are normalized away by
-/// `Path::components` before they reach this check. For listing prefixes, which may name the container
-/// root, use [`validate_prefix`] instead.
+/// entry names from untrusted input. Every component must be `Component::Normal`, so dotfile names like
+/// `.gitignore` are accepted (the dot is part of the name) while a `.` or `..` segment (e.g. `a/./b`) is a
+/// `Component::CurDir`/`ParentDir` and rejected. For listing prefixes, which may name the container root,
+/// use [`validate_prefix`] instead.
 pub fn validate_path(path: &str) -> Result<()> {
 	let invalid = || ContainerError::InvalidPath(path.to_string());
 
