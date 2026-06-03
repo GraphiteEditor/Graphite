@@ -23,8 +23,7 @@ pub(crate) fn checked_entry_size(total: &mut u64, size: u64) -> Result<usize> {
 		});
 	}
 
-	// `usize` is 32-bit on wasm, so convert fallibly to rule out a silent truncation into a smaller
-	// allocation. The cumulative cap above keeps this in range today.
+	// `usize` is 32-bit on wasm, so convert fallibly to rule out a silent truncation into a smaller allocation.
 	usize::try_from(size).map_err(|_| ContainerError::SizeLimitExceeded {
 		declared: size,
 		limit: usize::MAX as u64,
@@ -93,4 +92,3 @@ pub fn deserialize_auto<C: Container>(bytes: &[u8], dest: &mut C) -> Result<()> 
 		None => Err(ContainerError::Codec("unrecognized archive format (not xz or zip)".into())),
 	}
 }
-
