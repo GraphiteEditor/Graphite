@@ -1694,6 +1694,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		if let Some(TaggedValue::Font(font)) = node.inputs.get(2).and_then(|input| input.as_value()) {
 			let resource_id = ResourceId::new();
+			document.resources.registry.push_source_back(&resource_id, DataSource::Embedded);
 			document.resources.registry.push_source_back(
 				&resource_id,
 				DataSource::Font {
