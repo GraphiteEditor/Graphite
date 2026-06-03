@@ -123,9 +123,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						}
 
 						match &source {
-							DataSource::Embedded => {
-								continue;
-							}
+							DataSource::Embedded => continue,
 							DataSource::Url(url) => {
 								response = resolve_to_message(document_id, resource_id, source.clone(), url.clone(), &client).await;
 								break;
@@ -158,7 +156,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 							}
 						}
 					}
-					let responese = if let Some(response) = response {
+					let response = if let Some(response) = response {
 						response
 					} else {
 						log::error!("Resolve for {resource_id}: all sources exhausted");
@@ -171,16 +169,16 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 
 					if let Some(catalog) = loaded_catalog.take() {
 						return Message::Batched {
-							messages: Box::new([responese, FontsMessage::CatalogLoaded { catalog }.into()]),
+							messages: Box::new([response, FontsMessage::CatalogLoaded { catalog }.into()]),
 						};
 					}
-					responese
+					response
 				}))
 			}
 			ResourceMessage::Resolved { resource_id, source, hash } => {
 				self.pending_resolves.remove(&resource_id);
 				if self.registry.info(&resource_id).is_none() {
-					// Resource was removed from registry after the fetch started; safe to drop the result.
+					// Resource was removed from registry after the fetch started.
 					return;
 				}
 

@@ -37,7 +37,6 @@ type RequestFn = Box<dyn FnOnce(Client) -> RequestFuture + Send>;
 #[cfg(target_family = "wasm")]
 type RequestFn = Box<dyn FnOnce(Client) -> RequestFuture>;
 
-// Custom clone implementation to avoid cloning the request function
 impl Clone for NetworkMessage {
 	fn clone(&self) -> Self {
 		match self {

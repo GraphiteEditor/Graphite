@@ -399,7 +399,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
-					log::info!("Checking resources for unloaded document {:?}: {:?}", info.name, info.resources);
 					if let Some(resources) = &info.resources {
 						used_resources.extend(resources.iter());
 					} else {
