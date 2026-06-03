@@ -40,7 +40,10 @@ type RequestFn = Box<dyn FnOnce(Client) -> RequestFuture>;
 impl Clone for NetworkMessage {
 	fn clone(&self) -> Self {
 		match self {
-			NetworkMessage::Request { .. } => NetworkMessage::Request { request: None },
+			NetworkMessage::Request { .. } => {
+				log::error!("Cloning a NetworkMessage::Request is not supported");
+				NetworkMessage::Request { request: None }
+			}
 		}
 	}
 }

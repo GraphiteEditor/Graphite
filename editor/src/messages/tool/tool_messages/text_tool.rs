@@ -602,8 +602,7 @@ impl TextToolData {
 
 	fn check_click(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
 		let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
-		let text_layers: Vec<_> = document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).collect();
-		text_layers.into_iter().find(|&layer| {
+		document.metadata().all_layers().filter(|&layer| document.metadata().is_text_layer(layer)).find(|&layer| {
 			let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, fonts, responses);
 			transformed_quad.contains(mouse)
 		})

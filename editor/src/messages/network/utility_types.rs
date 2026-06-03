@@ -1,8 +1,19 @@
 use reqwest::IntoUrl;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Client {
 	inner: reqwest::Client,
+}
+
+impl Default for Client {
+	fn default() -> Self {
+		Self {
+			#[cfg(not(target_family = "wasm"))]
+			inner: reqwest::Client::builder().timeout(std::time::Duration::from_secs(100)).build().unwrap_or_default(),
+			#[cfg(target_family = "wasm")]
+			inner: reqwest::Client::new(),
+		}
+	}
 }
 
 impl Client {

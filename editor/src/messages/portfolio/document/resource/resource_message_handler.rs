@@ -126,7 +126,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 							DataSource::Embedded => continue,
 							DataSource::Url(url) => {
 								response = resolve_to_message(document_id, resource_id, source.clone(), url.clone(), &client).await;
-								break;
 							}
 							DataSource::Font { family, style } => {
 								let font = match style {
@@ -141,37 +140,36 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 								let url = loaded_catalog.as_ref().and_then(|catalog| catalog.download_url(&font)).or_else(|| font_catalog.download_url(&font));
 
 								if let Some(url) = url {
-									let url = match Url::parse(&url) {
-										Ok(url) => url,
-										Err(err) => {
-											log::warn!("Invalid URL {url} for font resource {resource_id}: {err}");
-											continue;
-										}
+									let Ok(url) = Url::parse(&url) else {
+										log::warn!("Invalid URL {url} for font resource {resource_id}");
+										continue;
 									};
 									response = resolve_to_message(document_id, resource_id, source.clone(), url, &client).await;
-									break;
 								} else {
 									log::warn!("No download URL found for font resource {resource_id}");
 								}
 							}
 						}
+						if response.is_some() {
+							break;
+						}
 					}
-					let response = if let Some(response) = response {
-						response
-					} else {
+
+					let mut response = response.unwrap_or_else(|| {
 						log::error!("Resolve for {resource_id}: all sources exhausted");
 						PortfolioMessage::DocumentPassMessage {
 							document_id,
 							message: ResourceMessage::ResolveFailed { resource_id }.into(),
 						}
 						.into()
-					};
+					});
 
 					if let Some(catalog) = loaded_catalog.take() {
-						return Message::Batched {
+						response = Message::Batched {
 							messages: Box::new([response, FontsMessage::CatalogLoaded { catalog }.into()]),
 						};
 					}
+
 					response
 				}))
 			}
