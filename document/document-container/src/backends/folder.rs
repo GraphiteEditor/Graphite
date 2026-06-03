@@ -73,11 +73,16 @@ impl FolderBackend {
 		let mut results = Vec::new();
 		for entry in fs::read_dir(&base)? {
 			let entry = entry?;
-			let path = entry.path();
-			let matches = if want_files { path.is_file() } else { path.is_dir() };
+
+			// `file_type` does not follow symlinks, unlike `is_file`/`is_dir`. Skip symlink entries so a
+			// listing never advertises a path that `resolve` would then reject as a container escape.
+			let Ok(file_type) = entry.file_type() else { continue };
+			let matches = if want_files { file_type.is_file() } else { file_type.is_dir() };
 			if !matches {
 				continue;
 			}
+
+			let path = entry.path();
 			let relative = path.strip_prefix(&self.root).map_err(|_| ContainerError::Backend("path escaped root".into()))?;
 			results.push(relative.to_string_lossy().replace('\\', "/"));
 		}

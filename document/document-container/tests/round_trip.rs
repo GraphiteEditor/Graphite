@@ -90,6 +90,12 @@ fn folder_backend_rejects_symlink_escape() {
 	// Listing must reject the symlinked prefix too, not just reads, so it can't leak entry names from outside the root.
 	assert!(matches!(backend.list("link"), Err(ContainerError::InvalidPath(_))), "list through symlink should be rejected");
 	assert!(matches!(backend.list_dirs("link"), Err(ContainerError::InvalidPath(_))), "list_dirs through symlink should be rejected");
+
+	// A symlink entry directly under root must not appear in listings, since `resolve` would reject reading it.
+	std::os::unix::fs::symlink(outside.path().join("secret"), dir.path().join("file_link")).unwrap();
+	std::fs::write(dir.path().join("real"), b"ok").unwrap();
+	assert_eq!(backend.list("").unwrap(), vec!["real".to_string()], "symlink entries should be omitted from file listings");
+	assert!(backend.list_dirs("").unwrap().is_empty(), "symlink-to-dir entries should be omitted from dir listings");
 }
 
 #[test]
