@@ -39,7 +39,7 @@ impl FontCatalog {
 					.variants
 					.iter()
 					.filter_map(|variant| {
-						let weight = if variant == "regular" || variant == "italic" { 400 } else { variant.parse::<u32>().ok()? };
+						let weight = variant.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<u32>().unwrap_or(400);
 						let italic = variant.ends_with("italic");
 						let url = family.files.get(variant)?.replacen("http://", "https://", 1);
 						Some(FontCatalogStyle { weight, italic, url })

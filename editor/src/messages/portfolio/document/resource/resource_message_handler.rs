@@ -18,6 +18,7 @@ pub struct ResourceMessageContext<'a> {
 pub struct ResourceMessageHandler {
 	pub registry: ResourceRegistry,
 	pub embedded: EmbeddedResources,
+	#[serde(skip)]
 	pending_resolves: HashSet<ResourceId>,
 }
 
@@ -32,7 +33,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				self.registry.push_source_back(&resource_id, DataSource::Embedded);
 				self.registry.resolve(&resource_id, hash);
 				responses.add(ResourceStorageMessage::Store { data });
-				responses.add(ResourceMessage::ResolveAll);
 			}
 			ResourceMessage::AddFont { resource_id, font } => {
 				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
@@ -45,7 +45,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						style: Some(style_name),
 					},
 				);
-				responses.add(ResourceMessage::ResolveAll);
+				responses.add(ResourceMessage::Resolve { resource_id });
 			}
 			ResourceMessage::ResolveAll => {
 				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
@@ -114,9 +114,12 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				}
 
 				responses.add(NetworkMessage::request(move |client| async move {
+					let mut loaded_catalog = None;
+					let mut response: Option<Message> = None;
 					for (source, hash) in sources {
 						if let Some(hash) = hash {
-							return ResourceMessage::Resolved { resource_id, source, hash }.into();
+							response = Some(ResourceMessage::Resolved { resource_id, source, hash }.into());
+							break;
 						}
 
 						match &source {
@@ -124,9 +127,8 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 								continue;
 							}
 							DataSource::Url(url) => {
-								if let Some(message) = resolve_to_message(document_id, resource_id, source.clone(), url.clone(), &client).await {
-									return message;
-								};
+								response = resolve_to_message(document_id, resource_id, source.clone(), url.clone(), &client).await;
+								break;
 							}
 							DataSource::Font { family, style } => {
 								let font = match style {
@@ -134,11 +136,11 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 									None => Font::new_with_default_style(family.clone()),
 								};
 
-								let new_font_catalog = if font_catalog.is_empty() { FontCatalog::load_from_api(&client).await } else { None };
+								if font_catalog.is_empty() && loaded_catalog.as_ref().is_none() {
+									loaded_catalog = FontCatalog::load_from_api(&client).await;
+								}
 
-								let url = new_font_catalog
-									.and_then(|catalog: FontCatalog| catalog.download_url(&font))
-									.or_else(|| font_catalog.download_url(&font));
+								let url = loaded_catalog.as_ref().and_then(|catalog| catalog.download_url(&font)).or_else(|| font_catalog.download_url(&font));
 
 								if let Some(url) = url {
 									let url = match Url::parse(&url) {
@@ -148,22 +150,32 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 											continue;
 										}
 									};
-									if let Some(message) = resolve_to_message(document_id, resource_id, source.clone(), url, &client).await {
-										return message;
-									};
+									response = resolve_to_message(document_id, resource_id, source.clone(), url, &client).await;
+									break;
 								} else {
 									log::warn!("No download URL found for font resource {resource_id}");
 								}
 							}
 						}
 					}
-					log::error!("Resolve for {resource_id}: all sources exhausted");
-					PortfolioMessage::DocumentPassMessage {
-						document_id,
-						message: ResourceMessage::ResolveFailed { resource_id }.into(),
+					let responese = if let Some(response) = response {
+						response
+					} else {
+						log::error!("Resolve for {resource_id}: all sources exhausted");
+						PortfolioMessage::DocumentPassMessage {
+							document_id,
+							message: ResourceMessage::ResolveFailed { resource_id }.into(),
+						}
+						.into()
+					};
+
+					if let Some(catalog) = loaded_catalog.take() {
+						return Message::Batched {
+							messages: Box::new([responese, FontsMessage::CatalogLoaded { catalog }.into()]),
+						};
 					}
-					.into()
-				}));
+					responese
+				}))
 			}
 			ResourceMessage::Resolved { resource_id, source, hash } => {
 				self.pending_resolves.remove(&resource_id);
