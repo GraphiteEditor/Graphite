@@ -48,7 +48,7 @@ fn real_time(
 	}
 }
 
-/// Produces the time, in seconds on the timeline, since the beginning of animation playback.
+/// Produces the number of the current frame, where 0 is the first frame.
 #[node_macro::node(category("Animation"))]
 fn frame_number(
 	ctx: impl Ctx + ExtractFrameNumber,
