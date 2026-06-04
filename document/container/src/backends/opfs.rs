@@ -157,7 +157,7 @@ impl AsyncContainer for OpfsBackend {
 		Ok(())
 	}
 
-	fn store_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
+	fn write_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
 		validate_path(path)?;
 		let mut guard = self.inner.lock().unwrap();
 		guard.on_disk.insert(path.to_string());

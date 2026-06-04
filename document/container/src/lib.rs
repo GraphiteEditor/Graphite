@@ -433,7 +433,7 @@ impl AsyncContainer for AnyContainer {
 			#[cfg(not(target_family = "wasm"))]
 			Self::Folder(backend) => AsyncContainer::write_non_blocking(backend, path, bytes),
 			#[cfg(target_family = "wasm")]
-			Self::Opfs(backend) => AsyncContainer::store_non_blocking(backend, path, bytes),
+			Self::Opfs(backend) => AsyncContainer::write_non_blocking(backend, path, bytes),
 		}
 	}
 

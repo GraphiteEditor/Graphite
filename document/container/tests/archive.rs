@@ -37,7 +37,7 @@ fn zip_round_trip() {
 	writer.finish().unwrap();
 
 	let mut restored = MemoryBackend::new();
-	<Zip as Archive>::deserialize(Cursor::new(buffer.get_ref()), &mut restored).unwrap();
+	<Zip as Archive>::open(Cursor::new(buffer.get_ref()), &mut restored).unwrap();
 	assert_round_trip(&restored);
 }
 
@@ -56,7 +56,7 @@ fn zip_deserialize_streams_into_folder_backend() {
 
 	let dir = tempfile::tempdir().unwrap();
 	let mut restored = FolderBackend::create(dir.path()).unwrap();
-	<Zip as Archive>::deserialize(Cursor::new(buffer.get_ref()), &mut restored).unwrap();
+	<Zip as Archive>::open(Cursor::new(buffer.get_ref()), &mut restored).unwrap();
 
 	assert_eq!(restored.read("manifest.json").unwrap().as_slice(), br#"{"format":"gdd"}"#);
 	assert_eq!(restored.read("resources/abc123").unwrap().as_slice(), &[0xDE, 0xAD, 0xBE, 0xEF]);
@@ -76,6 +76,6 @@ fn xz_round_trip() {
 	writer.finish().unwrap();
 
 	let mut restored = MemoryBackend::new();
-	<Xz as Archive>::deserialize(Cursor::new(buffer.get_ref()), &mut restored).unwrap();
+	<Xz as Archive>::open(Cursor::new(buffer.get_ref()), &mut restored).unwrap();
 	assert_round_trip(&restored);
 }
