@@ -23,7 +23,7 @@ impl Archive for Xz {
 		})
 	}
 
-	fn deserialize<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
+	fn open<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
 		// `take` bounds how many bytes we decompress from the xz stream, but each tar entry's declared
 		// size is fed to `write_sized`, which pre-allocates from it before reading. Cap the cumulative
 		// declared size too so a header claiming a huge size can't trigger a giant allocation up front.

@@ -24,7 +24,7 @@ impl Archive for Zip {
 		})
 	}
 
-	fn deserialize<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
+	fn open<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()> {
 		let mut archive = ZipArchive::new(source).map_err(zip_err)?;
 
 		// Zip headers declare each entry's uncompressed size up front; `checked_entry_size` caps the running

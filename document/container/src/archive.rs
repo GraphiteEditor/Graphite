@@ -3,16 +3,20 @@
 //! Each codec streams entries in both directions: writers wrap an `io::Write` sink, and
 //! `deserialize` reads from any `io::Read + Seek` source and streams entries into any [`Container`].
 
-use crate::{Container, ContainerError, Result};
+#[cfg(any(feature = "zip", feature = "xz"))]
+use crate::ContainerError;
+use crate::{Container, Result};
 use std::io::{Read, Seek, Write};
 
 /// Hard cap on the total decompressed size a codec will materialize from one archive.
 /// Defends against decompression bombs at the cost of refusing legitimately huge archives.
-pub(crate) const MAX_DECOMPRESSED_SIZE: u64 = 4 * 1024 * 1024 * 1024;
+#[cfg(any(feature = "zip", feature = "xz"))]
+pub(crate) const MAX_DECOMPRESSED_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4GB
 
 /// Fold one entry's declared `size` into the running `total` and return it as a `usize` for `write_sized`.
 /// Both codecs route entries through here so the decompression-bomb cap and 32-bit-safe conversion live in
 /// one place. `write_sized` pre-allocates the declared size, so an over-large one is rejected before that.
+#[cfg(any(feature = "zip", feature = "xz"))]
 pub(crate) fn checked_entry_size(total: &mut u64, size: u64) -> Result<usize> {
 	*total = total.saturating_add(size);
 	if *total > MAX_DECOMPRESSED_SIZE {
@@ -51,7 +55,7 @@ pub trait Archive {
 
 	/// Read entries from `source` and write each into `dest`, streaming so neither the full
 	/// archive nor the full container ever sits in memory at once.
-	fn deserialize<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()>;
+	fn open<R: Read + Seek, C: Container>(source: R, dest: &mut C) -> Result<()>;
 }
 
 pub trait ArchiveWriter {
@@ -83,11 +87,11 @@ impl ArchiveFormat {
 /// Deserialize an archive into `dest`, auto-detecting the format from `bytes`' magic header.
 /// Errors if the bytes are neither a recognized xz nor zip archive.
 #[cfg(all(feature = "xz", feature = "zip"))]
-pub fn deserialize_auto<C: Container>(bytes: &[u8], dest: &mut C) -> Result<()> {
+pub fn open_auto<C: Container>(bytes: &[u8], dest: &mut C) -> Result<()> {
 	let source = std::io::Cursor::new(bytes);
 	match ArchiveFormat::detect(bytes) {
-		Some(ArchiveFormat::Xz) => Xz::deserialize(source, dest),
-		Some(ArchiveFormat::Zip) => Zip::deserialize(source, dest),
+		Some(ArchiveFormat::Xz) => Xz::open(source, dest),
+		Some(ArchiveFormat::Zip) => Zip::open(source, dest),
 		None => Err(ContainerError::Codec("unrecognized archive format (not xz or zip)".into())),
 	}
 }

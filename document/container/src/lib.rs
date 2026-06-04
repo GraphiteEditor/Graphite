@@ -106,7 +106,6 @@ impl AsRef<[u8]> for MmappedBytes {
 		let len = self.0.len();
 		match self.0.as_slice(0, len) {
 			Ok(slice) => slice,
-			// AsRef can't surface an error, so a failed mmap slice degrades to empty bytes; the log is the real signal.
 			Err(error) => {
 				log::error!("Failed to obtain mmap slice: {error}");
 				&[]
@@ -269,15 +268,14 @@ pub trait AsyncContainer {
 
 	/// Synchronous write. On backends with sync I/O (folder, memory) the write completes durably
 	/// before return and reports real errors. On OPFS the write is enqueued onto a background task
-	/// and `Ok` is returned eagerly; a later failure is logged. This is the editor's per-edit
-	/// persist surface — sync on every backend.
-	fn store_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()>;
+	/// and `Ok` is returned eagerly; a later failure is logged.
+	fn write_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()>;
 
-	/// Synchronous append. Same eager-enqueue semantics on OPFS as [`store_non_blocking`](Self::store_non_blocking);
+	/// Synchronous append. Same eager-enqueue semantics on OPFS as [`write_non_blocking`](Self::write_non_blocking);
 	/// queued appends preserve order relative to earlier queued writes/appends.
 	fn append_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()>;
 
-	/// Synchronous remove. Same semantics as [`store_non_blocking`](Self::store_non_blocking).
+	/// Synchronous remove. Same semantics as [`write_non_blocking`](Self::write_non_blocking).
 	fn remove_non_blocking(&self, path: &str) -> Result<()>;
 
 	/// Non-blocking existence check. On OPFS this reads from an in-memory tracking set populated by
@@ -318,7 +316,7 @@ impl<C: Container + ?Sized> AsyncContainer for C {
 		Container::remove(self, path)
 	}
 
-	fn store_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
+	fn write_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
 		Container::write(self, path, bytes)
 	}
 
@@ -429,11 +427,11 @@ impl AsyncContainer for AnyContainer {
 		}
 	}
 
-	fn store_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
+	fn write_non_blocking(&self, path: &str, bytes: &[u8]) -> Result<()> {
 		match self {
-			Self::Memory(backend) => AsyncContainer::store_non_blocking(backend, path, bytes),
+			Self::Memory(backend) => AsyncContainer::write_non_blocking(backend, path, bytes),
 			#[cfg(not(target_family = "wasm"))]
-			Self::Folder(backend) => AsyncContainer::store_non_blocking(backend, path, bytes),
+			Self::Folder(backend) => AsyncContainer::write_non_blocking(backend, path, bytes),
 			#[cfg(target_family = "wasm")]
 			Self::Opfs(backend) => AsyncContainer::store_non_blocking(backend, path, bytes),
 		}

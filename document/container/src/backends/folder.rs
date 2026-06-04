@@ -137,17 +137,17 @@ impl Container for FolderBackend {
 
 		let file = MemoryMappedFile::create_rw(&full, size as u64).map_err(|error| ContainerError::Backend(format!("create_rw {full:?} failed: {error}")))?;
 
-		// `create_rw` materializes the full-size file before `fill` runs, so remove it on failure rather
-		// than leave a zeroed or half-written remnant.
-		let result = (|| {
+		let result = {
 			let mut slice = file
 				.as_slice_mut(0, size as u64)
 				.map_err(|error| ContainerError::Backend(format!("as_slice_mut {full:?} failed: {error}")))?;
 			fill(slice.as_mut())?;
 			drop(slice);
 			file.flush().map_err(|error| ContainerError::Backend(format!("flush {full:?} failed: {error}")))
-		})();
+		};
 
+		// `create_rw` materializes the full-size file before `fill` runs, so remove it on failure rather
+		// than leave a zeroed or half-written remnant.
 		if result.is_err() {
 			drop(file);
 			let _ = fs::remove_file(&full);
@@ -176,6 +176,7 @@ impl Container for FolderBackend {
 		if full.is_file() {
 			fs::remove_file(full)?;
 		}
+		// TODO: decide if we should remove empty parent directories
 		Ok(())
 	}
 }
@@ -183,7 +184,6 @@ impl Container for FolderBackend {
 /// Open a memory-mapped read-only view of `path`, trying huge pages first. Callers must ensure `path`
 /// is non-empty, since mmapping a zero-length file is platform-dependent.
 fn open_mmap(path: &Path) -> Result<MemoryMappedFile> {
-	// Huge pages are unavailable on many systems, so falling back to a plain read-only mapping is routine.
 	match MemoryMappedFile::builder(path).mode(MmapMode::ReadOnly).huge_pages(true).open() {
 		Ok(file) => Ok(file),
 		Err(_) => MemoryMappedFile::open_ro(path).map_err(|error| ContainerError::Backend(format!("mmap of {path:?} failed: {error}"))),
