@@ -364,10 +364,10 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// splice new node between target_input and its current upstream
 		let node_definition = resolve_proto_node_type(reference)?;
+		let current_input = self.network_interface.input_from_connector(target_input, &[])?.clone();
+
 		let node_id = NodeId::new();
 		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
-
-		let current_input = self.network_interface.input_from_connector(target_input, &[])?.clone();
 		self.network_interface.set_input(&InputConnector::node(node_id, 0), current_input, &[]);
 		self.network_interface.set_input(target_input, NodeInput::node(node_id, 0), &[]);
 
@@ -531,8 +531,10 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Set the GradientStops list on the 'Gradient Value' node, creating it if necessary.
 	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
+		let output_layer = self.get_output_layer();
+
 		// Try to find a Gradient node first and update its gradient stops
-		if let Some(output_layer) = self.get_output_layer()
+		if let Some(output_layer) = output_layer
 			&& let Some(gradient_node_id) = get_upstream_gradient_node_id(output_layer, self.network_interface)
 		{
 			let input_connector = InputConnector::node(gradient_node_id, graphene_std::graphic_nodes::gradient::GradientInput::<List<GradientStops>>::INDEX);
@@ -540,7 +542,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		}
 		// Then try to find Gradient Value node that is connected to a Fill node
-		if let Some(output_layer) = self.get_output_layer()
+		if let Some(output_layer) = output_layer
 			&& let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface)
 		{
 			let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
