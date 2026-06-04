@@ -1,4 +1,57 @@
+use crate::messages::network::Client;
 use graphene_std::text::Font;
+use std::collections::HashMap;
+
+const FONT_LIST_API: &str = "https://api.graphite.art/font-list";
+
+#[derive(serde::Deserialize)]
+struct FontListApiResponse {
+	items: Vec<FontListApiFamily>,
+}
+
+#[derive(serde::Deserialize)]
+struct FontListApiFamily {
+	family: String,
+	variants: Vec<String>,
+	files: HashMap<String, String>,
+}
+
+impl FontCatalog {
+	pub async fn load_from_api(client: &Client) -> Option<Self> {
+		let Some(bytes) = client.fetch(FONT_LIST_API).await else {
+			log::error!("failed to fetch font catalog from API");
+			return None;
+		};
+
+		let response: FontListApiResponse = match serde_json::from_slice(&bytes) {
+			Ok(response) => response,
+			Err(err) => {
+				log::error!("failed to parse font catalog response: {err}");
+				return None;
+			}
+		};
+
+		let families = response
+			.items
+			.into_iter()
+			.map(|family| {
+				let styles = family
+					.variants
+					.iter()
+					.filter_map(|variant| {
+						let weight = variant.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<u32>().unwrap_or(400);
+						let italic = variant.ends_with("italic");
+						let url = family.files.get(variant)?.replacen("http://", "https://", 1);
+						Some(FontCatalogStyle { weight, italic, url })
+					})
+					.collect();
+				FontCatalogFamily { name: family.family, styles }
+			})
+			.collect();
+
+		Some(Self(families))
+	}
+}
 
 // TODO: Should this be a BTreeMap instead?
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26,6 +79,13 @@ impl FontCatalog {
 		Some(catalog_family.closest_style(weight, italic).url.clone())
 	}
 
+	pub fn normalize(&self, font: Font) -> Font {
+		match self.find_font_style_in_catalog(&font) {
+			Some(style) => Font::new(font.font_family, style.to_named_style()),
+			None => font,
+		}
+	}
+
 	pub fn iter(&self) -> impl Iterator<Item = &FontCatalogFamily> {
 		self.0.iter()
 	}
@@ -41,7 +101,7 @@ impl From<Vec<FontCatalogFamily>> for FontCatalog {
 	}
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FontCatalogFamily {
 	/// The font family name.

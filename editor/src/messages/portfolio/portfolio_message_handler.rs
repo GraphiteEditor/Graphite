@@ -399,7 +399,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let mut used_resources = HashSet::new();
 				for (id, info) in self.unloaded_documents.iter() {
-					log::info!("Checking resources for unloaded document {:?}: {:?}", info.name, info.resources);
 					if let Some(resources) = &info.resources {
 						used_resources.extend(resources.iter());
 					} else {
@@ -422,14 +421,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::ResolveDocumentResources { document_id } => {
-				if self.fonts.font_catalog.is_empty() {
-					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
-					return;
-				}
-
 				responses.add(PortfolioMessage::DocumentPassMessage {
 					document_id,
-					message: DocumentMessage::Resource(ResourceMessage::Resolve),
+					message: DocumentMessage::Resource(ResourceMessage::ResolveAll),
 				});
 			}
 			PortfolioMessage::LoadPersistedState { state } => {

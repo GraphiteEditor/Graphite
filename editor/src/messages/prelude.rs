@@ -22,6 +22,7 @@ pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageCo
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageContext, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
 pub use crate::messages::layout::{LayoutMessage, LayoutMessageDiscriminant, LayoutMessageHandler};
 pub use crate::messages::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, MenuBarMessageHandler};
+pub use crate::messages::network::{NetworkMessage, NetworkMessageContext, NetworkMessageDiscriminant, NetworkMessageHandler};
 pub use crate::messages::portfolio::document::data_panel::{DataPanelMessage, DataPanelMessageDiscriminant};
 pub use crate::messages::portfolio::document::graph_operation::{GraphOperationMessage, GraphOperationMessageContext, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
 pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageContext, NavigationMessageDiscriminant, NavigationMessageHandler};

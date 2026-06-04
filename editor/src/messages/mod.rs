@@ -15,6 +15,7 @@ pub mod input_preprocessor;
 pub mod layout;
 pub mod menu_bar;
 pub mod message;
+pub mod network;
 pub mod portfolio;
 pub mod preferences;
 pub mod prelude;

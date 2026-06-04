@@ -34,6 +34,8 @@ pub enum Message {
 	#[child]
 	MenuBar(MenuBarMessage),
 	#[child]
+	Network(NetworkMessage),
+	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
 	Preferences(PreferencesMessage),
