@@ -238,7 +238,6 @@ fn fix_nodes(network: &mut NodeNetwork) {
 		}
 	}
 }
-
 fn compile_graph(document_string: String, editor_api: Arc<PlatformEditorApi>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
