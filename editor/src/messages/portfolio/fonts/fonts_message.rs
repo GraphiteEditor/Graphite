@@ -6,6 +6,7 @@ use graphene_std::text::Font;
 #[impl_message(Message, PortfolioMessage, Fonts)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FontsMessage {
+	LoadCatalog,
 	CatalogLoaded {
 		catalog: FontCatalog,
 	},

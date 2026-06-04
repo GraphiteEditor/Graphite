@@ -2,7 +2,6 @@
 	import { onMount, onDestroy, setContext } from "svelte";
 	import MainWindow from "/src/components/window/MainWindow.svelte";
 	import { createClipboardManager, destroyClipboardManager } from "/src/managers/clipboard";
-	import { createFontsManager, destroyFontsManager } from "/src/managers/fonts";
 	import { createHyperlinkManager, destroyHyperlinkManager } from "/src/managers/hyperlink";
 	import { createInputManager, destroyInputManager } from "/src/managers/input";
 	import { createLocalizationManager, destroyLocalizationManager } from "/src/managers/localization";
@@ -43,7 +42,6 @@
 		createLocalizationManager(subscriptions, editor);
 		createPanicManager(subscriptions);
 		createPersistenceManager(subscriptions, editor, stores.portfolio);
-		createFontsManager(subscriptions, editor);
 		createInputManager(subscriptions, editor, stores.dialog, stores.portfolio, stores.document);
 
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready.
@@ -71,7 +69,6 @@
 		destroyLocalizationManager();
 		destroyPanicManager();
 		destroyPersistenceManager();
-		destroyFontsManager();
 		destroyInputManager();
 	});
 </script>

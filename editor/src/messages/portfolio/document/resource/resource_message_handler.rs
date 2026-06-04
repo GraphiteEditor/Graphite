@@ -1,9 +1,12 @@
-use crate::messages::portfolio::document::resource::utility_types::EmbeddedResources;
+use crate::messages::network::Client;
+use crate::messages::portfolio::{document::resource::utility_types::EmbeddedResources, fonts::utility_types::FontCatalog};
 use crate::messages::prelude::*;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use graph_craft::application_io::resource::{DataSource, LoadResource, Resource, ResourceHash, ResourceId, ResourceRegistry};
 use graphene_std::text::Font;
+use std::sync::Arc;
+use url::Url;
 
 #[derive(ExtractField)]
 pub struct ResourceMessageContext<'a> {
@@ -16,13 +19,7 @@ pub struct ResourceMessageHandler {
 	pub registry: ResourceRegistry,
 	pub embedded: EmbeddedResources,
 	#[serde(skip)]
-	pending_resolves: HashMap<ResourceId, Option<ResolveProgress>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct ResolveProgress {
-	index: usize,
-	source: DataSource,
+	pending_resolves: HashSet<ResourceId>,
 }
 
 #[message_handler_data]
@@ -36,7 +33,6 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 				self.registry.push_source_back(&resource_id, DataSource::Embedded);
 				self.registry.resolve(&resource_id, hash);
 				responses.add(ResourceStorageMessage::Store { data });
-				responses.add(ResourceMessage::Resolve);
 			}
 			ResourceMessage::AddFont { resource_id, font } => {
 				let style = fonts.font_catalog.find_font_style_in_catalog(&font);
@@ -49,92 +45,142 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						style: Some(style_name),
 					},
 				);
-				responses.add(ResourceMessage::Resolve);
+				responses.add(ResourceMessage::Resolve { resource_id });
 			}
-			ResourceMessage::Resolve => {
+			ResourceMessage::ResolveAll => {
 				let unresolved_ids: Vec<ResourceId> = self.registry.unresolved().map(|info| info.id).collect();
 				for id in unresolved_ids {
-					if self.pending_resolves.contains_key(&id) {
+					if self.pending_resolves.contains(&id) {
 						continue;
 					}
-					self.pending_resolves.insert(id, None);
-					responses.add(ResourceMessage::ResolveStep { resource_id: id });
+					responses.add(ResourceMessage::Resolve { resource_id: id });
 				}
 			}
-			ResourceMessage::ResolveStep { resource_id } => {
-				let Some(progress) = self.pending_resolves.get_mut(&resource_id) else { return };
-
+			ResourceMessage::Resolve { resource_id } => {
+				if self.pending_resolves.contains(&resource_id) {
+					log::warn!("Already pending resolve for {resource_id}; skipping");
+					return;
+				}
 				let Some(info) = self.registry.info(&resource_id) else {
-					log::error!("ResolveStep for {resource_id}: no registry entry");
-					self.pending_resolves.remove(&resource_id);
+					log::error!("Resolve for {resource_id}: no registry entry");
 					return;
 				};
-
-				let index = if let Some(progress) = progress { progress.index + 1 } else { 0 };
-				let Some(source) = info.sources.get(index).cloned() else {
-					log::error!("ResolveStep for {resource_id}: no more sources to try");
-					self.pending_resolves.remove(&resource_id);
+				if info.hash.is_some() {
+					log::warn!("Resource {resource_id} already resolved");
 					return;
-				};
-				*progress = Some(ResolveProgress { index, source: source.clone() });
+				}
 
-				match source {
-					DataSource::Embedded => {
-						// Embedded resources are loaded on document load.
-						// If we get to this point, it means the resource was not embedded and we should try the next source.
-						responses.add(ResourceMessage::ResolveStep { resource_id });
+				self.pending_resolves.insert(resource_id);
+
+				let font_catalog = fonts.font_catalog.clone();
+
+				let sources = info
+					.sources
+					.iter()
+					.map(|source| match source {
+						DataSource::Font { family, style } => {
+							let font = match style {
+								Some(style) => Font::new(family.clone(), style.clone()),
+								None => Font::new_with_default_style(family.clone()),
+							};
+							let hash = fonts.cached_hash(&font);
+							(source.clone(), hash)
+						}
+						source => (source.clone(), None),
+					})
+					.collect::<Vec<(DataSource, Option<ResourceHash>)>>();
+
+				async fn resolve_to_message(document_id: DocumentId, resource_id: ResourceId, source: DataSource, url: Url, client: &Client) -> Option<Message> {
+					let result = client.fetch(url.clone()).await;
+					match result {
+						Some(data) => {
+							let hash = ResourceHash::from(data.as_ref());
+							Some(Message::Batched {
+								messages: Box::new([
+									PortfolioMessage::DocumentPassMessage {
+										document_id,
+										message: ResourceMessage::Resolved { resource_id, source, hash }.into(),
+									}
+									.into(),
+									ResourceStorageMessage::Store { data: Arc::from(data) }.into(),
+								]),
+							})
+						}
+						None => {
+							log::warn!("Failed to fetch resource {resource_id} from {url}");
+							None
+						}
 					}
-					DataSource::Url(url) => {
-						responses.add(FrontendMessage::TriggerResolveResource {
+				}
+
+				responses.add(NetworkMessage::request(async move |client| {
+					let mut loaded_catalog = None;
+					let mut response: Option<Message> = None;
+					for (source, hash) in sources {
+						if let Some(hash) = hash {
+							response = Some(ResourceMessage::Resolved { resource_id, source, hash }.into());
+							break;
+						}
+
+						match &source {
+							DataSource::Embedded => continue,
+							DataSource::Url(url) => {
+								response = resolve_to_message(document_id, resource_id, source.clone(), url.clone(), &client).await;
+							}
+							DataSource::Font { family, style } => {
+								let font = match style {
+									Some(style) => Font::new(family.clone(), style.clone()),
+									None => Font::new_with_default_style(family.clone()),
+								};
+
+								if font_catalog.is_empty() && loaded_catalog.as_ref().is_none() {
+									loaded_catalog = FontCatalog::load_from_api(&client).await;
+								}
+
+								let url = loaded_catalog.as_ref().and_then(|catalog| catalog.download_url(&font)).or_else(|| font_catalog.download_url(&font));
+
+								if let Some(url) = url {
+									let Ok(url) = Url::parse(&url) else {
+										log::warn!("Invalid URL {url} for font resource {resource_id}");
+										continue;
+									};
+									response = resolve_to_message(document_id, resource_id, source.clone(), url, &client).await;
+								} else {
+									log::warn!("No download URL found for font resource {resource_id}");
+								}
+							}
+						}
+						if response.is_some() {
+							break;
+						}
+					}
+
+					let mut response = response.unwrap_or_else(|| {
+						log::error!("Resolve for {resource_id}: all sources exhausted");
+						PortfolioMessage::DocumentPassMessage {
 							document_id,
-							resource_id,
-							url: url.to_string(),
-						});
-					}
-					DataSource::Font { family, style } => {
-						let font = match style {
-							Some(style) => Font::new(family, style),
-							None => Font::new_with_default_style(family),
+							message: ResourceMessage::ResolveFailed { resource_id }.into(),
+						}
+						.into()
+					});
+
+					if let Some(catalog) = loaded_catalog.take() {
+						response = Message::Batched {
+							messages: Box::new([response, FontsMessage::CatalogLoaded { catalog }.into()]),
 						};
-						if let Some(hash) = fonts.cached_hash(&font) {
-							self.registry.resolve(&resource_id, hash);
-							self.pending_resolves.remove(&resource_id);
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-							return;
-						}
-						if let Some(url) = fonts.cached_url(&font) {
-							responses.add(FrontendMessage::TriggerResolveResource { document_id, resource_id, url });
-							return;
-						}
-						responses.add(FrontendMessage::TriggerFontCatalogLoad);
-						self.pending_resolves.remove(&resource_id);
 					}
-				}
+
+					response
+				}))
 			}
-			ResourceMessage::Resolved { resource_id, data } => {
-				let hash = ResourceHash::from(data.as_ref());
-				let Some(progress) = self.pending_resolves.remove(&resource_id).and_then(|p| p) else {
-					log::error!("Resolved message for {resource_id} with no pending resolve");
-					return;
-				};
-				let Some(info) = self.registry.info(&resource_id) else {
-					// ResourceId was removed from registry after resolve started.
-					// This can happen if the document was modified while resolves were in-flight.
-					// Likely safe to ignore for now.
-					// TODO: Consider adding cleaner cancelation for in-flight resolves.
-					return;
-				};
-				let Some(source) = info.sources.get(progress.index).cloned() else {
-					log::error!("Resolved message for {resource_id} with no current source");
-					return;
-				};
-				if progress.source != source {
-					log::error!("Resolved message for {resource_id} with mismatched source");
+			ResourceMessage::Resolved { resource_id, source, hash } => {
+				self.pending_resolves.remove(&resource_id);
+				if self.registry.info(&resource_id).is_none() {
+					// Resource was removed from registry after the fetch started.
 					return;
 				}
 
 				self.registry.resolve(&resource_id, hash);
-				responses.add(ResourceStorageMessage::Store { data });
 
 				if let DataSource::Font { family, style } = source {
 					let font = match style {
@@ -144,8 +190,10 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					responses.add(FontsMessage::ResourceResolved { font, hash });
 				}
 
-				responses.add(ResourceMessage::Resolve);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			ResourceMessage::ResolveFailed { resource_id } => {
+				self.pending_resolves.remove(&resource_id);
 			}
 		}
 	}

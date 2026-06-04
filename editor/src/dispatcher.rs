@@ -32,6 +32,7 @@ pub struct DispatcherMessageHandlers {
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
+	network_message_handler: NetworkMessageHandler,
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	pub(crate) resource_storage_message_handler: ResourceStorageMessageHandler,
@@ -79,8 +80,6 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 ];
-// FrontendMessages that should be sent immediately
-const IMMEDIATE_FRONTEND_MESSAGES: &[FrontendMessageDiscriminant] = &[FrontendMessageDiscriminant::TriggerResolveResource, FrontendMessageDiscriminant::TriggerFontCatalogLoad];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
@@ -206,14 +205,7 @@ impl Dispatcher {
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Frontend(message) => {
-					let decreminant = message.to_discriminant();
 					self.responses.push(message);
-
-					// Handle these message immediately by returning early
-					if IMMEDIATE_FRONTEND_MESSAGES.contains(&decreminant) {
-						self.cleanup_queues(false);
-						return;
-					}
 				}
 				Message::InputPreprocessor(message) => {
 					self.message_handlers.input_preprocessor_message_handler.process_message(
@@ -237,6 +229,9 @@ impl Dispatcher {
 					let context = LayoutMessageContext { action_input_mapping };
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Network(message) => {
+					self.message_handlers.network_message_handler.process_message(message, &mut queue, NetworkMessageContext {});
 				}
 				Message::ResourceStorage(message) => {
 					self.message_handlers

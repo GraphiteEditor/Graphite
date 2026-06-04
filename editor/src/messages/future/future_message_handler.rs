@@ -2,11 +2,15 @@ use std::future::{Future, IntoFuture};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+use dyn_any::WasmNotSend;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 
 use crate::messages::prelude::*;
 
+#[cfg(not(target_family = "wasm"))]
 type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + Send + 'static>>;
+#[cfg(target_family = "wasm")]
+type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + 'static>>;
 
 /// Invoked by the spawner after a result is sent, to wake the platform event loop.
 pub type Wake = Arc<dyn Fn() + Send + Sync>;
@@ -23,7 +27,7 @@ pub struct MessageFuture {
 }
 
 impl MessageFuture {
-	pub fn new(future: impl Future<Output = Message> + Send + 'static) -> Self {
+	pub fn new(future: impl Future<Output = Message> + WasmNotSend + 'static) -> Self {
 		Self {
 			inner: Arc::new(Mutex::new(Some(Box::pin(future)))),
 		}
@@ -51,7 +55,7 @@ impl From<MessageFuture> for Message {
 
 impl<T> From<T> for Message
 where
-	T: Future<Output = Message> + Send + 'static,
+	T: Future<Output = Message> + WasmNotSend + 'static,
 {
 	fn from(future: T) -> Self {
 		MessageFuture::new(future).into()
