@@ -779,3 +779,39 @@ pub enum RenderMode {
 	/// Render a preview of how the object would be exported as an SVG.
 	SvgPreview,
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn fill_from_gradient_list_preserves_attributes() {
+		let mut list = List::new_from_element(GradientStops::default());
+		list.set_attribute(ATTR_GRADIENT_TYPE, 0, GradientType::Radial);
+		list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Reflect);
+		list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 7.)));
+
+		let Fill::Gradient(gradient) = Fill::from(list) else {
+			panic!("expected Fill::Gradient");
+		};
+
+		assert_eq!(gradient.gradient_type, GradientType::Radial);
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect);
+		assert_eq!(gradient.start, DVec2::new(5., 7.));
+		assert_eq!(gradient.end, DVec2::new(6., 7.));
+	}
+
+	#[test]
+	fn fill_from_empty_gradient_list_uses_defaults() {
+		let list = List::new_from_element(GradientStops::default());
+
+		let Fill::Gradient(gradient) = Fill::from(list) else {
+			panic!("expected Fill::Gradient");
+		};
+
+		assert_eq!(gradient.gradient_type, GradientType::default());
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::default());
+		assert_eq!(gradient.start, DVec2::ZERO);
+		assert_eq!(gradient.end, DVec2::X);
+	}
+}

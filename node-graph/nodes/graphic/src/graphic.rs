@@ -735,3 +735,51 @@ fn gradient<T: IntoGraphicList + 'n + Send + Clone>(
 
 	gradient
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn gradient_writes_attributes() {
+		let source_gradient_list = List::new_from_element(GradientStops::default());
+		let context = OwnedContextImpl::default().into_context();
+
+		let gradient_list = super::gradient(context, (), source_gradient_list, GradientType::Radial, GradientSpreadMethod::Reflect, DAffine2::default());
+		let gradient_type = gradient_list.attribute(ATTR_GRADIENT_TYPE, 0);
+		let spread_method = gradient_list.attribute(ATTR_SPREAD_METHOD, 0);
+
+		assert_eq!(gradient_type, Some(&GradientType::Radial));
+		assert_eq!(spread_method, Some(&GradientSpreadMethod::Reflect));
+	}
+
+	#[test]
+	fn gradient_converts_graphic_list() {
+		let source_graphic_list = List::new_from_element(Graphic::Gradient(List::new_from_element(GradientStops::default())));
+		let context = OwnedContextImpl::default().into_context();
+
+		let gradient_list = super::gradient(context, (), source_graphic_list, GradientType::Radial, GradientSpreadMethod::Reflect, DAffine2::default());
+		let gradient_type = gradient_list.attribute(ATTR_GRADIENT_TYPE, 0);
+		let spread_method = gradient_list.attribute(ATTR_SPREAD_METHOD, 0);
+
+		assert_eq!(gradient_type, Some(&GradientType::Radial));
+		assert_eq!(spread_method, Some(&GradientSpreadMethod::Reflect));
+	}
+
+	#[test]
+	fn gradient_overrides_upstream_attributes() {
+		let mut source_gradient_list = List::new_from_element(GradientStops::default());
+		source_gradient_list.set_attribute(ATTR_GRADIENT_TYPE, 0, GradientType::Linear);
+		source_gradient_list.set_attribute(ATTR_SPREAD_METHOD, 0, GradientSpreadMethod::Pad);
+		source_gradient_list.set_attribute(ATTR_TRANSFORM, 0, DAffine2::IDENTITY);
+
+		let context = OwnedContextImpl::default().into_context();
+		let control_geometry = DAffine2::from_translation(DVec2::new(10., 20.));
+
+		let gradient_list = super::gradient(context, (), source_gradient_list, GradientType::Radial, GradientSpreadMethod::Reflect, control_geometry);
+
+		assert_eq!(gradient_list.attribute(ATTR_GRADIENT_TYPE, 0), Some(&GradientType::Radial));
+		assert_eq!(gradient_list.attribute(ATTR_SPREAD_METHOD, 0), Some(&GradientSpreadMethod::Reflect));
+		assert_eq!(gradient_list.attribute(ATTR_TRANSFORM, 0), Some(&control_geometry));
+	}
+}

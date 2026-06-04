@@ -1939,7 +1939,9 @@ mod test_gradient {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::NodeInputDecleration;
 	use graphene_std::color::SRGBA8;
+	use graphene_std::list::List;
 	use graphene_std::vector::style::{Fill, Gradient};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
@@ -2004,6 +2006,42 @@ mod test_gradient {
 			.handle_message(NodeGraphMessage::SetInputValue {
 				node_id: gradient_node_id,
 				input_index: 1,
+				value: TaggedValue::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: Color::RED,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::BLUE,
+					},
+				])),
+			})
+			.await;
+
+		layer
+	}
+
+	async fn create_gradient_node_layer(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let gradient_node_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::graphic_nodes::gradient::IDENTIFIER)).await;
+
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(gradient_node_id, 0),
+				input_connector: InputConnector::node(layer.to_node(), 1),
+			})
+			.await;
+
+		editor
+			.handle_message(NodeGraphMessage::SetInputValue {
+				node_id: gradient_node_id,
+				input_index: graphene_std::graphic_nodes::gradient::GradientInput::<List<GradientStops>>::INDEX,
 				value: TaggedValue::Gradient(GradientStops::new([
 					GradientStop {
 						position: 0.,
@@ -2528,5 +2566,103 @@ mod test_gradient {
 		assert_eq!(SRGBA8::from(updated.stops.color[0]), SRGBA8::from(Color::RED), "First stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color[1]), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color[2]), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
+	}
+
+	#[tokio::test]
+	async fn gradient_node_layer_drag_endpoint() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_gradient_node_layer(&mut editor).await;
+
+		// Establish a known gradient line on the new Gradient node's control geometry
+		let initial_start = DVec2::new(10., 50.);
+		let initial_end = DVec2::new(200., 50.);
+		editor
+			.handle_message(GraphOperationMessage::GradientLineSet {
+				layer,
+				start: initial_start,
+				end: initial_end,
+			})
+			.await;
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		let document = editor.active_document();
+		let space_transform = gradient_space_transform(layer, document);
+		let gradient = super::get_gradient(layer, &document.network_interface).expect("Gradient should be readable from the Gradient node");
+		let viewport_start = space_transform.transform_point2(gradient.start);
+		let viewport_end = space_transform.transform_point2(gradient.end);
+
+		// Drag the end point 80px down
+		let new_viewport_end = viewport_end + DVec2::new(0., 80.);
+		editor.select_tool(ToolType::Gradient).await;
+		editor.move_mouse(viewport_end.x, viewport_end.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(viewport_end.x, viewport_end.y, ModifierKeys::empty()).await;
+		editor.move_mouse(new_viewport_end.x, new_viewport_end.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: new_viewport_end,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// The drag should be written back into the Gradient node and read back through the tool
+		let document = editor.active_document();
+		let updated = super::get_gradient(layer, &document.network_interface).expect("Gradient should exist after drag");
+		let updated_space_transform = gradient_space_transform(layer, document);
+		let updated_viewport_start = updated_space_transform.transform_point2(updated.start);
+		let updated_viewport_end = updated_space_transform.transform_point2(updated.end);
+
+		assert!(
+			updated_viewport_start.abs_diff_eq(viewport_start, 1.),
+			"Start should not move. Expected {viewport_start:?}, got {updated_viewport_start:?}"
+		);
+		assert!(
+			updated_viewport_end.abs_diff_eq(new_viewport_end, 1.),
+			"End should move to new position. Expected {new_viewport_end:?}, got {updated_viewport_end:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn gradient_node_layer_changes_type_and_spread() {
+		use graphene_std::vector::style::{GradientSpreadMethod, GradientType};
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = create_gradient_node_layer(&mut editor).await;
+
+		// A freshly created Gradient node defaults to Linear / Pad
+		let document = editor.active_document();
+		let gradient = super::get_gradient(layer, &document.network_interface).expect("Gradient should be readable from the Gradient node");
+		assert_eq!(gradient.gradient_type, GradientType::Linear);
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Pad);
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+
+		// Change the gradient type to Radial through the tool options
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::Type(GradientType::Radial),
+			})
+			.await;
+		let document = editor.active_document();
+		let gradient = super::get_gradient(layer, &document.network_interface).expect("Gradient should still be readable");
+		assert_eq!(gradient.gradient_type, GradientType::Radial, "Type should be written into the Gradient node");
+
+		// Change the spread method to Reflect through the tool options
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			})
+			.await;
+		let document = editor.active_document();
+		let gradient = super::get_gradient(layer, &document.network_interface).expect("Gradient should still be readable");
+		assert_eq!(gradient.spread_method, GradientSpreadMethod::Reflect, "Spread method should be written into the Gradient node");
+		assert_eq!(gradient.gradient_type, GradientType::Radial, "Type should be preserved across the spread method change");
 	}
 }
