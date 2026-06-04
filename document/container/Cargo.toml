@@ -1,0 +1,48 @@
+[package]
+name = "document-container"
+description = "Container abstraction for the on-disk side of the .gdd document format"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+zip = ["dep:zip"]
+xz = ["dep:lzma-rust2", "dep:tar"]
+
+[dependencies]
+thiserror = "2.0"
+log = { workspace = true }
+zip = { workspace = true, optional = true, features = ["deflate-flate2-zlib-rs"],  default-features = false}
+lzma-rust2 = { workspace = true, optional = true }
+tar = { version = "0.4", optional = true, default-features = false }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+mmap-io = { workspace = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { workspace = true, features = [
+	"Navigator",
+	"DomException",
+	"Window",
+	"StorageManager",
+	"FileSystemCreateWritableOptions",
+	"FileSystemDirectoryHandle",
+	"FileSystemFileHandle",
+	"FileSystemGetFileOptions",
+	"FileSystemGetDirectoryOptions",
+	"FileSystemHandle",
+	"FileSystemHandleKind",
+	"FileSystemWritableFileStream",
+	"WritableStream",
+	"Blob",
+] }
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+futures = { workspace = true }
