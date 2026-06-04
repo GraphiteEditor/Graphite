@@ -169,11 +169,11 @@ bitflags! {
 		const FOOTPRINT = 1 << 0;
 		const REAL_TIME = 1 << 1;
 		const ANIMATION_TIME = 1 << 2;
-		const FRAME_NUMBER = 1 << 3;
-		const POINTER_POSITION = 1 << 4;
-		const POSITION = 1 << 5;
-		const INDEX = 1 << 6;
-		const VARARGS = 1 << 7;
+		const POINTER_POSITION = 1 << 3;
+		const POSITION = 1 << 4;
+		const INDEX = 1 << 5;
+		const VARARGS = 1 << 6;
+		const FRAME_NUMBER = 1 << 7;
 	}
 }
 
