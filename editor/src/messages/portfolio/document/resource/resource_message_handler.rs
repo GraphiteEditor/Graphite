@@ -113,7 +113,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					}
 				}
 
-				responses.add(NetworkMessage::request(move |client| async move {
+				responses.add(NetworkMessage::request(async move |client| {
 					let mut loaded_catalog = None;
 					let mut response: Option<Message> = None;
 					for (source, hash) in sources {

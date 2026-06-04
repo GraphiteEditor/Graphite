@@ -24,7 +24,7 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 
 		match message {
 			FontsMessage::LoadCatalog => {
-				responses.add(NetworkMessage::request(|client| async move {
+				responses.add(NetworkMessage::request(async move |client| {
 					let Some(catalog) = FontCatalog::load_from_api(&client).await else {
 						log::error!("failed to load font catalog");
 						return Message::NoOp;
