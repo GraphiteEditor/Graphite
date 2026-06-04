@@ -28,6 +28,9 @@ pub trait ExtractRealTime {
 pub trait ExtractAnimationTime {
 	fn try_animation_time(&self) -> Option<f64>;
 }
+pub trait ExtractFrameNumber {
+	fn try_frame_number(&self) -> Option<u64>;
+}
 pub trait ExtractPointerPosition {
 	fn try_pointer_position(&self) -> Option<DVec2>;
 }
@@ -60,6 +63,7 @@ pub trait CloneVarArgs: ExtractVarArgs {
 pub trait InjectFootprint {}
 pub trait InjectRealTime {}
 pub trait InjectAnimationTime {}
+pub trait InjectFrameNumber {}
 pub trait InjectPointerPosition {}
 pub trait InjectPosition {}
 pub trait InjectIndex {}
@@ -74,6 +78,7 @@ pub trait ExtractAll:
 	ExtractFootprint +
 	ExtractRealTime +
 	ExtractAnimationTime +
+	ExtractFrameNumber +
 	ExtractPointerPosition +
 	ExtractPosition +
 	ExtractIndex +
@@ -84,6 +89,7 @@ impl<
 		+ ExtractFootprint
 		+ ExtractRealTime
 		+ ExtractAnimationTime
+		+ ExtractFrameNumber
 		+ ExtractPointerPosition
 		+ ExtractPosition
 		+ ExtractIndex
@@ -99,6 +105,7 @@ impl<
 impl<T: Ctx> InjectFootprint for T {}
 impl<T: Ctx> InjectRealTime for T {}
 impl<T: Ctx> InjectAnimationTime for T {}
+impl<T: Ctx> InjectFrameNumber for T {}
 impl<T: Ctx> InjectPointerPosition for T {}
 impl<T: Ctx> InjectPosition for T {}
 impl<T: Ctx> InjectIndex for T {}
@@ -112,6 +119,7 @@ impl<T: Ctx> InjectVarArgs for T {}
 pub trait ModifyFootprint: ExtractFootprint + InjectFootprint {}
 pub trait ModifyRealTime: ExtractRealTime + InjectRealTime {}
 pub trait ModifyAnimationTime: ExtractAnimationTime + InjectAnimationTime {}
+pub trait ModifyFrameNumber: ExtractFrameNumber + InjectFrameNumber {}
 pub trait ModifyPointerPosition: ExtractPointerPosition + InjectPointerPosition {}
 pub trait ModifyPosition: ExtractPosition + InjectPosition {}
 pub trait ModifyIndex: ExtractIndex + InjectIndex {}
@@ -120,6 +128,7 @@ pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
 impl<T: Ctx + InjectFootprint + ExtractFootprint> ModifyFootprint for T {}
 impl<T: Ctx + InjectRealTime + ExtractRealTime> ModifyRealTime for T {}
 impl<T: Ctx + InjectAnimationTime + ExtractAnimationTime> ModifyAnimationTime for T {}
+impl<T: Ctx + InjectFrameNumber + ExtractFrameNumber> ModifyFrameNumber for T {}
 impl<T: Ctx + InjectPointerPosition + ExtractPointerPosition> ModifyPointerPosition for T {}
 impl<T: Ctx + InjectPosition + ExtractPosition> ModifyPosition for T {}
 impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
@@ -136,6 +145,7 @@ pub enum ContextFeature {
 	ExtractFootprint,
 	ExtractRealTime,
 	ExtractAnimationTime,
+	ExtractFrameNumber,
 	ExtractPointerPosition,
 	ExtractPosition,
 	ExtractIndex,
@@ -143,6 +153,7 @@ pub enum ContextFeature {
 	InjectFootprint,
 	InjectRealTime,
 	InjectAnimationTime,
+	InjectFrameNumber,
 	InjectPointerPosition,
 	InjectPosition,
 	InjectIndex,
@@ -158,10 +169,11 @@ bitflags! {
 		const FOOTPRINT = 1 << 0;
 		const REAL_TIME = 1 << 1;
 		const ANIMATION_TIME = 1 << 2;
-		const POINTER_POSITION = 1 << 3;
-		const POSITION = 1 << 4;
-		const INDEX = 1 << 5;
-		const VARARGS = 1 << 6;
+		const FRAME_NUMBER = 1 << 3;
+		const POINTER_POSITION = 1 << 4;
+		const POSITION = 1 << 5;
+		const INDEX = 1 << 6;
+		const VARARGS = 1 << 7;
 	}
 }
 
@@ -177,6 +189,7 @@ impl ContextFeatures {
 			ContextFeatures::FOOTPRINT => "Footprint",
 			ContextFeatures::REAL_TIME => "RealTime",
 			ContextFeatures::ANIMATION_TIME => "AnimationTime",
+			ContextFeatures::FRAME_NUMBER => "FrameNumber",
 			ContextFeatures::POINTER_POSITION => "PointerPosition",
 			ContextFeatures::POSITION => "Position",
 			ContextFeatures::INDEX => "Index",
@@ -206,6 +219,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::ExtractFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::ExtractRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::ExtractAnimationTime => ContextFeatures::ANIMATION_TIME,
+				ContextFeature::ExtractFrameNumber => ContextFeatures::FRAME_NUMBER,
 				ContextFeature::ExtractPointerPosition => ContextFeatures::POINTER_POSITION,
 				ContextFeature::ExtractPosition => ContextFeatures::POSITION,
 				ContextFeature::ExtractIndex => ContextFeatures::INDEX,
@@ -216,6 +230,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::InjectFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::InjectRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::InjectAnimationTime => ContextFeatures::ANIMATION_TIME,
+				ContextFeature::InjectFrameNumber => ContextFeatures::FRAME_NUMBER,
 				ContextFeature::InjectPointerPosition => ContextFeatures::POINTER_POSITION,
 				ContextFeature::InjectPosition => ContextFeatures::POSITION,
 				ContextFeature::InjectIndex => ContextFeatures::INDEX,
@@ -251,6 +266,11 @@ impl<T: ExtractRealTime + Sync> ExtractRealTime for Option<T> {
 impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
 	fn try_animation_time(&self) -> Option<f64> {
 		self.as_ref().and_then(|x| x.try_animation_time())
+	}
+}
+impl<T: ExtractFrameNumber + Sync> ExtractFrameNumber for Option<T> {
+	fn try_frame_number(&self) -> Option<u64> {
+		self.as_ref().and_then(|x| x.try_frame_number())
 	}
 }
 impl<T: ExtractPointerPosition + Sync> ExtractPointerPosition for Option<T> {
@@ -309,6 +329,11 @@ impl<T: ExtractRealTime + Sync> ExtractRealTime for Arc<T> {
 impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
 	fn try_animation_time(&self) -> Option<f64> {
 		(**self).try_animation_time()
+	}
+}
+impl<T: ExtractFrameNumber + Sync> ExtractFrameNumber for Arc<T> {
+	fn try_frame_number(&self) -> Option<u64> {
+		(**self).try_frame_number()
 	}
 }
 impl<T: ExtractPointerPosition + Sync> ExtractPointerPosition for Arc<T> {
@@ -446,6 +471,11 @@ impl ExtractAnimationTime for OwnedContextImpl {
 		self.animation_time
 	}
 }
+impl ExtractFrameNumber for OwnedContextImpl {
+	fn try_frame_number(&self) -> Option<u64> {
+		self.frame_number
+	}
+}
 impl ExtractPointerPosition for OwnedContextImpl {
 	fn try_pointer_position(&self) -> Option<DVec2> {
 		self.pointer_position
@@ -517,6 +547,7 @@ pub struct OwnedContextImpl {
 	footprint: Option<Footprint>,
 	real_time: Option<f64>,
 	animation_time: Option<f64>,
+	frame_number: Option<u64>,
 	pointer_position: Option<DVec2>,
 	position: Option<Vec<DVec2>>,
 	// This could be converted into a single enum to save extra bytes
@@ -531,6 +562,7 @@ impl std::fmt::Debug for OwnedContextImpl {
 			.field("footprint", &self.footprint)
 			.field("real_time", &self.real_time)
 			.field("animation_time", &self.animation_time)
+			.field("frame_number", &self.frame_number)
 			.field("pointer_position", &self.pointer_position)
 			.field("index", &self.index)
 			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
@@ -550,6 +582,7 @@ impl graphene_hash::CacheHash for OwnedContextImpl {
 		self.footprint.cache_hash(state);
 		self.real_time.cache_hash(state);
 		self.animation_time.cache_hash(state);
+		self.frame_number.cache_hash(state);
 		self.pointer_position.cache_hash(state);
 		self.position.cache_hash(state);
 		self.index.cache_hash(state);
@@ -575,6 +608,7 @@ impl OwnedContextImpl {
 		let footprint = bitflags.contains(ContextFeatures::FOOTPRINT).then(|| value.try_footprint().copied()).flatten();
 		let real_time = bitflags.contains(ContextFeatures::REAL_TIME).then(|| value.try_real_time()).flatten();
 		let animation_time = bitflags.contains(ContextFeatures::ANIMATION_TIME).then(|| value.try_animation_time()).flatten();
+		let frame_number = bitflags.contains(ContextFeatures::FRAME_NUMBER).then(|| value.try_frame_number()).flatten();
 		let pointer_position = bitflags.contains(ContextFeatures::POINTER_POSITION).then(|| value.try_pointer_position()).flatten();
 		let position = bitflags.contains(ContextFeatures::POSITION).then(|| value.try_position()).flatten().map(|x| x.collect());
 		let index = bitflags.contains(ContextFeatures::INDEX).then(|| value.try_index()).flatten().map(|x| x.collect());
@@ -584,6 +618,7 @@ impl OwnedContextImpl {
 			footprint,
 			real_time,
 			animation_time,
+			frame_number,
 			pointer_position,
 			position,
 			index,
@@ -597,6 +632,7 @@ impl OwnedContextImpl {
 			footprint: None,
 			real_time: None,
 			animation_time: None,
+			frame_number: None,
 			pointer_position: None,
 			position: None,
 			index: None,
@@ -644,6 +680,10 @@ impl OwnedContextImpl {
 	}
 	pub fn with_animation_time(mut self, animation_time: f64) -> Self {
 		self.animation_time = Some(animation_time);
+		self
+	}
+	pub fn with_frame_number(mut self, frame_number: u64) -> Self {
+		self.frame_number = Some(frame_number);
 		self
 	}
 	pub fn with_pointer_position(mut self, pointer_position: DVec2) -> Self {

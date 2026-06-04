@@ -92,6 +92,7 @@ pub enum ExportFormat {
 pub struct TimingInformation {
 	pub time: f64,
 	pub animation_time: Duration,
+	pub frame_number: u64,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]

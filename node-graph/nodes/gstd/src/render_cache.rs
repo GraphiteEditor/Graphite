@@ -2,7 +2,7 @@
 
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractFrameNumber, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::RenderOutput;
@@ -48,6 +48,7 @@ pub struct CacheKey {
 	pub override_paint_order: bool,
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
+	pub frame_number: u64,
 	pub pointer: [u8; 16],
 }
 
@@ -66,6 +67,7 @@ impl CacheKey {
 		override_paint_order: bool,
 		animation_time: f64,
 		real_time: f64,
+		frame_number: u64,
 		pointer: Option<DVec2>,
 	) -> Self {
 		let pointer_bytes = pointer
@@ -92,6 +94,7 @@ impl CacheKey {
 			override_paint_order,
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
+			frame_number,
 			pointer: pointer_bytes,
 		}
 	}
@@ -326,7 +329,7 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
+	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractFrameNumber + ExtractPointerPosition + Sync,
 	editor_api: &'a PlatformEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
 	#[data] tile_cache: TileCache,
@@ -371,6 +374,7 @@ pub async fn render_output_cache<'a: 'n>(
 		render_params.override_paint_order,
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
+		ctx.try_frame_number().unwrap_or(0),
 		ctx.try_pointer_position(),
 	);
 

@@ -41,7 +41,7 @@ impl AnimationMessageHandler {
 			AnimationTimeMode::TimeBased => Duration::from_millis(animation_time as u64),
 			AnimationTimeMode::FrameBased => Duration::from_secs((self.frame_index / self.fps) as u64),
 		};
-		TimingInformation { time: self.timestamp, animation_time }
+		TimingInformation { time: self.timestamp, animation_time, frame_number: self.frame_index as u64 }
 	}
 
 	pub(crate) fn animation_start(&self) -> f64 {

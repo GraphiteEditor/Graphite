@@ -87,7 +87,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 					context_features: graphene_std::ContextDependencies {
 						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
 						extract: ContextFeatures::INDEX,
-						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::FRAME_NUMBER | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					},
 					..Default::default()
 				},

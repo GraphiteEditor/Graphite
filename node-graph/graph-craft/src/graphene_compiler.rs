@@ -23,6 +23,7 @@ impl Compiler {
 		})
 	}
 	pub fn compile_single(&self, network: NodeNetwork) -> Result<ProtoNetwork, String> {
+		println!("Compiling!");
 		assert_eq!(network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 		let Some(proto_network) = self.compile(network).next() else {
 			return Err("Failed to convert graph into proto graph".to_string());
