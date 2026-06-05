@@ -187,6 +187,7 @@ pub async fn export_gif(
 			time: TimingInformation {
 				time: animation_time.as_secs_f64(),
 				animation_time,
+				frame_number: frame_idx as u64,
 			},
 			..Default::default()
 		};

@@ -1,6 +1,6 @@
 use core_types::list::List;
 use core_types::transform::Footprint;
-use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractFrameNumber, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::GradientStops;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -46,6 +46,15 @@ fn real_time(
 		RealTimeMode::Second => (real_time / 1000.).floor() % 60.,
 		RealTimeMode::Millisecond => real_time % 1000.,
 	}
+}
+
+/// Produces the number of the current frame, where 0 is the first frame.
+#[node_macro::node(category("Animation"))]
+fn frame_number(
+	ctx: impl Ctx + ExtractFrameNumber,
+	_primary: (),
+) -> f64 {
+	ctx.try_frame_number().unwrap_or_default() as f64
 }
 
 /// Produces the time, in seconds on the timeline, since the beginning of animation playback.
