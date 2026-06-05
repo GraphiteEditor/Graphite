@@ -24,7 +24,7 @@ use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
-use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI};
+use graphene_std::vector::style::{FillChoice, FillChoiceUI};
 use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
@@ -106,7 +106,7 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Vec<WidgetInstance> {
-	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface));
+	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_layer_id(layer, &document.network_interface));
 
 	let apply_font = move |font: Font| -> Message {
 		match text_node_id {
@@ -298,7 +298,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			ToolMessage::Text(TextToolMessage::UpdateOptions { options }) => options,
 			ToolMessage::Text(TextToolMessage::SelectionChanged) => {
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some((_, font, typesetting, _)) = graph_modification_utils::get_text(layer, &context.document.network_interface, context.fonts, &context.document.resources)
+					&& let Some((_, font, typesetting)) = graph_modification_utils::get_text_layer(layer, &context.document.network_interface, context.fonts, &context.document.resources)
 				{
 					self.options.align = typesetting.align;
 					self.options.font_size = typesetting.font_size;
@@ -344,7 +344,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					editing_text.typesetting.font_size = font_size;
 				}
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
+					&& let Some(node_id) = graph_modification_utils::get_text_layer_id(layer, &context.document.network_interface)
 				{
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
@@ -359,7 +359,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					editing_text.typesetting.align = align;
 				}
 				if let Some(layer) = can_edit_selected(context.document)
-					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
+					&& let Some(node_id) = graph_modification_utils::get_text_layer_id(layer, &context.document.network_interface)
 				{
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
@@ -516,7 +516,7 @@ impl TextToolData {
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.network_interface).unwrap_or(Color::BLACK);
-		let (text, font, typesetting, _) = graph_modification_utils::get_text(self.layer, &document.network_interface, fonts, &document.resources)?;
+		let (text, font, typesetting) = graph_modification_utils::get_text_layer(self.layer, &document.network_interface, fonts, &document.resources)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font,
@@ -546,7 +546,7 @@ impl TextToolData {
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 			// Make the rendered text invisible while editing
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(graph_modification_utils::get_text_id(self.layer, &document.network_interface).unwrap(), 1),
+				input_connector: InputConnector::node(graph_modification_utils::get_text_layer_id(self.layer, &document.network_interface).unwrap(), 1),
 				input: NodeInput::value(TaggedValue::String("".to_string()), false),
 			});
 			responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -571,10 +571,10 @@ impl TextToolData {
 			parent: document.new_layer_parent(true),
 			insert_index: 0,
 		});
-		responses.add(GraphOperationMessage::FillSet {
-			layer: self.layer,
-			fill: if let Some(color) = editing_text.color { Fill::Solid(color) } else { Fill::None },
-		});
+		// responses.add(GraphOperationMessage::FillSet {
+		// 	layer: self.layer,
+		// 	fill: if let Some(color) = editing_text.color { Fill::Solid(color) } else { Fill::None },
+		// });
 		let transform = editing_text.transform;
 		self.editing_text = Some(editing_text);
 
@@ -631,7 +631,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 	// Detect text layers by the presence of a Text proto node in the chain, not via `metadata().is_text_layer()` which is
 	// populated lazily by the renderer after `RunDocumentGraph`. A freshly created text layer's `text_frames` entry isn't
 	// available yet when SelectionChanged fires, so the metadata check would incorrectly classify it as non-text.
-	graph_modification_utils::get_text_id(layer, &document.network_interface)?;
+	graph_modification_utils::get_text_layer_id(layer, &document.network_interface)?;
 
 	Some(layer)
 }
@@ -701,7 +701,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
+						if let Some((text, font, typesetting)) = graph_modification_utils::get_text_layer(layer.unwrap(), &document.network_interface, fonts, &document.resources) {
 							let font_resource = fonts.get_resource_or_queue_load(&font, responses);
 							if lines_clipping(text.as_str(), &font_resource, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
@@ -846,7 +846,7 @@ impl Fsm for TextToolFsmState {
 					let center_position = centered.then_some(bounds.center_of_transformation);
 
 					let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
-					let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {
+					let Some(node_id) = graph_modification_utils::get_text_layer_id(dragging_layer.id, &document.network_interface) else {
 						warn!("Cannot get text node id");
 						tool_data.layer_dragging.take();
 						return TextToolFsmState::Ready;
@@ -1019,7 +1019,7 @@ impl Fsm for TextToolFsmState {
 					tool_data.set_editing(false, fonts, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(graph_modification_utils::get_text_id(tool_data.layer, &document.network_interface).unwrap(), 1),
+						input_connector: InputConnector::node(graph_modification_utils::get_text_layer_id(tool_data.layer, &document.network_interface).unwrap(), 1),
 						input: NodeInput::value(TaggedValue::String(tool_data.new_text.clone()), false),
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);

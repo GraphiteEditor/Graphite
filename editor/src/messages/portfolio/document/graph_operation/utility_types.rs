@@ -251,8 +251,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_text(&mut self, text: String, font: Font, typesetting: TypesettingConfig, layer: LayerNodeIdentifier) {
 		let font_resource_id = ResourceId::new();
-		let text = resolve_proto_node_type(graphene_std::text::text::IDENTIFIER)
-			.expect("Text node does not exist")
+		let text = resolve_proto_node_type(graphene_std::text::text_layer::IDENTIFIER)
+			.expect("Text Layer node does not exist")
 			.node_template_input_override([
 				Some(NodeInput::value(TaggedValue::None, false)),
 				Some(NodeInput::value(TaggedValue::String(text), false)),
@@ -266,13 +266,9 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::F64(typesetting.tilt), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
-				Some(NodeInput::value(TaggedValue::Bool(false), false)),
 			]);
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
-			.default_node_template();
-		let fill = resolve_proto_node_type(graphene_std::vector_nodes::fill::IDENTIFIER)
-			.expect("Fill node does not exist")
 			.default_node_template();
 
 		let text_id = NodeId::new();
@@ -284,10 +280,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
-
-		let fill_id = NodeId::new();
-		self.network_interface.insert_node(fill_id, fill, &[]);
-		self.network_interface.move_node_to_chain_start(&fill_id, layer, &[], self.import);
 	}
 
 	pub fn insert_color_value(&mut self, color: Color, layer: LayerNodeIdentifier) {
