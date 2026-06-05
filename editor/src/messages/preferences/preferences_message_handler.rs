@@ -65,10 +65,7 @@ impl Default for PreferencesMessageHandler {
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
 			max_render_region_size: EditorPreferences::default().max_render_region_size,
-			#[cfg(target_os = "linux")] // TODO: Remove this once we have ui acceleration working more reliably on linux
-			disable_ui_acceleration: true,
-			#[cfg(not(target_os = "linux"))] // TODO: Remove this once we have ui acceleration working more reliably on linux
-			disable_ui_acceleration: false,
+			disable_ui_acceleration: cfg!(target_os = "linux"), // TODO: Set this back to false once we have ui acceleration working more reliably on linux
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
