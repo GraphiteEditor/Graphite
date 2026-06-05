@@ -352,7 +352,7 @@ impl<'a> ModifyInputsContext<'a> {
 			self.network_interface
 				.upstream_flow_back_from_nodes(vec![start], &[], FlowType::HorizontalFlow)
 				.take_while(|nid| !self.network_interface.is_layer(nid, &[]))
-				.find(|nid| self.network_interface.reference(nid, &[]).as_ref() == Some(&identifier))
+				.find(|nid| self.network_interface.reference(nid, &[]).as_ref() == Some(&identifier) && self.network_interface.is_visible(nid, &[]))
 		});
 
 		if let Some(id) = existing {
@@ -529,7 +529,7 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the GradientStops list on the 'Gradient Value' node, creating it if necessary.
+	/// Write the gradient stops to the 'Gradient' node or 'Gradient Value' node feeding the layer.
 	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
 		let output_layer = self.get_output_layer();
 
