@@ -434,6 +434,13 @@ impl NodeRuntime {
 				// Insert the vector modify
 				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
 			}
+			// String list: thumbnail
+			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
+				if update_thumbnails {
+					let bounds = io.output.thumbnail_bounding_box(DAffine2::IDENTITY, true);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
+				}
+			}
 			// Other
 			else {
 				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");

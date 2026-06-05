@@ -22,6 +22,6 @@ impl RenderComplexity for Color {
 
 impl RenderComplexity for String {
 	fn render_complexity(&self) -> usize {
-		1
+		self.chars().count()
 	}
 }

@@ -15,6 +15,7 @@ pub async fn create_artboard<T: IntoGraphicList + 'n>(
 	#[implementations(
 		Context -> List<Graphic>,
 		Context -> List<Vector>,
+		Context -> List<String>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,

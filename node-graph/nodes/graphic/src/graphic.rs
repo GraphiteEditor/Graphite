@@ -116,6 +116,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		List<Raster<CPU>>,
 		List<Color>,
 		List<GradientStops>,
+		List<String>,
 	)]
 	content: List<Item>,
 	#[implementations(
@@ -124,6 +125,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<GradientStops>,
+		Context -> List<String>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
 ) -> List<Item> {
@@ -146,6 +148,7 @@ async fn mirror<T: 'n + Send + Clone>(
 	#[implementations(
 		List<Graphic>,
 		List<Vector>,
+		List<String>,
 		List<Raster<CPU>>,
 		List<Color>,
 		List<GradientStops>,
@@ -495,11 +498,11 @@ fn read_attribute_raster(
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The `List` whose items will appear at the start of the extended `List`.
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
 	base: List<T>,
 	/// The `List` whose items will appear at the end of the extended `List`.
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
 	new: List<T>,
 ) -> List<T> {
 	let mut base = base;
@@ -514,9 +517,9 @@ pub async fn extend<T: 'n + Send + Clone>(
 #[node_macro::node(category(""))]
 pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)] base: List<T>,
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<GradientStops>)]
 	new: List<T>,
 	nested_node_path: List<NodeId>,
 ) -> List<T> {
@@ -548,6 +551,7 @@ pub async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	 	List<Raster<GPU>>,
 	 	List<Color>,
 		List<GradientStops>,
+		List<String>,
 		DAffine2,
 		DVec2,
 	)]
@@ -568,6 +572,7 @@ pub async fn to_graphic<T: IntoGraphicList + 'n>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<GradientStops>,
+		List<String>,
 	)]
 	content: T,
 ) -> List<Graphic> {

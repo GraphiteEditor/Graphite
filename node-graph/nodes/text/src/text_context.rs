@@ -54,7 +54,7 @@ impl TextContext {
 	}
 
 	/// Create a text layout from the given font resource and typesetting configuration.
-	fn layout_text(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig) -> Option<Layout<()>> {
+	pub fn layout_text(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig) -> Option<Layout<()>> {
 		let (font_family, font_info) = self.get_font_info(font)?;
 
 		const DISPLAY_SCALE: f32 = 1.;

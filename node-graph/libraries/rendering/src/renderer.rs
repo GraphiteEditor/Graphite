@@ -13,12 +13,13 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
-	ATTR_FONT_FAMILY, ATTR_FONT_SIZE, ATTR_FONT_STYLE, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING,
-	ATTR_TEXT_LINE_HEIGHT, ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_TYPE, ATTR_LOCATION, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING, ATTR_TEXT_FONT, ATTR_TEXT_LINE_HEIGHT,
+	ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
+use graphene_resource::Resource;
 use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
@@ -28,55 +29,19 @@ use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, S
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
-use parley::{AlignmentOptions, FontContext, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::PositionedLayoutItem;
 use skrifa::GlyphId;
 use skrifa::MetadataProvider;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as SkrifaFontRef;
-use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vector_types::gradient::GradientSpreadMethod;
 use vello::*;
-
-// Thread local storage for font bytes
-thread_local! {
-	static RENDER_FONTS: RefCell<Arc<[(String, String, u64, Arc<[u8]>)]>> = RefCell::new(Arc::from([]));
-}
-
-// Thread-local parley font shaping context
-thread_local! {
-	static FONT_CTX: RefCell<(FontContext, LayoutContext<()>)> = RefCell::new((FontContext::default(), LayoutContext::default()));
-}
-
-// Tracks which font bytes have already been registered into FONT_CTX
-thread_local! {
-	static REGISTERED_FONTS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
-}
-
-// Caches the first FontInfo (weight/style/width) for each (family, style) pair after registration
-thread_local! {
-	static FONT_INFO_CACHE: RefCell<HashMap<(String, String), parley::fontique::FontInfo>> = RefCell::new(HashMap::new());
-}
-
-// Set the font bytes available to the renderer for the current execution.
-pub fn set_render_fonts(fonts: impl IntoIterator<Item = (String, String, Arc<[u8]>)>) {
-	let slice: Arc<[(String, String, u64, Arc<[u8]>)]> = fonts
-		.into_iter()
-		.map(|(family, style, bytes)| {
-			let mut hasher = std::collections::hash_map::DefaultHasher::new();
-			bytes.hash(&mut hasher);
-			(family, style, hasher.finish(), bytes)
-		})
-		.collect::<Vec<_>>()
-		.into();
-	RENDER_FONTS.with(|f| *f.borrow_mut() = slice);
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2381,36 +2346,6 @@ impl OutlinePen for VelloPen<'_> {
 	}
 }
 
-/// Registers all fonts from `RENDER_FONTS` that aren't yet in `FONT_CTX`.
-fn ensure_fonts_registered(font_ctx: &mut parley::FontContext) {
-	REGISTERED_FONTS.with(|reg| {
-		let mut reg = reg.borrow_mut();
-		RENDER_FONTS.with(|rf| {
-			for (family, style, hash, bytes) in rf.borrow().iter() {
-				if reg.insert(*hash) {
-					struct ArcBytes(std::sync::Arc<[u8]>);
-					impl AsRef<[u8]> for ArcBytes {
-						fn as_ref(&self) -> &[u8] {
-							&self.0
-						}
-					}
-					let font_data: std::sync::Arc<dyn AsRef<[u8]> + Send + Sync> = std::sync::Arc::new(ArcBytes(bytes.clone()));
-					let families = font_ctx.collection.register_fonts(parley::fontique::Blob::new(font_data), None);
-
-					if let Some((_, fonts_info)) = families.first() {
-						if let Some(font_info) = fonts_info.first() {
-							FONT_INFO_CACHE.with(|cache| {
-								cache.borrow_mut().insert((family.clone(), style.clone()), font_info.clone());
-							});
-						}
-					}
-				}
-			}
-		});
-	});
-}
-
-const DEFAULT_FONT_FAMILY: &str = "Lato";
 const DEFAULT_FONT_SIZE: f64 = 24.;
 
 impl Render for List<String> {
@@ -2425,58 +2360,33 @@ impl Render for List<String> {
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
-			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
-			let font_style: String = self.attribute_cloned_or(ATTR_FONT_STYLE, index, "Regular".to_string());
+			let font: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
 			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
 			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
 			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
 			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
 			let tilt: f64 = self.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.);
-			let align_u8: u8 = self.attribute_cloned_or(ATTR_TEXT_ALIGN, index, 0_u8);
+			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let (parley_align, last_line_correction) = match align_u8 {
-				1 => (parley::Alignment::Center, None),
-				2 => (parley::Alignment::Right, None),
-				3 => (parley::Alignment::Justify, Some(parley::Alignment::Left)),
-				4 => (parley::Alignment::Justify, Some(parley::Alignment::Center)),
-				5 => (parley::Alignment::Justify, Some(parley::Alignment::Right)),
-				6 => (parley::Alignment::Justify, Some(parley::Alignment::Justify)),
-				_ => (parley::Alignment::Left, None),
+			let typesetting = text_nodes::TypesettingConfig {
+				font_size,
+				line_height_ratio: line_height,
+				character_spacing: char_spacing,
+				max_width,
+				max_height,
+				align,
+				tilt,
 			};
 
 			let mut glyph_paths: Vec<String> = Vec::new();
 
-			FONT_CTX.with(|ctx| {
-				let Ok(mut ctx) = ctx.try_borrow_mut() else { return };
-				let (font_ctx, layout_ctx) = &mut *ctx;
-
-				ensure_fonts_registered(font_ctx);
-
-				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
-				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(Cow::Borrowed(
-					font_family.as_str(),
-				)))));
-				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
-				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
-
-				FONT_INFO_CACHE.with(|cache| {
-					let cache = cache.borrow();
-					if let Some(font_info) = cache.get(&(font_family.clone(), font_style.clone())) {
-						builder.push_default(StyleProperty::FontWeight(font_info.weight()));
-						builder.push_default(StyleProperty::FontStyle(font_info.style()));
-						builder.push_default(StyleProperty::FontWidth(font_info.width()));
-					}
-				});
-
-				let mut layout = builder.build(text);
+			text_nodes::TextContext::with_thread_local(|ctx| {
+				let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 				let max_width_f32 = max_width.map(|w| w as f32);
 				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
-				layout.break_all_lines(max_width_f32);
-				layout.align(parley_align, AlignmentOptions::default());
-
+				let last_line_correction = align.last_line_correction();
 				let tilt_tan = tilt.to_radians().tan();
 
 				for line in layout.lines() {
@@ -2600,60 +2510,36 @@ impl Render for List<String> {
 			}
 
 			let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
-			let font_style: String = self.attribute_cloned_or(ATTR_FONT_STYLE, index, "Regular".to_string());
+			let font: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
 			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
 			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
 			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
 			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
 			let tilt: f64 = self.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.);
-			let align_u8: u8 = self.attribute_cloned_or(ATTR_TEXT_ALIGN, index, 0_u8);
+			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 			let blend_mode_attr: BlendMode = self.attribute_cloned_or_default(ATTR_BLEND_MODE, index);
 			let opacity_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY, index, 1.);
 			let opacity_fill_attr: f64 = self.attribute_cloned_or(ATTR_OPACITY_FILL, index, 1.);
 			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
-			let (parley_align, last_line_correction) = match align_u8 {
-				1 => (parley::Alignment::Center, None),
-				2 => (parley::Alignment::Right, None),
-				3 => (parley::Alignment::Justify, Some(parley::Alignment::Left)),
-				4 => (parley::Alignment::Justify, Some(parley::Alignment::Center)),
-				5 => (parley::Alignment::Justify, Some(parley::Alignment::Right)),
-				6 => (parley::Alignment::Justify, Some(parley::Alignment::Justify)),
-				_ => (parley::Alignment::Left, None),
+			let typesetting = text_nodes::TypesettingConfig {
+				font_size,
+				line_height_ratio: line_height,
+				character_spacing: char_spacing,
+				max_width,
+				max_height,
+				align,
+				tilt,
 			};
 
 			let affine = Affine::new((transform * item_transform).to_cols_array());
 
-			FONT_CTX.with(|ctx| {
-				let Ok(mut ctx) = ctx.try_borrow_mut() else { return };
-				let (font_ctx, layout_ctx) = &mut *ctx;
-
-				ensure_fonts_registered(font_ctx);
-
-				let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
-				builder.push_default(StyleProperty::FontSize(font_size as f32));
-				builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(Cow::Borrowed(
-					font_family.as_str(),
-				)))));
-				builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
-				builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
-
-				FONT_INFO_CACHE.with(|cache| {
-					let cache = cache.borrow();
-					if let Some(font_info) = cache.get(&(font_family.clone(), font_style.clone())) {
-						builder.push_default(StyleProperty::FontWeight(font_info.weight()));
-						builder.push_default(StyleProperty::FontStyle(font_info.style()));
-						builder.push_default(StyleProperty::FontWidth(font_info.width()));
-					}
-				});
-
-				let mut layout = builder.build(text);
+			text_nodes::TextContext::with_thread_local(|ctx| {
+				let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 				let max_width_f32 = max_width.map(|w| w as f32);
 				let alignment_width = max_width_f32.unwrap_or_else(|| layout.full_width());
-				layout.break_all_lines(max_width_f32);
-				layout.align(parley_align, AlignmentOptions::default());
+				let last_line_correction = align.last_line_correction();
 
 				let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
 				if needs_layer {
@@ -2761,42 +2647,34 @@ impl Render for List<String> {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for index in 0..self.len() {
 			let Some(text) = self.element(index) else { continue };
+			let font: Resource = self.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
 			let font_size: f64 = self.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE);
-			let font_family: String = self.attribute_cloned_or(ATTR_FONT_FAMILY, index, DEFAULT_FONT_FAMILY.to_string());
 			let line_height: f64 = self.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, 1.2);
 			let char_spacing: f64 = self.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.);
 			let max_width: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_WIDTH, index, None);
 			let max_height: Option<f64> = self.attribute_cloned_or(ATTR_TEXT_MAX_HEIGHT, index, None);
-			let align_u8: u8 = self.attribute_cloned_or(ATTR_TEXT_ALIGN, index, 0_u8);
-			let parley_align = match align_u8 {
-				1 => parley::Alignment::Center,
-				2 => parley::Alignment::Right,
-				3..=6 => parley::Alignment::Justify,
-				_ => parley::Alignment::Left,
-			};
+			let align: text_nodes::TextAlign = self.attribute_cloned_or_default(ATTR_TEXT_ALIGN, index);
 			let transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
+			let typesetting = text_nodes::TypesettingConfig {
+				font_size,
+				line_height_ratio: line_height,
+				character_spacing: char_spacing,
+				max_width,
+				max_height,
+				align,
+				tilt: 0.,
+			};
+
 			// Falls back to a single-em square if fonts are not yet registered.
-			let (width, height) = FONT_CTX
-				.with(|ctx| {
-					let Ok(mut ctx) = ctx.try_borrow_mut() else { return None };
-					let (font_ctx, layout_ctx) = &mut *ctx;
-					ensure_fonts_registered(font_ctx);
-					let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, false);
-					builder.push_default(StyleProperty::FontSize(font_size as f32));
-					builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Named(Cow::Borrowed(
-						font_family.as_str(),
-					)))));
-					builder.push_default(StyleProperty::LetterSpacing(char_spacing as f32));
-					builder.push_default(LineHeight::FontSizeRelative(line_height as f32));
-					let mut layout = builder.build(text);
-					layout.break_all_lines(max_width.map(|w| w as f32));
-					layout.align(parley_align, AlignmentOptions::default());
+			let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {
+				ctx.layout_text(text, &font, typesetting).map(|layout| {
 					let w = max_width.unwrap_or_else(|| layout.width() as f64);
 					let h = max_height.unwrap_or_else(|| layout.height() as f64);
-					Some((w, h))
+					(w, h)
 				})
-				.unwrap_or((font_size, font_size));
+			})
+			.unwrap_or((font_size, font_size));
 
 			let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(width, height));
 			let mut target = ClickTarget::new_with_subpath(subpath, 0.);
