@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops, gradient_chain_target_input};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
@@ -347,20 +347,19 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 // TODO: Remove this whole function once all gradients are stored via the modern `Gradient(GradientStops)` slot
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
-		let GradientChainState {
-			transform,
-			gradient_type,
-			spread_method,
-		} = read_gradient_chain_state(layer, network_interface);
-		return Some(Gradient {
+		// Try to construct a gradient out of a chain, which is directly connected to a layer
+		let chain_state = read_gradient_chain_state(layer, network_interface);
+		Some(Gradient {
 			stops,
-			gradient_type,
-			spread_method,
-			start: transform.transform_point2(DVec2::ZERO),
-			end: transform.transform_point2(DVec2::X),
-		});
+			gradient_type: chain_state.gradient_type,
+			spread_method: chain_state.spread_method,
+			start: chain_state.transform.transform_point2(DVec2::ZERO),
+			end: chain_state.transform.transform_point2(DVec2::X),
+		})
+	} else {
+		// Try to find a legacy Fill::Gradient that is selected in a Fill node
+		graph_modification_utils::get_gradient(layer, network_interface)
 	}
-	graph_modification_utils::get_gradient(layer, network_interface)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -373,6 +372,9 @@ struct GradientChainState {
 /// Resolve the gradient transform, type, and spread method by walking the chain feeding the layer. Transform composes all
 /// 'Transform' nodes. Type and spread method come from the closest-to-layer node of each kind, or the type default.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientChainState {
+	let target_input = gradient_chain_target_input(layer, network_interface);
+	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
+
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 	let gradient_type_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_type::IDENTIFIER);
 	let spread_method_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
@@ -382,8 +384,8 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	let mut spread_method: Option<GradientSpreadMethod> = None;
 
 	for node_id in network_interface
-		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
-		.skip(1)
+		.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+		.skip_while(|node_id| network_interface.is_layer(node_id, &[]))
 		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
 	{
 		let Some(reference) = network_interface.reference(&node_id, &[]) else { continue };
@@ -512,14 +514,13 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 impl SelectedGradient {
 	pub fn new(gradient: Gradient, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
 		let transform = gradient_space_transform(layer, document);
-		let is_gradient_list = get_gradient_stops(layer, &document.network_interface).is_some();
 		Self {
 			layer: Some(layer),
 			transform,
 			gradient: gradient.clone(),
 			dragging: GradientDragTarget::End,
 			initial_gradient: gradient,
-			is_gradient_list,
+			is_gradient_list: get_gradient_stops(layer, &document.network_interface).is_some(),
 		}
 	}
 

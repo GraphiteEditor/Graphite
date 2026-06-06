@@ -1,8 +1,9 @@
 use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
@@ -339,6 +340,40 @@ impl<'a> ModifyInputsContext<'a> {
 		self.existing_node_id(&DefinitionIdentifier::Network(reference.into()), create_if_nonexistent)
 	}
 
+	/// Like `existing_proto_node_id`, but walks/inserts at `target_input` instead of the layer's content input.
+	/// Used when a chain lives on a non-layer input.
+	pub fn existing_proto_node_id_at(&mut self, target_input: &InputConnector, reference: ProtoNodeIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
+		let identifier = DefinitionIdentifier::ProtoNode(reference.clone());
+
+		// Walk upstream from whatever is currently connected to target_input
+		let walk_start = self.network_interface.upstream_output_connector(target_input, &[]).and_then(|out| out.node_id());
+
+		let existing = walk_start.and_then(|start| {
+			self.network_interface
+				.upstream_flow_back_from_nodes(vec![start], &[], FlowType::HorizontalFlow)
+				.take_while(|id| !self.network_interface.is_layer(id, &[]))
+				.find(|id| self.network_interface.reference(id, &[]).as_ref() == Some(&identifier) && self.network_interface.is_visible(id, &[]))
+		});
+
+		if let Some(id) = existing {
+			return Some(id);
+		}
+		if !create_if_nonexistent {
+			return None;
+		}
+
+		// Splice new node between target_input and its current upstream
+		let node_definition = resolve_proto_node_type(reference)?;
+		let current_input = self.network_interface.input_from_connector(target_input, &[])?.clone();
+
+		let node_id = NodeId::new();
+		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
+		self.network_interface.set_input(&InputConnector::node(node_id, 0), current_input, &[]);
+		self.network_interface.set_input(target_input, NodeInput::node(node_id, 0), &[]);
+
+		Some(node_id)
+	}
+
 	/// Gets the node id of a proto node with a specific reference that is upstream from the layer node, and optionally creates it if it does not exist.
 	pub fn existing_proto_node_id(&mut self, reference: ProtoNodeIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
 		self.existing_node_id(&DefinitionIdentifier::ProtoNode(reference), create_if_nonexistent)
@@ -494,12 +529,14 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the GradientStops list on the 'Gradient Value' node, creating it if necessary.
+	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
 	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
-		let Some(gradient_node_id) = self.existing_proto_node_id(graphene_std::math_nodes::gradient_value::IDENTIFIER, true) else {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
 		};
-		let input_connector = InputConnector::node(gradient_node_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
+
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
 	}
 
@@ -509,13 +546,21 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn gradient_line_set(&mut self, new_start: DVec2, new_end: DVec2) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
+		let walk_from = if let Some(fill_input_node_id) = get_fill_input_node_id(output_layer, self.network_interface) {
+			// Some nodes are connected to a Fill node, this means that the primary path is a `List<Vector>`, so we need to traverse it
+			fill_input_node_id
+		} else {
+			// No Fill node found, we will traverse the primary path to find transforms
+			output_layer.to_node()
+		};
+
 		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 		let upstream_transforms: Vec<NodeId> = self
 			.network_interface
-			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow)
-			.skip(1)
+			.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
+			.skip_while(|node_id| self.network_interface.is_layer(node_id, &[]))
 			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
-			.filter(|node_id| self.network_interface.reference(node_id, &[]).as_ref() == Some(&transform_reference))
+			.filter(|id| self.network_interface.reference(id, &[]).as_ref() == Some(&transform_reference))
 			.collect();
 
 		// Upstream walk yields downstream-to-upstream order, so the first hit is the chain's last `Transform`
@@ -540,15 +585,10 @@ impl<'a> ModifyInputsContext<'a> {
 		// Rebuild the y-axis from the new x-axis using the old (parallel, perpendicular) decomposition and length ratio,
 		// so the gradient's aspect ratio and skew survive an endpoint drag (so an ellipse stays the same ellipse) instead of
 		// the old y-axis vector remaining fixed while x changes
-		let new_x_axis = new_end - new_start;
-		let preserved_y_axis = scale_y_axis_to_match_new_x(composed_old.matrix2.x_axis, composed_old.matrix2.y_axis, new_x_axis);
-		let new_composed = DAffine2 {
-			matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
-			translation: new_start,
-		};
-
+		let new_composed = build_transform_with_y_preservation(composed_old, new_start, new_end);
 		let last_transform_value = new_composed * prior_combined.inverse();
 
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let transform_node_id = if let Some(id) = last_transform_node_id {
 			id
 		} else {
@@ -556,7 +596,7 @@ impl<'a> ModifyInputsContext<'a> {
 			if last_transform_value.abs_diff_eq(DAffine2::IDENTITY, 1e-6) {
 				return;
 			}
-			let Some(id) = self.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, true) else {
+			let Some(id) = self.existing_proto_node_id_at(&target_input, graphene_std::transform_nodes::transform::IDENTIFIER, true) else {
 				return;
 			};
 			id
@@ -570,9 +610,13 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Write the gradient type to the last 'Gradient Type' node in the chain, inserting one only when the value differs
 	/// from the default (`Linear`).
 	pub fn gradient_type_set(&mut self, gradient_type: GradientType) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::gradient_type::IDENTIFIER;
 		let create_if_nonexistent = gradient_type != GradientType::default();
-		let Some(node_id) = self.existing_proto_node_id(identifier, create_if_nonexistent) else { return };
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
+			return;
+		};
 
 		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_type::GradientTypeInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
@@ -581,9 +625,13 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Write the spread method to the last 'Spread Method' node in the chain, inserting one only when the value differs
 	/// from the default (`Pad`).
 	pub fn gradient_spread_method_set(&mut self, spread_method: GradientSpreadMethod) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::spread_method::IDENTIFIER;
 		let create_if_nonexistent = spread_method != GradientSpreadMethod::default();
-		let Some(node_id) = self.existing_proto_node_id(identifier, create_if_nonexistent) else { return };
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
+			return;
+		};
 
 		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::spread_method::SpreadMethodInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false), false);
@@ -777,4 +825,15 @@ fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec
 	let scale = new_x_length / old_x_length;
 
 	scale * (parallel * ex_new + perpendicular * ey_new)
+}
+
+/// Build a new affine that maps canonical (0,0) -> (1,0) to (new_start, new_end), preserving the y-axis
+/// shape of `old` proportionally to the x-axis length change.
+fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end: DVec2) -> DAffine2 {
+	let new_x_axis = new_end - new_start;
+	let preserved_y_axis = scale_y_axis_to_match_new_x(old.matrix2.x_axis, old.matrix2.y_axis, new_x_axis);
+	DAffine2 {
+		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
+		translation: new_start,
+	}
 }
