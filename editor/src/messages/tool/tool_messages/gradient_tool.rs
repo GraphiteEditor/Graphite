@@ -2502,4 +2502,98 @@ mod test_gradient {
 		assert_eq!(SRGBA8::from(updated.stops.color[1]), SRGBA8::from(Color::GREEN), "Middle stop color should be preserved");
 		assert_eq!(SRGBA8::from(updated.stops.color[2]), SRGBA8::from(Color::BLUE), "Last stop color should be preserved");
 	}
+
+	// When the gradient chain feeds a 'Fill' node's secondary input it's an unencapsulated side-branch (no layer
+	// background to lay it out), so a node inserted there must be placed onto the displaced feeder's spot in absolute
+	// graph space rather than stranded at the origin.
+	#[tokio::test]
+	async fn gradient_chain_node_on_fill_secondary_input_takes_feeder_slot() {
+		use graphene_std::vector::style::GradientSpreadMethod;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Find the 'Fill' node in the layer's primary chain.
+		let fill_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER);
+		let fill_node_id = {
+			let network_interface = &editor.active_document().network_interface;
+			network_interface
+				.document_network()
+				.nodes
+				.keys()
+				.copied()
+				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&fill_reference))
+				.expect("Fill node should exist")
+		};
+
+		// Feed a 'Gradient Value' node into the Fill node's secondary (fill) input.
+		let gradient_value_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER)).await;
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(gradient_value_id, 0),
+				input_connector: InputConnector::node(fill_node_id, 1),
+			})
+			.await;
+		editor
+			.handle_message(NodeGraphMessage::SetInputValue {
+				node_id: gradient_value_id,
+				input_index: 1,
+				value: TaggedValue::Gradient(GradientStops::new([
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: Color::RED,
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: Color::BLUE,
+					},
+				])),
+			})
+			.await;
+
+		// Move the feeder off the origin so its slot is unambiguous, then record where it sits.
+		editor
+			.handle_message(NodeGraphMessage::ShiftNodePosition {
+				node_id: gradient_value_id,
+				x: 4,
+				y: 6,
+			})
+			.await;
+		let feeder_position = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position");
+
+		// Set the spread method through the tool, which splices a 'Spread Method' node onto the Fill's fill input wire.
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.select_tool(ToolType::Gradient).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateOptions {
+				options: GradientOptionsUpdate::SetSpreadMethod(GradientSpreadMethod::Reflect),
+			})
+			.await;
+
+		let spread_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::spread_method::IDENTIFIER);
+		let spread_node_id = {
+			let network_interface = &editor.active_document().network_interface;
+			network_interface
+				.document_network()
+				.nodes
+				.keys()
+				.copied()
+				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&spread_reference))
+				.expect("Spread Method node should have been inserted")
+		};
+
+		let spread_position = editor.active_document_mut().network_interface.position(&spread_node_id, &[]).expect("Spread Method position");
+		let feeder_position_after = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position after");
+
+		assert_eq!(spread_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
+		assert_eq!(
+			feeder_position_after,
+			feeder_position - glam::IVec2::new(crate::consts::NODE_CHAIN_WIDTH, 0),
+			"the feeder's branch should shift one chain-width left to make room"
+		);
+	}
 }
