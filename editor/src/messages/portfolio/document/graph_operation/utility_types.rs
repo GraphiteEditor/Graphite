@@ -345,14 +345,14 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn existing_proto_node_id_at(&mut self, target_input: &InputConnector, reference: ProtoNodeIdentifier, create_if_nonexistent: bool) -> Option<NodeId> {
 		let identifier = DefinitionIdentifier::ProtoNode(reference.clone());
 
-		// walk upstream from whatever is currently connected to target_input
+		// Walk upstream from whatever is currently connected to target_input
 		let walk_start = self.network_interface.upstream_output_connector(target_input, &[]).and_then(|out| out.node_id());
 
 		let existing = walk_start.and_then(|start| {
 			self.network_interface
 				.upstream_flow_back_from_nodes(vec![start], &[], FlowType::HorizontalFlow)
-				.take_while(|nid| !self.network_interface.is_layer(nid, &[]))
-				.find(|nid| self.network_interface.reference(nid, &[]).as_ref() == Some(&identifier) && self.network_interface.is_visible(nid, &[]))
+				.take_while(|id| !self.network_interface.is_layer(id, &[]))
+				.find(|id| self.network_interface.reference(id, &[]).as_ref() == Some(&identifier) && self.network_interface.is_visible(id, &[]))
 		});
 
 		if let Some(id) = existing {
@@ -362,7 +362,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		}
 
-		// splice new node between target_input and its current upstream
+		// Splice new node between target_input and its current upstream
 		let node_definition = resolve_proto_node_type(reference)?;
 		let current_input = self.network_interface.input_from_connector(target_input, &[])?.clone();
 
@@ -560,7 +560,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.upstream_flow_back_from_nodes(vec![walk_from], &[], FlowType::HorizontalFlow)
 			.skip_while(|node_id| self.network_interface.is_layer(node_id, &[]))
 			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
-			.filter(|nid| self.network_interface.reference(nid, &[]).as_ref() == Some(&transform_reference))
+			.filter(|id| self.network_interface.reference(id, &[]).as_ref() == Some(&transform_reference))
 			.collect();
 
 		// Upstream walk yields downstream-to-upstream order, so the first hit is the chain's last `Transform`

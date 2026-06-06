@@ -348,21 +348,18 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
 		// Try to construct a gradient out of a chain, which is directly connected to a layer
-		let GradientChainState {
-			transform,
-			gradient_type,
-			spread_method,
-		} = read_gradient_chain_state(layer, network_interface);
-		return Some(Gradient {
+		let chain_state = read_gradient_chain_state(layer, network_interface);
+		Some(Gradient {
 			stops,
-			gradient_type,
-			spread_method,
-			start: transform.transform_point2(DVec2::ZERO),
-			end: transform.transform_point2(DVec2::X),
-		});
+			gradient_type: chain_state.gradient_type,
+			spread_method: chain_state.spread_method,
+			start: chain_state.transform.transform_point2(DVec2::ZERO),
+			end: chain_state.transform.transform_point2(DVec2::X),
+		})
+	} else {
+		// Try to find a legacy Fill::Gradient that is selected in a Fill node
+		graph_modification_utils::get_gradient(layer, network_interface)
 	}
-	// Try to find a legacy Fill::Gradient that is selected in a Fill node
-	graph_modification_utils::get_gradient(layer, network_interface)
 }
 
 #[derive(Clone, Copy, Debug)]
