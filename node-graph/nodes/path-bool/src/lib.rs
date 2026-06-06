@@ -278,6 +278,7 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 						Item::from_parts(element, attributes)
 					})
 					.collect::<Vec<_>>(),
+				// Text carries no vector geometry until shaped by the 'Text to Vector' node, whose font shaping this crate intentionally doesn't depend on
 				Graphic::Text(_) => Vec::new(),
 			}
 		})

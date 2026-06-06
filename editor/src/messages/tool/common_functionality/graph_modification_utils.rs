@@ -534,38 +534,38 @@ pub fn get_text_layer<'a>(
 ) -> Option<(&'a String, Font, TypesettingConfig)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text_layer::IDENTIFIER))?;
 
-	let Some(TaggedValue::String(text)) = &inputs[graphene_std::text::text_layer::TextInput::INDEX].as_value() else {
+	let Some(TaggedValue::String(text)) = inputs.get(graphene_std::text::text_layer::TextInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let font = match &inputs[graphene_std::text::text_layer::FontInput::INDEX].as_value() {
+	let font = match inputs.get(graphene_std::text::text_layer::FontInput::INDEX)?.as_value() {
 		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
 		_ => Font::default(),
 	};
-	let Some(&TaggedValue::F64(font_size)) = inputs[graphene_std::text::text_layer::SizeInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(font_size)) = inputs.get(graphene_std::text::text_layer::SizeInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(line_height_ratio)) = inputs[graphene_std::text::text_layer::LineHeightInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(line_height_ratio)) = inputs.get(graphene_std::text::text_layer::LineHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(character_spacing)) = inputs[graphene_std::text::text_layer::CharacterSpacingInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(character_spacing)) = inputs.get(graphene_std::text::text_layer::CharacterSpacingInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(has_max_width)) = inputs[graphene_std::text::text_layer::HasMaxWidthInput::INDEX].as_value() else {
+	let Some(&TaggedValue::Bool(has_max_width)) = inputs.get(graphene_std::text::text_layer::HasMaxWidthInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_width)) = inputs[graphene_std::text::text_layer::MaxWidthInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(max_width)) = inputs.get(graphene_std::text::text_layer::MaxWidthInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::Bool(has_max_height)) = inputs[graphene_std::text::text_layer::HasMaxHeightInput::INDEX].as_value() else {
+	let Some(&TaggedValue::Bool(has_max_height)) = inputs.get(graphene_std::text::text_layer::HasMaxHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_height)) = inputs[graphene_std::text::text_layer::MaxHeightInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(max_height)) = inputs.get(graphene_std::text::text_layer::MaxHeightInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(tilt)) = inputs[graphene_std::text::text_layer::TiltInput::INDEX].as_value() else {
+	let Some(&TaggedValue::F64(tilt)) = inputs.get(graphene_std::text::text_layer::TiltInput::INDEX)?.as_value() else {
 		return None;
 	};
-	let Some(&TaggedValue::TextAlign(align)) = inputs[graphene_std::text::text_layer::AlignInput::INDEX].as_value() else {
+	let Some(&TaggedValue::TextAlign(align)) = inputs.get(graphene_std::text::text_layer::AlignInput::INDEX)?.as_value() else {
 		return None;
 	};
 

@@ -531,7 +531,7 @@ impl Graphic {
 			}
 			Graphic::Color(list) => list.element(0).is_some_and(|color| color.is_opaque()),
 			Graphic::Gradient(list) => list.element(0).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque())),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 		}
 	}
 
@@ -551,7 +551,7 @@ impl Graphic {
 			}),
 			Graphic::Color(list) => list.iter_element_values().all(|color| color.a() == 0.),
 			Graphic::Gradient(list) => list.iter_element_values().all(|stops| stops.iter().all(|stop| stop.color.a() == 0.)),
-			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
+			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) => false,
 		}
 	}
 
@@ -570,6 +570,7 @@ impl Graphic {
 			Graphic::Gradient(list) => list.is_empty(),
 			Graphic::RasterCPU(list) => list.is_empty(),
 			Graphic::RasterGPU(list) => list.is_empty(),
+			Graphic::Text(list) => list.is_empty(),
 		}
 	}
 }
@@ -625,7 +626,7 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPU(list) => list.render_complexity(),
 			Self::Color(list) => list.render_complexity(),
 			Self::Gradient(list) => list.render_complexity(),
-			Self::Text(list) => list.len(),
+			Self::Text(list) => list.render_complexity(),
 		}
 	}
 }
