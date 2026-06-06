@@ -362,14 +362,11 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		}
 
-		// Splice new node between target_input and its current upstream
+		// Splice a new node onto the wire feeding `target_input`, positioning it sensibly within the chain.
 		let node_definition = resolve_proto_node_type(reference)?;
-		let current_input = self.network_interface.input_from_connector(target_input, &[])?.clone();
-
 		let node_id = NodeId::new();
 		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
-		self.network_interface.set_input(&InputConnector::node(node_id, 0), current_input, &[]);
-		self.network_interface.set_input(target_input, NodeInput::node(node_id, 0), &[]);
+		self.network_interface.insert_node_before_input(&node_id, target_input, &[]);
 
 		Some(node_id)
 	}

@@ -5911,6 +5911,39 @@ impl NodeNetworkInterface {
 		self.create_wire(&upstream_output, &InputConnector::node(*node_id, insert_node_input_index), network_path);
 	}
 
+	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
+	/// new node's primary (index 0) input, and the new node feeds `input_connector`.
+	///
+	/// When the wire is part of a layer's encapsulated primary chain, `set_input` chain-positions the new node
+	/// automatically. On an unencapsulated secondary-input branch (e.g. a 'Fill' node's fill input) chain positioning
+	/// doesn't apply, so the node would otherwise land at the graph origin; instead it's placed on the displaced
+	/// upstream node's spot and that whole branch is shifted left (in absolute graph space) to make room.
+	pub fn insert_node_before_input(&mut self, node_id: &NodeId, input_connector: &InputConnector, network_path: &[NodeId]) {
+		let feeder = self.upstream_output_connector(input_connector, network_path).and_then(|output| output.node_id());
+
+		let Some(current_input) = self.input_from_connector(input_connector, network_path).cloned() else {
+			log::error!("Could not get input in insert_node_before_input");
+			return;
+		};
+		self.set_input(&InputConnector::node(*node_id, 0), current_input, network_path);
+		self.set_input(input_connector, NodeInput::node(*node_id, 0), network_path);
+
+		// If `set_input` chain-positioned the node (it joined a layer chain), there's nothing more to do.
+		if !self.is_absolute(node_id, network_path) {
+			return;
+		}
+
+		// Otherwise place the node where the displaced feeder was, then shift the feeder's branch left to make room.
+		let Some(feeder) = feeder else { return };
+		let Some(node_position) = self.position(node_id, network_path) else { return };
+		let Some(feeder_position) = self.position(&feeder, network_path) else { return };
+
+		self.shift_node(node_id, feeder_position - node_position, network_path);
+		for upstream_node in self.upstream_flow_back_from_nodes(vec![feeder], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
+			self.shift_node(&upstream_node, IVec2::new(-NODE_CHAIN_WIDTH, 0), network_path);
+		}
+	}
+
 	/// Moves a node to the start of a layer chain (feeding into the secondary input of the layer).
 	/// When `import` is true, uses lightweight wiring that skips `is_acyclic` checks and per-node cache invalidation.
 	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId], import: bool) {
