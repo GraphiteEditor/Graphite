@@ -5925,6 +5925,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get input in insert_node_before_input");
 			return;
 		};
+
+		if self.input_from_connector(&InputConnector::node(*node_id, 0), network_path).is_none() {
+			return;
+		}
+
 		self.set_input(&InputConnector::node(*node_id, 0), current_input, network_path);
 		self.set_input(input_connector, NodeInput::node(*node_id, 0), network_path);
 
@@ -5939,8 +5944,10 @@ impl NodeNetworkInterface {
 		let Some(feeder_position) = self.position(&feeder, network_path) else { return };
 
 		self.shift_node(node_id, feeder_position - node_position, network_path);
-		for upstream_node in self.upstream_flow_back_from_nodes(vec![feeder], network_path, FlowType::UpstreamFlow).collect::<Vec<_>>() {
-			self.shift_node(&upstream_node, IVec2::new(-NODE_CHAIN_WIDTH, 0), network_path);
+		// Deduplicate, since `UpstreamFlow` can yield a shared node more than once and we must shift each node only once.
+		let upstream_nodes: HashSet<NodeId> = self.upstream_flow_back_from_nodes(vec![feeder], network_path, FlowType::UpstreamFlow).collect();
+		for upstream_node in &upstream_nodes {
+			self.shift_node(upstream_node, IVec2::new(-NODE_CHAIN_WIDTH, 0), network_path);
 		}
 	}
 
