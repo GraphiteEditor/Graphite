@@ -281,15 +281,6 @@ pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface
 	}
 }
 
-/// Try to find a "Gradient" node that is connected to a "Fill" node, or to a layer directly.
-pub fn get_upstream_gradient_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	network_interface
-		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::UpstreamFlow)
-		.skip(1)
-		.take_while(|node_id| !network_interface.is_layer(node_id, &[]))
-		.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&DefinitionIdentifier::ProtoNode(graphene_std::graphic_nodes::gradient::IDENTIFIER)))
-}
-
 /// Try to find a "Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
 pub fn get_upstream_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	network_interface
@@ -329,10 +320,6 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	Some(stops.clone())
 }
 
-pub fn has_gradient_node_or_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-	get_gradient_stops(layer, network_interface).is_some() || get_upstream_gradient_node_id(layer, network_interface).is_some()
-}
-
 /// Compute the transform from a gradient's local space to viewport space for the given layer. For a `List<GradientStops>`
 /// layer this is the layer's incoming footprint transform; for the legacy `Fill::Gradient` path it composes the layer's
 /// viewport transform with the [0,1]² → bounding-box mapping.
@@ -340,8 +327,7 @@ pub fn gradient_space_transform(layer: LayerNodeIdentifier, network_interface: &
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
 	let metadata = network_interface.document_metadata();
-	let is_gradient_list = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER))
-		|| is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::graphic_nodes::gradient::IDENTIFIER));
+	let is_gradient_list = is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER));
 	if is_gradient_list {
 		return metadata
 			.upstream_footprints

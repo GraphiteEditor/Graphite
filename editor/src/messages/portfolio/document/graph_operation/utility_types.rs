@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
@@ -529,25 +529,15 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Write the gradient stops to the 'Gradient' node or 'Gradient Value' node feeding the layer.
+	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
 	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
-		let output_layer = self.get_output_layer();
-
-		// Try to find a Gradient node first and update its gradient stops
-		if let Some(output_layer) = output_layer
-			&& let Some(gradient_node_id) = get_upstream_gradient_node_id(output_layer, self.network_interface)
-		{
-			let input_connector = InputConnector::node(gradient_node_id, graphene_std::graphic_nodes::gradient::GradientInput::<List<GradientStops>>::INDEX);
-			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
+		let Some(output_layer) = self.get_output_layer() else { return };
+		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
 			return;
-		}
-		// Then try to find Gradient Value node that is connected to a Fill node
-		if let Some(output_layer) = output_layer
-			&& let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface)
-		{
-			let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
-			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
-		}
+		};
+
+		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Gradient(stops), false), false);
 	}
 
 	/// Update the gradient line so its endpoints are at `new_start` and `new_end`.
@@ -556,27 +546,11 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn gradient_line_set(&mut self, new_start: DVec2, new_end: DVec2) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
-		// Try to resolve Gradient node's input transform first
-		let walk_from = if let Some(gradient_node_id) = get_upstream_gradient_node_id(output_layer, self.network_interface) {
-			let gradient_node = self.network_interface.document_network().nodes.get(&gradient_node_id);
-			match gradient_node.and_then(|node| node.inputs.get(graphene_std::graphic_nodes::gradient::ControlGeometryInput::INDEX)) {
-				// Transform nodes are connected to the Gradient node
-				Some(NodeInput::Node { node_id, .. }) => *node_id,
-				_ => {
-					// Rewrite the transform directly if it is an inline value
-					let old_transform =
-						read_inline_daffine2(self.network_interface, gradient_node_id, graphene_std::graphic_nodes::gradient::ControlGeometryInput::INDEX).unwrap_or(DAffine2::IDENTITY);
-					let new_transform = build_transform_with_y_preservation(old_transform, new_start, new_end);
-					let input_connector = InputConnector::node(gradient_node_id, graphene_std::graphic_nodes::gradient::ControlGeometryInput::INDEX);
-					self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DAffine2(new_transform), false), false);
-					return;
-				}
-			}
-		} else if let Some(fill_input_node_id) = get_fill_input_node_id(output_layer, self.network_interface) {
+		let walk_from = if let Some(fill_input_node_id) = get_fill_input_node_id(output_layer, self.network_interface) {
 			// Some nodes are connected to a Fill node, this means that the primary path is a `List<Vector>`, so we need to traverse it
 			fill_input_node_id
 		} else {
-			// No Gradient or Fill node found, we will traverse the primary path to find transforms
+			// No Fill node found, we will traverse the primary path to find transforms
 			output_layer.to_node()
 		};
 
@@ -633,17 +607,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Write the gradient type to the 'Gradient' node or the last 'Gradient Type' node in the chain, inserting one only when the value differs
+	/// Write the gradient type to the last 'Gradient Type' node in the chain, inserting one only when the value differs
 	/// from the default (`Linear`).
 	pub fn gradient_type_set(&mut self, gradient_type: GradientType) {
-		if let Some(output_layer) = self.get_output_layer()
-			&& let Some(gradient_node_id) = get_upstream_gradient_node_id(output_layer, self.network_interface)
-		{
-			let input_connector = InputConnector::node(gradient_node_id, graphene_std::graphic_nodes::gradient::GradientTypeInput::INDEX);
-			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
-			return;
-		}
-
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::gradient_type::IDENTIFIER;
@@ -656,17 +622,9 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientType(gradient_type), false), false);
 	}
 
-	/// Write the spread method to the 'Gradient' node or the last 'Spread Method' node in the chain, inserting one only when the value differs
+	/// Write the spread method to the last 'Spread Method' node in the chain, inserting one only when the value differs
 	/// from the default (`Pad`).
 	pub fn gradient_spread_method_set(&mut self, spread_method: GradientSpreadMethod) {
-		if let Some(output_layer) = self.get_output_layer()
-			&& let Some(gradient_node_id) = get_upstream_gradient_node_id(output_layer, self.network_interface)
-		{
-			let input_connector = InputConnector::node(gradient_node_id, graphene_std::graphic_nodes::gradient::SpreadMethodInput::INDEX);
-			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false), false);
-			return;
-		}
-
 		let Some(output_layer) = self.get_output_layer() else { return };
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::spread_method::IDENTIFIER;
@@ -878,13 +836,4 @@ fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end:
 		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
 		translation: new_start,
 	}
-}
-
-/// Read an inline `DAffine2` value from `node_id`'s `input_index`-th input.
-fn read_inline_daffine2(network_interface: &NodeNetworkInterface, node_id: NodeId, input_index: usize) -> Option<DAffine2> {
-	let node = network_interface.document_network().nodes.get(&node_id)?;
-	let TaggedValue::DAffine2(transform) = node.inputs.get(input_index)?.as_value()? else {
-		return None;
-	};
-	Some(*transform)
 }
