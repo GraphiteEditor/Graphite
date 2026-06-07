@@ -11,10 +11,32 @@ pub struct IORecord<I, O> {
 	pub output: O,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Debug)]
 pub struct MemoHash<T: CacheHash> {
 	hash: u64,
 	value: Arc<T>,
+}
+
+// Compare the value, not the cache `hash`: `CacheHash` is not guaranteed to be an equivalence relation,
+// so it can't back `eq`/`cmp`. Cache-identity hashing goes through `CacheHash`.
+impl<T: CacheHash + PartialEq> PartialEq for MemoHash<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.value == other.value
+	}
+}
+
+impl<T: CacheHash + Eq> Eq for MemoHash<T> {}
+
+impl<T: CacheHash + PartialOrd> PartialOrd for MemoHash<T> {
+	fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+		self.value.partial_cmp(&other.value)
+	}
+}
+
+impl<T: CacheHash + Ord> Ord for MemoHash<T> {
+	fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+		self.value.cmp(&other.value)
+	}
 }
 
 impl<'de, T: serde::Deserialize<'de> + CacheHash> serde::Deserialize<'de> for MemoHash<T> {
@@ -64,12 +86,6 @@ impl<T: CacheHash> MemoHash<T> {
 impl<T: CacheHash> From<T> for MemoHash<T> {
 	fn from(value: T) -> Self {
 		Self::new(value)
-	}
-}
-
-impl<T: CacheHash> Hash for MemoHash<T> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.hash.hash(state)
 	}
 }
 

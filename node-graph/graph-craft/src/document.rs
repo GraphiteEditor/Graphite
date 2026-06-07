@@ -172,7 +172,7 @@ impl DocumentNode {
 }
 
 /// Represents the possible inputs to a node.
-#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum NodeInput {
 	/// A reference to another node in the same network from which this node can receive its input.
 	Node { node_id: NodeId, output_index: usize },
