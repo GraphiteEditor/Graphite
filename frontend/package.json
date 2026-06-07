@@ -55,7 +55,7 @@
 		"vite": "^8.0.3"
 	},
 	"homepage": "https://graphite.art",
-	"license": "Apache-2.0",
+	"license": "MIT OR Apache-2.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/GraphiteEditor/Graphite.git"

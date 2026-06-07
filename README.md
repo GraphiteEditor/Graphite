@@ -80,4 +80,6 @@ Graphite is 100% community built and funded. Please become a part of keeping the
 
 Are you a graphics programmer or Rust developer? Graphite aims to be one of the most approachable projects for putting your engineering skills to use in the world of open source. See [instructions here](https://graphite.art/volunteer/guide/) for setting up the project and getting started.
 
-*By submitting code for inclusion in the project, you are agreeing to license your changes under the Apache 2.0 license, and that you have the authority to do so. Some directories may have other licenses, like dual-licensed MIT/Apache 2.0, and code submissions to those directories mean you agree to the applicable license(s).*
+## License
+
+Graphite's source code is dual-licensed under your choice of either the [MIT license](LICENSE-MIT) or the [Apache License 2.0](LICENSE-APACHE), at your option, unless otherwise noted within the repository. By submitting code for inclusion in the project, you agree to license your contributions under both licenses, and that you have the authority to do so.
