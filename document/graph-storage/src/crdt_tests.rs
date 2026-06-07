@@ -1,7 +1,7 @@
 use core_types::uuid::NodeId as RuntimeNodeId;
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
-use graph_craft::{ProtoNodeIdentifier, Type};
 
 use crate::{Delta, Document, HotOp, Implementation, Network, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, RegistryDelta, RegistryTarget, Session, TimeStamp};
 
@@ -116,7 +116,7 @@ fn tiny_network() -> NodeNetwork {
 fn history_topological_is_causal_and_deterministic() {
 	let resources = graphene_resource::ResourceRegistry::new();
 
-	let mut build = || {
+	let build = || {
 		let mut session = Session::with_peer(PeerId(1));
 		session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage failed");
 		let last_timestamp = session.hot_log().last().expect("staged at least one hot op").timestamp;

@@ -10,9 +10,7 @@ use serde::Serialize;
 
 use crate::attr::*;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
-use crate::{
-	AttributesExt, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp,
-};
+use crate::{AttributesExt, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp};
 
 fn map_serialization_error(key: &str) -> impl FnOnce(serde_json::Error) -> ConversionError + '_ {
 	move |e| ConversionError::SerializationError(format!("{key}: {e:?}"))

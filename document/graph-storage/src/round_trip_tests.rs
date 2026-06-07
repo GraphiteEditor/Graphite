@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use core_types::context::{ContextDependencies, ContextFeature};
+use core_types::context::ContextDependencies;
 use core_types::uuid::NodeId;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -18,12 +18,6 @@ fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
 	Ok(())
 }
 
-/// Helper to try compiling a network, returning true if successful, false if it fails
-/// (without panicking). Used for networks that may have unresolved imports.
-fn try_compile_network(network: &NodeNetwork) -> bool {
-	verify_network_compiles(network).is_ok()
-}
-
 /// Convert a runtime network to a storage `Registry`, returning the declarations alongside it.
 /// Proto-node declaration content is no longer stored in the registry (it lives in a byte store);
 /// these tests have no byte store, so they keep the extracted bytes in hand and rebuild a
@@ -34,9 +28,6 @@ fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations) {
 	(conversion.registry, declarations)
 }
 
-/// Creates a simple test network with two nodes:
-/// - Node 0: ConsNode that takes two u32 imports
-/// - Node 1: AddPairNode that adds the cons pair
 /// A one-node network whose single node references `id` via a `TaggedValue::Resource` input, so
 /// `convert_resources` (which only snapshots network-referenced resources) carries the resource.
 fn network_referencing_resource(id: graphene_resource::ResourceId) -> NodeNetwork {
