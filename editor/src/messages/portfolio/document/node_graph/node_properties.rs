@@ -2451,35 +2451,29 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets_first_row.push(
 		ColorInput::default()
 			.value(FillChoiceUI::from(&FillChoice::from(fill.clone())))
-			.on_update(move |x: &ColorInput| Message::Batched {
-				messages: Box::new([
-					match &fill2 {
-						Fill::None => NodeGraphMessage::SetInputValue {
+			.on_update(move |x: &ColorInput| {
+				let new_fill = FillChoice::from(&x.value).to_fill(fill2.as_gradient());
+				let (backup_index, backup_value) = match &new_fill {
+					Fill::None => (BackupColorInput::INDEX, TaggedValue::Color(None)),
+					Fill::Solid(color) => (BackupColorInput::INDEX, TaggedValue::Color(Some(*color))),
+					Fill::Gradient(gradient) => (BackupGradientInput::INDEX, TaggedValue::FillGradient(gradient.clone())),
+				};
+				Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(None),
+							input_index: backup_index,
+							value: backup_value,
 						}
 						.into(),
-						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
+						NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: BackupColorInput::INDEX,
-							value: TaggedValue::Color(Some(*color)),
+							input_index: FillInput::<Color>::INDEX,
+							value: TaggedValue::Fill(new_fill),
 						}
 						.into(),
-						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
-							node_id,
-							input_index: BackupGradientInput::INDEX,
-							value: TaggedValue::FillGradient(gradient.clone()),
-						}
-						.into(),
-					},
-					NodeGraphMessage::SetInputValue {
-						node_id,
-						input_index: FillInput::<Color>::INDEX,
-						value: TaggedValue::Fill(FillChoice::from(&x.value).to_fill(fill2.as_gradient())),
-					}
-					.into(),
-				]),
+					]),
+				}
 			})
 			.on_commit(commit_value)
 			.widget_instance(),
