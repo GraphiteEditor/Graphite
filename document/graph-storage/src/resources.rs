@@ -34,8 +34,9 @@ pub struct ResourceEntry {
 
 impl<'de> Deserialize<'de> for ResourceEntry {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		// Re-sort `sources` after loading: the `binary_search`-based accessors assume sorted order, and
-		// on-disk data (older writers, hand edits) can't be trusted to preserve it.
+		// The `binary_search`-based accessors require `sources` sorted by `SourceKey` with unique keys.
+		// On-disk data (older writers, hand edits) can't be trusted to preserve either, so re-sort and
+		// collapse any duplicate keys, keeping the higher-timestamp value (LWW).
 		#[derive(Deserialize)]
 		struct Raw {
 			sources: Vec<(SourceKey, SourceValue)>,
@@ -45,6 +46,16 @@ impl<'de> Deserialize<'de> for ResourceEntry {
 
 		let Raw { mut sources, hash, hash_timestamp } = Raw::deserialize(deserializer)?;
 		sources.sort_by(|(a, _), (b, _)| a.cmp(b));
+		sources.dedup_by(|(later_key, later_value), (kept_key, kept_value)| {
+			// `dedup_by` keeps the first of each run; sorting is stable, so resolve duplicates by LWW.
+			if later_key != kept_key {
+				return false;
+			}
+			if later_value.timestamp > kept_value.timestamp {
+				*kept_value = later_value.clone();
+			}
+			true
+		});
 
 		Ok(Self { sources, hash, hash_timestamp })
 	}
@@ -169,5 +180,34 @@ mod tests {
 		let entry: ResourceEntry = serde_json::from_value(unsorted).expect("deserialize");
 		let priorities: Vec<f64> = entry.sources.iter().map(|(key, _)| key.priority.value()).collect();
 		assert_eq!(priorities, vec![0., 1., 2.], "sources must be sorted by SourceKey after deserialization");
+	}
+
+	/// Duplicate keys on disk violate the `binary_search` uniqueness invariant. Deserialization must
+	/// collapse them, keeping the higher-timestamp value (LWW).
+	#[test]
+	fn deserialize_dedups_sources_by_lww() {
+		let key = SourceKey {
+			priority: Priority::new(1.).expect("finite"),
+			peer: PeerId(1),
+		};
+		let entry = |counter: u64, body: &str| {
+			(
+				key,
+				SourceValue {
+					source: serde_json::json!(body),
+					timestamp: TimeStamp { counter, peer: PeerId(1) },
+				},
+			)
+		};
+
+		let with_duplicates = serde_json::json!({
+			"sources": [entry(5, "newer"), entry(1, "older")],
+			"hash": null,
+			"hash_timestamp": TimeStamp::ORIGIN,
+		});
+
+		let resource: ResourceEntry = serde_json::from_value(with_duplicates).expect("deserialize");
+		assert_eq!(resource.sources.len(), 1, "duplicate keys must collapse to one entry");
+		assert_eq!(resource.sources[0].1.source, serde_json::json!("newer"), "the higher-timestamp value must win");
 	}
 }

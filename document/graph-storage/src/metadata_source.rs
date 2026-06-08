@@ -20,8 +20,8 @@ pub struct NodeMetadataEntry {
 	pub display_name: Option<String>,
 	pub locked: bool,
 	pub pinned: bool,
-	/// Always sized to match the runtime node's `inputs.len()`; absent slots use `Default`.
-	/// Rebuild errors on length mismatch.
+	/// Always sized to match the runtime node's `inputs.len()`; absent slots use `Default`. The rebuild
+	/// returns an error if this length does not match the node's input count.
 	pub input_metadata: Vec<InputMetadataEntry>,
 	pub output_names: Vec<String>,
 }

@@ -110,6 +110,26 @@ fn tiny_network() -> NodeNetwork {
 	}
 }
 
+/// `verify_history` passes on a normally built history and flags a delta whose content-addressed
+/// `id` no longer matches its identity fields (corrupt or crafted history).
+#[test]
+fn verify_history_detects_rev_mismatch() {
+	let resources = graphene_resource::ResourceRegistry::new();
+
+	let mut session = Session::with_peer(PeerId(1));
+	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage failed");
+	let last_timestamp = session.hot_log().last().expect("staged a hot op").timestamp;
+	session.retire(last_timestamp).expect("retire failed");
+
+	session.verify_history().expect("a freshly built history must validate");
+
+	// Tamper one delta's stored id (the field, not its key) so it no longer matches its content hash.
+	let some_rev = *session.document.history.keys().next().expect("history is non-empty");
+	session.document.history.get_mut(&some_rev).expect("delta exists").id = 0xdead_beef;
+
+	assert!(matches!(session.verify_history(), Err(crate::CrdtError::RevMismatch { .. })), "a tampered delta id must be flagged");
+}
+
 /// `history_topological` emits parents before children and is a pure function of the delta set:
 /// two sessions independently built from the same network produce byte-identical history order.
 #[test]

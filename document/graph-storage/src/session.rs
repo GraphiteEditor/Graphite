@@ -416,6 +416,19 @@ impl Session {
 		self.document.history.values()
 	}
 
+	/// Verify that every delta's content-addressed `id` matches its recomputed hash. `Delta` skips this
+	/// on deserialize to keep loading cheap, so call this after loading history from an untrusted source
+	/// (it walks the whole history and rehashes each delta). Returns the first mismatch found.
+	pub fn verify_history(&self) -> Result<(), CrdtError> {
+		for (&stored, delta) in &self.document.history {
+			let expected = delta.recomputed_id();
+			if stored != expected || delta.id != expected {
+				return Err(CrdtError::RevMismatch { stored, expected });
+			}
+		}
+		Ok(())
+	}
+
 	/// Every resource hash referenced by the current registry *or* anywhere in history. Undo removes a
 	/// gesture's `AddResource` from the working registry, so a redoable (or re-undoable) gesture's
 	/// resources no longer appear in `registry().resources` even though redo still needs them. Resource GC
@@ -545,4 +558,6 @@ pub enum CrdtError {
 	PeerRegistrationConflict(PeerId),
 	#[error("Operation requires an empty hot log")]
 	HotLogNotEmpty,
+	#[error("Delta stored under {stored} hashes to {expected}")]
+	RevMismatch { stored: Rev, expected: Rev },
 }

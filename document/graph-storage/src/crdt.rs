@@ -45,6 +45,19 @@ impl Delta {
 	pub fn is_gesture_end(&self) -> bool {
 		self.attributes.contains_key(attr::GESTURE_END)
 	}
+
+	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
+	/// via `new`; differs only if `id` was tampered with or the hash derivation changed.
+	pub fn recomputed_id(&self) -> Rev {
+		compute_rev(&self.parents, self.author, self.timestamp, &self.delta_type)
+	}
+
+	/// Whether `id` matches the recomputed content hash. `Delta` deserializes without checking this
+	/// (the hash is not cheap over a large history); callers verify explicitly when they don't trust
+	/// the source via [`Session::verify_history`].
+	pub fn has_valid_id(&self) -> bool {
+		self.id == self.recomputed_id()
+	}
 }
 
 /// Op payload. Timestamps live on the wrapping `Delta` — one per delta, applied to all LWW-eligible
