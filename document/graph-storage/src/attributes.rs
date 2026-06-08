@@ -32,20 +32,6 @@ pub mod attr {
 	/// Lives on the *owning* node (the one with `Implementation::Network`), not on the nested network.
 	pub const UI_REFERENCE: &str = "ui::reference";
 
-	pub const UI_NAV_PTZ: &str = "ui::nav::ptz";
-	pub const UI_NAV_TRANSFORM: &str = "ui::nav::transform";
-	pub const UI_NAV_WIDTH: &str = "ui::nav::width";
-	pub const UI_PREVIEWING: &str = "ui::previewing";
-
-	// Document-level editor chrome, stored in `Registry.attributes` (document scope). Each setting is
-	// its own key so concurrent edits to one don't clobber another.
-	pub const UI_DOC_PTZ: &str = "ui::doc::ptz";
-	pub const UI_DOC_RENDER_MODE: &str = "ui::doc::render_mode";
-	pub const UI_DOC_OVERLAYS: &str = "ui::doc::overlays";
-	pub const UI_DOC_RULERS_VISIBLE: &str = "ui::doc::rulers_visible";
-	pub const UI_DOC_SNAPPING: &str = "ui::doc::snapping";
-	pub const UI_DOC_COLLAPSED: &str = "ui::doc::collapsed";
-
 	// Delta-level annotations (on `Delta.attributes`, not the registry). Local + mutable, excluded
 	// from the content-addressed `Rev`.
 	/// Marks the last delta of a user gesture, so the undo cursor steps per-gesture, not per-delta.

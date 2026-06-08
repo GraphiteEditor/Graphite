@@ -56,8 +56,7 @@ pub enum RegistryDelta {
 		node: Node,
 	},
 	/// `snapshot` lets the reverse `AddNode` rebuild without reading the (already-removed) node from
-	/// the registry, mirroring `RemoveNetwork`. Required because retire re-computes reverses after the
-	/// hot op already applied the removal.
+	/// the registry, mirroring `RemoveNetwork`.
 	RemoveNode {
 		node_id: NodeId,
 		snapshot: Node,
@@ -82,7 +81,7 @@ pub enum RegistryDelta {
 		slot: u32,
 		target: Option<NodeInput>,
 	},
-	/// Per-network attribute change (e.g. `ui::nav::*`), LWW per key. Mirrors `ChangeDocumentAttribute`.
+	/// Per-network attribute change, LWW per key. Mirrors `ChangeDocumentAttribute`.
 	ChangeNetworkAttribute {
 		network: NetworkId,
 		delta: AttributeDelta,
@@ -135,8 +134,7 @@ pub enum RegistryDelta {
 		id: ResourceId,
 		entry: ResourceEntry,
 	},
-	/// Remove a whole resource entry. `snapshot` lets the reverse `AddResource` rebuild in O(1)
-	/// without walking history, mirroring `RemoveNetwork`.
+	/// Remove a whole resource entry. `snapshot` is the state of the resource before it was removed.
 	RemoveResource {
 		id: ResourceId,
 		snapshot: ResourceEntry,
@@ -155,26 +153,6 @@ pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attri
 		key: delta.key.clone(),
 		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
 	}
-}
-
-/// Which of a [`Document`]'s two registries an apply targets: the working copy (retired state plus
-/// live hot ops) or the retired snapshot (retired deltas only). Retirement targets the snapshot so
-/// reverses capture pre-op values; the hot path and undo/redo target the working copy.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RegistryTarget {
-	Working,
-	Snapshot,
-}
-
-/// How [`Document::apply_op_with`] resolves structural collisions and LWW timestamp ties.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ApplyMode {
-	/// Fresh local/remote edit: structural ops error on duplicate/missing targets; LWW uses strict `>`.
-	Live,
-	/// Replay/retire: structural ops skip duplicate/missing targets; LWW still uses strict `>`.
-	Idempotent,
-	/// Silent-zone undo/redo rewind: structural ops are idempotent and LWW arms assign unconditionally.
-	Force,
 }
 
 pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {

@@ -4,6 +4,22 @@ use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+pub mod attrs {
+	pub const UI_NAV_PTZ: &str = "ui::nav::ptz";
+	pub const UI_NAV_TRANSFORM: &str = "ui::nav::transform";
+	pub const UI_NAV_WIDTH: &str = "ui::nav::width";
+	pub const UI_PREVIEWING: &str = "ui::previewing";
+
+	// Document-level editor chrome, stored in `Registry.attributes` (document scope). Each setting is
+	// its own key so concurrent edits to one don't clobber another.
+	pub const UI_DOC_PTZ: &str = "ui::doc::ptz";
+	pub const UI_DOC_RENDER_MODE: &str = "ui::doc::render_mode";
+	pub const UI_DOC_OVERLAYS: &str = "ui::doc::overlays";
+	pub const UI_DOC_RULERS_VISIBLE: &str = "ui::doc::rulers_visible";
+	pub const UI_DOC_SNAPPING: &str = "ui::doc::snapping";
+	pub const UI_DOC_COLLAPSED: &str = "ui::doc::collapsed";
+}
+
 /// A live editing session over a `Document`. Owns the document plus runtime collaboration
 /// state that isn't persisted (currently just peer heartbeat tracking).
 #[derive(Clone, Debug)]
@@ -59,8 +75,8 @@ impl Session {
 	///
 	/// Stages the diff as hot ops rather than retired deltas: each op is applied to the registry and
 	/// pushed onto the hot log. The caller persists the returned hot frames and then calls `retire`
-	/// to promote them into durable history. This routes autosave through the same hot-op pipeline
-	/// collaboration will use, so the whole path is exercised before any transport lands.
+	/// to promote them into durable history.
+	#[cfg(any(feature = "conversion", test))]
 	pub fn stage_from_runtime<M: NodeMetadataSource>(
 		&mut self,
 		network: &graph_craft::document::NodeNetwork,
@@ -76,6 +92,7 @@ impl Session {
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`] for this document's peer, so the
 	/// caller can key per-network, per-peer view state (`session.json`) by a stable id. Derived from the
 	/// network structure alone; resources/declarations are irrelevant to the ids.
+	#[cfg(any(feature = "conversion", test))]
 	pub fn network_ids<M: NodeMetadataSource>(&self, network: &graph_craft::document::NodeNetwork, metadata: &M) -> Result<HashMap<Vec<core_types::uuid::NodeId>, NetworkId>, CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
 		Ok(conversion.network_ids)

@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::{AttributeDelta, ExportSlot, NetworkId, Node, NodeId, NodeInput, Registry, RegistryDelta, ResourceEntry, ResourceId, TimeStamp};
+use crate::{AttributeDelta, NetworkId, Node, NodeId, Registry, RegistryDelta, ResourceEntry, ResourceId};
 
 /// Minimal set of deltas to transform `from` into `to`.
 ///
@@ -101,7 +101,7 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 			}
 		}
 
-		// Per-network attributes (`ui::nav::*`, ...).
+		// Per-network attributes.
 		for delta in compute_attribute_deltas(&from_network.attributes, &to_network.attributes) {
 			deltas.push(RegistryDelta::ChangeNetworkAttribute { network: network_id, delta });
 		}
@@ -204,7 +204,8 @@ fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) ->
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Implementation, Network, Node};
+	use crate::{ExportSlot, Implementation, Network, Node, NodeInput, TimeStamp};
+	use std::collections::HashMap;
 
 	#[test]
 	fn test_compute_deltas_empty() {

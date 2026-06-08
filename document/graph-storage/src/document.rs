@@ -1,12 +1,12 @@
 use crate::{
-	ApplyMode, CrdtError, Delta, ExportSlot, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, SourceValue,
-	TimeStamp, Value, apply_attribute_delta, attr, mint_node_id, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp, Value,
+	apply_attribute_delta, attr, mint_node_id, reverse_attribute_delta,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Document {
+pub struct Document {
 	/// Working registry: retired state with the current hot ops applied on top. This is what live
 	/// reads and `registry()` observe, and what undo/redo force-apply against.
 	pub(crate) registry: Registry,
@@ -16,7 +16,7 @@ pub(crate) struct Document {
 	/// to `registry` *by value* whenever the hot log is empty (undo/redo resync it after moving the
 	/// cursor), but field timestamps can differ: retirement bumps the snapshot's to `T_retire` while the
 	/// working registry keeps the staging-time timestamps. Benign while the local monotonic clock makes
-	/// new edits win; matters once remote ops can race a local field (collaboration milestone).
+	/// new edits win
 	pub(crate) retired_snapshot: Registry,
 	pub(crate) history: HashMap<Rev, Delta>,
 	/// Live broadcast stream — applied to the registry on receive, GC'd at retirement.
@@ -47,7 +47,7 @@ impl Document {
 		mint_node_id(self.peer, self.next_node_counter)
 	}
 
-	pub fn restore_node_from_history(&mut self, target: RegistryTarget, old_node_id: NodeId) -> Result<(), CrdtError> {
+	pub(crate) fn restore_node_from_history(&mut self, target: RegistryTarget, old_node_id: NodeId) -> Result<(), CrdtError> {
 		let delta = self
 			.history_iter()
 			.find(|d| matches!(d.reverse, RegistryDelta::AddNode { node_id, .. } if node_id == old_node_id))
@@ -56,7 +56,7 @@ impl Document {
 		self.revert_delta(target, delta)
 	}
 
-	pub fn restore_network_from_history(&mut self, target: RegistryTarget, network_id: NetworkId) -> Result<(), CrdtError> {
+	pub(crate) fn restore_network_from_history(&mut self, target: RegistryTarget, network_id: NetworkId) -> Result<(), CrdtError> {
 		// Find the Delta whose forward op removed this network. Its `reverse` is `AddNetwork`,
 		// which is what we want to re-apply.
 		let delta = self
@@ -70,7 +70,7 @@ impl Document {
 	/// Apply a delta's `reverse` as the new forward op (silent-zone undo). Force-applied: structural
 	/// ops are idempotent, and LWW arms assign the reverse value unconditionally even though it carries
 	/// the same timestamp as the forward op it undoes.
-	pub fn revert_delta(&mut self, target: RegistryTarget, mut delta: Delta) -> Result<(), CrdtError> {
+	pub(crate) fn revert_delta(&mut self, target: RegistryTarget, mut delta: Delta) -> Result<(), CrdtError> {
 		std::mem::swap(&mut delta.delta_type, &mut delta.reverse);
 		for parent in &delta.parents {
 			assert!(self.history.contains_key(parent));
@@ -453,4 +453,24 @@ impl<'a> Iterator for HistoryIter<'a> {
 		self.parent_rev = *delta.parents.first()?;
 		Some(delta)
 	}
+}
+
+/// Which of a [`Document`]'s two registries an apply targets: the working copy (retired state plus
+/// live hot ops) or the retired snapshot (retired deltas only). Retirement targets the snapshot so
+/// reverses capture pre-op values; the hot path and undo/redo target the working copy.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RegistryTarget {
+	Working,
+	Snapshot,
+}
+
+/// How [`Document::apply_op_with`] resolves structural collisions and LWW timestamp ties.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ApplyMode {
+	/// Fresh local/remote edit: structural ops error on duplicate/missing targets; LWW uses strict `>`.
+	Live,
+	/// Replay/retire: structural ops skip duplicate/missing targets; LWW still uses strict `>`.
+	Idempotent,
+	/// Silent-zone undo/redo rewind: structural ops are idempotent and LWW arms assign unconditionally.
+	Force,
 }

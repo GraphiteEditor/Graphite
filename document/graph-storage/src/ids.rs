@@ -72,7 +72,7 @@ impl LamportClock {
 	}
 }
 
-pub(crate) fn mint_node_id(peer: PeerId, counter: u64) -> NodeId {
+pub fn mint_node_id(peer: PeerId, counter: u64) -> NodeId {
 	let bytes = rmp_serde::to_vec(&(peer, counter)).expect("(PeerId, counter) must serialize");
 	let digest = blake3::hash(&bytes);
 	let mut truncated = [0u8; 8];
