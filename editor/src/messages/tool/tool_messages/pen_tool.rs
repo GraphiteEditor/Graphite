@@ -492,6 +492,7 @@ impl PenToolData {
 		self.suppress_snap_angle = true;
 		self.modifiers.lock_angle = false;
 		self.modifiers.snap_angle = false;
+		self.angle_locked = false;
 
 		responses.add(DeferMessage::AfterGraphRun {
 			messages: vec![
