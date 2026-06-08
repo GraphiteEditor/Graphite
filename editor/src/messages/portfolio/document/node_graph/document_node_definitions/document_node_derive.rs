@@ -43,7 +43,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			description,
 			properties,
 			context_features,
-			memoize: _,
+			..
 		} = metadata;
 
 		let implementations = node_registry.get(id).unwrap_or(&empty_implementations);

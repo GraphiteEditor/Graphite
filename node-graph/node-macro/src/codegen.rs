@@ -402,6 +402,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
+	let inject_scope_flag = attributes.inject_scope;
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
@@ -500,6 +501,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					properties: #properties,
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
+					inject_scope: #inject_scope_flag,
 					fields: vec![
 						#(
 							FieldMetadata {
