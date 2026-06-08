@@ -94,12 +94,19 @@ pub struct Network {
 impl Network {
 	/// True if both networks agree on every value-bearing field, ignoring slot/attribute timestamps.
 	pub fn value_equal(&self, other: &Self) -> bool {
-		if self.exports.len() != other.exports.len() {
-			return false;
+		// Compare slot targets index-by-index, treating out-of-range slots as `None`. A `SetExport(None)`
+		// truncation leaves a trailing empty slot (a tombstone in the CRDT state) that is value-equal to
+		// the slot being absent, so trailing `None`s must not count as drift. Mirrors `compute_deltas`
+		// (emits nothing for them) and `to_runtime` (drops them).
+		let max_len = self.exports.len().max(other.exports.len());
+		for slot_idx in 0..max_len {
+			let self_target = self.exports.get(slot_idx).and_then(|slot| slot.target.as_ref());
+			let other_target = other.exports.get(slot_idx).and_then(|slot| slot.target.as_ref());
+			if self_target != other_target {
+				return false;
+			}
 		}
-		if !self.exports.iter().zip(&other.exports).all(|(a, b)| a.target == b.target) {
-			return false;
-		}
+
 		attributes_value_equal(&self.attributes, &other.attributes)
 	}
 }
@@ -121,4 +128,57 @@ pub struct ProtoNode {
 	pub code: Option<String>,
 	pub wasm: Option<Vec<u8>>,
 	pub attributes: Attributes,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::TimeStamp;
+
+	fn target_slot(node_id: u64) -> ExportSlot {
+		ExportSlot {
+			target: Some(NodeInput::Node { node_id, output_index: 0 }),
+			timestamp: TimeStamp::ORIGIN,
+		}
+	}
+
+	fn empty_slot() -> ExportSlot {
+		ExportSlot {
+			target: None,
+			timestamp: TimeStamp { counter: 5, peer: crate::PeerId(1) },
+		}
+	}
+
+	/// A `SetExport(None)` truncation leaves a trailing empty slot. Such a network is value-equal to
+	/// the same network without that slot, so the soak oracle doesn't false-report drift.
+	#[test]
+	fn trailing_empty_export_slot_is_value_equal() {
+		let compact = Network {
+			exports: vec![target_slot(1), target_slot(2)],
+			..Default::default()
+		};
+		let with_trailing_empty = Network {
+			exports: vec![target_slot(1), target_slot(2), empty_slot()],
+			..Default::default()
+		};
+
+		assert!(compact.value_equal(&with_trailing_empty));
+		assert!(with_trailing_empty.value_equal(&compact));
+	}
+
+	/// A `None` slot *between* live targets is a real value difference (a hole), not a trailing
+	/// tombstone, so it must still count as drift.
+	#[test]
+	fn interior_empty_export_slot_is_not_value_equal() {
+		let dense = Network {
+			exports: vec![target_slot(1), target_slot(2)],
+			..Default::default()
+		};
+		let with_hole = Network {
+			exports: vec![target_slot(1), empty_slot(), target_slot(2)],
+			..Default::default()
+		};
+
+		assert!(!dense.value_equal(&with_hole));
+	}
 }
