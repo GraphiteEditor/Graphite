@@ -6,7 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_GRAPHIC, Item, List};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -450,11 +450,11 @@ pub struct RenderMetadata {
 	pub text_frames: HashMap<NodeId, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_data: HashMap<NodeId, Arc<Vector>>,
-	/// Per-layer `ATTR_FILL_GRAPHIC` row attribute, exposed so message handlers can read paint
+	/// Per-layer `ATTR_FILL` row attribute, exposed so message handlers can read paint
 	/// information that lives on the list rather than on `PathStyle.fill`.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE_GRAPHIC` row attribute, exposed so message handlers can read
+	/// Per-layer `ATTR_STROKE` row attribute, exposed so message handlers can read
 	/// stroke paint information that lives on the list rather than on `Stroke.color`.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
@@ -1609,11 +1609,11 @@ impl Render for List<Vector> {
 				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(source.clone()));
 
 				// Surface row attribute paint sources (only for item 0) so message handlers can read
-				// `ATTR_FILL_GRAPHIC` / `ATTR_STROKE_GRAPHIC` without rebuilding the list.
-				if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL_GRAPHIC) {
+				// `ATTR_FILL` / `ATTR_STROKE` without rebuilding the list.
+				if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
 					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_graphic.into_owned()));
 				}
-				if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE_GRAPHIC) {
+				if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
 					metadata.stroke_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_graphic.into_owned()));
 				}
 
@@ -1675,7 +1675,7 @@ impl Render for List<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
-	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL_GRAPHIC) {
+	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL) {
 		graphic_list.element(0).is_some()
 	} else if let Some(vector) = vector_list.element(index) {
 		!matches!(vector.style.fill(), Fill::None)

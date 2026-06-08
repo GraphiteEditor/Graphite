@@ -78,10 +78,10 @@ pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
 /// List<Graphic> data for fill.
-pub const ATTR_FILL_GRAPHIC: &str = "fill_graphic";
+pub const ATTR_FILL: &str = "fill";
 
 /// List<Graphic> data for stroke.
-pub const ATTR_STROKE_GRAPHIC: &str = "stroke_graphic";
+pub const ATTR_STROKE: &str = "stroke";
 
 // ===========================
 // Implicit attribute defaults

@@ -3,7 +3,7 @@ use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_GRAPHIC, Item, List, ListDyn};
+use core_types::list::{ATTR_FILL, ATTR_STROKE, Item, List, ListDyn};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
@@ -1224,20 +1224,20 @@ async fn solidify_stroke<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[
 			}
 
 			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
-			let has_attr_fill = attributes.keys().any(|k| k == ATTR_FILL_GRAPHIC);
+			let has_attr_fill = attributes.keys().any(|k| k == ATTR_FILL);
 			let has_fill = has_attr_fill || !vector.style.fill().is_none();
 			let fill_row = has_fill.then(|| {
 				vector.style.clear_stroke();
 				let mut fill_attributes = attributes.clone();
 				// No stroke remains on the fill row
-				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE_GRAPHIC);
+				fill_attributes.remove::<List<Graphic>>(ATTR_STROKE);
 				Item::from_parts(vector, fill_attributes)
 			});
 
 			let mut stroke_attributes = attributes;
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
-			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL_GRAPHIC);
-			stroke_attributes.rename(ATTR_STROKE_GRAPHIC, ATTR_FILL_GRAPHIC);
+			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL);
+			stroke_attributes.rename(ATTR_STROKE, ATTR_FILL);
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
