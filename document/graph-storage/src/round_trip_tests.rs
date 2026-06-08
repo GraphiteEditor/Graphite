@@ -651,3 +651,26 @@ fn node_input_f64_round_trips_bit_exact() {
 
 	assert_eq!(actual.to_bits(), precise.to_bits(), "f64 node input drifted: {actual} != {precise}");
 }
+
+/// Two storage nodes in one network carrying the same `ORIGINAL_NODE_ID` both map to one runtime ID.
+/// Conversion must reject this rather than silently collapse them and drop a node.
+#[test]
+fn duplicate_runtime_node_id_is_rejected() {
+	use crate::AttributesExt;
+	use crate::TimeStamp;
+	use crate::attr::ORIGINAL_NODE_ID;
+	use crate::to_runtime::ConversionError;
+
+	let (mut registry, declarations) = to_registry(&create_simple_network());
+
+	// Force both root-network nodes onto the same runtime ID.
+	for node in registry.node_instances.values_mut() {
+		node.attributes.set(ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
+	}
+
+	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");
+	assert!(
+		matches!(error, ConversionError::DuplicateRuntimeNodeId { runtime_id: 7, .. }),
+		"expected DuplicateRuntimeNodeId, got {error:?}"
+	);
+}

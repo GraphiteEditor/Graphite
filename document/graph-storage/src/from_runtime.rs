@@ -189,7 +189,7 @@ fn convert_resources(resources: &graphene_resource::ResourceRegistry, referenced
 		};
 		for (position, source) in info.sources.iter().enumerate() {
 			let key = crate::SourceKey {
-				priority: crate::Priority(position as f64),
+				priority: crate::Priority::new(position as f64).expect("enumerate index is finite"),
 				peer,
 			};
 			let body = serde_json::to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
@@ -295,7 +295,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 		})
 		.collect::<Result<Vec<_>, ConversionError>>()?;
 
-	let mut attributes = HashMap::new();
+	let mut attributes = crate::Attributes::new();
 	write_ui_network_attributes(&mut attributes, ctx.metadata, metadata_path, TimeStamp::ORIGIN)?;
 
 	registry.networks.insert(network_id, Network { exports, attributes });
@@ -359,7 +359,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(doc_node: &DocumentNode, locatio
 	let implementation = convert_implementation(&doc_node.implementation, &node_path, child_metadata_path, registry, ctx)?;
 
 	// Defaults match `DocumentNode::default()`; `to_runtime` rehydrates absent keys from the same defaults.
-	let mut attributes = HashMap::new();
+	let mut attributes = crate::Attributes::new();
 	attributes
 		.set_if_not_default(CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
 		.map_err(map_serialization_error("call_argument"))?;
@@ -477,7 +477,7 @@ fn convert_input(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, ne
 }
 
 fn convert_input_attributes(input: &GraphCraftNodeInput) -> Result<crate::Attributes, ConversionError> {
-	let mut attributes = HashMap::new();
+	let mut attributes = crate::Attributes::new();
 	let timestamp = TimeStamp::ORIGIN;
 
 	match input {

@@ -174,10 +174,14 @@ impl Session {
 		let ops = ops.into_iter();
 		let mut produced = Vec::with_capacity(ops.size_hint().0);
 
-		// A new edit abandons any undone-forward branch: those revs stay in the DAG but are no longer
-		// reachable via redo. (Mirrors the legacy editor clearing its redo history on commit.)
-		self.document.redo_stack.clear();
 		for op in ops {
+			// A new edit abandons any undone-forward branch: those revs stay in the DAG but are no
+			// longer reachable via redo. (Mirrors the legacy editor clearing its redo history on
+			// commit.) Done on the first real op so a no-op commit doesn't silently disable redo.
+			if produced.is_empty() {
+				self.document.redo_stack.clear();
+			}
+
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
 			let timestamp = self.document.clock.tick();
 			let parents = if self.document.head == 0 { Vec::new() } else { vec![self.document.head] };
@@ -423,9 +427,10 @@ impl Session {
 		hashes
 	}
 
-	/// History in deterministic causal order: a topological sort (Kahn's algorithm) with ties among
+	/// History in deterministic causal order: a topological sort with ties among
 	/// ready deltas broken by `Rev`. Every parent precedes its children, so the result is a valid
-	/// replay order; the order is a pure function of the delta set, so two peers holding the same
+	/// replay order.
+	/// The order is a pure function of the delta set, so two peers holding the same
 	/// history serialize byte-identical output. Parents outside this history (already-known ancestors)
 	/// don't gate emission. O(V + E) in deltas and parent edges.
 	pub fn history_topological(&self) -> Vec<&Delta> {

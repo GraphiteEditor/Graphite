@@ -38,7 +38,8 @@ impl ResourceEntry {
 	/// The bytes themselves are persisted separately by the caller's byte store.
 	pub fn embedded(hash: ResourceHash, peer: PeerId, timestamp: TimeStamp) -> Self {
 		let embedded = serde_json::to_value(graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
-		let sources = vec![(SourceKey { priority: Priority(0.), peer }, SourceValue { source: embedded, timestamp })];
+		let priority = Priority::new(0.).expect("0. is finite");
+		let sources = vec![(SourceKey { priority, peer }, SourceValue { source: embedded, timestamp })];
 
 		Self {
 			sources,
@@ -108,7 +109,7 @@ impl ResourceEntry {
 	pub fn highest_precedence_key(&self, peer: PeerId) -> SourceKey {
 		let min_priority = self.sources.first().map(|(key, _)| key.priority.0).unwrap_or(0.);
 		SourceKey {
-			priority: Priority(min_priority - 1.),
+			priority: Priority::new(min_priority - 1.).expect("finite priority minus one is finite"),
 			peer,
 		}
 	}

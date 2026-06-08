@@ -24,6 +24,8 @@ pub enum ConversionError {
 	DeserializationError(String),
 	#[error("Node {node:?} has {inputs} inputs but {attributes} input-attribute entries")]
 	InputAttributeCountMismatch { node: NodeId, inputs: usize, attributes: usize },
+	#[error("Network {network} has two nodes mapping to runtime ID {runtime_id}")]
+	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
 }
 
 /// Resolved proto-node declarations, keyed by the `ResourceId` that `Implementation::ProtoNode`
@@ -93,34 +95,39 @@ fn convert_network(
 		collector.push(extract_network_metadata(&network.attributes, metadata_path, network_id));
 	}
 
-	let nodes: FxHashMap<_, DocumentNode> = registry
-		.node_instances
-		.iter()
-		.filter(|(_, node)| node.network == network_id)
-		.map(|(&global_id, node)| {
-			let local_id = node.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
-			let runtime_id = RuntimeNodeId(local_id);
+	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
+	for (&global_id, node) in registry.node_instances.iter().filter(|(_, node)| node.network == network_id) {
+		let local_id = node.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
+		let runtime_id = RuntimeNodeId(local_id);
 
-			if node.inputs.len() != node.inputs_attributes.len() {
-				return Err(ConversionError::InputAttributeCountMismatch {
-					node: global_id,
-					inputs: node.inputs.len(),
-					attributes: node.inputs_attributes.len(),
-				});
-			}
+		if node.inputs.len() != node.inputs_attributes.len() {
+			return Err(ConversionError::InputAttributeCountMismatch {
+				node: global_id,
+				inputs: node.inputs.len(),
+				attributes: node.inputs_attributes.len(),
+			});
+		}
 
-			if let Some(collector) = node_collector.as_mut()
-				&& let Some(entry) = extract_ui_metadata(node, metadata_path, runtime_id)
-			{
-				collector.push(entry);
-			}
+		if let Some(collector) = node_collector.as_mut()
+			&& let Some(entry) = extract_ui_metadata(node, metadata_path, runtime_id)
+		{
+			collector.push(entry);
+		}
 
-			convert_node(registry, declarations, node, metadata_path, runtime_id, node_collector, network_collector).map(|doc_node| (runtime_id, doc_node))
-		})
-		.collect::<Result<FxHashMap<_, _>, _>>()?;
+		let doc_node = convert_node(registry, declarations, node, metadata_path, runtime_id, node_collector, network_collector)?;
+
+		// Two storage nodes resolving to the same runtime ID would silently collapse into one on
+		// insert, dropping a node from the reconstructed graph.
+		if nodes.insert(runtime_id, doc_node).is_some() {
+			return Err(ConversionError::DuplicateRuntimeNodeId {
+				network: network_id,
+				runtime_id: local_id,
+			});
+		}
+	}
 
 	// Input attributes aren't round-tripped for exports — Reflection/Import inputs don't appear there.
-	let empty_attrs = HashMap::new();
+	let empty_attrs = crate::Attributes::new();
 	let exports: Vec<GraphCraftNodeInput> = network
 		.exports
 		.iter()

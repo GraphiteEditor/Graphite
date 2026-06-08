@@ -204,8 +204,7 @@ fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) ->
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{ExportSlot, Implementation, Network, Node, NodeInput, TimeStamp};
-	use std::collections::HashMap;
+	use crate::{Attributes, ExportSlot, Implementation, Network, Node, NodeInput, TimeStamp};
 
 	#[test]
 	fn test_compute_deltas_empty() {
@@ -224,7 +223,7 @@ mod tests {
 			implementation: Implementation::ProtoNode(ResourceId::new()),
 			inputs: vec![],
 			inputs_attributes: vec![],
-			attributes: HashMap::new(),
+			attributes: Attributes::new(),
 			network: 0,
 		};
 		to.node_instances.insert(42, node);
@@ -261,7 +260,7 @@ mod tests {
 			implementation: Implementation::ProtoNode(ResourceId::new()),
 			inputs: vec![],
 			inputs_attributes: vec![],
-			attributes: HashMap::new(),
+			attributes: Attributes::new(),
 			network: 0,
 		};
 		from.node_instances.insert(42, node);
@@ -281,7 +280,7 @@ mod tests {
 			implementation: Implementation::ProtoNode(ResourceId::new()),
 			inputs: vec![],
 			inputs_attributes: vec![],
-			attributes: HashMap::new(),
+			attributes: Attributes::new(),
 			network: 0,
 		};
 		let stamp = |counter: u64| TimeStamp { counter, peer: crate::PeerId(0) };

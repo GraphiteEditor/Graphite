@@ -159,12 +159,12 @@ pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp,
 	let AttributeDelta { key, value } = delta;
 	match value {
 		Some(value) => match attributes.entry(key) {
-			std::collections::hash_map::Entry::Occupied(mut entry) => {
+			std::collections::btree_map::Entry::Occupied(mut entry) => {
 				if force || timestamp > entry.get().timestamp {
 					entry.insert(Value { value, timestamp });
 				}
 			}
-			std::collections::hash_map::Entry::Vacant(entry) => {
+			std::collections::btree_map::Entry::Vacant(entry) => {
 				entry.insert(Value { value, timestamp });
 			}
 		},

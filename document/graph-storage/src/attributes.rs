@@ -1,6 +1,6 @@
 use crate::TimeStamp;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Attribute keys. Glob-import (`use crate::attr::*`) at conversion sites.
 ///
@@ -51,7 +51,7 @@ impl Value {
 	}
 }
 
-pub type Attributes = HashMap<String, Value>;
+pub type Attributes = BTreeMap<String, Value>;
 
 /// Write helpers for `Attributes`.
 pub trait AttributesExt {
@@ -109,15 +109,35 @@ impl AttributesRead for Attributes {
 /// a value strictly between two neighbors, so concurrent insertions elsewhere never collide; an
 /// exact tie between two peers inserting at the same gap is broken by `PeerId` in [`SourceKey`].
 /// `f64` precision is ample for the short fallback chains resources carry in practice.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Priority(pub f64);
+
+impl Priority {
+	/// Constructs a priority, rejecting non-finite input so the value stays a sound map/set key
+	/// (`NaN`/`-0.0` would otherwise break the `Ord`/`Hash`/`Eq` agreement below). All current call
+	/// sites mint finite priorities, so an error here signals an upstream logic error.
+	pub fn new(value: f64) -> Result<Self, NonFinitePriority> {
+		if value.is_finite() { Ok(Self(value)) } else { Err(NonFinitePriority(value)) }
+	}
+}
+
+/// A [`Priority`] was constructed from a `NaN` or infinite value.
+#[derive(Debug, thiserror::Error)]
+#[error("priority must be finite, got {0}")]
+pub struct NonFinitePriority(pub f64);
+
+// `total_cmp` drives `Ord`, `Hash`, and `Eq` together so `Priority` is a sound `BTree`/`Hash` key:
+// a derived `PartialEq` would disagree with this ordering on `-0.0` and `NaN`.
+impl PartialEq for Priority {
+	fn eq(&self, other: &Self) -> bool {
+		self.cmp(other) == std::cmp::Ordering::Equal
+	}
+}
 
 impl Eq for Priority {}
 
 impl Ord for Priority {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-		// Source priorities are always finite values we mint ourselves; `total_cmp` gives a total
-		// order regardless, so a stray NaN sorts deterministically rather than panicking.
 		self.0.total_cmp(&other.0)
 	}
 }
@@ -130,7 +150,6 @@ impl PartialOrd for Priority {
 
 impl std::hash::Hash for Priority {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		// Hash the bit pattern, consistent with the `total_cmp`-based `Eq`.
 		self.0.to_bits().hash(state);
 	}
 }

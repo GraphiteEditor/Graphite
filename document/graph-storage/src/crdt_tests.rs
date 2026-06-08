@@ -16,7 +16,7 @@ fn remove_node_op(node_id: NodeId) -> RegistryDelta {
 		implementation: Implementation::ProtoNode(ResourceId::new()),
 		inputs: Vec::new(),
 		inputs_attributes: Vec::new(),
-		attributes: std::collections::HashMap::new(),
+		attributes: crate::Attributes::new(),
 		network: ROOT_NETWORK,
 	};
 	RegistryDelta::RemoveNode { node_id, snapshot }
@@ -257,7 +257,7 @@ fn add_node_resurrects_owning_network() {
 		implementation: Implementation::ProtoNode(ResourceId::new()),
 		inputs: Vec::new(),
 		inputs_attributes: Vec::new(),
-		attributes: std::collections::HashMap::new(),
+		attributes: crate::Attributes::new(),
 		network: network_id,
 	};
 	commit_op(&mut document, RegistryDelta::AddNode { node_id, node });
@@ -291,7 +291,7 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 		implementation: Implementation::ProtoNode(ResourceId::new()),
 		inputs: Vec::new(),
 		inputs_attributes: Vec::new(),
-		attributes: std::collections::HashMap::new(),
+		attributes: crate::Attributes::new(),
 		network: network_id,
 	};
 	commit_op(&mut document, RegistryDelta::AddNode { node_id, node: node.clone() });
@@ -641,4 +641,102 @@ fn all_referenced_resource_hashes_survives_undo() {
 		session.all_referenced_resource_hashes().contains(&hash),
 		"the undone gesture's resource must still be reported so GC keeps its bytes for redo"
 	);
+}
+
+/// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
+/// new edit; a no-op commit (here `embed_resource_sources` over an empty id set) leaving it cleared
+/// would silently disable redo after an undo.
+#[test]
+fn no_op_commit_preserves_redo_stack() {
+	let mut session = Session::with_peer(PeerId(1));
+	let resources = graphene_resource::ResourceRegistry::new();
+
+	// Base gesture (the non-undoable mount floor), then a second gesture to undo onto it.
+	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage base");
+	let base_up_to = session.hot_log().last().expect("staged base").timestamp;
+	let base_revs = session.retire(base_up_to).expect("retire base");
+	session.mark_gesture_end(*base_revs.last().expect("one base delta"));
+
+	let hash = ResourceHash::from(&b"declaration-bytes"[..]);
+	let id = ResourceId::new();
+	let hot_ops = session.stage_embedded_resource(id, hash).expect("stage resource");
+	let up_to = hot_ops.last().expect("staged one op").timestamp;
+	let revs = session.retire(up_to).expect("retire");
+	session.mark_gesture_end(*revs.last().expect("one retired delta"));
+
+	session.undo().expect("undo");
+	assert!(session.can_redo(), "undo must populate the redo stack");
+
+	// A commit over no resources produces no deltas; redo must survive it.
+	session.embed_resource_sources(std::iter::empty::<ResourceId>()).expect("no-op embed");
+	assert!(session.can_redo(), "a no-op commit must not clear the redo stack");
+}
+
+/// A delta's `Rev` is content-addressed, so two byte-equal deltas must hash identically regardless
+/// of the order their attributes were inserted. This guards the `Attributes` map staying canonically
+/// ordered (`BTreeMap`): a hash-randomized map would give the same logical delta different `Rev`s.
+#[test]
+fn add_node_rev_is_independent_of_attribute_insertion_order() {
+	use crate::{AttributesExt, Value};
+
+	let keys = ["ui::position", "ui::display_name", "ui::locked", "ui::pinned", "call_argument", "context_features"];
+
+	// Fixed implementation so the two nodes differ only in attribute insertion order.
+	let implementation = Implementation::ProtoNode(ResourceId::new());
+
+	let make_node = |insertion_order: &[&str]| {
+		let mut attributes = crate::Attributes::new();
+		for &key in insertion_order {
+			attributes.set(key, serde_json::json!(key), TimeStamp::ORIGIN);
+		}
+
+		let mut input_attributes = crate::Attributes::new();
+		for &key in insertion_order {
+			input_attributes.insert(key.to_string(), Value::new(serde_json::json!(key), TimeStamp::ORIGIN));
+		}
+
+		Node {
+			implementation: implementation.clone(),
+			inputs: Vec::new(),
+			inputs_attributes: vec![input_attributes],
+			attributes,
+			network: ROOT_NETWORK,
+		}
+	};
+
+	let forward: Vec<&str> = keys.to_vec();
+	let reversed: Vec<&str> = keys.iter().rev().copied().collect();
+
+	let parents = vec![1, 2];
+	let author = PeerId(7);
+	let timestamp = TimeStamp { counter: 42, peer: PeerId(7) };
+
+	let delta_forward = Delta::new(
+		parents.clone(),
+		author,
+		timestamp,
+		RegistryDelta::AddNode {
+			node_id: 9,
+			node: make_node(&forward),
+		},
+		RegistryDelta::AddNode {
+			node_id: 9,
+			node: make_node(&forward),
+		},
+	);
+	let delta_reversed = Delta::new(
+		parents,
+		author,
+		timestamp,
+		RegistryDelta::AddNode {
+			node_id: 9,
+			node: make_node(&reversed),
+		},
+		RegistryDelta::AddNode {
+			node_id: 9,
+			node: make_node(&reversed),
+		},
+	);
+
+	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
 }
