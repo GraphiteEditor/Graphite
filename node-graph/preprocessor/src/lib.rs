@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Default, Clone)]
 pub struct Preprocessor {
 	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
-	inject_scopes: HashMap<ProtoNodeIdentifier, (NodeId, DocumentNode, Type)>,
+	inject_scopes: HashMap<ProtoNodeIdentifier, (DocumentNode, Type)>,
 }
 
 impl Preprocessor {
@@ -73,9 +73,19 @@ fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegist
 
 impl Preprocessor {
 	fn insert_inject_scopes(&self, network: &mut NodeNetwork) {
-		for (identifier, (node_id, template, ty)) in self.inject_scopes.iter() {
-			network.nodes.insert(*node_id, template.clone());
-			network.scope_injections.insert(identifier.as_str().to_string(), (*node_id, ty.clone()));
+		for (identifier, (template, ty)) in self.inject_scopes.iter() {
+			let producer_id = NodeId::new();
+			network.nodes.insert(producer_id, template.clone());
+
+			let passthrough = DocumentNode {
+				inputs: vec![NodeInput::node(producer_id, 0)],
+				implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
+				..Default::default()
+			};
+			let passthrough_id = NodeId::new();
+			network.nodes.insert(passthrough_id, passthrough);
+
+			network.scope_injections.insert(identifier.as_str().to_string(), (passthrough_id, ty.clone()));
 		}
 	}
 
@@ -245,7 +255,7 @@ impl Preprocessor {
 					context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 					..Default::default()
 				};
-				inject_scopes.insert(id.clone(), (NodeId::new(), template, node_io.return_value.clone()));
+				inject_scopes.insert(id.clone(), (template, node_io.return_value.clone()));
 			}
 		}
 
