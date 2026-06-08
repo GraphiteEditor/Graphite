@@ -24,12 +24,30 @@ pub struct SourceValue {
 /// plus the resolved content hash. The source chain is an add-wins ordered set (concurrent
 /// additions all survive); the hash is last-writer-wins (concurrent resolves of the same logical
 /// resource agree by construction, since the hash is content-derived).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ResourceEntry {
 	/// Fallback chain kept sorted by `SourceKey`, so iteration yields highest-priority first.
 	pub sources: Vec<(SourceKey, SourceValue)>,
 	pub hash: Option<ResourceHash>,
 	pub hash_timestamp: TimeStamp,
+}
+
+impl<'de> Deserialize<'de> for ResourceEntry {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		// Re-sort `sources` after loading: the `binary_search`-based accessors assume sorted order, and
+		// on-disk data (older writers, hand edits) can't be trusted to preserve it.
+		#[derive(Deserialize)]
+		struct Raw {
+			sources: Vec<(SourceKey, SourceValue)>,
+			hash: Option<ResourceHash>,
+			hash_timestamp: TimeStamp,
+		}
+
+		let Raw { mut sources, hash, hash_timestamp } = Raw::deserialize(deserializer)?;
+		sources.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+		Ok(Self { sources, hash, hash_timestamp })
+	}
 }
 
 impl ResourceEntry {
@@ -118,3 +136,38 @@ impl ResourceEntry {
 /// All resources referenced by the document, keyed by stable per-document [`ResourceId`]. Replicates
 /// through the normal CmRDT path; bytes live in content-addressed storage keyed by [`ResourceHash`].
 pub type ResourceStore = HashMap<ResourceId, ResourceEntry>;
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// `ResourceEntry`'s accessors rely on `sources` being sorted by `SourceKey`. Deserializing an
+	/// out-of-order chain (older writer, hand-edited file) must restore the invariant rather than leave
+	/// `binary_search` to silently misbehave.
+	#[test]
+	fn deserialize_sorts_sources() {
+		let source = |priority: f64| {
+			(
+				SourceKey {
+					priority: Priority::new(priority).expect("finite"),
+					peer: PeerId(1),
+				},
+				SourceValue {
+					source: serde_json::json!(priority),
+					timestamp: TimeStamp::ORIGIN,
+				},
+			)
+		};
+
+		// Serialize a deliberately unsorted chain through the raw shape, then deserialize as `ResourceEntry`.
+		let unsorted = serde_json::json!({
+			"sources": [source(2.), source(0.), source(1.)],
+			"hash": null,
+			"hash_timestamp": TimeStamp::ORIGIN,
+		});
+
+		let entry: ResourceEntry = serde_json::from_value(unsorted).expect("deserialize");
+		let priorities: Vec<f64> = entry.sources.iter().map(|(key, _)| key.priority.value()).collect();
+		assert_eq!(priorities, vec![0., 1., 2.], "sources must be sorted by SourceKey after deserialization");
+	}
+}

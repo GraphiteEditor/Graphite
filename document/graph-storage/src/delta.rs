@@ -52,8 +52,13 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 		let to_node = &to.node_instances[&node_id];
 
 		// No `ChangeImplementation` op; the only path is remove + re-add. Same for input-count and
-		// containing-network changes (a moved node has no in-place op either).
-		let structural_change = !nodes_have_same_implementation(from_node, to_node) || from_node.inputs.len() != to_node.inputs.len() || from_node.network != to_node.network;
+		// containing-network changes (a moved node has no in-place op either). `inputs_attributes` is
+		// checked too: the per-slot loops below `zip` only the shared prefix, so a length change there
+		// must force a remove + re-add rather than silently dropping the extra slots.
+		let structural_change = !nodes_have_same_implementation(from_node, to_node)
+			|| from_node.inputs.len() != to_node.inputs.len()
+			|| from_node.inputs_attributes.len() != to_node.inputs_attributes.len()
+			|| from_node.network != to_node.network;
 		if structural_change {
 			deltas.push(RegistryDelta::RemoveNode { node_id, snapshot: from_node.clone() });
 			deltas.push(RegistryDelta::AddNode { node_id, node: to_node.clone() });
@@ -281,6 +286,32 @@ mod tests {
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1);
 		assert!(matches!(deltas[0], RegistryDelta::AddNode { node_id: 42, .. }));
+	}
+
+	/// A change in `inputs_attributes` length is structural: the per-slot diff only `zip`s the shared
+	/// prefix, so it must force a remove + re-add rather than dropping the extra attribute slots.
+	#[test]
+	fn compute_deltas_treats_inputs_attributes_length_change_as_structural() {
+		// Same implementation/inputs/network in both registries; only `inputs_attributes` length differs.
+		let base = Node {
+			implementation: Implementation::ProtoNode(ResourceId::new()),
+			inputs: vec![],
+			inputs_attributes: vec![Attributes::new()],
+			attributes: Attributes::new(),
+			network: 0,
+		};
+
+		let mut from = Registry::default();
+		from.node_instances.insert(42, base.clone());
+
+		let mut to = from.clone();
+		to.node_instances.get_mut(&42).unwrap().inputs_attributes.push(Attributes::new());
+
+		let deltas = compute_deltas(&from, &to);
+		assert!(
+			deltas.iter().any(|delta| matches!(delta, RegistryDelta::RemoveNode { node_id: 42, .. })) && deltas.iter().any(|delta| matches!(delta, RegistryDelta::AddNode { node_id: 42, .. })),
+			"an inputs_attributes length change must emit RemoveNode + AddNode, got {deltas:?}"
+		);
 	}
 
 	#[test]

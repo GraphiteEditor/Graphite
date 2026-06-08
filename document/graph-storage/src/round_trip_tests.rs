@@ -321,16 +321,13 @@ fn test_metadata_preservation() {
 
 #[test]
 fn test_demo_artwork_round_trip() {
-	use graph_craft::util::{DEMO_ART, load_network};
+	use graph_craft::util::{DEMO_ART, load_from_name};
 
 	// Test each demo artwork
 	for artwork_name in DEMO_ART {
 		println!("Testing artwork: {}", artwork_name);
 
-		// Load the original network
-		let path = format!("../../demo-artwork/{}.graphite", artwork_name);
-		let document_string = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {}: {}", path, e));
-		let original_network = load_network(&document_string);
+		let original_network = load_from_name(artwork_name);
 
 		// Convert to Registry
 		let (registry, declarations) = to_registry(&original_network);
