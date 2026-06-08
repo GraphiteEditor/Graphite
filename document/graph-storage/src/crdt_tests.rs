@@ -672,6 +672,22 @@ fn no_op_commit_preserves_redo_stack() {
 	assert!(session.can_redo(), "a no-op commit must not clear the redo stack");
 }
 
+/// `embed_resource_sources` overwrites the working registry with the snapshot, valid only when no
+/// unretired hot ops are present. Called with a non-empty hot log it must error rather than silently
+/// drop the hot-zone edits.
+#[test]
+fn embed_resource_sources_rejects_unretired_hot_ops() {
+	let mut session = Session::with_peer(PeerId(1));
+	let resources = graphene_resource::ResourceRegistry::new();
+
+	// Stage without retiring, leaving hot ops in the log.
+	session.stage_from_runtime(&tiny_network(), &NoMetadata, &resources).expect("stage");
+	assert!(!session.hot_log().is_empty(), "staging should leave unretired hot ops");
+
+	let result = session.embed_resource_sources(std::iter::empty::<ResourceId>());
+	assert!(matches!(result, Err(crate::CrdtError::HotLogNotEmpty)), "expected HotLogNotEmpty, got {result:?}");
+}
+
 /// A delta's `Rev` is content-addressed, so two byte-equal deltas must hash identically regardless
 /// of the order their attributes were inserted. This guards the `Attributes` map staying canonically
 /// ordered (`BTreeMap`): a hash-randomized map would give the same logical delta different `Rev`s.

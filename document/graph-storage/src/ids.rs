@@ -46,7 +46,7 @@ impl TimeStamp {
 	pub const ORIGIN: Self = TimeStamp { counter: 0, peer: PeerId(0) };
 }
 
-#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct LamportClock {
 	pub(crate) counter: u64,
 	peer: PeerId,

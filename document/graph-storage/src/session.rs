@@ -1,5 +1,5 @@
 use crate::from_runtime;
-use crate::{ApplyMode, AttributesExt, Delta, Document, LamportClock, NetworkId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, AttributesExt, Delta, Document, LamportClock, NetworkId, NodeId, NodeMetadataSource, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -123,8 +123,14 @@ impl Session {
 			ops.push(RegistryDelta::AddSource { id, key, source: embedded.clone() });
 		}
 
+		// Caller contract: this runs on a throwaway export clone with no unretired hot ops, so the
+		// working registry equals the snapshot. Overwriting working with the advanced snapshot below
+		// would otherwise drop hot-zone edits, so reject the call rather than corrupt state.
+		if !self.document.hot_log.is_empty() {
+			return Err(CrdtError::HotLogNotEmpty);
+		}
+
 		let revs = self.commit_ops(ops, false)?;
-		// No hot ops on this path, so the working registry must mirror the advanced snapshot.
 		self.document.registry = self.document.retired_snapshot.clone();
 		Ok(revs)
 	}
@@ -191,7 +197,9 @@ impl Session {
 			let rev = delta.id;
 
 			for parent in &delta.parents {
-				assert!(self.document.history.contains_key(parent), "commit parent must be in history");
+				if !self.document.history.contains_key(parent) {
+					return Err(CrdtError::NotFoundInHistory(*parent));
+				}
 			}
 			let mode = if idempotent { ApplyMode::Idempotent } else { ApplyMode::Live };
 			self.document.apply_op_with(target, delta.delta_type.clone(), delta.timestamp, mode)?;
@@ -345,7 +353,7 @@ impl Session {
 		// gesture's boundary (its `gesture_end` delta) or the root.
 		loop {
 			let rev = self.document.head;
-			let delta = self.document.history.get(&rev).ok_or(CrdtError::NotFoundInHistory)?.clone();
+			let delta = self.document.history.get(&rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
 			let parent = delta.parents.first().copied().unwrap_or(0);
 
 			self.document.revert_delta(RegistryTarget::Working, delta)?;
@@ -372,7 +380,7 @@ impl Session {
 		let mut forward = Vec::new();
 		let mut cursor = checkpoint;
 		while cursor != self.document.head {
-			let delta = self.document.history.get(&cursor).ok_or(CrdtError::NotFoundInHistory)?.clone();
+			let delta = self.document.history.get(&cursor).ok_or(CrdtError::NotFoundInHistory(cursor))?.clone();
 			let parent = delta.parents.first().copied().unwrap_or(0);
 			forward.push(delta);
 			cursor = parent;
@@ -510,25 +518,31 @@ pub struct HotOp {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CrdtError {
-	#[error("Target node does not exist")]
-	TargetNodeDoesNotExist,
-	#[error("Network does not exist")]
-	NetworkDoesNotExist,
-	#[error("Input index out of bounds")]
-	InputIndexOutOfBounds,
-	#[error("Export slot index out of bounds")]
-	ExportSlotOutOfBounds,
-	#[error("Delta not found in history")]
-	NotFoundInHistory,
+	#[error("Target node {0} does not exist")]
+	TargetNodeDoesNotExist(NodeId),
+	#[error("Network {0} does not exist")]
+	NetworkDoesNotExist(NetworkId),
+	#[error("Input index {0} out of bounds")]
+	InputIndexOutOfBounds(usize),
+	#[error("Export slot index {0} out of bounds")]
+	ExportSlotOutOfBounds(u32),
+	#[error("Delta {0} not found in history")]
+	NotFoundInHistory(Rev),
+	#[error("No history entry resurrects node {0}")]
+	NodeNotInHistory(NodeId),
+	#[error("No history entry resurrects network {0}")]
+	NetworkNotInHistory(NetworkId),
 	#[error("Nothing to undo")]
 	NothingToUndo,
 	#[error("Nothing to redo")]
 	NothingToRedo,
-	#[error("Node already exists")]
-	NodeAlreadyExists,
-	#[error("Network already exists")]
-	NetworkAlreadyExists,
+	#[error("Node {0} already exists")]
+	NodeAlreadyExists(NodeId),
+	#[error("Network {0} already exists")]
+	NetworkAlreadyExists(NetworkId),
 	/// PeerId is already registered to a different UserId.
-	#[error("Peer is already registered to a different user")]
-	PeerRegistrationConflict,
+	#[error("Peer {0:?} is already registered to a different user")]
+	PeerRegistrationConflict(PeerId),
+	#[error("Operation requires an empty hot log")]
+	HotLogNotEmpty,
 }
