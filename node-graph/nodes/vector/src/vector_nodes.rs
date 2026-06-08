@@ -1224,7 +1224,7 @@ async fn solidify_stroke<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[
 			}
 
 			// If the original vector has a fill, preserve it as a separate item with the stroke cleared.
-			let has_attr_fill = attributes.get::<List<Graphic>>(ATTR_FILL_GRAPHIC).is_some_and(|l| !l.is_empty());
+			let has_attr_fill = attributes.keys().any(|k| k == ATTR_FILL_GRAPHIC);
 			let has_fill = has_attr_fill || !vector.style.fill().is_none();
 			let fill_row = has_fill.then(|| {
 				vector.style.clear_stroke();
@@ -1237,9 +1237,8 @@ async fn solidify_stroke<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[
 			let mut stroke_attributes = attributes;
 			// Drop the original fill and use the stroke paint to fill the outlined stroke
 			stroke_attributes.remove::<List<Graphic>>(ATTR_FILL_GRAPHIC);
-			if let Some(stroke_graphic) = stroke_attributes.remove::<List<Graphic>>(ATTR_STROKE_GRAPHIC) {
-				stroke_attributes.insert(ATTR_FILL_GRAPHIC, stroke_graphic);
-			}
+			stroke_attributes.rename(ATTR_STROKE_GRAPHIC, ATTR_FILL_GRAPHIC);
+
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
 			// Ordering based on the paint order. The first item in the `List` is rendered below the second.

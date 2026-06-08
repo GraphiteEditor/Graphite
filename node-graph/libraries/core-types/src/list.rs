@@ -661,6 +661,22 @@ impl ItemAttributeValues {
 			}
 		})
 	}
+
+	/// Moves the attribute at `from_key` to `to_key`.
+	/// Does nothing if `from_key` is absent, overwrites any existing `to_key`.
+	pub fn rename(&mut self, from_key: &str, to_key: impl Into<String>) {
+		let Some(pos) = self.0.iter().position(|(k, _)| k == from_key) else { return };
+		let (_, value) = self.0.remove(pos);
+
+		let to_key = to_key.into();
+		for (existing_key, existing_value) in &mut self.0 {
+			if *existing_key == to_key {
+				*existing_value = value;
+				return;
+			}
+		}
+		self.0.push((to_key, value));
+	}
 }
 
 // ==========

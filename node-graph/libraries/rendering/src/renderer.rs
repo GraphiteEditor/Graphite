@@ -18,7 +18,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::graphic::{fill_graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -1610,11 +1610,11 @@ impl Render for List<Vector> {
 
 				// Surface row attribute paint sources (only for item 0) so message handlers can read
 				// `ATTR_FILL_GRAPHIC` / `ATTR_STROKE_GRAPHIC` without rebuilding the list.
-				if let Some(fill_graphic) = self.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index).cloned() {
-					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_graphic));
+				if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL_GRAPHIC) {
+					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_graphic.into_owned()));
 				}
-				if let Some(stroke_graphic) = self.attribute::<List<Graphic>>(ATTR_STROKE_GRAPHIC, index).cloned() {
-					metadata.stroke_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_graphic));
+				if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE_GRAPHIC) {
+					metadata.stroke_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_graphic.into_owned()));
 				}
 
 				// Surface `editor:text_frame` for the Text tool's drag cage
@@ -1675,7 +1675,7 @@ impl Render for List<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
-	let filled = if let Some(graphic_list) = vector_list.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index) {
+	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL_GRAPHIC) {
 		graphic_list.element(0).is_some()
 	} else if let Some(vector) = vector_list.element(index) {
 		!matches!(vector.style.fill(), Fill::None)
