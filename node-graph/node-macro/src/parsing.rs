@@ -63,7 +63,7 @@ pub enum ParsedValueSource {
 	#[default]
 	None,
 	Default(TokenStream2),
-	Scope(LitStr),
+	Scope(Expr),
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -995,7 +995,7 @@ mod tests {
 							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
 						}
 						(ParsedValueSource::Scope(p), ParsedValueSource::Scope(e)) => {
-							assert_eq!(p.value(), e.value());
+							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
 						}
 						_ => panic!("Mismatched default values"),
 					}

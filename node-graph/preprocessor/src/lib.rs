@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Default, Clone)]
 pub struct Preprocessor {
 	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
-	inject_scopes: HashMap<ProtoNodeIdentifier, (DocumentNode, Type)>,
+	inject_scopes: HashMap<ProtoNodeIdentifier, (NodeId, DocumentNode, Type)>,
 }
 
 impl Preprocessor {
@@ -73,18 +73,9 @@ fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegist
 
 impl Preprocessor {
 	fn insert_inject_scopes(&self, network: &mut NodeNetwork) {
-		for (identifier, (template, ty)) in self.inject_scopes.iter() {
-			let existing = network
-				.nodes
-				.iter()
-				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(id) if id == identifier))
-				.map(|(id, _)| *id);
-			let node_id = existing.unwrap_or_else(|| {
-				let id = NodeId::new();
-				network.nodes.insert(id, template.clone());
-				id
-			});
-			network.scope_injections.insert(identifier.as_str().to_string(), (node_id, ty.clone()));
+		for (identifier, (node_id, template, ty)) in self.inject_scopes.iter() {
+			network.nodes.insert(*node_id, template.clone());
+			network.scope_injections.insert(identifier.as_str().to_string(), (*node_id, ty.clone()));
 		}
 	}
 
@@ -254,7 +245,7 @@ impl Preprocessor {
 					context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 					..Default::default()
 				};
-				inject_scopes.insert(id.clone(), (template, node_io.return_value.clone()));
+				inject_scopes.insert(id.clone(), (NodeId::new(), template, node_io.return_value.clone()));
 			}
 		}
 
@@ -274,7 +265,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 			};
 			let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
-			match field.value_source {
+			match &field.value_source {
 				RegistryValueSource::None => {}
 				RegistryValueSource::Default(data) => {
 					if let Some(custom_default) = TaggedValue::from_primitive_string(data, ty) {
@@ -284,7 +275,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 						warn!("Failed to parse default value for type `{ty:?}` with data `{data}`");
 					}
 				}
-				RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
+				RegistryValueSource::Scope(data) => return NodeInput::scope(data.clone()),
 			};
 
 			if let Some(type_default) = TaggedValue::from_type(ty) {
