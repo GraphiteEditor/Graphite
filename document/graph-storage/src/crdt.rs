@@ -43,7 +43,7 @@ impl Delta {
 	}
 
 	pub fn is_gesture_end(&self) -> bool {
-		self.attributes.contains_key(attr::GESTURE_END)
+		self.attributes.get(attr::GESTURE_END).is_some_and(|marker| marker.value == serde_json::Value::Bool(true))
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built

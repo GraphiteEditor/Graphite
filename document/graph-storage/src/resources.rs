@@ -127,10 +127,15 @@ impl ResourceEntry {
 		}
 	}
 
-	/// True if the chain already carries a `DataSource::Embedded` source.
+	/// True if the chain already carries a `DataSource::Embedded` source. Decodes each source body into
+	/// `DataSource` so a shape change in the serialized form can't slip an embedded source past detection.
 	pub fn has_embedded_source(&self) -> bool {
-		let embedded = serde_json::to_value(graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
-		self.sources.iter().any(|(_, value)| value.source == embedded)
+		self.sources.iter().any(|(_, value)| {
+			matches!(
+				serde_json::from_value::<graphene_resource::DataSource>(value.source.clone()),
+				Ok(graphene_resource::DataSource::Embedded)
+			)
+		})
 	}
 
 	/// A `SourceKey` ordered strictly ahead of every current source, so an inserted entry becomes the

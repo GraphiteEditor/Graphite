@@ -371,8 +371,9 @@ fn apply_op_advances_clock_even_when_op_errors() {
 		new_input: crate::NodeInput::Import { import_idx: 0 },
 	};
 
-	let _ = document.apply_op(failing_op, observed);
+	let result = document.apply_op(failing_op, observed);
 
+	assert!(result.is_err(), "op targeting a nonexistent node should be rejected");
 	assert!(document.clock.counter >= observed.counter, "clock should advance on observation even when the op errors");
 }
 

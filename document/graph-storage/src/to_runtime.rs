@@ -28,6 +28,8 @@ pub enum ConversionError {
 	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
 	#[error("Network {network} references node {referenced}, which lives in a different network")]
 	CrossNetworkReference { network: NetworkId, referenced: NodeId },
+	#[error("Scope injection {key:?} in network {network} references node {referenced}, which is missing or in a different network")]
+	DanglingScopeInjection { network: NetworkId, key: String, referenced: NodeId },
 }
 
 /// Resolved proto-node declarations, keyed by the `ResourceId` that `Implementation::ProtoNode`
@@ -159,13 +161,40 @@ fn convert_network(
 		.map(|input| convert_input(context.registry, network_id, input, &empty_attrs))
 		.collect::<Result<Vec<_>, _>>()?;
 
+	let scope_injections = read_scope_injections(context.registry, network_id, &network.attributes)?;
+
 	Ok(NodeNetwork {
 		exports,
 		nodes,
-		// TODO: Support scope injections
-		scope_injections: FxHashMap::default(),
+		scope_injections,
 		generated: false,
 	})
+}
+
+/// Rebuild a network's `scope_injections` from its serialized attribute blob, resolving each stored
+/// storage node ID back to its runtime-local ID. Mirrors `from_runtime::write_scope_injections`.
+fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes: &crate::Attributes) -> Result<FxHashMap<String, (RuntimeNodeId, Type)>, ConversionError> {
+	let Some(stored) = attributes.get_typed::<HashMap<String, (NodeId, Type)>>(SCOPE_INJECTIONS) else {
+		return Ok(FxHashMap::default());
+	};
+
+	stored
+		.into_iter()
+		.map(|(key, (storage_id, ty))| {
+			// The injection must point at a node in this same network, like any `NodeInput::Node`.
+			let referenced = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id);
+			let Some(referenced) = referenced else {
+				return Err(ConversionError::DanglingScopeInjection {
+					network: network_id,
+					key,
+					referenced: storage_id,
+				});
+			};
+
+			let local_id = referenced.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(storage_id);
+			Ok((key, (RuntimeNodeId(local_id), ty)))
+		})
+		.collect()
 }
 
 /// Returns `None` when the node has no `ui::*` attributes at all so callers don't end up with

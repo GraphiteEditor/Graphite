@@ -297,11 +297,41 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 
 	let mut attributes = crate::Attributes::new();
 	write_ui_network_attributes(&mut attributes, ctx.metadata, metadata_path, TimeStamp::ORIGIN)?;
+	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.peer, TimeStamp::ORIGIN)?;
 
 	registry.networks.insert(network_id, Network { exports, attributes });
 	ctx.network_ids.insert(metadata_path.to_vec(), network_id);
 
 	Ok(())
+}
+
+/// Serialize a network's `scope_injections` onto its attributes as one whole-map LWW blob, remapping
+/// each runtime-local node reference to its stable storage global ID so the reference survives a
+/// round trip even if runtime IDs are later reshuffled.
+fn write_scope_injections(
+	attributes: &mut crate::Attributes,
+	node_network: &NodeNetwork,
+	parent_path: Option<&NodePath>,
+	network_id: NetworkId,
+	peer: PeerId,
+	timestamp: TimeStamp,
+) -> Result<(), ConversionError> {
+	if node_network.scope_injections.is_empty() {
+		return Ok(());
+	}
+
+	let stored: HashMap<String, (NodeId, core_types::Type)> = node_network
+		.scope_injections
+		.iter()
+		.map(|(key, (runtime_id, ty))| {
+			let storage_id = child_path(parent_path, network_id, runtime_id.0).to_global_id(peer);
+			(key.clone(), (storage_id, ty.clone()))
+		})
+		.collect();
+
+	attributes
+		.set_serialized(SCOPE_INJECTIONS, &stored, timestamp)
+		.map_err(map_serialization_error("compute::scope_injections"))
 }
 
 fn child_path(parent_path: Option<&NodePath>, network_id: NetworkId, local_id: NodeId) -> NodePath {

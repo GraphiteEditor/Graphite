@@ -701,3 +701,44 @@ fn cross_network_reference_is_rejected() {
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("cross-network reference must error");
 	assert!(matches!(error, ConversionError::CrossNetworkReference { .. }), "expected CrossNetworkReference, got {error:?}");
 }
+
+/// A network's `scope_injections` (key -> (NodeId, Type)) must survive a storage round trip, with the
+/// node reference resolved back to the same runtime-local ID it pointed at originally.
+#[test]
+fn scope_injections_round_trip() {
+	let mut network = create_simple_network();
+	network.scope_injections.insert("editor-api".to_string(), (NodeId(0), concrete!(u32)));
+
+	let (registry, declarations) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+
+	let (node_id, ty) = converted.scope_injections.get("editor-api").expect("scope injection must survive the round trip");
+	assert_eq!(*node_id, NodeId(0), "the injection's node reference must resolve back to its original runtime ID");
+	assert_eq!(*ty, concrete!(u32), "the injection's type must be preserved");
+}
+
+/// A stored scope injection whose node reference no longer resolves (node removed, or moved to another
+/// network) must error rather than emit an injection pointing at a nonexistent runtime node.
+#[test]
+fn dangling_scope_injection_is_rejected() {
+	use crate::AttributesExt;
+	use crate::TimeStamp;
+	use crate::to_runtime::ConversionError;
+
+	let (mut registry, declarations) = to_registry(&create_simple_network());
+
+	// Store an injection pointing at a storage ID that no node carries, leaving the reference dangling
+	// while the rest of the graph stays valid. The root network is whichever one holds the nodes.
+	let root_network_id = registry.node_instances.values().next().expect("simple network has nodes").network();
+	let injections: HashMap<String, (crate::NodeId, Type)> = [("editor-api".to_string(), (u64::MAX, concrete!(u32)))].into_iter().collect();
+	registry
+		.networks
+		.get_mut(&root_network_id)
+		.expect("root network exists")
+		.attributes
+		.set_serialized(crate::attr::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
+		.expect("serialize injections");
+
+	let error = registry.to_runtime_with_metadata(&declarations).expect_err("dangling scope injection must error");
+	assert!(matches!(error, ConversionError::DanglingScopeInjection { .. }), "expected DanglingScopeInjection, got {error:?}");
+}

@@ -15,6 +15,10 @@ pub mod attr {
 	pub const REFLECTION_METADATA: &str = "reflection_metadata";
 	pub const ORIGINAL_NODE_ID: &str = "original_node_id";
 	pub const EXPORTED_NODES_TS: &str = "library::exported_nodes_ts";
+	/// Whole-map LWW of a network's `scope_injections` (`key -> (storage NodeId, Type)`), stored as a
+	/// serialized blob so its shape can evolve (e.g. dropping the `Type`) without a model change. The
+	/// node references use stable storage IDs, resolved back to runtime-local IDs on conversion.
+	pub const SCOPE_INJECTIONS: &str = "compute::scope_injections";
 
 	pub const UI_POSITION: &str = "ui::position";
 	pub const UI_IS_LAYER: &str = "ui::is_layer";
