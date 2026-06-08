@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 
 use crate::attr::*;
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
-use crate::{AttributesRead, Implementation, NetworkId, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId};
+use crate::{AttributesRead, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
@@ -26,6 +26,8 @@ pub enum ConversionError {
 	InputAttributeCountMismatch { node: NodeId, inputs: usize, attributes: usize },
 	#[error("Network {network} has two nodes mapping to runtime ID {runtime_id}")]
 	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
+	#[error("Network {network} references node {referenced}, which lives in a different network")]
+	CrossNetworkReference { network: NetworkId, referenced: NodeId },
 }
 
 /// Resolved proto-node declarations, keyed by the `ResourceId` that `Implementation::ProtoNode`
@@ -45,7 +47,21 @@ impl Registry {
 	pub fn to_runtime_with_full_metadata(&self, declarations: &Declarations) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>, Vec<NetworkMetadataEntry>), ConversionError> {
 		let mut node_metadata = Some(Vec::new());
 		let mut network_metadata = Some(Vec::new());
-		let network = convert_network(self, declarations, ROOT_NETWORK, &[], &mut node_metadata, &mut network_metadata)?;
+
+		// Group nodes by their owning network in one pass, so each `convert_network` call (one per
+		// network, including nested ones) takes its node list by lookup instead of rescanning the whole
+		// flat `node_instances` map, which would be quadratic on graphs with many networks.
+		let mut nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &Node)>> = FxHashMap::default();
+		for (&global_id, node) in &self.node_instances {
+			nodes_by_network.entry(node.network).or_default().push((global_id, node));
+		}
+
+		let context = ConversionContext {
+			registry: self,
+			declarations,
+			nodes_by_network,
+		};
+		let network = convert_network(&context, ROOT_NETWORK, &[], &mut node_metadata, &mut network_metadata)?;
 		Ok((network, node_metadata.expect("seeded above"), network_metadata.expect("seeded above")))
 	}
 
@@ -71,6 +87,15 @@ impl Registry {
 	}
 }
 
+/// Immutable shared context threaded through the recursive conversion. `nodes_by_network` is the
+/// one-pass grouping of `registry.node_instances` by owning network, so each network's nodes are an
+/// O(1) lookup rather than a full rescan.
+struct ConversionContext<'a> {
+	registry: &'a Registry,
+	declarations: &'a Declarations,
+	nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &'a Node)>>,
+}
+
 /// Converts a single network. Recurses through `Implementation::Network` owning nodes.
 ///
 /// **ID remapping:** Registry uses globally hashed IDs; runtime networks need local IDs. We pull
@@ -82,21 +107,20 @@ impl Registry {
 ///
 /// `metadata_path` is the owning-node chain naming *this* network (empty for the root).
 fn convert_network(
-	registry: &Registry,
-	declarations: &Declarations,
+	context: &ConversionContext,
 	network_id: NetworkId,
 	metadata_path: &[RuntimeNodeId],
 	node_collector: &mut Option<Vec<NodeMetadataEntry>>,
 	network_collector: &mut Option<Vec<NetworkMetadataEntry>>,
 ) -> Result<NodeNetwork, ConversionError> {
-	let network = registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
+	let network = context.registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	if let Some(collector) = network_collector.as_mut() {
 		collector.push(extract_network_metadata(&network.attributes, metadata_path, network_id));
 	}
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
-	for (&global_id, node) in registry.node_instances.iter().filter(|(_, node)| node.network == network_id) {
+	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
 		let local_id = node.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id);
 		let runtime_id = RuntimeNodeId(local_id);
 
@@ -114,7 +138,7 @@ fn convert_network(
 			collector.push(entry);
 		}
 
-		let doc_node = convert_node(registry, declarations, node, metadata_path, runtime_id, node_collector, network_collector)?;
+		let doc_node = convert_node(context, node, metadata_path, runtime_id, node_collector, network_collector)?;
 
 		// Two storage nodes resolving to the same runtime ID would silently collapse into one on
 		// insert, dropping a node from the reconstructed graph.
@@ -132,7 +156,7 @@ fn convert_network(
 		.exports
 		.iter()
 		.filter_map(|slot| slot.target.as_ref())
-		.map(|input| convert_input(registry, input, &empty_attrs))
+		.map(|input| convert_input(context.registry, network_id, input, &empty_attrs))
 		.collect::<Result<Vec<_>, _>>()?;
 
 	Ok(NodeNetwork {
@@ -195,8 +219,7 @@ fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry 
 }
 
 fn convert_node(
-	registry: &Registry,
-	declarations: &Declarations,
+	context: &ConversionContext,
 	node: &crate::Node,
 	metadata_path: &[RuntimeNodeId],
 	runtime_node_id: RuntimeNodeId,
@@ -207,14 +230,14 @@ fn convert_node(
 		.inputs
 		.iter()
 		.zip(node.inputs_attributes.iter())
-		.map(|(slot, input_attrs)| convert_input(registry, &slot.input, input_attrs))
+		.map(|(slot, input_attrs)| convert_input(context.registry, node.network, &slot.input, input_attrs))
 		.collect::<Result<Vec<_>, _>>()?;
 
 	// Defaults must match `DocumentNode::default()` (and the `set_if_not_default` calls in `from_runtime`).
 	Ok(DocumentNode {
 		inputs,
 		call_argument: node.attributes.get_or(CALL_ARGUMENT, concrete!(core_types::Context)),
-		implementation: convert_implementation(registry, declarations, &node.implementation, metadata_path, runtime_node_id, node_collector, network_collector)?,
+		implementation: convert_implementation(context, &node.implementation, metadata_path, runtime_node_id, node_collector, network_collector)?,
 		visible: node.attributes.get_or(VISIBLE, true),
 		skip_deduplication: node.attributes.get_or(SKIP_DEDUPLICATION, false),
 		context_features: node.attributes.get_or_default(CONTEXT_FEATURES),
@@ -223,10 +246,20 @@ fn convert_node(
 	})
 }
 
-fn convert_input(registry: &Registry, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
+fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
 		NodeInput::Node { node_id, output_index } => {
 			let referenced = registry.node_instances.get(node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
+
+			// Runtime references are local to one network. A cross-network reference would remap to a
+			// local ID that doesn't exist in the current runtime network, so reject it.
+			if referenced.network != network_id {
+				return Err(ConversionError::CrossNetworkReference {
+					network: network_id,
+					referenced: *node_id,
+				});
+			}
+
 			let local_id = referenced.attributes.get(ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(*node_id);
 			GraphCraftNodeInput::Node {
 				node_id: RuntimeNodeId(local_id),
@@ -254,8 +287,7 @@ fn convert_input(registry: &Registry, input: &NodeInput, input_attributes: &crat
 }
 
 fn convert_implementation(
-	registry: &Registry,
-	declarations: &Declarations,
+	context: &ConversionContext,
 	implementation: &Implementation,
 	parent_metadata_path: &[RuntimeNodeId],
 	owning_runtime_id: RuntimeNodeId,
@@ -264,14 +296,14 @@ fn convert_implementation(
 ) -> Result<DocumentNodeImplementation, ConversionError> {
 	Ok(match implementation {
 		Implementation::ProtoNode(id) => {
-			let proto = declarations.get(id).ok_or(ConversionError::DeclarationNotFound(*id))?;
+			let proto = context.declarations.get(id).ok_or(ConversionError::DeclarationNotFound(*id))?;
 			DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::with_owned_string(proto.identifier.clone()))
 		}
 		Implementation::Network(net_id) => {
 			let mut child_path = Vec::with_capacity(parent_metadata_path.len() + 1);
 			child_path.extend_from_slice(parent_metadata_path);
 			child_path.push(owning_runtime_id);
-			DocumentNodeImplementation::Network(convert_network(registry, declarations, *net_id, &child_path, node_collector, network_collector)?)
+			DocumentNodeImplementation::Network(convert_network(context, *net_id, &child_path, node_collector, network_collector)?)
 		}
 	})
 }

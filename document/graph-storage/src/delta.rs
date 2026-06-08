@@ -2,6 +2,14 @@ use std::collections::HashSet;
 
 use crate::{AttributeDelta, NetworkId, Node, NodeId, Registry, RegistryDelta, ResourceEntry, ResourceId};
 
+/// Collect a `HashSet` walk (difference/intersection) into ascending order. The sets iterate in
+/// random order, so sorting keeps `compute_deltas` emitting a deterministic delta sequence.
+fn sorted<'a, T: Ord + Copy + 'a>(ids: impl Iterator<Item = &'a T>) -> Vec<T> {
+	let mut ids: Vec<T> = ids.copied().collect();
+	ids.sort_unstable();
+	ids
+}
+
 /// Minimal set of deltas to transform `from` into `to`.
 ///
 /// Emits timestamp-less op shapes; the caller (`Document::commit_local` or equivalent) wraps each
@@ -12,8 +20,10 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 	let from_network_ids: HashSet<NetworkId> = from.networks.keys().copied().collect();
 	let to_network_ids: HashSet<NetworkId> = to.networks.keys().copied().collect();
 
-	// AddNetwork before any AddNode that references it.
-	for &network_id in to_network_ids.difference(&from_network_ids) {
+	// AddNetwork before any AddNode that references it. `HashSet` difference/intersection iterate in
+	// random order, so every set walk below is sorted to keep the emitted delta sequence (and thus the
+	// resulting `Rev` chain) deterministic across runs.
+	for network_id in sorted(to_network_ids.difference(&from_network_ids)) {
 		deltas.push(RegistryDelta::AddNetwork {
 			network: network_id,
 			contents: to.networks[&network_id].clone(),
@@ -23,21 +33,21 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 	let from_node_ids: HashSet<NodeId> = from.node_instances.keys().copied().collect();
 	let to_node_ids: HashSet<NodeId> = to.node_instances.keys().copied().collect();
 
-	for &node_id in from_node_ids.difference(&to_node_ids) {
+	for node_id in sorted(from_node_ids.difference(&to_node_ids)) {
 		deltas.push(RegistryDelta::RemoveNode {
 			node_id,
 			snapshot: from.node_instances[&node_id].clone(),
 		});
 	}
 
-	for &node_id in to_node_ids.difference(&from_node_ids) {
+	for node_id in sorted(to_node_ids.difference(&from_node_ids)) {
 		deltas.push(RegistryDelta::AddNode {
 			node_id,
 			node: to.node_instances[&node_id].clone(),
 		});
 	}
 
-	for &node_id in from_node_ids.intersection(&to_node_ids) {
+	for node_id in sorted(from_node_ids.intersection(&to_node_ids)) {
 		let from_node = &from.node_instances[&node_id];
 		let to_node = &to.node_instances[&node_id];
 
@@ -74,14 +84,14 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 		}
 	}
 
-	for &network_id in from_network_ids.difference(&to_network_ids) {
+	for network_id in sorted(from_network_ids.difference(&to_network_ids)) {
 		deltas.push(RegistryDelta::RemoveNetwork {
 			network: network_id,
 			snapshot: from.networks[&network_id].clone(),
 		});
 	}
 
-	for &network_id in from_network_ids.intersection(&to_network_ids) {
+	for network_id in sorted(from_network_ids.intersection(&to_network_ids)) {
 		let from_network = &from.networks[&network_id];
 		let to_network = &to.networks[&network_id];
 
@@ -129,18 +139,18 @@ fn compute_resource_deltas(from: &Registry, to: &Registry, deltas: &mut Vec<Regi
 	let from_ids: HashSet<ResourceId> = from.resources.keys().copied().collect();
 	let to_ids: HashSet<ResourceId> = to.resources.keys().copied().collect();
 
-	for &id in from_ids.difference(&to_ids) {
+	for id in sorted(from_ids.difference(&to_ids)) {
 		deltas.push(RegistryDelta::RemoveResource {
 			id,
 			snapshot: from.resources[&id].clone(),
 		});
 	}
 
-	for &id in to_ids.difference(&from_ids) {
+	for id in sorted(to_ids.difference(&from_ids)) {
 		deltas.push(RegistryDelta::AddResource { id, entry: to.resources[&id].clone() });
 	}
 
-	for &id in from_ids.intersection(&to_ids) {
+	for id in sorted(from_ids.intersection(&to_ids)) {
 		diff_resource_entry(id, &from.resources[&id], &to.resources[&id], deltas);
 	}
 }
@@ -212,6 +222,46 @@ mod tests {
 
 		let deltas = compute_deltas(&registry, &registry);
 		assert_eq!(deltas.len(), 0, "No deltas should be generated for identical registries");
+	}
+
+	/// The emitted delta sequence must not depend on `HashMap`/`HashSet` iteration order, which varies
+	/// per run and per compiler version. Building the same registry repeatedly (each `HashMap` gets a
+	/// fresh random seed) must yield identical `AddNode` order, since the diff sorts its set walks.
+	#[test]
+	fn compute_deltas_emits_nodes_in_deterministic_order() {
+		let make_registry = || {
+			let mut registry = Registry::default();
+			registry.networks.insert(0, Network::default());
+			for node_id in [50, 3, 17, 999, 1, 42, 8, 256, 100, 7] {
+				registry.node_instances.insert(
+					node_id,
+					Node {
+						implementation: Implementation::ProtoNode(ResourceId::new()),
+						inputs: vec![],
+						inputs_attributes: vec![],
+						attributes: Attributes::new(),
+						network: 0,
+					},
+				);
+			}
+			registry
+		};
+
+		let empty = Registry::default();
+		let add_node_ids = |registry: &Registry| -> Vec<NodeId> {
+			compute_deltas(&empty, registry)
+				.into_iter()
+				.filter_map(|delta| match delta {
+					RegistryDelta::AddNode { node_id, .. } => Some(node_id),
+					_ => None,
+				})
+				.collect()
+		};
+
+		let expected = vec![1, 3, 7, 8, 17, 42, 50, 100, 256, 999];
+		for _ in 0..16 {
+			assert_eq!(add_node_ids(&make_registry()), expected, "AddNode order must be deterministic (ascending)");
+		}
 	}
 
 	#[test]

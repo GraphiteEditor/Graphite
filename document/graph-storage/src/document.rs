@@ -453,8 +453,10 @@ impl<'a> Iterator for HistoryIter<'a> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let delta = self.document.history.get(&self.parent_rev)?;
-		// First parent only for now. Local-chain walking (filter by author) is a follow-up.
-		self.parent_rev = *delta.parents.first()?;
+		// First parent only for now. Local-chain walking (filter by author) is a follow-up. The root
+		// delta has no parents, so fall back to the `0` sentinel: the next `get` misses and ends the
+		// walk *after* yielding the root (using `?` here would drop the root instead).
+		self.parent_rev = delta.parents.first().copied().unwrap_or(0);
 		Some(delta)
 	}
 }

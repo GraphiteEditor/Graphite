@@ -674,3 +674,33 @@ fn duplicate_runtime_node_id_is_rejected() {
 		"expected DuplicateRuntimeNodeId, got {error:?}"
 	);
 }
+
+/// A node input referencing a node in a different network can't be remapped to a valid local runtime
+/// ID, so conversion must reject it rather than emit a dangling reference.
+#[test]
+fn cross_network_reference_is_rejected() {
+	use crate::to_runtime::ConversionError;
+	use crate::{Network, NodeInput};
+
+	let (mut registry, declarations) = to_registry(&create_simple_network());
+
+	// `create_simple_network` wires one node's input to another, both in the root network. Find the
+	// referenced storage ID, then move that node into a fresh second network so the reference crosses
+	// a network boundary.
+	let referenced_storage_id = registry
+		.node_instances
+		.values()
+		.flat_map(|node| node.inputs())
+		.find_map(|slot| match slot.input {
+			NodeInput::Node { node_id, .. } => Some(node_id),
+			_ => None,
+		})
+		.expect("simple network has a node-to-node reference");
+
+	let other_network = 999;
+	registry.networks.insert(other_network, Network::default());
+	registry.node_instances.get_mut(&referenced_storage_id).expect("referenced node exists").network = other_network;
+
+	let error = registry.to_runtime_with_metadata(&declarations).expect_err("cross-network reference must error");
+	assert!(matches!(error, ConversionError::CrossNetworkReference { .. }), "expected CrossNetworkReference, got {error:?}");
+}

@@ -110,14 +110,25 @@ impl AttributesRead for Attributes {
 /// exact tie between two peers inserting at the same gap is broken by `PeerId` in [`SourceKey`].
 /// `f64` precision is ample for the short fallback chains resources carry in practice.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Priority(pub f64);
+#[serde(try_from = "f64")]
+pub struct Priority(f64);
 
 impl Priority {
-	/// Constructs a priority, rejecting non-finite input so the value stays a sound map/set key
-	/// (`NaN`/`-0.0` would otherwise break the `Ord`/`Hash`/`Eq` agreement below). All current call
-	/// sites mint finite priorities, so an error here signals an upstream logic error.
+	/// Rejects non-finite input. The field is private and deserialization routes through here, so a
+	/// `Priority` is always finite, keeping its `Ord`/`Hash`/`Eq` agreement sound.
 	pub fn new(value: f64) -> Result<Self, NonFinitePriority> {
 		if value.is_finite() { Ok(Self(value)) } else { Err(NonFinitePriority(value)) }
+	}
+
+	pub fn value(self) -> f64 {
+		self.0
+	}
+}
+
+impl TryFrom<f64> for Priority {
+	type Error = NonFinitePriority;
+	fn try_from(value: f64) -> Result<Self, Self::Error> {
+		Self::new(value)
 	}
 }
 
@@ -151,5 +162,29 @@ impl PartialOrd for Priority {
 impl std::hash::Hash for Priority {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.0.to_bits().hash(state);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn priority_rejects_non_finite() {
+		assert!(Priority::new(f64::NAN).is_err());
+		assert!(Priority::new(f64::INFINITY).is_err());
+		assert!(Priority::new(-1.5).is_ok(), "negative finite priorities are valid");
+	}
+
+	/// Deserialization routes through `Priority::new`, so a non-finite value on disk is rejected rather
+	/// than silently producing an unsound map key. MessagePack (the storage format) can carry a
+	/// non-finite `f64`, unlike JSON, so this guards the real round-trip path.
+	#[test]
+	fn priority_deserialize_validates_finiteness() {
+		let finite = rmp_serde::to_vec(&3.5_f64).unwrap();
+		assert!(rmp_serde::from_slice::<Priority>(&finite).is_ok());
+
+		let non_finite = rmp_serde::to_vec(&f64::INFINITY).unwrap();
+		assert!(rmp_serde::from_slice::<Priority>(&non_finite).is_err(), "a non-finite priority on disk must be rejected");
 	}
 }

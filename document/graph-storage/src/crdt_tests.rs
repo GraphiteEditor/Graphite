@@ -305,6 +305,39 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 	assert!(second.is_ok(), "second resurrection of an already-present node should be a no-op, got {second:?}");
 }
 
+/// History-based resurrection must work when the matching delta is the *root* commit. The history
+/// walk used to drop the root (its empty parent list short-circuited the iterator before yielding
+/// it), so a node removed by the very first commit could not be restored.
+#[test]
+fn restore_node_from_root_commit() {
+	use crate::{Implementation, Node};
+
+	let mut document = fresh_document(PeerId(1));
+	let node_id = 42;
+
+	let node = Node {
+		implementation: Implementation::ProtoNode(ResourceId::new()),
+		inputs: Vec::new(),
+		inputs_attributes: Vec::new(),
+		attributes: crate::Attributes::new(),
+		network: ROOT_NETWORK,
+	};
+
+	// Seed the working state so the root commit can remove the node (its reverse is the `AddNode` the
+	// resurrection looks for). This `RemoveNode` is the only commit, so the match sits at the root.
+	document.registry.networks.insert(ROOT_NETWORK, Network::default());
+	document.retired_snapshot.networks.insert(ROOT_NETWORK, Network::default());
+	document.registry.node_instances.insert(node_id, node.clone());
+	document.retired_snapshot.node_instances.insert(node_id, node.clone());
+	commit_op(&mut document, RegistryDelta::RemoveNode { node_id, snapshot: node });
+	assert!(!document.registry.node_instances.contains_key(&node_id), "node should be removed by the root commit");
+
+	document
+		.restore_node_from_history(RegistryTarget::Working, node_id)
+		.expect("resurrection from the root commit should succeed");
+	assert!(document.registry.node_instances.contains_key(&node_id), "node must be restored from the root commit");
+}
+
 /// Erroring ops still bump the clock: we observed the timestamp on the wire, the fact that the
 /// op was rejected locally doesn't unobserve it.
 #[test]
@@ -329,7 +362,7 @@ use crate::{Priority, RegistryDelta as RD, ResourceHash, ResourceId, SourceKey};
 
 fn source_key(priority: f64, peer: u64) -> SourceKey {
 	SourceKey {
-		priority: Priority(priority),
+		priority: Priority::new(priority).expect("test priorities are finite"),
 		peer: PeerId(peer),
 	}
 }

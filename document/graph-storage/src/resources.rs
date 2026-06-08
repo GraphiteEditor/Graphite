@@ -107,7 +107,7 @@ impl ResourceEntry {
 	/// A `SourceKey` ordered strictly ahead of every current source, so an inserted entry becomes the
 	/// highest-precedence fallback.
 	pub fn highest_precedence_key(&self, peer: PeerId) -> SourceKey {
-		let min_priority = self.sources.first().map(|(key, _)| key.priority.0).unwrap_or(0.);
+		let min_priority = self.sources.first().map(|(key, _)| key.priority.value()).unwrap_or(0.);
 		SourceKey {
 			priority: Priority::new(min_priority - 1.).expect("finite priority minus one is finite"),
 			peer,
