@@ -22,7 +22,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, Cap, Join, Shape};
 use num_traits::Zero;
@@ -1491,17 +1491,27 @@ impl Render for List<Vector> {
 /// Build one `CompoundPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector: &Vector, transform: DAffine2) {
-	let stroke_width = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 	let filled = vector.style.fill() != &Fill::None;
-	let subpaths: Vec<Subpath<_>> = vector
-		.stroke_bezier_paths()
-		.map(|mut subpath| {
-			if filled {
-				subpath.set_closed(true);
-			}
-			subpath
-		})
-		.collect();
+
+	let mut subpaths: Vec<Subpath<_>> = vector.stroke_bezier_paths().collect();
+	let all_subpaths_closed = subpaths.iter().all(|subpath| subpath.closed());
+
+	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
+	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
+	let stroke_width = vector.style.stroke().map_or(0., |stroke| {
+		if stroke.align.is_not_centered() && all_subpaths_closed {
+			stroke.weight * 2.
+		} else {
+			stroke.weight
+		}
+	});
+
+	if filled {
+		for subpath in &mut subpaths {
+			subpath.set_closed(true);
+		}
+	}
+
 	if !subpaths.is_empty() {
 		let mut click_target = ClickTarget::new_with_compound_path(subpaths, stroke_width);
 		click_target.apply_transform(transform);
