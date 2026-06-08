@@ -1133,16 +1133,22 @@ impl PenToolData {
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(self.current_layer)?;
-		let vector = document.network_interface.compute_modified_vector(layer)?;
-		let transform = document.metadata().document_to_viewport * transform;
-		for point in vector.anchor_points() {
-			let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
-			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
-			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-			if transformed_distance_between_squared < snap_point_tolerance_squared {
-				self.next_point = pos;
+
+		// The modified vector can be momentarily unavailable while the node graph re-evaluates after a document undo.
+		// Snapping onto an existing point is only a convenience, so skip it when the vector is missing rather than
+		// returning `None`, which would let a caller like PointerMove's `unwrap_or(Ready)` end the session.
+		if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
+			let transform = document.metadata().document_to_viewport * transform;
+			for point in vector.anchor_points() {
+				let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
+				let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
+				let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+				if transformed_distance_between_squared < snap_point_tolerance_squared {
+					self.next_point = pos;
+				}
 			}
 		}
+
 		if let Some(handle_end) = self.handle_end.as_mut() {
 			*handle_end = self.next_point;
 			self.next_handle_start = self.next_point;
@@ -1979,9 +1985,9 @@ impl Fsm for PenToolFsmState {
 					tool_data.angle_locked = false;
 				}
 
-				let state = tool_data
-					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input, viewport)
-					.unwrap_or(PenToolFsmState::Ready);
+				// A pointer move must never end the path: keep dragging if the handle can't be resolved this frame
+				// (the vector is briefly unavailable while the graph re-evaluates after an undo)
+				let state = tool_data.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input, viewport).unwrap_or(self);
 
 				if tool_data.handle_swapped {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
@@ -2029,6 +2035,7 @@ impl Fsm for PenToolFsmState {
 					colinear: input.keyboard.key(colinear),
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
+				// A pointer move must never end the path: keep placing if the anchor can't be resolved this frame
 				let state = tool_data
 					.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
 					.unwrap_or(self);
