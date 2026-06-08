@@ -81,7 +81,7 @@ pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 pub const ATTR_FILL_GRAPHIC: &str = "fill_graphic";
 
 /// List<Graphic> data for stroke.
-pub const ATTR_STROKE_PAINT_GRAPHIC: &str = "stroke_paint_graphic";
+pub const ATTR_STROKE_GRAPHIC: &str = "stroke_graphic";
 
 // ===========================
 // Implicit attribute defaults

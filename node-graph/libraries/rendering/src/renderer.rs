@@ -6,7 +6,7 @@ use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_PAINT_GRAPHIC, Item, List};
+use core_types::list::{ATTR_FILL_GRAPHIC, ATTR_STROKE_GRAPHIC, Item, List};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
@@ -18,7 +18,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_hash::CacheHashWrapper;
-use graphic_types::graphic::{fill_graphic_list_at, is_stroke_fully_transparent_at, stroke_paint_graphic_list_at};
+use graphic_types::graphic::{fill_graphic_list_at, is_stroke_fully_transparent_at, stroke_graphic_list_at};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
@@ -454,10 +454,10 @@ pub struct RenderMetadata {
 	/// information that lives on the list rather than on `PathStyle.fill`.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE_PAINT_GRAPHIC` row attribute, exposed so message handlers can read
+	/// Per-layer `ATTR_STROKE_GRAPHIC` row attribute, exposed so message handlers can read
 	/// stroke paint information that lives on the list rather than on `Stroke.color`.
 	#[cfg_attr(feature = "serde", serde(skip))]
-	pub stroke_paint_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	pub stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -482,7 +482,7 @@ impl RenderMetadata {
 			clip_targets,
 			vector_data,
 			fill_attributes,
-			stroke_paint_attributes,
+			stroke_attributes,
 			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
@@ -494,7 +494,7 @@ impl RenderMetadata {
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 		fill_attributes.extend(other.fill_attributes.iter().map(|(id, data)| (*id, data.clone())));
-		stroke_paint_attributes.extend(other.stroke_paint_attributes.iter().map(|(id, data)| (*id, data.clone())));
+		stroke_attributes.extend(other.stroke_attributes.iter().map(|(id, data)| (*id, data.clone())));
 
 		// TODO: Find a better non O(n^2) way to merge backgrounds
 		for background in &other.backgrounds {
@@ -1073,13 +1073,13 @@ impl Render for List<Vector> {
 			let fill_graphic_list = fill_graphic_list_at(self, index);
 			let fill_graphic = fill_graphic_list.as_ref().and_then(|l| l.element(0));
 
-			let stroke_paint_graphic_list = stroke_paint_graphic_list_at(self, index);
-			let stroke_paint_graphic = stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0));
+			let stroke_graphic_list = stroke_graphic_list_at(self, index);
+			let stroke_graphic = stroke_graphic_list.as_ref().and_then(|l| l.element(0));
 
 			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
 			let can_draw_aligned_stroke = path_is_closed
 				&& vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
-				&& stroke_paint_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
+				&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
 			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.is_opaque()) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
@@ -1176,7 +1176,7 @@ impl Render for List<Vector> {
 					.style
 					.stroke()
 					.map(|stroke| {
-						if stroke_paint_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
+						if stroke_graphic_list.as_ref().and_then(|l| l.element(0)).is_some() {
 							stroke.render(
 								defs,
 								item_transform,
@@ -1194,9 +1194,9 @@ impl Render for List<Vector> {
 					.unwrap_or_default();
 
 				// Need to avoid generating only paint attribute, otherwise SVG uses 1px width stroke as a fallback
-				let stroke_paint_visible = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_paint_graphic.is_some_and(|g| !g.is_fully_transparent());
-				let stroke_paint_attribute = if stroke_paint_visible {
-					stroke_paint_graphic_list
+				let stroke_visible = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke()) && stroke_graphic.is_some_and(|g| !g.is_fully_transparent());
+				let stroke_attribute = if stroke_visible {
+					stroke_graphic_list
 						.as_deref()
 						.map(|list| {
 							// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
@@ -1247,7 +1247,7 @@ impl Render for List<Vector> {
 				}
 				attributes.push_val(fill_attribute);
 				attributes.push_val(stroke_shape_attribute);
-				attributes.push_val(stroke_paint_attribute);
+				attributes.push_val(stroke_attribute);
 
 				if vector.is_branching() && !use_face_fill {
 					attributes.push("fill-rule", "evenodd");
@@ -1317,7 +1317,7 @@ impl Render for List<Vector> {
 			}
 
 			let fill_graphic_list = fill_graphic_list_at(self, index);
-			let stroke_paint_graphic_list = stroke_paint_graphic_list_at(self, index);
+			let stroke_graphic_list = stroke_graphic_list_at(self, index);
 
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
@@ -1410,11 +1410,11 @@ impl Render for List<Vector> {
 			};
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
-				let Some(stroke_paint_graphic_list) = stroke_paint_graphic_list.as_deref() else { return };
+				let Some(stroke_graphic_list) = stroke_graphic_list.as_deref() else { return };
 				let Some(stroke) = element.style.stroke() else { return };
 
-				for paint_idx in 0..stroke_paint_graphic_list.len() {
-					let Some(stroke_paint_graphic) = stroke_paint_graphic_list.element(paint_idx) else {
+				for paint_idx in 0..stroke_graphic_list.len() {
+					let Some(stroke_graphic) = stroke_graphic_list.element(paint_idx) else {
 						continue;
 					};
 
@@ -1443,7 +1443,7 @@ impl Render for List<Vector> {
 						continue;
 					};
 
-					match stroke_paint_graphic {
+					match stroke_graphic {
 						Graphic::Color(list) => {
 							let Some(color) = list.element(0) else { continue };
 							let brush = peniko::Brush::Solid(SRGBA8::from(*color).to_peniko_color());
@@ -1467,7 +1467,7 @@ impl Render for List<Vector> {
 							let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 							scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
-							stroke_paint_graphic.render_to_vello(scene, multiplied_transform, context, render_params);
+							stroke_graphic.render_to_vello(scene, multiplied_transform, context, render_params);
 							scene.pop_layer();
 						}
 					};
@@ -1609,12 +1609,12 @@ impl Render for List<Vector> {
 				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(source.clone()));
 
 				// Surface row attribute paint sources (only for item 0) so message handlers can read
-				// `ATTR_FILL_GRAPHIC` / `ATTR_STROKE_PAINT_GRAPHIC` without rebuilding the list.
-				if let Some(fill_paint) = self.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index).cloned() {
-					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_paint));
+				// `ATTR_FILL_GRAPHIC` / `ATTR_STROKE_GRAPHIC` without rebuilding the list.
+				if let Some(fill_graphic) = self.attribute::<List<Graphic>>(ATTR_FILL_GRAPHIC, index).cloned() {
+					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_graphic));
 				}
-				if let Some(stroke_paint) = self.attribute::<List<Graphic>>(ATTR_STROKE_PAINT_GRAPHIC, index).cloned() {
-					metadata.stroke_paint_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_paint));
+				if let Some(stroke_graphic) = self.attribute::<List<Graphic>>(ATTR_STROKE_GRAPHIC, index).cloned() {
+					metadata.stroke_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_graphic));
 				}
 
 				// Surface `editor:text_frame` for the Text tool's drag cage

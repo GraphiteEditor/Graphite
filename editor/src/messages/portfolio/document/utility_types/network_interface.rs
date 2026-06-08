@@ -3409,9 +3409,9 @@ impl NodeNetworkInterface {
 		self.document_metadata.layer_fill_attributes = new_layer_fill_attributes;
 	}
 
-	/// Update the per-layer `ATTR_STROKE_PAINT_GRAPHIC` snapshot.
-	pub fn update_stroke_paint_attributes(&mut self, new_layer_stroke_paint_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
-		self.document_metadata.layer_stroke_paint_attributes = new_layer_stroke_paint_attributes;
+	/// Update the per-layer `ATTR_STROKE_GRAPHIC` snapshot.
+	pub fn update_stroke_attributes(&mut self, new_layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>) {
+		self.document_metadata.layer_stroke_attributes = new_layer_stroke_attributes;
 	}
 }
 

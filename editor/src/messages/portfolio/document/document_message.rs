@@ -238,14 +238,14 @@ pub enum DocumentMessage {
 		vector_data: HashMap<NodeId, Arc<Vector>>,
 	},
 	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
-	// `UpdateFillAttributes` and `UpdateStrokePaintAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	// `UpdateFillAttributes` and `UpdateStrokeAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
 	#[serde(skip)]
 	UpdateFillAttributes {
 		fill_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	},
 	#[serde(skip)]
-	UpdateStrokePaintAttributes {
-		stroke_paint_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
+	UpdateStrokeAttributes {
+		stroke_attributes: HashMap<NodeId, Arc<List<Graphic>>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

@@ -44,9 +44,9 @@ pub struct DocumentMetadata {
 	/// Per-layer `ATTR_FILL_GRAPHIC` row attribute, exposed so message handlers can read paint
 	/// information that lives on the list.
 	pub layer_fill_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
-	/// Per-layer `ATTR_STROKE_PAINT_GRAPHIC` row attribute, exposed so message handlers can read
+	/// Per-layer `ATTR_STROKE_GRAPHIC` row attribute, exposed so message handlers can read
 	/// stroke paint information that lives on the list.
-	pub layer_stroke_paint_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
+	pub layer_stroke_attributes: HashMap<LayerNodeIdentifier, Arc<List<Graphic>>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }

@@ -1418,9 +1418,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_fill_attributes(layer_fill_attributes);
 			}
-			DocumentMessage::UpdateStrokePaintAttributes { stroke_paint_attributes } => {
+			DocumentMessage::UpdateStrokeAttributes { stroke_attributes } => {
 				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
-				let layer_stroke_paint_attributes = stroke_paint_attributes
+				let layer_stroke_attributes = stroke_attributes
 					.into_iter()
 					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, attrs)| {
@@ -1430,7 +1430,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						})
 					})
 					.collect();
-				self.network_interface.update_stroke_paint_attributes(layer_stroke_paint_attributes);
+				self.network_interface.update_stroke_attributes(layer_stroke_attributes);
 			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
@@ -2515,7 +2515,7 @@ impl DocumentMessageHandler {
 			};
 
 			let fill_graphic_list = self.network_interface.document_metadata().layer_fill_attributes.get(&layer);
-			let stroke_paint_graphic_list = self.network_interface.document_metadata().layer_stroke_paint_attributes.get(&layer);
+			let stroke_graphic_list = self.network_interface.document_metadata().layer_stroke_attributes.get(&layer);
 
 			let has_fill = if let Some(list) = fill_graphic_list {
 				list.element(0).is_some()
@@ -2524,13 +2524,13 @@ impl DocumentMessageHandler {
 			};
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
-			// `ATTR_STROKE_PAINT_GRAPHIC` is the source of truth when set; fall back to `style.stroke.color` only when no row attribute is present.
-			let stroke_paint_visible = if let Some(list) = stroke_paint_graphic_list {
+			// `ATTR_STROKE_GRAPHIC` is the source of truth when set; fall back to `style.stroke.color` only when no row attribute is present.
+			let stroke_visible = if let Some(list) = stroke_graphic_list {
 				list.element(0).is_some_and(|g| !g.is_fully_transparent())
 			} else {
 				style.stroke.as_ref().and_then(|s| s.color()).is_some_and(|c| c.a() != 0.)
 			};
-			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_paint_visible;
+			let has_stroke = style.stroke.as_ref().is_some_and(|s| s.has_renderable_stroke()) && stroke_visible;
 
 			// No stroke means there's nothing to solidify. Fill-only layers are already in the desired form, so skip.
 			if !has_stroke {
