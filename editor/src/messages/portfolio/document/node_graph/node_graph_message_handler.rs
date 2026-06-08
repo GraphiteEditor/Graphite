@@ -876,6 +876,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					self.context_menu = Some(ContextMenuInformation {
 						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2().into(),
+						node_creation_coordinates: node_graph_point.as_ivec2().into(),
 						context_menu_data,
 					});
 
@@ -1315,6 +1316,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: (point + node_graph_shift).as_ivec2().into(),
+							node_creation_coordinates: point.as_ivec2().into(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 

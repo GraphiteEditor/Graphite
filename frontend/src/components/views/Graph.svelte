@@ -139,7 +139,7 @@
 	function createNode(identifier: string) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
-		editor.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates[0], $nodeGraph.contextMenuInformation.contextMenuCoordinates[1]);
+		editor.createNode(identifier, $nodeGraph.contextMenuInformation.nodeCreationCoordinates[0], $nodeGraph.contextMenuInformation.nodeCreationCoordinates[1]);
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {
