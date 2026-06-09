@@ -271,6 +271,13 @@ pub fn get_viewport_center(layer: LayerNodeIdentifier, network_interface: &NodeN
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * center)
 }
 
+/// Get the closest Fill node's ID to the provided layer, if any.
+pub fn get_fill_node_id_with_value(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	let fill_node_id = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
+	let fill_node = network_interface.document_network().nodes.get(&fill_node_id)?;
+	matches!(fill_node.inputs.get(graphene_std::vector::fill::FillInput::<List<Color>>::INDEX)?, NodeInput::Value { .. }).then_some(fill_node_id)
+}
+
 /// Determine the input connector where the gradient chain enters the layer.
 /// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
 pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
@@ -375,6 +382,17 @@ pub fn legacy_gradient_fill_nodes(network_interface: &NodeNetworkInterface) -> V
 
 /// Get the gradient stops of a layer, if any.
 pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<GradientStops> {
+	// Try to find the gradient stops value that is created by a Fill node first
+	if let Some(fill_node_id) = get_fill_node_id_with_value(layer, network_interface) {
+		return network_interface
+			.document_network()
+			.nodes
+			.get(&fill_node_id)
+			.and_then(|node| node.inputs.get(graphene_std::vector::fill::FillInput::<List<GradientStops>>::INDEX))
+			.and_then(|input| input.as_value())
+			.and_then(|value| if let TaggedValue::Gradient(gradient) = value { Some(gradient.clone()) } else { None });
+	}
+
 	let gradient_value_node = network_interface.document_network().nodes.get(&get_upstream_gradient_value_node_id(layer, network_interface)?)?;
 	let TaggedValue::Gradient(stops) = gradient_value_node.inputs.get(graphene_std::math_nodes::gradient_value::GradientInput::INDEX)?.as_value()? else {
 		return None;
@@ -418,6 +436,43 @@ pub fn gradient_orientation_rightward(start: glam::DVec2, end: glam::DVec2, tran
 		viewport_end.x > viewport_start.x
 	} else {
 		(viewport_start.x + viewport_start.y) < (viewport_end.x + viewport_end.y)
+	}
+}
+
+/// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
+/// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
+/// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
+/// Falls back to a +90° rotation of `new_x` when `old_x` is degenerate.
+fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec2 {
+	let old_x_length = old_x.length();
+	if old_x_length < 1e-9 {
+		return DVec2::new(-new_x.y, new_x.x);
+	}
+	let ex_old = old_x / old_x_length;
+	let ey_old = DVec2::new(-ex_old.y, ex_old.x);
+
+	let new_x_length = new_x.length();
+	if new_x_length < 1e-9 {
+		return DVec2::ZERO;
+	}
+	let ex_new = new_x / new_x_length;
+	let ey_new = DVec2::new(-ex_new.y, ex_new.x);
+
+	let parallel = old_y.dot(ex_old);
+	let perpendicular = old_y.dot(ey_old);
+	let scale = new_x_length / old_x_length;
+
+	scale * (parallel * ex_new + perpendicular * ey_new)
+}
+
+/// Build a new affine that maps canonical (0,0) -> (1,0) to (new_start, new_end), preserving the y-axis
+/// shape of `old` proportionally to the x-axis length change.
+pub fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end: DVec2) -> DAffine2 {
+	let new_x_axis = new_end - new_start;
+	let preserved_y_axis = scale_y_axis_to_match_new_x(old.matrix2.x_axis, old.matrix2.y_axis, new_x_axis);
+	DAffine2 {
+		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
+		translation: new_start,
 	}
 }
 

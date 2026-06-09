@@ -3,7 +3,9 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{
+	build_transform_with_y_preservation, get_fill_input_node_id, get_fill_node_id_with_value, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
@@ -454,29 +456,34 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn fill_set(&mut self, fill: Fill) {
-		let fill_index = 1;
-		let backup_color_index = 2;
-		let backup_gradient_index = 3;
-
 		let Some(fill_node_id) = self.existing_proto_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
 			return;
 		};
+		let input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::FillInput::<List<Color>>::INDEX);
+
 		match &fill {
 			Fill::None => {
-				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(None), false), true);
+				let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
+				self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(None), false), true);
+
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(None), false), false);
 			}
 			Fill::Solid(color) => {
-				let input_connector = InputConnector::node(fill_node_id, backup_color_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Some(*color)), false), true);
+				let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupColorInput::INDEX);
+				self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Color(Some(*color)), false), true);
+
+				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(Some(*color)), false), false);
 			}
 			Fill::Gradient(gradient) => {
-				let input_connector = InputConnector::node(fill_node_id, backup_gradient_index);
-				self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::FillGradient(gradient.clone()), false), true);
+				let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput::INDEX);
+				self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::Gradient(gradient.stops.clone()), false), true);
+
+				self.gradient_stops_set(gradient.stops.clone());
+				self.gradient_line_set(gradient.start, gradient.end);
+				self.gradient_type_set(gradient.gradient_type);
+				self.gradient_spread_method_set(gradient.spread_method);
 			}
 		}
-		let input_connector = InputConnector::node(fill_node_id, fill_index);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Fill(fill), false), false);
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
@@ -536,8 +543,30 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
 	pub fn gradient_stops_set(&mut self, stops: GradientStops) {
 		let Some(output_layer) = self.get_output_layer() else { return };
-		let Some(gradient_value_id) = get_upstream_gradient_value_node_id(output_layer, self.network_interface) else {
+
+		// Try to set the value of a Fill node, if exists
+		if let Some(fill_id) = get_fill_node_id_with_value(output_layer, self.network_interface) {
+			self.set_input_with_refresh(
+				InputConnector::node(fill_id, graphene_std::vector::fill::FillInput::<List<GradientStops>>::INDEX),
+				NodeInput::value(TaggedValue::Gradient(stops), false),
+				false,
+			);
 			return;
+		};
+
+		let gradient_value_id = match get_upstream_gradient_value_node_id(output_layer, self.network_interface) {
+			Some(id) => id,
+			None => {
+				let target = gradient_chain_target_input(output_layer, self.network_interface);
+				let Some(node_definition) = resolve_proto_node_type(graphene_std::math_nodes::gradient_value::IDENTIFIER) else {
+					return;
+				};
+				let node_id = NodeId::new();
+				self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
+				self.network_interface.set_input(&target, NodeInput::node(node_id, 0), &[]);
+
+				node_id
+			}
 		};
 
 		let input_connector = InputConnector::node(gradient_value_id, graphene_std::math_nodes::gradient_value::GradientInput::INDEX);
@@ -549,6 +578,27 @@ impl<'a> ModifyInputsContext<'a> {
 	/// With none, one is inserted unless the target is the identity.
 	pub fn gradient_line_set(&mut self, new_start: DVec2, new_end: DVec2) {
 		let Some(output_layer) = self.get_output_layer() else { return };
+
+		// Try to set the value of a Fill node, if exists
+		if let Some(fill_node_id) = get_fill_node_id_with_value(output_layer, self.network_interface) {
+			let old_transform: DAffine2 = self
+				.network_interface
+				.document_network()
+				.nodes
+				.get(&fill_node_id)
+				.and_then(|node| node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX))
+				.and_then(|input| input.as_value())
+				.and_then(|value| if let TaggedValue::DAffine2(t) = value { Some(*t) } else { None })
+				.unwrap_or(DAffine2::IDENTITY);
+
+			let new_transform = build_transform_with_y_preservation(old_transform, new_start, new_end);
+			self.set_input_with_refresh(
+				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput::INDEX),
+				NodeInput::value(TaggedValue::DAffine2(new_transform), false),
+				false,
+			);
+			return;
+		}
 
 		let walk_from = if let Some(fill_input_node_id) = get_fill_input_node_id(output_layer, self.network_interface) {
 			// Some nodes are connected to a Fill node, this means that the primary path is a `List<Vector>`, so we need to traverse it
@@ -615,6 +665,17 @@ impl<'a> ModifyInputsContext<'a> {
 	/// from the default (`Linear`).
 	pub fn gradient_type_set(&mut self, gradient_type: GradientType) {
 		let Some(output_layer) = self.get_output_layer() else { return };
+
+		// Try to set the value of a Fill node, if exists
+		if let Some(fill_id) = get_fill_node_id_with_value(output_layer, self.network_interface) {
+			self.set_input_with_refresh(
+				InputConnector::node(fill_id, graphene_std::vector::fill::GradientTypeInput::INDEX),
+				NodeInput::value(TaggedValue::GradientType(gradient_type), false),
+				false,
+			);
+			return;
+		};
+
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::gradient_type::IDENTIFIER;
 		let create_if_nonexistent = gradient_type != GradientType::default();
@@ -630,6 +691,17 @@ impl<'a> ModifyInputsContext<'a> {
 	/// from the default (`Pad`).
 	pub fn gradient_spread_method_set(&mut self, spread_method: GradientSpreadMethod) {
 		let Some(output_layer) = self.get_output_layer() else { return };
+
+		// Try to set the value of a Fill node, if exists
+		if let Some(fill_id) = get_fill_node_id_with_value(output_layer, self.network_interface) {
+			self.set_input_with_refresh(
+				InputConnector::node(fill_id, graphene_std::vector::fill::SpreadMethodInput::INDEX),
+				NodeInput::value(TaggedValue::GradientSpreadMethod(spread_method), false),
+				false,
+			);
+			return;
+		};
+
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::spread_method::IDENTIFIER;
 		let create_if_nonexistent = spread_method != GradientSpreadMethod::default();
@@ -802,42 +874,5 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
-	}
-}
-
-/// Rebuild the y-axis so its (parallel, perpendicular) components in the x-axis-aligned frame stay constant, both
-/// rescaled by `|new_x| / |old_x|`. This holds the (x, y) parallelogram's aspect ratio and skew fixed across an endpoint
-/// drag, so a radial ellipse stays the same shape (just rotated and resized) instead of distorting as x grows or shrinks.
-/// Falls back to a +90° rotation of `new_x` when `old_x` is degenerate.
-fn scale_y_axis_to_match_new_x(old_x: DVec2, old_y: DVec2, new_x: DVec2) -> DVec2 {
-	let old_x_length = old_x.length();
-	if old_x_length < 1e-9 {
-		return DVec2::new(-new_x.y, new_x.x);
-	}
-	let ex_old = old_x / old_x_length;
-	let ey_old = DVec2::new(-ex_old.y, ex_old.x);
-
-	let new_x_length = new_x.length();
-	if new_x_length < 1e-9 {
-		return DVec2::ZERO;
-	}
-	let ex_new = new_x / new_x_length;
-	let ey_new = DVec2::new(-ex_new.y, ex_new.x);
-
-	let parallel = old_y.dot(ex_old);
-	let perpendicular = old_y.dot(ey_old);
-	let scale = new_x_length / old_x_length;
-
-	scale * (parallel * ex_new + perpendicular * ey_new)
-}
-
-/// Build a new affine that maps canonical (0,0) -> (1,0) to (new_start, new_end), preserving the y-axis
-/// shape of `old` proportionally to the x-axis length change.
-fn build_transform_with_y_preservation(old: DAffine2, new_start: DVec2, new_end: DVec2) -> DAffine2 {
-	let new_x_axis = new_end - new_start;
-	let preserved_y_axis = scale_y_axis_to_match_new_x(old.matrix2.x_axis, old.matrix2.y_axis, new_x_axis);
-	DAffine2 {
-		matrix2: glam::DMat2::from_cols(new_x_axis, preserved_y_axis),
-		translation: new_start,
 	}
 }
