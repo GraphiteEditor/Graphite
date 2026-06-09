@@ -60,6 +60,10 @@ pub enum DocumentMessage {
 		context: OverlayContext,
 	},
 	DuplicateSelectedLayers,
+	DuplicateSelectedLayersTo {
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
 	EnterNestedNetwork {
 		node_id: NodeId,
 	},
