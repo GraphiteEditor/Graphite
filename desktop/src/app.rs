@@ -33,6 +33,7 @@ pub(crate) struct App {
 	window_size: PhysicalSize<u32>,
 	window_maximized: bool,
 	window_fullscreen: bool,
+	window_pending_drag: bool,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	ui_scale: f64,
@@ -109,6 +110,7 @@ impl App {
 			window_size: PhysicalSize { width: 0, height: 0 },
 			window_maximized: false,
 			window_fullscreen: false,
+			window_pending_drag: false,
 			pointer_position: Default::default(),
 			pointer_lock_position: Default::default(),
 			ui_scale: 1.,
@@ -371,9 +373,7 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::WindowDrag => {
-				if let Some(window) = &self.window {
-					window.start_drag();
-				}
+				self.window_pending_drag = true;
 			}
 			DesktopFrontendMessage::WindowFocus => {
 				if let Some(window) = &self.window {
@@ -651,6 +651,21 @@ impl ApplicationHandler for App {
 				if self.pointer_lock_position.is_none() =>
 			{
 				self.pointer_position = position;
+
+				if self.window_pending_drag {
+					self.window_pending_drag = false;
+					if let Some(window) = &self.window {
+						window.start_drag();
+					}
+				}
+			}
+
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(MouseButton::Left),
+				state: ElementState::Released,
+				..
+			} => {
+				self.window_pending_drag = false;
 			}
 
 			_ => {}
