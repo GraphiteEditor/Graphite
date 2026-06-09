@@ -108,53 +108,62 @@ impl From<List<GradientStops>> for Graphic {
 fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
 	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_row in current_graphic_list.into_iter() {
+			// Whether the parent carries each attribute: a structural fact (column presence), never a value comparison.
+			// Flattening composes a parent attribute onto its children only when the parent has it,
+			// so an absent parent attribute never invents a column the children didn't already have.
+			let parent_has_transform = current_graphic_row.attribute::<DAffine2>(ATTR_TRANSFORM).is_some();
+			let parent_has_opacity = current_graphic_row.attribute::<f64>(ATTR_OPACITY).is_some();
+			let parent_has_fill = current_graphic_row.attribute::<f64>(ATTR_OPACITY_FILL).is_some();
+			let parent_has_layer_path = current_graphic_row.attribute::<List<NodeId>>(ATTR_EDITOR_LAYER_PATH).is_some();
+
 			let layer_path: List<NodeId> = current_graphic_row.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH);
 			let current_transform: DAffine2 = current_graphic_row.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let current_opacity: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY, 1.);
 			let current_fill: f64 = current_graphic_row.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 
 			match current_graphic_row.into_element() {
-				// Compose the parent's transform, opacity, and fill onto each child row
+				// Compose the parent's transform/opacity/fill onto each child, but only for attributes the parent carries.
+				// A child lacking one is padded with the composition identity (`1.` for opacity/fill, identity for transform), so composing through it is a no-op.
 				Graphic::Graphic(mut sub_list) => {
-					// Identity default means a missing attribute still composes correctly
-					for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-						*v = current_transform * *v;
+					if parent_has_transform {
+						for v in sub_list.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+							*v = current_transform * *v;
+						}
 					}
-
-					// f64 defaults to 0, but opacity/fill default to 1, so missing attributes must be set rather than multiplied
-					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY) {
-						for v in values {
+					if parent_has_opacity {
+						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
 							*v *= current_opacity;
 						}
-					} else {
-						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY) {
-							*v = current_opacity;
-						}
 					}
-					if let Some(values) = sub_list.iter_attribute_values_mut::<f64>(ATTR_OPACITY_FILL) {
-						for v in values {
-							*v *= current_fill;
-						}
-					} else {
+					if parent_has_fill {
 						for v in sub_list.iter_attribute_values_mut_or_default::<f64>(ATTR_OPACITY_FILL) {
-							*v = current_fill;
+							*v *= current_fill;
 						}
 					}
 
 					flatten_recursive(output, sub_list, extract_variant);
 				}
-				// Extract the target variant and push its items with composed transform, opacity, and fill
+				// Extract the target variant and push its items, composing the parent's attributes onto each
 				other => {
 					if let Some(typed_list) = extract_variant(other) {
 						for mut item in typed_list.into_iter() {
-							let row_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-							let row_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-							let row_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-
-							item.set_attribute(ATTR_TRANSFORM, current_transform * row_transform);
-							item.set_attribute(ATTR_OPACITY, current_opacity * row_opacity);
-							item.set_attribute(ATTR_OPACITY_FILL, current_fill * row_fill);
-							item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+							// Each `|| item.attribute(...)` keeps an attribute the item itself carries
+							// (recomposed with the parent's identity value) even when the parent lacks it
+							if parent_has_transform || item.attribute::<DAffine2>(ATTR_TRANSFORM).is_some() {
+								let row_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+								item.set_attribute(ATTR_TRANSFORM, current_transform * row_transform);
+							}
+							if parent_has_opacity || item.attribute::<f64>(ATTR_OPACITY).is_some() {
+								let row_opacity: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
+								item.set_attribute(ATTR_OPACITY, current_opacity * row_opacity);
+							}
+							if parent_has_fill || item.attribute::<f64>(ATTR_OPACITY_FILL).is_some() {
+								let row_fill: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+								item.set_attribute(ATTR_OPACITY_FILL, current_fill * row_fill);
+							}
+							if parent_has_layer_path {
+								item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
+							}
 
 							output.push(item);
 						}
@@ -460,5 +469,39 @@ impl<T: Clone> OmitIndex for List<T> {
 			return self.clone();
 		}
 		self.omit_index(self.len() - index)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::list::List;
+
+	fn vector_graphic() -> Graphic {
+		Graphic::Vector(List::new_from_element(Vector::default()))
+	}
+
+	// Flattening must not invent attribute columns that neither the parent graphic nor the child carried
+	#[test]
+	fn flatten_does_not_invent_attributes() {
+		let graphics = List::new_from_element(vector_graphic());
+		let flattened: List<Vector> = graphics.into_flattened_list();
+		for key in [ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, ATTR_EDITOR_LAYER_PATH] {
+			assert!(!flattened.attribute_keys().any(|k| k == key), "flatten invented the `{key}` attribute");
+		}
+	}
+
+	// A parent attribute that is present must compose onto the flattened children
+	#[test]
+	fn flatten_propagates_present_attributes() {
+		let mut graphics = List::new_from_element(vector_graphic());
+		graphics.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		let flattened: List<Vector> = graphics.into_flattened_list();
+		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
+
+		let mut group = List::new_from_element(Graphic::Graphic(List::new_from_element(vector_graphic())));
+		group.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		let flattened: List<Vector> = group.into_flattened_list();
+		assert_eq!(flattened.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 0.5);
 	}
 }
