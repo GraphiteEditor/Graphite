@@ -30,19 +30,32 @@ let /** @type {{ element: HTMLElement, goingUp: boolean, animationStartTime: num
 let /** @type {number} **/ activeRippleIndex;
 let /** @type {{ originX: number, startTime: number }[]} **/ wavePulses = [];
 
+// Metrics derived from computed styles, cached here and refreshed only on resize (they shift across media-query breakpoints) rather than re-read every frame
+let /** @type {number} **/ rippleStrokeWidth;
+let /** @type {number} **/ mediaQueryScaleFactor;
+
+// The in-flight animation frame, if any; used to guarantee a single render loop no matter how many pointer events arrive
+let /** @type {number | undefined} **/ animationFrameId;
+
+// Set by the resize handler, consumed by the next animation frame
+let /** @type {boolean} **/ pendingResize = false;
+
 window.addEventListener("DOMContentLoaded", initializeRipples);
 
 function initializeRipples() {
-	window.addEventListener("resize", () => animate(true));
+	// Defer resize work to the next animation frame so rapid resize events coalesce into a single metrics refresh and redraw
+	window.addEventListener("resize", () => {
+		pendingResize = true;
+		requestAnimate();
+	});
 
-	navButtons = document.querySelectorAll("header nav a") || undefined;
+	navButtons = document.querySelectorAll("header nav a");
 	rippleSvg = document.querySelector("header .ripple") || undefined;
 	rippleMaskPath = rippleSvg?.querySelector(".ripple-mask") || undefined;
 	rippleLinePath = rippleSvg?.querySelector(".ripple-line") || undefined;
 	rippleTaperLeft = rippleSvg?.querySelector(".ripple-taper-left") || undefined;
 	rippleTaperRight = rippleSvg?.querySelector(".ripple-taper-right") || undefined;
-	baselineFromTop = rippleSvg ? Number.parseInt(window.getComputedStyle(rippleSvg).getPropertyValue("--ripple-baseline-from-top"), 10) || undefined : undefined;
-	taperHalfWidth = rippleSvg ? Number.parseInt(window.getComputedStyle(rippleSvg).getPropertyValue("--ripple-taper-half-width"), 10) || undefined : undefined;
+	refreshMetrics();
 
 	ripples = Array.from(navButtons)
 		.filter((x) => x instanceof HTMLElement)
@@ -67,7 +80,7 @@ function initializeRipples() {
 		return location.startsWith(link);
 	});
 
-	ripples.forEach((ripple) => {
+	ripples.forEach((ripple, index) => {
 		const updateTimings = (/** @type {boolean} **/ goingUp) => {
 			const start = ripple.animationStartTime;
 			const now = Date.now();
@@ -81,9 +94,9 @@ function initializeRipples() {
 			ripple.animationStartTime = now < stop ? now - remaining : now;
 			ripple.animationEndTime = now < stop ? now + elapsed : now + BUMP_RAISE_MILLISECONDS;
 
-			// Only the drop emits a ripple, like releasing a finger from the water surface — the lift only deforms it locally
-			if (!goingUp) emitWavePulse(ripple);
-			animate();
+			// Only the drop emits a ripple, like releasing a finger from the water surface; the active page's button stays lifted and never drops, so it's excluded
+			if (!goingUp && index !== activeRippleIndex) emitWavePulse(ripple);
+			requestAnimate();
 		};
 
 		ripple.element.addEventListener("pointerenter", () => updateTimings(true));
@@ -101,6 +114,9 @@ function initializeRipples() {
 	}
 
 	setRipples();
+
+	// Web fonts can load after this initial layout and reflow the nav buttons, leaving the active page's static bump offset; redraw once they're ready
+	document.fonts?.ready.then(setRipples);
 }
 
 function emitWavePulse(/** @type {{ element: HTMLElement }} **/ ripple) {
@@ -116,22 +132,47 @@ function emitWavePulse(/** @type {{ element: HTMLElement }} **/ ripple) {
 	});
 }
 
-function animate(forceRefresh = false) {
+function refreshMetrics() {
+	if (!rippleSvg || !navButtons || !(navButtons[0] instanceof HTMLElement)) return;
+
+	const svgStyle = window.getComputedStyle(rippleSvg);
+	baselineFromTop = Number.parseInt(svgStyle.getPropertyValue("--ripple-baseline-from-top"), 10) || undefined;
+	taperHalfWidth = Number.parseInt(svgStyle.getPropertyValue("--ripple-taper-half-width"), 10) || undefined;
+	rippleStrokeWidth = Number.parseInt(svgStyle.getPropertyValue("--border-thickness"), 10);
+
+	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize, 10) || NAV_BUTTON_INITIAL_FONT_SIZE;
+	mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
+}
+
+// Schedule the render loop, but only if it isn't already running, so a burst of pointer events can't stack up redundant concurrent loops
+function requestAnimate() {
+	if (animationFrameId !== undefined) return;
+	animationFrameId = window.requestAnimationFrame(animationTick);
+}
+
+function animationTick() {
+	animationFrameId = undefined;
+
+	// A resize since the last frame may have changed the cached metrics; refresh them here (once) rather than on every resize event
+	if (pendingResize) refreshMetrics();
+
 	const now = Date.now();
 
 	// Drop pulses whose amplitude has decayed below the visible threshold
 	wavePulses = wavePulses.filter((pulse) => {
-		const traveled = (WAVE_SPEED_PX_PER_SECOND * (now - pulse.startTime)) / 1000;
-		return Math.exp(-traveled / WAVE_ATTENUATION_LENGTH) > WAVE_PRUNE_AMPLITUDE / WAVE_AMPLITUDE;
+		const traveled = (WAVE_SPEED_PX_PER_SECOND * mediaQueryScaleFactor * (now - pulse.startTime)) / 1000;
+		return Math.exp(-traveled / (WAVE_ATTENUATION_LENGTH * mediaQueryScaleFactor)) > WAVE_PRUNE_AMPLITUDE / WAVE_AMPLITUDE;
 	});
 
 	const FUZZ_MILLISECONDS = 100;
 	const bumpsAnimating = ripples.some((ripple) => ripple.animationStartTime > 0 && ripple.animationEndTime > 0 && now <= ripple.animationEndTime + FUZZ_MILLISECONDS);
 	const wavesActive = wavePulses.length > 0;
 
-	if (bumpsAnimating || wavesActive || forceRefresh) {
+	// Keep looping while anything is animating; a lone pending resize just needs the single redraw below
+	if (bumpsAnimating || wavesActive || pendingResize) {
+		pendingResize = false;
 		setRipples();
-		window.requestAnimationFrame(() => animate());
+		if (bumpsAnimating || wavesActive) requestAnimate();
 	}
 }
 
@@ -146,10 +187,6 @@ function setRipples() {
 
 	const now = Date.now();
 	const rippleSvgRect = rippleSvg.getBoundingClientRect();
-
-	const rippleStrokeWidth = Number.parseInt(window.getComputedStyle(rippleSvg).getPropertyValue("--border-thickness"), 10);
-	const navButtonFontSize = Number.parseInt(window.getComputedStyle(navButtons[0]).fontSize, 10) || NAV_BUTTON_INITIAL_FONT_SIZE;
-	const mediaQueryScaleFactor = navButtonFontSize / NAV_BUTTON_INITIAL_FONT_SIZE;
 
 	// Baseline centerline: --ripple-baseline-from-top marks where the bottom edge of the baseline stroke sits, so the centerline is half a stroke above
 	const baselineY = baselineFromTop - rippleStrokeWidth / 2;
@@ -180,9 +217,10 @@ function setRipples() {
 	const pulses = wavePulses.map((pulse) => {
 		const ageMs = now - pulse.startTime;
 		const ageSeconds = ageMs / 1000;
-		const traveled = WAVE_SPEED_PX_PER_SECOND * ageSeconds;
+		// Speed and attenuation distance scale with the UI so the wave looks identical (just smaller) when media queries shrink the navbar
+		const traveled = WAVE_SPEED_PX_PER_SECOND * mediaQueryScaleFactor * ageSeconds;
 		const rampFactor = clamp01(ageMs / WAVE_RAMP_UP_MILLISECONDS);
-		const distanceAttenuation = Math.exp(-traveled / WAVE_ATTENUATION_LENGTH);
+		const distanceAttenuation = Math.exp(-traveled / (WAVE_ATTENUATION_LENGTH * mediaQueryScaleFactor));
 		const sigma = WAVE_PACKET_SIGMA * mediaQueryScaleFactor;
 		const wavelength = WAVE_WAVELENGTH * mediaQueryScaleFactor;
 		const amplitude = WAVE_AMPLITUDE * mediaQueryScaleFactor * rampFactor * distanceAttenuation;
@@ -193,40 +231,31 @@ function setRipples() {
 	const sampleSpacing = WAVE_SAMPLE_SPACING * mediaQueryScaleFactor;
 	const numSamples = Math.max(2, Math.ceil(rippleSvgRect.width / sampleSpacing) + 1);
 	const samples = new Array(numSamples);
-
 	for (let i = 0; i < numSamples; i++) {
 		const x = (i / (numSamples - 1)) * rippleSvgRect.width;
 
+		// The local lift bump adds directly to the surface height, while each lifted button damps passing waves within a wider zone (scaled by how lifted it is) so its bump doesn't jiggle
 		let liftHeight = 0;
 		let waveSuppression = 0;
-		for (const bump of bumps) {
+		for (let j = 0; j < bumps.length; j++) {
+			const bump = bumps[j];
 			const dist = x - bump.centerX;
 
 			if (Math.abs(dist) < bump.halfWidth) {
-				const shape = Math.cos((Math.PI * dist) / (2 * bump.halfWidth)) ** 2;
-				liftHeight += bump.height * shape;
+				liftHeight += bump.height * Math.cos((Math.PI * dist) / (2 * bump.halfWidth)) ** 2;
 			}
-
-			// Wave damping zone: a wider cos² envelope around each lifted button, scaled by how lifted that button currently is
 			if (Math.abs(dist) < bump.suppressionHalfWidth) {
-				const shape = Math.cos((Math.PI * dist) / (2 * bump.suppressionHalfWidth)) ** 2;
-				waveSuppression += bump.liftFraction * shape;
+				waveSuppression += bump.liftFraction * Math.cos((Math.PI * dist) / (2 * bump.suppressionHalfWidth)) ** 2;
 			}
 		}
 		waveSuppression = Math.min(1, waveSuppression);
 
+		// Each pulse contributes two d'Alembert halves moving in opposite directions
 		let waveHeight = 0;
-		for (const pulse of pulses) {
-			// d'Alembert split: the source disturbance radiates as two equal halves moving in opposite directions
-			for (const direction of [-1, 1]) {
-				const center = pulse.originX + direction * pulse.traveled;
-				const dist = x - center;
-				const distNorm = dist / pulse.sigma;
-				if (Math.abs(distNorm) > 4) continue;
-				const envelope = Math.exp(-distNorm * distNorm);
-				const oscillation = Math.cos((2 * Math.PI * dist) / pulse.wavelength);
-				waveHeight += 0.5 * pulse.amplitude * envelope * oscillation;
-			}
+		for (let j = 0; j < pulses.length; j++) {
+			const pulse = pulses[j];
+			waveHeight += halfPulseContribution(x, pulse.originX - pulse.traveled, pulse);
+			waveHeight += halfPulseContribution(x, pulse.originX + pulse.traveled, pulse);
 		}
 
 		const displacement = liftHeight + waveHeight * (1 - waveSuppression);
@@ -259,6 +288,18 @@ function setRipples() {
 	rippleTaperRight.setAttribute("points", rightPoints);
 }
 
+// One d'Alembert half-pulse's contribution to the surface height at position `x`, as a Gaussian-windowed cosine wave packet
+function halfPulseContribution(/** @type {number} **/ x, /** @type {number} **/ center, /** @type {{ sigma: number, wavelength: number, amplitude: number }} **/ pulse) {
+	const dist = x - center;
+	const distNorm = dist / pulse.sigma;
+	// The Gaussian envelope is negligible past 4 sigma, so skip the transcendentals out there
+	if (Math.abs(distNorm) > 4) return 0;
+
+	const envelope = Math.exp(-distNorm * distNorm);
+	const oscillation = Math.cos((2 * Math.PI * dist) / pulse.wavelength);
+	return 0.5 * pulse.amplitude * envelope * oscillation;
+}
+
 function buildSmoothCurve(/** @type {{ x: number, y: number }[]} **/ samples) {
 	const get = (/** @type {number} **/ index) => {
 		if (index < 0) {
@@ -276,20 +317,19 @@ function buildSmoothCurve(/** @type {{ x: number, y: number }[]} **/ samples) {
 	};
 
 	// Catmull-Rom-to-cubic-Bezier across the sample chain for a smooth surface curve
-	let curve = "";
-	for (let i = 0; i < samples.length - 1; i++) {
-		const p0 = get(i - 1);
-		const p1 = samples[i];
-		const p2 = samples[i + 1];
-		const p3 = get(i + 2);
+	return samples
+		.slice(0, -1)
+		.map((p1, i) => {
+			const p0 = get(i - 1);
+			const p2 = samples[i + 1];
+			const p3 = get(i + 2);
 
-		const cp1x = p1.x + (p2.x - p0.x) / 6;
-		const cp1y = p1.y + (p2.y - p0.y) / 6;
-		const cp2x = p2.x - (p3.x - p1.x) / 6;
-		const cp2y = p2.y - (p3.y - p1.y) / 6;
+			const cp1x = p1.x + (p2.x - p0.x) / 6;
+			const cp1y = p1.y + (p2.y - p0.y) / 6;
+			const cp2x = p2.x - (p3.x - p1.x) / 6;
+			const cp2y = p2.y - (p3.y - p1.y) / 6;
 
-		curve += `C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)} `;
-	}
-
-	return curve;
+			return `C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)} `;
+		})
+		.join("");
 }
