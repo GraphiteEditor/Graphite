@@ -8,8 +8,8 @@ use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLe
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
-	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx, ExtractAll,
-	OwnedContextImpl,
+	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_TYPE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_SPREAD_METHOD, ATTR_TRANSFORM, CloneVarArgs,
+	Color, Context, Ctx, ExtractAll, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -18,6 +18,7 @@ use graphic_types::{Graphic, IntoGraphicList};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
+use std::any::Any;
 use std::collections::hash_map::DefaultHasher;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
@@ -29,8 +30,9 @@ use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
 	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
-use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::style::{Fill, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::{GradientSpreadMethod, GradientType};
 
 /// Implemented for types that contain vector items reachable via mutable access.
 /// Used for the fill and stroke nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
@@ -161,6 +163,10 @@ async fn fill<F: IntoGraphicList, V: VectorListIterMut + 'n + Send>(
 		List<Vector>,
 		List<Vector>,
 		List<Vector>,
+		List<Vector>,
+		List<Vector>,
+		List<Graphic>,
+		List<Graphic>,
 		List<Graphic>,
 		List<Graphic>,
 		List<Graphic>,
@@ -183,10 +189,33 @@ async fn fill<F: IntoGraphicList, V: VectorListIterMut + 'n + Send>(
 		List<Raster<CPU>>,
 		List<Raster<GPU>>,
 	)]
-	fill: F,
+	mut fill: F,
 	_backup_color: List<Color>,
-	_backup_gradient: Gradient,
+	_backup_gradient: List<GradientStops>,
+	_gradient_type: GradientType,
+	_spread_method: GradientSpreadMethod,
+	_transform: DAffine2,
 ) -> V {
+	if let Some(gradient) = (&mut fill as &mut dyn Any).downcast_mut::<List<GradientStops>>() {
+		if gradient.iter_attribute_values::<GradientType>(ATTR_GRADIENT_TYPE).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientType>(ATTR_GRADIENT_TYPE) {
+				*value = _gradient_type;
+			}
+		}
+
+		if gradient.iter_attribute_values::<GradientSpreadMethod>(ATTR_SPREAD_METHOD).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<GradientSpreadMethod>(ATTR_SPREAD_METHOD) {
+				*value = _spread_method;
+			}
+		}
+
+		if gradient.iter_attribute_values::<DAffine2>(ATTR_TRANSFORM).is_none() {
+			for value in gradient.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
+				*value = _transform;
+			}
+		}
+	}
+
 	content.set_paint_attribute(ATTR_FILL, fill);
 	content
 }
