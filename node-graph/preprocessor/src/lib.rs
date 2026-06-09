@@ -10,6 +10,7 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[derive(Debug, Default, Clone)]
 pub struct Preprocessor {
@@ -74,7 +75,10 @@ fn replace_resource_inputs(network: &mut NodeNetwork, resources: &ResourceRegist
 impl Preprocessor {
 	fn insert_inject_scopes(&self, network: &mut NodeNetwork) {
 		for (identifier, (template, ty)) in self.inject_scopes.iter() {
-			let producer_id = NodeId::new();
+			let mut hasher = DefaultHasher::new();
+
+			identifier.as_str().hash(&mut hasher);
+			let producer_id = NodeId(hasher.finish());
 			network.nodes.insert(producer_id, template.clone());
 
 			let passthrough = DocumentNode {
@@ -82,7 +86,9 @@ impl Preprocessor {
 				implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
 				..Default::default()
 			};
-			let passthrough_id = NodeId::new();
+
+			"passthrough".hash(&mut hasher);
+			let passthrough_id = NodeId(hasher.finish());
 			network.nodes.insert(passthrough_id, passthrough);
 
 			network.scope_injections.insert(identifier.as_str().to_string(), (passthrough_id, ty.clone()));
