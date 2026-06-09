@@ -349,6 +349,7 @@
 			if (distance > DRAG_THRESHOLD) {
 				internalDragState.active = true;
 				dragInPanel = true;
+				layerToClipUponClick = undefined;
 
 				const layer = internalDragState.listing.entry;
 				if (!$nodeGraph.selected.includes(layer.id)) {
@@ -381,7 +382,7 @@
 		}
 	}
 
-	function draggingPointerUp() {
+	function draggingPointerUp(e: PointerEvent) {
 		if (internalDragState?.active && dragDropTarget) {
 			// Ensure the dragged layer is part of the selection, matching the move-in-tree behavior
 			if (!$nodeGraph.selected.includes(internalDragState.layerId)) selectLayer(internalDragState.listing, false, false);
@@ -393,9 +394,12 @@
 		} else if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
-			// Commit the move
+			// Ensure the dragged layer is part of the selection before committing
 			select?.();
-			editor.moveLayerInTree(insertParentId, insertIndex);
+
+			// Holding Alt drops a duplicate of the selection at the target instead of moving the originals
+			if (e.altKey) editor.duplicateLayerInTree(insertParentId, insertIndex);
+			else editor.moveLayerInTree(insertParentId, insertIndex);
 
 			// Prevent the subsequent click event from processing
 			justFinishedDrag = true;

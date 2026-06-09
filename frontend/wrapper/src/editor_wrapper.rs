@@ -756,6 +756,18 @@ impl EditorWrapper {
 		self.dispatch(message);
 	}
 
+	/// Duplicate the selected layers, placing the copies within the given folder at the given index.
+	/// If the folder is `None`, they are inserted into the document root.
+	/// If the insert index is `None`, they are inserted at the start of the folder.
+	#[wasm_bindgen(js_name = duplicateLayerInTree)]
+	pub fn duplicate_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let message = DocumentMessage::DuplicateSelectedLayersTo {
+			parent: insert_parent_id.map(NodeId).map(LayerNodeIdentifier::new_unchecked).unwrap_or_default(),
+			insert_index: insert_index.unwrap_or_default(),
+		};
+		self.dispatch(message);
+	}
+
 	/// Set the name for the layer
 	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {

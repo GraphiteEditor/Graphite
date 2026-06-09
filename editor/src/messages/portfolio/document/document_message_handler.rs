@@ -449,34 +449,71 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
 				});
 
-				for layer in layers.into_iter().rev() {
-					let Some(parent) = layer.parent(self.metadata()) else { continue };
+				for original_layer in layers.into_iter().rev() {
+					let Some(parent) = original_layer.parent(self.metadata()) else { continue };
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![original_layer.to_node()]), parent);
 
-					// Copy the layer
-					let mut copy_ids = HashMap::new();
-					let node_id = layer.to_node();
-					copy_ids.insert(node_id, NodeId(0));
-
-					self.network_interface
-						.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
-						.enumerate()
-						.for_each(|(index, node_id)| {
-							copy_ids.insert(node_id, NodeId((index + 1) as u64));
-						});
-
-					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
-
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
-
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-
-					let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
-					let layer = LayerNodeIdentifier::new_unchecked(layer_id);
-					new_dragging.push(layer);
-					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
-					responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+					let new_layer = self.duplicate_layer(original_layer, responses);
+					new_dragging.push(new_layer);
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index,
+					});
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
+				if !self.selection_network_path.is_empty() {
+					log::error!("Duplicating selected layers is only supported for the document network");
+					return;
+				}
+
+				// Mirror the placement constraints enforced when moving layers so a copy can't land somewhere a move couldn't
+				let any_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
+					return;
+				}
+
+				let selected_any_non_artboards = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
+					return;
+				}
+
+				let layers_to_duplicate = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+				if layers_to_duplicate.is_empty() {
+					return;
+				}
+
+				responses.add(DocumentMessage::AddTransaction);
+
+				let mut new_layers = Vec::new();
+				for (layer_index, layer) in layers_to_duplicate.into_iter().enumerate() {
+					let new_layer = self.duplicate_layer(layer, responses);
+					new_layers.push(new_layer);
+
+					// Insert each copy one slot below the previous so the duplicates keep their original top-to-bottom order
+					responses.add(NodeGraphMessage::MoveLayerToStack {
+						layer: new_layer,
+						parent,
+						insert_index: insert_index + layer_index,
+					});
+				}
+
+				let nodes = new_layers.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -2216,6 +2253,27 @@ impl DocumentMessageHandler {
 				None
 			})
 			.unwrap_or(0)
+	}
+
+	/// Copies `layer` together with its full upstream node chain, queueing the new nodes with freshly minted IDs.
+	/// Returns the new layer's identifier; the caller places it into the stack with a `MoveLayerToStack` response.
+	fn duplicate_layer(&mut self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+		let mut copy_ids = HashMap::new();
+		copy_ids.insert(layer.to_node(), NodeId(0));
+		self.network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+			.enumerate()
+			.for_each(|(index, node_id)| {
+				copy_ids.insert(node_id, NodeId((index + 1) as u64));
+			});
+
+		let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+		let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+		let new_layer_id = *new_ids.get(&NodeId(0)).expect("Node ID 0 should be a layer");
+		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+
+		LayerNodeIdentifier::new_unchecked(new_layer_id)
 	}
 
 	pub fn group_layers(
