@@ -357,7 +357,7 @@ impl TryFromGraphic for String {
 }
 
 // Local trait to convert types to List<Graphic> (avoids orphan rule issues)
-pub trait IntoGraphicList {
+pub trait IntoGraphicList: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static {
 	fn into_graphic_list(self) -> List<Graphic>;
 
 	/// Deeply flattens any content of type `T` within a `List<Graphic>`, discarding all other content, and returning a flat `List<T>`.

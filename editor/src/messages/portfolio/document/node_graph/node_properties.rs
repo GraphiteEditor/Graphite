@@ -2391,7 +2391,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	use graphene_std::vector::fill::*;
 
 	// Pass blank_assist=false because the assist slot is filled below ("Reverse Stops" button when in gradient mode)
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<Color>::INDEX, false, context));
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::new(node_id, FillInput::<List<Color>>::INDEX, false, context));
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -2402,7 +2402,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::FillGradient(backup_gradient))) = (
-		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
+		&document_node.inputs[FillInput::<List<Color>>::INDEX].as_value(),
 		&document_node.inputs[BackupColorInput::INDEX].as_value(),
 		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
 	) {
@@ -2429,7 +2429,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						}
 					},
 					node_id,
-					FillInput::<Color>::INDEX,
+					FillInput::<List<Color>>::INDEX,
 				))
 				.widget_instance();
 			widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -2459,7 +2459,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						.into(),
 						NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: FillInput::<Color>::INDEX,
+							input_index: FillInput::<List<Color>>::INDEX,
 							value: TaggedValue::Fill(new_fill),
 						}
 						.into(),
@@ -2479,11 +2479,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, FillInput::<Color>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, FillInput::<List<Color>>::INDEX))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, FillInput::<Color>::INDEX))
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, FillInput::<List<Color>>::INDEX))
 				.on_commit(commit_value),
 		];
 
@@ -2514,7 +2514,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
-					FillInput::<Color>::INDEX,
+					FillInput::<List<Color>>::INDEX,
 				);
 				RadioEntryData::new(format!("{:?}", grad_type))
 					.label(format!("{:?}", grad_type))
@@ -2560,7 +2560,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					}
 				},
 				node_id,
-				FillInput::<Color>::INDEX,
+				FillInput::<List<Color>>::INDEX,
 			))
 			.widget_instance();
 		spread_methods_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
@@ -2579,7 +2579,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
-					FillInput::<Color>::INDEX,
+					FillInput::<List<Color>>::INDEX,
 				);
 
 				let set_backup_value = update_value(
