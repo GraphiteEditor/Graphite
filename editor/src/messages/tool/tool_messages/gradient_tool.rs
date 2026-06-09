@@ -8,9 +8,10 @@ use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasi
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_gradient_stops, gradient_chain_target_input};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_fill_node_id_with_value, get_gradient_stops, gradient_chain_target_input};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::style::{Fill, FillChoice, FillChoiceUI, Gradient, GradientSpreadMethod, GradientStop, GradientStops, GradientStopsUI, GradientType};
@@ -355,7 +356,36 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 // TODO: Remove this whole function once all gradients are stored via the modern `Gradient(GradientStops)` slot
 fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	if let Some(stops) = get_gradient_stops(layer, network_interface) {
-		// Try to construct a gradient out of a chain, which is directly connected to a layer
+		// Try to read a Fill node's values first
+		if let Some(fill_id) = get_fill_node_id_with_value(layer, network_interface) {
+			let fill_node = network_interface.document_network().nodes.get(&fill_id)?;
+
+			let gradient_type = match fill_node.inputs.get(graphene_std::vector::fill::GradientTypeInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientType(value)) => value,
+				_ => GradientType::default(),
+			};
+			let spread_method = match fill_node.inputs.get(graphene_std::vector::fill::SpreadMethodInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::GradientSpreadMethod(value)) => value,
+				_ => GradientSpreadMethod::default(),
+			};
+			let transform = match fill_node.inputs.get(graphene_std::vector::fill::TransformInput::INDEX).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::DAffine2(value)) => value,
+				_ => DAffine2::IDENTITY,
+			};
+
+			return Some(Gradient {
+				stops,
+				gradient_type,
+				spread_method,
+				start: transform.transform_point2(DVec2::ZERO),
+				end: transform.transform_point2(DVec2::X),
+				// TODO: Eventually remove this document upgrade code
+				absolute: true,
+				transform: DAffine2::IDENTITY,
+			});
+		}
+
+		// Then, try to construct a gradient out of a chain, which is directly connected to a Fill node or a layer
 		let chain_state = read_gradient_chain_state(layer, network_interface);
 		Some(Gradient {
 			stops,
@@ -1928,12 +1958,13 @@ mod test_gradient {
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
 	use graphene_std::color::SRGBA8;
-	use graphene_std::vector::style::{Fill, Gradient};
+	use graphene_std::list::List;
+	use graphene_std::vector::style::{Gradient, GradientSpreadMethod};
 	use graphene_std::vector::{GradientStop, GradientStops, fill};
 
 	use super::gradient_space_transform;
 
-	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<(Fill, DAffine2)> {
+	async fn get_gradients(editor: &mut EditorTestUtils) -> Vec<(Gradient, DAffine2)> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
@@ -1943,21 +1974,32 @@ mod test_gradient {
 		let layers = document.metadata().all_layers();
 		layers
 			.filter_map(|layer| {
-				let fill = instrumented.grab_input_from_layer::<fill::FillInput<Fill>>(layer, &document.network_interface, &editor.runtime)?;
+				let gradient_list = instrumented.grab_input_from_layer::<fill::FillInput<List<GradientStops>>>(layer, &document.network_interface, &editor.runtime)?;
+				let local_transform = instrumented
+					.grab_input_from_layer::<fill::TransformInput>(layer, &document.network_interface, &editor.runtime)
+					.unwrap_or_default();
+				let gradient = Gradient {
+					stops: gradient_list.element(0).cloned().unwrap_or_default(),
+					gradient_type: instrumented
+						.grab_input_from_layer::<fill::GradientTypeInput>(layer, &document.network_interface, &editor.runtime)
+						.unwrap_or_default(),
+					spread_method: instrumented
+						.grab_input_from_layer::<fill::SpreadMethodInput>(layer, &document.network_interface, &editor.runtime)
+						.unwrap_or_default(),
+					start: local_transform.transform_point2(DVec2::ZERO),
+					end: local_transform.transform_point2(DVec2::X),
+				};
 				let transform = gradient_space_transform(layer, document);
-				Some((fill, transform))
+				Some((gradient, transform))
 			})
 			.collect()
 	}
 
 	async fn get_gradient(editor: &mut EditorTestUtils) -> (Gradient, DAffine2) {
-		let fills = get_fills(editor).await;
-		assert_eq!(fills.len(), 1, "Expected 1 gradient fill, found {}", fills.len());
+		let gradients = get_gradients(editor).await;
+		assert_eq!(gradients.len(), 1, "Expected 1 gradient fill, found {}", gradients.len());
 
-		let (fill, transform) = fills.first().unwrap();
-		let gradient = fill.as_gradient().expect("Expected gradient fill type");
-
-		(gradient.clone(), *transform)
+		gradients.into_iter().next().unwrap()
 	}
 
 	fn assert_stops_at_positions(actual_positions: &[f64], expected_positions: &[f64], tolerance: f64) {
@@ -2016,7 +2058,7 @@ mod test_gradient {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
-		assert!(get_fills(&mut editor).await.is_empty());
+		assert!(get_gradients(&mut editor).await.is_empty());
 	}
 
 	#[tokio::test]
@@ -2025,7 +2067,7 @@ mod test_gradient {
 		editor.new_document().await;
 		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
 		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
-		assert!(get_fills(&mut editor).await.is_empty());
+		assert!(get_gradients(&mut editor).await.is_empty());
 	}
 
 	#[tokio::test]
@@ -2374,8 +2416,6 @@ mod test_gradient {
 
 	#[tokio::test]
 	async fn change_spread_method() {
-		use graphene_std::vector::style::GradientSpreadMethod;
-
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
