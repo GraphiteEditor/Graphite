@@ -453,7 +453,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let Some(parent) = original_layer.parent(self.metadata()) else { continue };
 					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![original_layer.to_node()]), parent);
 
-					let new_layer = self.duplicate_layer(original_layer, responses);
+					let Some(new_layer) = self.duplicate_layer(original_layer, responses) else { continue };
 					new_dragging.push(new_layer);
 					responses.add(NodeGraphMessage::MoveLayerToStack {
 						layer: new_layer,
@@ -501,16 +501,30 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::AddTransaction);
 
 				let mut new_layers = Vec::new();
-				for (layer_index, layer) in layers_to_duplicate.into_iter().enumerate() {
-					let new_layer = self.duplicate_layer(layer, responses);
-					new_layers.push(new_layer);
+				for layer in layers_to_duplicate {
+					let Some(new_layer) = self.duplicate_layer(layer, responses) else { continue };
 
 					// Insert each copy one slot below the previous so the duplicates keep their original top-to-bottom order
+					let placement_index = insert_index + new_layers.len();
+					new_layers.push(new_layer);
 					responses.add(NodeGraphMessage::MoveLayerToStack {
 						layer: new_layer,
 						parent,
-						insert_index: insert_index + layer_index,
+						insert_index: placement_index,
 					});
+
+					// Compensate the local transform so a copy dropped into a differently-transformed parent stays put in world space
+					if layer.parent(self.metadata()) != Some(parent) {
+						let layer_world_transform = self.network_interface.document_metadata().transform_to_viewport(layer);
+						let undo_parent_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: new_layer,
+							transform: undo_parent_transform * layer_world_transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				let nodes = new_layers.iter().map(|layer| layer.to_node()).collect();
@@ -2257,7 +2271,7 @@ impl DocumentMessageHandler {
 
 	/// Copies `layer` together with its full upstream node chain, queueing the new nodes with freshly minted IDs.
 	/// Returns the new layer's identifier; the caller places it into the stack with a `MoveLayerToStack` response.
-	fn duplicate_layer(&mut self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	fn duplicate_layer(&mut self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> Option<LayerNodeIdentifier> {
 		let mut copy_ids = HashMap::new();
 		copy_ids.insert(layer.to_node(), NodeId(0));
 		self.network_interface
@@ -2270,10 +2284,13 @@ impl DocumentMessageHandler {
 		let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 		let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
-		let new_layer_id = *new_ids.get(&NodeId(0)).expect("Node ID 0 should be a layer");
+		let Some(&new_layer_id) = new_ids.get(&NodeId(0)) else {
+			log::error!("Could not duplicate layer because its root node copy is missing");
+			return None;
+		};
 		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 
-		LayerNodeIdentifier::new_unchecked(new_layer_id)
+		Some(LayerNodeIdentifier::new_unchecked(new_layer_id))
 	}
 
 	pub fn group_layers(
