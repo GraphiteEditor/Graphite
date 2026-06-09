@@ -81,6 +81,9 @@ function initializeRipples() {
 	});
 
 	ripples.forEach((ripple, index) => {
+		// The active page's button is permanently lifted and inert, so it gets no hover listeners
+		if (index === activeRippleIndex) return;
+
 		const updateTimings = (/** @type {boolean} **/ goingUp) => {
 			const start = ripple.animationStartTime;
 			const now = Date.now();
@@ -94,8 +97,8 @@ function initializeRipples() {
 			ripple.animationStartTime = now < stop ? now - remaining : now;
 			ripple.animationEndTime = now < stop ? now + elapsed : now + BUMP_RAISE_MILLISECONDS;
 
-			// Only the drop emits a ripple, like releasing a finger from the water surface; the active page's button stays lifted and never drops, so it's excluded
-			if (!goingUp && index !== activeRippleIndex) emitWavePulse(ripple);
+			// Only the drop emits a ripple, like releasing a finger from the water surface; the lift only deforms it locally
+			if (!goingUp) emitWavePulse(ripple);
 			requestAnimate();
 		};
 
@@ -104,13 +107,11 @@ function initializeRipples() {
 	});
 
 	if (activeRippleIndex >= 0) {
-		ripples[activeRippleIndex] = {
-			...ripples[activeRippleIndex],
-			goingUp: true,
-			// Set to non-zero, but very old times (1ms after epoch), so the math works out as if the animation has already completed
-			animationStartTime: 1,
-			animationEndTime: 1 + BUMP_RAISE_MILLISECONDS,
-		};
+		// Initialize the active button lifted; the very old times (1ms after epoch) make the math treat its lift as already complete
+		const active = ripples[activeRippleIndex];
+		active.goingUp = true;
+		active.animationStartTime = 1;
+		active.animationEndTime = 1 + BUMP_RAISE_MILLISECONDS;
 	}
 
 	setRipples();
