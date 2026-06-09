@@ -1558,11 +1558,9 @@ impl Render for List<Raster<CPU>> {
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
-						let mut transform_values = transform.to_scale_angle_translation();
 						let size = DVec2::new(image.width as f64, image.height as f64);
-						transform_values.0 /= size;
 
-						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
+						let matrix = transform * DAffine2::from_scale(1. / size);
 						let matrix = format_transform_matrix(matrix);
 						if !matrix.is_empty() {
 							attributes.push(ATTR_TRANSFORM, matrix);
