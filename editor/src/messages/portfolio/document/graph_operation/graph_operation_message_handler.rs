@@ -466,7 +466,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 				// After import, `layer_node` is set to the root group. Apply the placement transform to it
 				// (skipped automatically when identity, so file-open with content at origin creates no Transform node).
-				modify_inputs.transform_set(placement_transform, TransformIn::Local, false);
+				modify_inputs.transform_set(placement_transform, TransformIn::Local, true);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 		}
 	}
@@ -616,8 +617,8 @@ fn import_usvg_node(
 		usvg::Node::Path(path) => {
 			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
+		usvg::Node::Image(image) => {
+			import_usvg_image(modify_inputs, node, image, layer);
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
@@ -667,8 +668,8 @@ fn import_usvg_node_inner(
 			import_usvg_path(modify_inputs, node, path, layer, graphite_gradient_stops);
 			0
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
+		usvg::Node::Image(image) => {
+			import_usvg_image(modify_inputs, node, image, layer);
 			0
 		}
 		usvg::Node::Text(text) => {
@@ -865,4 +866,31 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 			return;
 		}
 	});
+}
+
+fn import_usvg_image(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, image: &usvg::Image, layer: LayerNodeIdentifier) {
+	let image_data = match image.kind() {
+		usvg::ImageKind::JPEG(data) => data.as_slice(),
+		usvg::ImageKind::PNG(data) => data.as_slice(),
+		usvg::ImageKind::GIF(data) => data.as_slice(),
+		usvg::ImageKind::WEBP(data) => data.as_slice(),
+		// TODO: Nested SVG-in-SVG (usvg::ImageKind::SVG) is currently unsupported.
+		// Also non-default preserveAspectRatio slicing/clipping are not reproduced.
+		_ => {
+			log::warn!("Unsupported SVG image format");
+			return;
+		}
+	};
+
+	let width = image.size().width();
+	let height = image.size().height();
+	let transform_node_id = modify_inputs.insert_encoded_image_data(image_data.into(), layer);
+
+	let node_transform = usvg_transform(node.abs_transform());
+	let pixel_size = DVec2::new(width as f64, height as f64);
+	let final_transform = node_transform * DAffine2::from_scale(pixel_size);
+
+	if final_transform != DAffine2::IDENTITY {
+		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, final_transform);
+	}
 }
