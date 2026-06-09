@@ -38,6 +38,8 @@ trait VectorListIterMut {
 	fn for_each_vector_mut(&mut self, f: impl FnMut(&mut Vector, DAffine2));
 
 	fn vector_count(&self) -> usize;
+
+	fn set_paint_attribute(&mut self, key: &str, paint: impl IntoGraphicList);
 }
 
 impl VectorListIterMut for List<Graphic> {
@@ -54,6 +56,15 @@ impl VectorListIterMut for List<Graphic> {
 	fn vector_count(&self) -> usize {
 		self.iter_element_values().filter_map(|element| element.as_vector()).map(|list| list.len()).sum()
 	}
+
+	fn set_paint_attribute(&mut self, key: &str, paint: impl IntoGraphicList) {
+		for graphic in self.iter_element_values_mut() {
+			let Some(vector_list) = graphic.as_vector_mut() else { continue };
+			for index in 0..vector_list.len() {
+				vector_list.set_attribute(key, index, paint.clone());
+			}
+		}
+	}
 }
 
 impl VectorListIterMut for List<Vector> {
@@ -66,6 +77,12 @@ impl VectorListIterMut for List<Vector> {
 
 	fn vector_count(&self) -> usize {
 		self.len()
+	}
+
+	fn set_paint_attribute(&mut self, key: &str, paint: impl IntoGraphicList) {
+		for index in 0..self.len() {
+			self.set_attribute(key, index, paint.clone());
+		}
 	}
 }
 
@@ -136,7 +153,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<F: Into<Fill> + 'n + Send, V: VectorListIterMut + 'n + Send>(
+async fn fill<F: IntoGraphicList, V: VectorListIterMut + 'n + Send>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(
@@ -153,24 +170,24 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorListIterMut + 'n + Send>(
 	/// The fill to paint the path with.
 	#[default(Color::BLACK)]
 	#[implementations(
-		Fill,
 		List<Color>,
 		List<GradientStops>,
-		Gradient,
-		Fill,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
 		List<Color>,
 		List<GradientStops>,
-		Gradient,
+		List<Graphic>,
+		List<Vector>,
+		List<Raster<CPU>>,
+		List<Raster<GPU>>,
 	)]
 	fill: F,
 	_backup_color: List<Color>,
 	_backup_gradient: Gradient,
 ) -> V {
-	let fill: Fill = fill.into();
-	content.for_each_vector_mut(|vector, _transform| {
-		vector.style.set_fill(fill.clone());
-	});
-
+	content.set_paint_attribute(ATTR_FILL, fill);
 	content
 }
 
@@ -1156,7 +1173,7 @@ async fn offset_path(_: impl Ctx, content: List<Vector>, distance: f64, join: St
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn solidify_stroke<T: IntoGraphicList + 'n + Send + Clone>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
+async fn solidify_stroke<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
 	let graphic_list = content.into_graphic_list();
@@ -1331,7 +1348,7 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: List<Vec
 
 // TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn flatten_path<T: IntoGraphicList + 'n + Send>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
+pub async fn flatten_path<T: IntoGraphicList>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] content: T) -> List<Vector> {
 	let graphic_list = content.into_graphic_list();
 	let flattened = graphic_list.clone().into_flattened_list::<Vector>();
 
@@ -2064,7 +2081,7 @@ async fn offset_points(
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph<I: IntoGraphicList + 'n + Send + Clone>(
+async fn morph<I: IntoGraphicList>(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	#[implementations(List<Graphic>, List<Vector>)]
