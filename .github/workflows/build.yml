@@ -119,7 +119,7 @@ jobs:
             echo "No Cloudflare API token available (fork PR), skipping deploy."
             exit 0
           fi
-          if [ "${{ github.event_name }}" != "push" ]; then
+          if [ "${{ github.ref }}" = "refs/tags/latest-stable" ]; then
             BRANCH_ARG="--branch=master"
           else
             BRANCH_ARG=""
