@@ -92,11 +92,7 @@ fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
 /// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).
 fn pad_with_implicit_default(key: &str, attribute: &mut Box<dyn AnyAttribute>, count: usize) {
 	match implicit_default_value(key) {
-		Some(default) => {
-			for _ in 0..count {
-				attribute.push(default.clone_box());
-			}
-		}
+		Some(default) => attribute.push_repeated(&*default, count),
 		None => {
 			for _ in 0..count {
 				attribute.push_default();
@@ -159,7 +155,7 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
 	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute> {
-		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::new()));
+		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::with_capacity(preceding_defaults + 1)));
 		pad_with_implicit_default(key, &mut attribute, preceding_defaults);
 		attribute.push(self);
 		attribute
@@ -192,6 +188,10 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 
 	/// Pushes a default value onto the end of this attribute.
 	fn push_default(&mut self);
+
+	/// Appends `count` copies of `value` (downcast to this attribute's type, or the type default if it
+	/// doesn't match), filling in bulk to avoid per-element boxing and dispatch.
+	fn push_repeated(&mut self, value: &dyn AnyAttributeValue, count: usize);
 
 	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
 	/// Falls back to a default if the value's type doesn't match.
@@ -285,6 +285,12 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	/// Pushes a default `T` value onto the end of this attribute list.
 	fn push_default(&mut self) {
 		self.0.push(T::default());
+	}
+
+	/// Appends `count` copies of `value`, downcast to `T` (or `T::default()` if the type doesn't match).
+	fn push_repeated(&mut self, value: &dyn AnyAttributeValue, count: usize) {
+		let value = value.as_any().downcast_ref::<T>().cloned().unwrap_or_default();
+		self.0.resize(self.0.len() + count, value);
 	}
 
 	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
@@ -751,7 +757,7 @@ impl Attributes {
 
 	/// Creates a new attribute of type `T` filled with `key`'s implicit default for all existing items.
 	fn new_attribute_padded<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&self, key: &str) -> Box<dyn AnyAttribute> {
-		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::new()));
+		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::with_capacity(self.len)));
 		pad_with_implicit_default(key, &mut attribute, self.len);
 		attribute
 	}
