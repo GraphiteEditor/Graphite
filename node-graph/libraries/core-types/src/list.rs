@@ -77,6 +77,30 @@ pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
+// ===========================
+// Implicit attribute defaults
+// ===========================
+
+/// Overrides the type's default value for certain attributes.
+fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
+	match key {
+		ATTR_OPACITY | ATTR_OPACITY_FILL => Some(Box::new(1_f64)),
+		_ => None,
+	}
+}
+
+/// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).
+fn pad_with_implicit_default(key: &str, attribute: &mut Box<dyn AnyAttribute>, count: usize) {
+	match implicit_default_value(key) {
+		Some(default) => attribute.push_repeated(&*default, count),
+		None => {
+			for _ in 0..count {
+				attribute.push_default();
+			}
+		}
+	}
+}
+
 // ========================
 // TRAIT: AnyAttributeValue
 // ========================
@@ -99,8 +123,8 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String;
 
-	/// Wraps this scalar value into a new attribute with `preceding_defaults` default values before this value.
-	fn into_attribute(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
+	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
+	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
 }
 
 impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 'static> AnyAttributeValue for T {
@@ -129,11 +153,12 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 		format!("{:?}", self)
 	}
 
-	/// Wraps this scalar value into a new attribute, padded with `preceding_defaults` default values before it.
-	fn into_attribute(self: Box<Self>, preceding_defaults: usize) -> Box<dyn AnyAttribute> {
-		let mut data = vec![T::default(); preceding_defaults];
-		data.push(*self);
-		Box::new(Attribute(data))
+	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
+	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute> {
+		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::with_capacity(preceding_defaults + 1)));
+		pad_with_implicit_default(key, &mut attribute, preceding_defaults);
+		attribute.push(self);
+		attribute
 	}
 }
 
@@ -163,6 +188,10 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 
 	/// Pushes a default value onto the end of this attribute.
 	fn push_default(&mut self);
+
+	/// Appends `count` copies of `value` (downcast to this attribute's type, or the type default if it
+	/// doesn't match), filling in bulk to avoid per-element boxing and dispatch.
+	fn push_repeated(&mut self, value: &dyn AnyAttributeValue, count: usize);
 
 	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
 	/// Falls back to a default if the value's type doesn't match.
@@ -258,6 +287,12 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		self.0.push(T::default());
 	}
 
+	/// Appends `count` copies of `value`, downcast to `T` (or `T::default()` if the type doesn't match).
+	fn push_repeated(&mut self, value: &dyn AnyAttributeValue, count: usize) {
+		let value = value.as_any().downcast_ref::<T>().cloned().unwrap_or_default();
+		self.0.resize(self.0.len() + count, value);
+	}
+
 	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
 	/// Falls back to a default if the value's type doesn't match.
 	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>) {
@@ -345,13 +380,11 @@ impl AttributeDyn {
 	}
 
 	/// Builds a new attribute matching `target_len` items, taking values from this attribute (wrapping if shorter, truncating if longer).
-	pub fn cloned_to_length(&self, target_len: usize) -> Box<dyn AnyAttribute> {
+	pub fn cloned_to_length(&self, key: &str, target_len: usize) -> Box<dyn AnyAttribute> {
 		let mut result = self.0.new_with_defaults(0);
 		let source_len = self.0.len();
 		if source_len == 0 {
-			for _ in 0..target_len {
-				result.push_default();
-			}
+			pad_with_implicit_default(key, &mut result, target_len);
 			return result;
 		}
 		for i in 0..target_len {
@@ -663,19 +696,19 @@ impl Attributes {
 	fn push_item(&mut self, item: ItemAttributeValues) {
 		let mut item_entries = item.0;
 
-		// Push values into existing attributes, or a default if the item lacks that attribute
+		// Push values into existing attributes, or the implicit default if the item lacks that attribute
 		for (attribute_key, attribute) in &mut self.attributes {
 			if let Some(position) = item_entries.iter().position(|(k, _)| k == attribute_key) {
 				let (_, value) = item_entries.swap_remove(position);
 				attribute.push(value);
 			} else {
-				attribute.push_default();
+				pad_with_implicit_default(attribute_key, attribute, 1);
 			}
 		}
 
-		// Create new attributes for any remaining item values, padded with defaults for prior items
+		// Create new attributes for any remaining item values, padded with implicit defaults for prior items
 		for (key, value) in item_entries {
-			self.attributes.push((key, value.into_attribute(self.len)));
+			self.attributes.push((key.clone(), value.into_attribute(&key, self.len)));
 		}
 
 		self.len += 1;
@@ -687,21 +720,20 @@ impl Attributes {
 		let other_len = other.len;
 		let mut other_entries = other.attributes;
 
-		// Extend matching attributes, or pad self's attributes with defaults for the other's item count
+		// Extend matching attributes, or pad self's attributes with implicit defaults for the other's item count
 		for (key, self_attribute) in &mut self.attributes {
 			if let Some(position) = other_entries.iter().position(|(k, _)| k == key) {
 				let (_, other_attribute) = other_entries.swap_remove(position);
 				self_attribute.extend(other_attribute);
 			} else {
-				for _ in 0..other_len {
-					self_attribute.push_default();
-				}
+				pad_with_implicit_default(key, self_attribute, other_len);
 			}
 		}
 
-		// Remaining other attributes are new, so we pad with defaults for self's existing items
+		// Remaining other attributes are new, so we pad with implicit defaults for self's existing items
 		for (key, other_attribute) in other_entries {
-			let mut combined = other_attribute.new_with_defaults(self.len);
+			let mut combined = other_attribute.new_with_defaults(0);
+			pad_with_implicit_default(&key, &mut combined, self.len);
 			combined.extend(other_attribute);
 			self.attributes.push((key, combined));
 		}
@@ -723,9 +755,16 @@ impl Attributes {
 		}
 	}
 
+	/// Creates a new attribute of type `T` filled with `key`'s implicit default for all existing items.
+	fn new_attribute_padded<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&self, key: &str) -> Box<dyn AnyAttribute> {
+		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::with_capacity(self.len)));
+		pad_with_implicit_default(key, &mut attribute, self.len);
+		attribute
+	}
+
 	/// Finds or creates an attribute for the given key and type, returning its position.
-	/// If an attribute with the key exists but has the wrong type, it is removed and replaced with a new attribute of the correct type, padded with defaults.
-	/// A newly created attribute is filled with `T::default()` for all existing items.
+	/// If an attribute with the key exists but has the wrong type, it is removed and replaced with a new attribute of the correct type, padded with implicit defaults.
+	/// A newly created attribute is filled with `key`'s implicit default for all existing items.
 	fn find_or_create_attribute<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> usize {
 		match self.attributes.iter().position(|(k, _)| k == key) {
 			Some(position) => {
@@ -733,12 +772,14 @@ impl Attributes {
 					position
 				} else {
 					self.attributes.remove(position);
-					self.attributes.push((key.to_string(), Box::new(Attribute::<T>(vec![T::default(); self.len]))));
+					let attribute = self.new_attribute_padded::<T>(key);
+					self.attributes.push((key.to_string(), attribute));
 					self.attributes.len() - 1
 				}
 			}
 			None => {
-				self.attributes.push((key.to_string(), Box::new(Attribute::<T>(vec![T::default(); self.len]))));
+				let attribute = self.new_attribute_padded::<T>(key);
+				self.attributes.push((key.to_string(), attribute));
 				self.attributes.len() - 1
 			}
 		}
@@ -995,7 +1036,7 @@ impl<T> List<T> {
 	pub fn set_attribute_dyn(&mut self, key: impl Into<String>, source: AttributeDyn) {
 		let key = key.into();
 		self.attributes.attributes.retain(|(k, _)| k != &key);
-		let new_attribute = source.cloned_to_length(self.element.len());
+		let new_attribute = source.cloned_to_length(&key, self.element.len());
 		self.attributes.attributes.push((key, new_attribute));
 	}
 
@@ -1006,10 +1047,9 @@ impl<T> List<T> {
 		if let Some(position) = self.attributes.attributes.iter().position(|(k, _)| k == &key) {
 			self.attributes.attributes[position].1.set_at(index, value.0);
 		} else {
-			let mut new_attribute = value.0.into_attribute(index);
-			while new_attribute.len() < self.element.len() {
-				new_attribute.push_default();
-			}
+			let mut new_attribute = value.0.into_attribute(&key, index);
+			let trailing_defaults = self.element.len().saturating_sub(new_attribute.len());
+			pad_with_implicit_default(&key, &mut new_attribute, trailing_defaults);
 			self.attributes.attributes.push((key, new_attribute));
 		}
 	}
@@ -1343,5 +1383,43 @@ impl<T> DoubleEndedIterator for ItemIter<T> {
 			element: self.element.next_back()?,
 			attributes: self.attributes.next_back()?,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// An item that doesn't set opacity must read as fully opaque even once a sibling introduces the
+	// opacity attribute, otherwise the dense store pads it with f64's `0.` default and it vanishes.
+	#[test]
+	fn implicit_opacity_default_is_opaque() {
+		// Collecting items (the path Boolean Operation takes when merging operands)
+		let mut collected = List::<()>::new();
+		collected.push(Item::new_from_element(()));
+		collected.push(Item::new_from_element(()).with_attribute(ATTR_OPACITY, 1_f64));
+		assert_eq!(collected.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 1.);
+
+		// Extending one list with another
+		let mut base = List::<()>::new();
+		base.push(Item::new_from_element(()));
+		let mut tail = List::<()>::new();
+		tail.push(Item::new_from_element(()).with_attribute(ATTR_OPACITY_FILL, 1_f64));
+		base.extend(tail);
+		assert_eq!(base.attribute_cloned_or_default::<f64>(ATTR_OPACITY_FILL, 0), 1.);
+
+		// Setting one item's opacity leaves the others opaque, not transparent
+		let mut indexed = List::<()>::new();
+		indexed.push(Item::new_from_element(()));
+		indexed.push(Item::new_from_element(()));
+		indexed.set_attribute(ATTR_OPACITY, 1, 0.5_f64);
+		assert_eq!(indexed.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 0), 1.);
+		assert_eq!(indexed.attribute_cloned_or_default::<f64>(ATTR_OPACITY, 1), 0.5);
+
+		// A non-opacity numeric attribute still falls back to its type default
+		let mut other = List::<()>::new();
+		other.push(Item::new_from_element(()));
+		other.push(Item::new_from_element(()).with_attribute(ATTR_START, 5_u64));
+		assert_eq!(other.attribute_cloned_or_default::<u64>(ATTR_START, 0), 0);
 	}
 }
