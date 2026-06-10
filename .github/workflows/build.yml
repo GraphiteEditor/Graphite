@@ -119,19 +119,12 @@ jobs:
             echo "No Cloudflare API token available (fork PR), skipping deploy."
             exit 0
           fi
-          BRANCH_ARG=""
-          if [ "${{ github.event_name }}" != "push" ]; then
-            if [ -n "${{ inputs.pr_number }}" ]; then
-              BRANCH_ARG="--branch=pr-${{ inputs.pr_number }}"
-            else
-              BRANCH_ARG="--branch=preview-$(git rev-parse --short HEAD)"
-            fi
-          fi
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           MAX_ATTEMPTS=8
           DELAY=15
           for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
-            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" $BRANCH_ARG --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
+            npx wrangler@3 pages deploy "frontend/dist" --project-name="${{ steps.production-env.outputs.cf_project || 'graphite-dev' }}" --branch="$BRANCH" --commit-dirty=true 2>&1 | tee /tmp/wrangler_output
             if [ ${PIPESTATUS[0]} -eq 0 ]; then
               URL=$(grep -oP 'https://[^\s]+\.pages\.dev' /tmp/wrangler_output | head -1)
               echo "url=$URL" >> "$GITHUB_OUTPUT"
