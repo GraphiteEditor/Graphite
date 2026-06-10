@@ -121,7 +121,11 @@ jobs:
           fi
           BRANCH_ARG=""
           if [ "${{ github.event_name }}" != "push" ]; then
-            BRANCH_ARG="--branch=${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
+            if [ -n "${{ inputs.pr_number }}" ]; then
+              BRANCH_ARG="--branch=pr-${{ inputs.pr_number }}"
+            else
+              BRANCH_ARG="--branch=preview-$(git rev-parse --short HEAD)"
+            fi
           fi
           MAX_ATTEMPTS=8
           DELAY=15
