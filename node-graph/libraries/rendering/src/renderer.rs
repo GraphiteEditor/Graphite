@@ -1605,16 +1605,18 @@ impl Render for List<Vector> {
 				accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
 				// Source geometry (not the click-target override) so editing tools work on letterforms.
+				// Recorded together with `vector_data` from the same (first) row so `style` stays consistent with the paint.
 				// Only item 0 is recorded since editing tools can only target a single item currently.
-				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(source.clone()));
+				// If that row has no paint attribute, none is recorded and consumers fall back to `style`.
+				if let std::collections::hash_map::Entry::Vacant(e) = metadata.vector_data.entry(element_id) {
+					e.insert(Arc::new(source.clone()));
 
-				// Surface row attribute paint sources (only for item 0) so message handlers can read
-				// `ATTR_FILL` / `ATTR_STROKE` without rebuilding the list.
-				if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
-					metadata.fill_attributes.entry(element_id).or_insert_with(|| Arc::new(fill_graphic.into_owned()));
-				}
-				if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
-					metadata.stroke_attributes.entry(element_id).or_insert_with(|| Arc::new(stroke_graphic.into_owned()));
+					if let Some(fill_graphic) = graphic_list_at(self, index, ATTR_FILL) {
+						metadata.fill_attributes.insert(element_id, Arc::new(fill_graphic.into_owned()));
+					}
+					if let Some(stroke_graphic) = graphic_list_at(self, index, ATTR_STROKE) {
+						metadata.stroke_attributes.insert(element_id, Arc::new(stroke_graphic.into_owned()));
+					}
 				}
 
 				// Surface `editor:text_frame` for the Text tool's drag cage

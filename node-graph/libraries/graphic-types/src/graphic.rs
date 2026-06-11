@@ -214,6 +214,8 @@ pub fn graphic_list_at<'a>(list: &'a List<Vector>, index: usize, attribute: &str
 		.or_else(|| list.attribute::<List<Vector>>(attribute, index).map(|v| Cow::Owned(v.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<CPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
 		.or_else(|| list.attribute::<List<Raster<GPU>>>(attribute, index).map(|r| Cow::Owned(r.clone().into_graphic_list())))
+		// Treat a blank attribute as absent so consumers fall back to the legacy `style` instead of masking it.
+		.filter(|graphic_list| graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty()))
 }
 
 /// Look up the fill paint graphics for a vector row, falling back to the legacy
