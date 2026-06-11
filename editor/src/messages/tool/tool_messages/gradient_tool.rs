@@ -201,7 +201,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 			Abort,
 		);
 
-		if self.data.selected_gradient.is_some() {
+		// Only intercept Delete/Backspace (`DeleteStop`) while a deletable stop or midpoint is selected
+		if self.data.selected_gradient.as_ref().is_some_and(|selected| !matches!(selected.dragging, GradientDragTarget::New)) {
 			common.extend(actions!(GradientToolMessageDiscriminant; DeleteStop));
 		}
 
@@ -2347,6 +2348,21 @@ mod test_gradient {
 		// With no color stop selected, Delete should fall through to deleting the selected layer
 		editor.press(Key::Delete, ModifierKeys::empty()).await;
 		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted");
+	}
+
+	#[tokio::test]
+	async fn delete_removes_layer_after_drawing_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Draw a fresh gradient, which leaves `selected_gradient` set to the `New` drag target rather than a selected stop
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1, "Expected the rectangle layer to exist");
+
+		// Since no stop is selected (`New` isn't a deletable handle), Delete should still delete the layer
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted after drawing a gradient");
 	}
 
 	#[tokio::test]
