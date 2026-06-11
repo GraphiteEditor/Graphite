@@ -90,7 +90,7 @@ impl Preprocessor {
 			return;
 		}
 
-		for (node_id, node) in network.nodes.iter_mut() {
+		for node in network.nodes.values_mut() {
 			match &mut node.implementation {
 				DocumentNodeImplementation::Network(node_network) => self.expand_network_inner(node_network),
 				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
@@ -103,30 +103,6 @@ impl Preprocessor {
 						node.inputs.truncate(new_node.inputs.len());
 
 						node.implementation = new_node.implementation.clone();
-
-						let matching_scope_injections = network
-							.scope_injections
-							.iter()
-							.filter(|&(_, (producer_id, _))| *producer_id == *node_id)
-							.map(|(key, (_, ty))| (key.clone(), ty.clone()))
-							.collect::<Vec<_>>();
-						if matching_scope_injections.is_empty() {
-							continue;
-						}
-
-						let DocumentNodeImplementation::Network(node_network) = &mut node.implementation else {
-							continue;
-						};
-						let Some(NodeInput::Node { node_id: export_id, .. }) = node_network.exports.first() else {
-							log::warn!("Substitution network for {node_id} has no Node export");
-							continue;
-						};
-						let export_id = *export_id;
-
-						for (key, ty) in matching_scope_injections {
-							network.scope_injections.remove(&key);
-							node_network.scope_injections.insert(key, (export_id, ty));
-						}
 					}
 				}
 				DocumentNodeImplementation::Extract => (),

@@ -731,9 +731,9 @@ impl NodeNetwork {
 	}
 
 	/// Replace all references in any node of `old_output` with `new_output`
-	fn replace_network_outputs(&mut self, old_output: NodeInput, new_output: NodeInput) {
+	fn replace_network_outputs(&mut self, old_output: &NodeInput, new_output: &NodeInput) {
 		for output in self.exports.iter_mut() {
-			if *output == old_output {
+			if *output == *old_output {
 				*output = new_output.clone();
 			}
 		}
@@ -899,27 +899,44 @@ impl NodeNetwork {
 		}
 		// TODO: Add support for flattening exports that are NodeInput::Import (https://github.com/GraphiteEditor/Graphite/issues/1762)
 
+		self.replace_node_with_its_exports(id, &node.original_location, &inner_network.exports);
+
+		for node_id in new_nodes {
+			self.flatten_with_fns(node_id, map_ids, gen_id);
+		}
+	}
+
+	fn replace_node_with_its_exports(&mut self, id: NodeId, original_location: &OriginalLocation, exports: &[NodeInput]) {
+		// Connect scope injections to the inner network export
+		self.scope_injections.values_mut().for_each(|(node_id, _ty)| {
+			if node_id == &id {
+				let Some(export) = exports.first() else {
+					log::error!("Inner network should have at least one export");
+					return;
+				};
+				if let NodeInput::Node { node_id: export_id, output_index: _ } = export {
+					*node_id = *export_id;
+				}
+			}
+		});
+
 		// Connect all nodes that were previously connected to this node to the nodes of the inner network
-		for (i, export) in inner_network.exports.into_iter().enumerate() {
+		for (i, export) in exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = &export {
-				for deps in &node.original_location.dependants {
+				for deps in &original_location.dependants {
 					for dep in deps {
 						self.replace_node_inputs(*dep, (id, i), (*node_id, *output_index));
 					}
 				}
 
 				if let Some(new_output_node) = self.nodes.get_mut(node_id) {
-					for dep in &node.original_location.dependants[i] {
+					for dep in &original_location.dependants[i] {
 						new_output_node.original_location.dependants[*output_index].push(*dep);
 					}
 				}
 			}
 
-			self.replace_network_outputs(NodeInput::node(id, i), export);
-		}
-
-		for node_id in new_nodes {
-			self.flatten_with_fns(node_id, map_ids, gen_id);
+			self.replace_network_outputs(&NodeInput::node(id, i), export);
 		}
 	}
 
