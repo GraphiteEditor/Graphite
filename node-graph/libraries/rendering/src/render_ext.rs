@@ -246,7 +246,8 @@ impl RenderExt for List<Graphic> {
 			Some(Graphic::Vector(_)) | Some(Graphic::RasterCPU(_)) | Some(Graphic::RasterGPU(_)) | Some(Graphic::Graphic(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
-					let inflate = DVec2::new(1.0 / item_transform.matrix2.x_axis.length(), 1.0 / item_transform.matrix2.y_axis.length());
+					let inverse = |len: f64| if len > 0. { 1.0 / len } else { 0. };
+					let inflate = DVec2::new(inverse(item_transform.matrix2.x_axis.length()), inverse(item_transform.matrix2.y_axis.length()));
 					let min = bounds.transform_point2(DVec2::ZERO) - inflate;
 					let max = bounds.transform_point2(DVec2::ONE) + inflate;
 					DAffine2::from_scale_angle_translation(max - min, 0., min)
