@@ -517,6 +517,18 @@ impl Graphic {
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => false,
 		}
 	}
+
+	/// Returns true if this graphic's inner list is empty.
+	pub fn is_empty(&self) -> bool {
+		match self {
+			Graphic::Graphic(list) => list.is_empty(),
+			Graphic::Vector(list) => list.is_empty(),
+			Graphic::Color(list) => list.is_empty(),
+			Graphic::Gradient(list) => list.is_empty(),
+			Graphic::RasterCPU(list) => list.is_empty(),
+			Graphic::RasterGPU(list) => list.is_empty(),
+		}
+	}
 }
 
 impl BoundingBox for Graphic {

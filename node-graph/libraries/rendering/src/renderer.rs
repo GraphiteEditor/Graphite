@@ -1676,7 +1676,7 @@ impl Render for List<Vector> {
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, vector_list: &List<Vector>, index: usize, geometry: &Vector, transform: DAffine2) {
 	let filled = if let Some(graphic_list) = graphic_list_at(vector_list, index, ATTR_FILL) {
-		graphic_list.element(0).is_some()
+		graphic_list.element(0).is_some_and(|graphic| !graphic.is_empty())
 	} else if let Some(vector) = vector_list.element(index) {
 		!matches!(vector.style.fill(), Fill::None)
 	} else {
