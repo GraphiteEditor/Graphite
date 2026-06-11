@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "blending-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "glam",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "brush-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "brush-types",
  "bytemuck",
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "brush-types"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
@@ -950,7 +950,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "core-types"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "base64",
  "bitflags 2.11.0",
@@ -2043,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "graph-craft"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "brush-nodes",
  "core-types",
@@ -2080,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "graphene-application-io"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "blake3",
  "core-types",
@@ -2098,7 +2098,7 @@ dependencies = [
 
 [[package]]
 name = "graphene-canvas-utils"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "graphene-cli"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2136,7 +2136,7 @@ dependencies = [
 
 [[package]]
 name = "graphene-core"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
@@ -2171,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "graphene-resource"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "blake3",
  "core-types",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "graphene-std"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "base64",
  "blending-nodes",
@@ -2222,7 +2222,7 @@ dependencies = [
 
 [[package]]
 name = "graphic-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "brush-types",
  "core-types",
@@ -2238,7 +2238,7 @@ dependencies = [
 
 [[package]]
 name = "graphic-types"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "brush-types",
  "core-types",
@@ -2255,7 +2255,7 @@ dependencies = [
 
 [[package]]
 name = "graphite-desktop"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bytemuck",
  "clap",
@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "graphite-desktop-embedded-resources"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "include_dir",
 ]
@@ -2357,7 +2357,7 @@ dependencies = [
 
 [[package]]
 name = "graphite-desktop-wrapper"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "base64",
  "dirs",
@@ -2980,7 +2980,7 @@ dependencies = [
 
 [[package]]
 name = "interpreted-executor"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "criterion",
@@ -3405,7 +3405,7 @@ dependencies = [
 
 [[package]]
 name = "math-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "glam",
@@ -3614,7 +3614,7 @@ dependencies = [
 
 [[package]]
 name = "no-std-types"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bytemuck",
  "core-types",
@@ -4151,7 +4151,7 @@ dependencies = [
 
 [[package]]
 name = "path-bool-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "glam",
@@ -4462,7 +4462,7 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "preprocessor"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "graph-craft",
  "graphene-std",
@@ -4670,7 +4670,7 @@ checksum = "c3d6831663a5098ea164f89cff59c6284e95f4e3c76ce9848d4529f5ccca9bde"
 
 [[package]]
 name = "raster-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bytemuck",
  "core-types",
@@ -4702,7 +4702,7 @@ dependencies = [
 
 [[package]]
 name = "raster-nodes-shaders"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "cargo-gpu-install",
  "env_logger",
@@ -4711,14 +4711,14 @@ dependencies = [
 
 [[package]]
 name = "raster-nodes-shaders-entrypoint"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "raster-nodes",
 ]
 
 [[package]]
 name = "raster-types"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "base64",
  "bytemuck",
@@ -4887,7 +4887,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rendering"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "base64",
  "brush-types",
@@ -4912,7 +4912,7 @@ dependencies = [
 
 [[package]]
 name = "repeat-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
@@ -5962,7 +5962,7 @@ dependencies = [
 
 [[package]]
 name = "text-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "convert_case",
  "core-types",
@@ -6369,7 +6369,7 @@ dependencies = [
 
 [[package]]
 name = "transform-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "glam",
@@ -6620,7 +6620,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vector-nodes"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "core-types",
  "delaunator",
@@ -6646,7 +6646,7 @@ dependencies = [
 
 [[package]]
 name = "vector-types"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -7094,7 +7094,7 @@ dependencies = [
 
 [[package]]
 name = "wgpu-executor"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "bytemuck",

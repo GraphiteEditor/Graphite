@@ -1,9 +1,12 @@
 [package]
 name = "cargo-run-internal-download"
-edition.workspace = true
+# Inherited from workspace - start
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+# Inherited from workspace - end
 
 [dependencies]
 cargo-run = { path = "../.." }
