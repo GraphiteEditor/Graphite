@@ -1,12 +1,12 @@
 [package]
 name = "graphite-desktop-wrapper"
-version = "0.1.0"
-description = "Graphite Desktop Wrapper"
-authors = ["Graphite Authors <contact@graphite.art>"]
-license = "MIT OR Apache-2.0"
-repository = ""
-edition = "2024"
-rust-version = "1.87"
+# Inherited from workspace - start
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+# Inherited from workspace - end
 
 [features]
 gpu = ["graphite-editor/gpu", "graphene-std/shader-nodes"]

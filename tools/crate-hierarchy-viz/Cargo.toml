@@ -1,10 +1,13 @@
 [package]
 name = "crate-hierarchy-viz"
 description = "Tool to visualize the crate hierarchy in the Graphite workspace"
-edition.workspace = true
+# Inherited from workspace - start
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+# Inherited from workspace - end
 
 [dependencies]
 serde = { workspace = true }
