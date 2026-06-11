@@ -1,9 +1,5 @@
-use core_types::blending::BlendMode;
 use core_types::list::List;
-use core_types::{
-	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT_SIZE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING, ATTR_TEXT_FONT, ATTR_TEXT_LINE_HEIGHT,
-	ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, ATTR_TRANSFORM, Ctx,
-};
+use core_types::{ATTR_FONT_SIZE, ATTR_TEXT_ALIGN, ATTR_TEXT_CHARACTER_SPACING, ATTR_TEXT_FONT, ATTR_TEXT_LINE_HEIGHT, ATTR_TEXT_MAX_HEIGHT, ATTR_TEXT_MAX_WIDTH, ATTR_TEXT_TILT, Ctx};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
 pub use text_nodes::*;
@@ -176,53 +172,5 @@ fn text_to_vector(
 	/// When enabled, each glyph is emitted as its own vector item instead of a single compound path per string.
 	separate_glyphs: bool,
 ) -> List<Vector> {
-	let mut result = List::new();
-
-	for index in 0..strings.len() {
-		let Some(text) = strings.element(index) else { continue };
-		if text.is_empty() {
-			continue;
-		}
-
-		let font: Resource = strings.attribute_cloned_or_default(ATTR_TEXT_FONT, index);
-
-		let typesetting = TypesettingConfig {
-			font_size: strings.attribute_cloned_or(ATTR_FONT_SIZE, index, DEFAULT_FONT_SIZE),
-			line_height_ratio: strings.attribute_cloned_or(ATTR_TEXT_LINE_HEIGHT, index, DEFAULT_LINE_HEIGHT),
-			character_spacing: strings.attribute_cloned_or(ATTR_TEXT_CHARACTER_SPACING, index, 0.),
-			max_width: strings.attribute_cloned_or::<Option<f64>>(ATTR_TEXT_MAX_WIDTH, index, None),
-			max_height: strings.attribute_cloned_or::<Option<f64>>(ATTR_TEXT_MAX_HEIGHT, index, None),
-			tilt: strings.attribute_cloned_or(ATTR_TEXT_TILT, index, 0.),
-			align: strings.attribute_cloned_or(ATTR_TEXT_ALIGN, index, TextAlign::default()),
-		};
-
-		let vectors = to_path(text, &font, typesetting, separate_glyphs);
-		let transform = strings.attribute_cloned_or_default::<glam::DAffine2>(ATTR_TRANSFORM, index);
-		let layer_path = strings.attribute_cloned_or_default::<List<graph_craft::document::NodeId>>(ATTR_EDITOR_LAYER_PATH, index);
-		let blend_mode = strings.attribute::<BlendMode>(ATTR_BLEND_MODE, index).copied();
-		let opacity = strings.attribute::<f64>(ATTR_OPACITY, index).copied();
-		let opacity_fill = strings.attribute::<f64>(ATTR_OPACITY_FILL, index).copied();
-
-		for mut item in vectors.into_iter() {
-			if transform != glam::DAffine2::IDENTITY {
-				let local = item.attribute_cloned_or_default::<glam::DAffine2>(ATTR_TRANSFORM);
-				item.set_attribute(ATTR_TRANSFORM, transform * local);
-			}
-			if !layer_path.is_empty() {
-				item.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
-			}
-			if let Some(blend_mode) = blend_mode {
-				item.set_attribute(ATTR_BLEND_MODE, blend_mode);
-			}
-			if let Some(opacity) = opacity {
-				item.set_attribute(ATTR_OPACITY, opacity);
-			}
-			if let Some(opacity_fill) = opacity_fill {
-				item.set_attribute(ATTR_OPACITY_FILL, opacity_fill);
-			}
-			result.push(item);
-		}
-	}
-
-	result
+	shape_text_list(&strings, separate_glyphs)
 }

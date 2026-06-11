@@ -3862,6 +3862,7 @@ dependencies = [
  "log",
  "node-macro",
  "smallvec",
+ "text-nodes",
  "vector-types",
 ]
 
