@@ -305,7 +305,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 						warn!("Failed to parse default value for type `{ty:?}` with data `{data}`");
 					}
 				}
-				RegistryValueSource::Scope(data) => return NodeInput::scope(data.clone()),
+				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
 			};
 
 			if let Some(type_default) = TaggedValue::from_type(ty) {

@@ -50,7 +50,7 @@ pub enum RegistryWidgetOverride {
 pub enum RegistryValueSource {
 	None,
 	Default(&'static str),
-	Scope(std::borrow::Cow<'static, str>),
+	Scope(&'static str),
 }
 
 type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
