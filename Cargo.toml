@@ -40,7 +40,7 @@ default-members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	# blocked by https://github.com/rust-lang/cargo/issues/16000
-#	"proc-macros",
+	# "proc-macros",
 	"tools/cargo-run",
 ]
 resolver = "2"
