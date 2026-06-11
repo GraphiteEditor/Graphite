@@ -446,6 +446,8 @@ impl NodeGraphExecutor {
 			text_frames,
 			clip_targets,
 			vector_data,
+			fill_attributes,
+			stroke_attributes,
 			backgrounds: _,
 		} = render_output.metadata;
 
@@ -460,6 +462,8 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::UpdateTextFrames { text_frames });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
+		responses.add(DocumentMessage::UpdateFillAttributes { fill_attributes });
+		responses.add(DocumentMessage::UpdateStrokeAttributes { stroke_attributes });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

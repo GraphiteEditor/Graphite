@@ -88,6 +88,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: List<NodeId>, to: AttributeValueDyn),
 		convert_node!(from: List<Color>, to: AttributeValueDyn),
 		convert_node!(from: List<GradientStops>, to: AttributeValueDyn),
+		convert_node!(from: List<Vector>, to: AttributeValueDyn),
+		convert_node!(from: List<Raster<CPU>>, to: AttributeValueDyn),
+		convert_node!(from: List<Raster<GPU>>, to: AttributeValueDyn),
 		convert_node!(from: List<Graphic>, to: AttributeValueDyn),
 		// into_node!(from: List<Raster<CPU>>, to: List<Raster<SRGBA8>>),
 		#[cfg(feature = "gpu")]
