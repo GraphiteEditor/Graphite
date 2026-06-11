@@ -520,6 +520,12 @@ impl Graphic {
 		}
 	}
 
+	/// True if this paint opaquely covers the entire fill region.
+	/// Vector, Raster, and a nested Graphic may leave gaps, so they return false.
+	pub fn covers_opaquely(&self) -> bool {
+		matches!(self, Graphic::Color(_) | Graphic::Gradient(_)) && self.is_opaque()
+	}
+
 	/// Returns true if this graphic's inner list is empty.
 	pub fn is_empty(&self) -> bool {
 		match self {

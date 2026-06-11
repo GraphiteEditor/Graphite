@@ -1080,7 +1080,7 @@ impl Render for List<Vector> {
 			let can_draw_aligned_stroke = path_is_closed
 				&& vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
-			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.is_opaque()) || mask_type == MaskType::Clip);
+			let can_use_paint_order = !(fill_graphic.is_none_or(|graphic| !graphic.covers_opaquely()) || mask_type == MaskType::Clip);
 
 			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
