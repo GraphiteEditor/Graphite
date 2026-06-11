@@ -2524,7 +2524,7 @@ impl DocumentMessageHandler {
 			};
 			// `style.stroke` is `Some` whenever a `Stroke` node is in the chain, even with weight 0 or a transparent color.
 			// So `is_some()` would treat invisibly-stroked fill-only layers as having a stroke.
-			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no row attribute is present.
+			// `ATTR_STROKE` is the source of truth when set; fall back to `style.stroke.color` only when no attribute is present.
 			let stroke_visible = if let Some(list) = stroke_graphic_list {
 				list.element(0).is_some_and(|g| !g.is_fully_transparent())
 			} else {

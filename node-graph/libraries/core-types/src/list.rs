@@ -77,10 +77,10 @@ pub const ATTR_SPREAD_METHOD: &str = "spread_method";
 /// Gradient's `GradientType` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_TYPE: &str = "gradient_type";
 
-/// List<Graphic> data for fill.
+/// Vector graphics object's filled area paint, of type List<T> where T is any graphic type.
 pub const ATTR_FILL: &str = "fill";
 
-/// List<Graphic> data for stroke.
+/// Vector graphics object's stroke paint, of type List<T> where T is any graphic type.
 pub const ATTR_STROKE: &str = "stroke";
 
 // ===========================

@@ -23,7 +23,7 @@ use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::{Artboard, Graphic, Vector};
 use kurbo::{Affine, Cap, Join, Shape, StrokeOpts};
 use num_traits::Zero;
@@ -1200,7 +1200,7 @@ impl Render for List<Vector> {
 						.as_deref()
 						.map(|list| {
 							// Gradient should align with the fill path bbox so that a shared gradient lines up across fill and stroke.
-							// only clipping-based paints need the stroke-inclusive bbox.
+							// Only clipping-based paints need the stroke-inclusive bbox.
 							let paint_bounds = match list.element(0) {
 								Some(Graphic::Color(_)) | Some(Graphic::Gradient(_)) => bounds_matrix,
 								_ => stroke_bounds_matrix,
@@ -1281,8 +1281,6 @@ impl Render for List<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		use graphic_types::vector_types::vector::style::{StrokeCap, StrokeJoin};
-
 		for index in 0..self.len() {
 			use graphic_types::vector_types::vector;
 
@@ -1359,8 +1357,8 @@ impl Render for List<Vector> {
 			let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 				let Some(fill_graphic) = fill_graphic_list.as_deref() else { return };
 
-				for paint_idx in 0..fill_graphic.len() {
-					let Some(paint) = fill_graphic.element(paint_idx) else { continue };
+				for paint_index in 0..fill_graphic.len() {
+					let Some(paint) = fill_graphic.element(paint_index) else { continue };
 					match paint {
 						Graphic::Color(list) => {
 							let Some(color) = list.element(0) else { continue };
@@ -1413,8 +1411,8 @@ impl Render for List<Vector> {
 				let Some(stroke_graphic_list) = stroke_graphic_list.as_deref() else { return };
 				let Some(stroke) = element.style.stroke() else { return };
 
-				for paint_idx in 0..stroke_graphic_list.len() {
-					let Some(stroke_graphic) = stroke_graphic_list.element(paint_idx) else {
+				for paint_index in 0..stroke_graphic_list.len() {
+					let Some(stroke_graphic) = stroke_graphic_list.element(paint_index) else {
 						continue;
 					};
 

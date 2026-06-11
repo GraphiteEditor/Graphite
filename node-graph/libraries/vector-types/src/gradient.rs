@@ -588,7 +588,7 @@ impl Gradient {
 		Some(index)
 	}
 
-	/// Builds the affine that places the gradient endpoints at `start` and `end` when applied to canonical gradient space (0,0) -> (1,0)
+	/// Builds the affine that places the gradient endpoints at `start` and `end` when applied to canonical gradient space (0, 0) -> (1, 0).
 	pub fn to_transform(&self) -> DAffine2 {
 		let direction = self.end - self.start;
 		DAffine2::from_cols(direction, direction.perp(), self.start)

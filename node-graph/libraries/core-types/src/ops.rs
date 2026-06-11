@@ -56,7 +56,7 @@ impl<T: ToString + Send> Convert<String, ()> for T {
 }
 
 pub trait ListConvert<U> {
-	fn convert_row(self) -> U;
+	fn convert_item(self) -> U;
 }
 
 impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
@@ -65,7 +65,7 @@ impl<U, T: ListConvert<U> + Send> Convert<List<U>, ()> for List<T> {
 			.into_iter()
 			.map(|row| {
 				let (element, attributes) = row.into_parts();
-				Item::from_parts(element.convert_row(), attributes)
+				Item::from_parts(element.convert_item(), attributes)
 			})
 			.collect();
 		list
