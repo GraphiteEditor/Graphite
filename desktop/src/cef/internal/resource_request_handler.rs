@@ -4,6 +4,7 @@ use cef::{Browser, Callback, CefString, Frame, ImplRequest, ImplResourceRequestH
 
 use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
 
+// TODO: Deny all external requests once we stop relying on google fonts for font preview
 fn is_allowed_url(url: &str) -> bool {
 	url.starts_with(&format!("{RESOURCE_SCHEME}://{RESOURCE_DOMAIN}/")) || url.starts_with("https://fonts.googleapis.com/css2") || url.starts_with("https://fonts.gstatic.com/")
 }
