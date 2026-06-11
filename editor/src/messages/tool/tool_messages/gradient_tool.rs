@@ -192,14 +192,21 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		}
 	}
 
-	advertise_actions!(GradientToolMessageDiscriminant;
-		PointerDown,
-		PointerUp,
-		PointerMove,
-		DoubleClick,
-		Abort,
-		DeleteStop,
-	);
+	fn actions(&self) -> ActionList {
+		let mut common = actions!(GradientToolMessageDiscriminant;
+			PointerDown,
+			PointerUp,
+			PointerMove,
+			DoubleClick,
+			Abort,
+		);
+
+		if self.data.selected_gradient.is_some() {
+			common.extend(actions!(GradientToolMessageDiscriminant; DeleteStop));
+		}
+
+		common
+	}
 }
 
 impl LayoutHolder for GradientTool {
@@ -2325,6 +2332,21 @@ mod test_gradient {
 
 		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");
+	}
+
+	#[tokio::test]
+	async fn delete_removes_layer_when_no_stop_selected() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create a layer and switch to the Gradient tool without engaging any gradient handle
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.select_tool(ToolType::Gradient).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1, "Expected the rectangle layer to exist");
+
+		// With no color stop selected, Delete should fall through to deleting the selected layer
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "Expected the layer to be deleted");
 	}
 
 	#[tokio::test]
