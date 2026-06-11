@@ -253,7 +253,7 @@ impl RenderExt for List<Graphic> {
 				} else {
 					bounds
 				};
-				render_svg_pattern(svg_defs, self, item_transform, bounds, render_params)
+				render_svg_pattern(svg_defs, self, stroke_transform, bounds, render_params)
 					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
 					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
@@ -264,7 +264,7 @@ impl RenderExt for List<Graphic> {
 
 /// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic list as the paint content, and returns the pattern ID.
 /// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
-fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, item_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
 	let size = max - min;
@@ -279,7 +279,7 @@ fn render_svg_pattern(svg_defs: &mut String, fill_graphic_list: &List<Graphic>, 
 	// Unwrap the inner def element
 	write!(svg_defs, "{}", content.svg_defs).unwrap();
 
-	let pattern_transform = item_transform * DAffine2::from_translation(min);
+	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
 	let transform_str = format_transform_matrix(pattern_transform);
 	let transform_attr = if transform_str.is_empty() {
 		String::new()
