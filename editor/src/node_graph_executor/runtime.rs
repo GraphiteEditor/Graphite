@@ -3,11 +3,11 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
+use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
-use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_std::list::List;
@@ -49,8 +49,7 @@ pub struct NodeRuntime {
 	/// Which node is inspected and which monitor node is used (if any) for the current execution.
 	inspect_state: Option<InspectState>,
 
-	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
-	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
+	preprocessor: preprocessor::Preprocessor,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
@@ -146,7 +145,7 @@ impl NodeRuntime {
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
 
-			substitutions: preprocessor::generate_node_substitutions(),
+			preprocessor: preprocessor::Preprocessor::new(),
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
@@ -347,7 +346,7 @@ impl NodeRuntime {
 	}
 
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		if let Err(e) = preprocessor::expand_network(&mut graph, &self.substitutions, &self.resources) {
+		if let Err(e) = self.preprocessor.expand_network(&mut graph, &self.resources) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
 		}
 

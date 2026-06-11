@@ -233,7 +233,7 @@ impl PerPixelAdjustCodegen<'_> {
 			ty: ParsedFieldType::Regular(RegularParsedField {
 				ty: parse_quote!(&'a WgpuExecutor),
 				exposed: true,
-				value_source: ParsedValueSource::Scope(LitStr::new("wgpu-executor", Span::call_site())),
+				value_source: ParsedValueSource::Scope(parse_quote!("wgpu-executor")),
 				number_soft_min: None,
 				number_soft_max: None,
 				number_hard_min: None,

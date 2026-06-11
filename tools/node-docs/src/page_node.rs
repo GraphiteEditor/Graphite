@@ -159,7 +159,7 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 			}
 
 			// Details: default value
-			let default_value = match field.value_source {
+			let default_value = match &field.value_source {
 				RegistryValueSource::Default(default_value) => Some(default_value.to_string().replace(" :: ", "::")),
 				_ => field
 					.default_type
