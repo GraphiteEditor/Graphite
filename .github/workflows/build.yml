@@ -59,7 +59,7 @@ jobs:
       CARGO_INCREMENTAL: 0
       SCCACHE_DIR: /var/lib/github-actions/.cache
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
-      BINARYEN_VERSION: "129"
+      BINARYEN_VERSION: "130"
     steps:
       - name: 📥 Clone repository
         uses: actions/checkout@v6
@@ -301,7 +301,7 @@ jobs:
 
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
-      BINARYEN_VERSION: "129"
+      BINARYEN_VERSION: "130"
 
     steps:
       - name: 📥 Clone repository
@@ -495,7 +495,7 @@ jobs:
 
     env:
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
-      BINARYEN_VERSION: "129"
+      BINARYEN_VERSION: "130"
 
     steps:
       - name: 📥 Clone repository

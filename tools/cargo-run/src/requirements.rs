@@ -5,15 +5,15 @@ use crate::*;
 
 /// The Binaryen release version that [`install_binaryen`] downloads.
 /// NOTICE: keep in sync with the `BINARYEN_VERSION` pinned across the CI workflows, and update `BINARYEN_SHA256` below.
-const BINARYEN_VERSION: &str = "129";
+const BINARYEN_VERSION: &str = "130";
 /// The SHA-256 checksums of the pinned Binaryen release's tarballs, from the `.sha256` assets published beside them.
 const BINARYEN_SHA256: &[(&str, &str)] = &[
-	("x86_64-windows", "1405d2f51377859ccf5fcd2c59c0a8c5756373e691ca0eeb5219f646b743e3aa"),
-	("arm64-windows", "40db97baf6aa7c0d9d105a5745572a7a92ed345358b86ecf59f5410e9b2a856e"),
-	("arm64-macos", "d1bb014775ca3002506712b81b4406d126ff6845e8b2f343bc2696a1a88b7117"),
-	("x86_64-macos", "cc38897d3d93c968f24819fae210e04afd0146d0e2467e307207ea7e798a59b9"),
-	("x86_64-linux", "50b9fa62b9abea752da92ec57e0c555fee578760cd237c40107957715d2976ba"),
-	("aarch64-linux", "81d46b86b10876ab615eec67e09fcc5615115a7b189cfe3d466725ee36c46ac2"),
+	("x86_64-windows", "cc09c874f4332d00aa32ab72745a9b98c9a172f795762f21d03e70638a3f7f4c"),
+	("arm64-windows", "b18c9cbe000562b1ee5d9cb60146616a949aca504903ad63f27fd9fd679898a7"),
+	("arm64-macos", "79d3ab9f417d9e215f15f598f523d001a7d9ac1e59367e5c869fbdabd1cba72e"),
+	("x86_64-macos-14", "d3e2d1235b70c93c54b52eabc1625ea960965152218754f1f4eeb0f873c48e03"),
+	("x86_64-linux", "0a18362361ad05465118cd8eeb72edaeec89de6894bc283576ef4e07aa3babcc"),
+	("aarch64-linux", "e6ae6e09ac40f4e14bc5be6f687c58e2995c84170013975fa641809dd3b480a0"),
 ];
 const WASM_OPT_INSTALL: &str = "automatically download Binaryen (wasm-opt) from its official GitHub releases";
 
@@ -243,7 +243,7 @@ fn install_binaryen() -> Result<(), Error> {
 		("windows", "x86_64") => "x86_64-windows",
 		("windows", "aarch64") => "arm64-windows",
 		("macos", "aarch64") => "arm64-macos",
-		("macos", "x86_64") => "x86_64-macos",
+		("macos", "x86_64") => "x86_64-macos-14",
 		("linux", "x86_64") => "x86_64-linux",
 		("linux", "aarch64") => "aarch64-linux",
 		(os, arch) => {
